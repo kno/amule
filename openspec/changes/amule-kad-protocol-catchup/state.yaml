@@ -12,6 +12,6 @@ phases:
   spec: complete
   design: skipped
   tasks: complete
-  apply: pending
+  apply: complete
   verify: pending
   archive: pending

@@ -59,7 +59,7 @@ record rather than editing this one.
 | libmaxminddb-dev | 1.5.2-1build2 |
 
 Configured with `-DBUILD_TESTING=YES -DBUILD_MONOLITHIC=YES -DBUILD_DAEMON=YES
--DBUILD_REMOTEGUI=YES` — all three apps, per the project rule in `CLAUDE.md:21`:
+-DBUILD_REMOTEGUI=YES` — all three apps, per the project rule in `AGENTS.md:21`:
 the preprocessor split means a change can compile in two of the three and break
 the third, so a baseline covering only two is not a baseline for anything a
 change will be judged against.

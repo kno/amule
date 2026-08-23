@@ -95,9 +95,9 @@ packaging/linux/build.sh dev
 
 It configures monolithic + daemon + remotegui plus tests, builds, and runs
 `ctest`, installing nothing on the host. Do not narrow the target set — a change
-can compile in two of the three apps and break the third (`CLAUDE.md`).
+can compile in two of the three apps and break the third (`AGENTS.md`).
 
-The bare `cmake`/`ctest` commands in `CLAUDE.md`'s Build and Test sections assume
+The bare `cmake`/`ctest` commands in `AGENTS.md`'s Build and Test sections assume
 dependencies installed on the machine. They are fine if you have them; they fail
 on a missing `cmake` or wxWidgets, which is the normal state on macOS.
 
