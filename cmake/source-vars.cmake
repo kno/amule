@@ -51,6 +51,11 @@ if (BUILD_MONOLITHIC OR BUILD_DAEMON)
 		MediaProbeThread.cpp
 		FreeSpaceThread.cpp
 		ThreadTasks.cpp
+		# The only translation unit that includes libutp's headers, and it
+		# includes none of aMule's Types.h -- see UtpLibraryAdapter.h for why
+		# the two cannot coexist. Compiled in every core build; without
+		# AMULE_UTP_TRANSPORT its methods are inert and it pulls in no libutp.
+		UtpLibraryAdapter.cpp
 	)
 endif()
 

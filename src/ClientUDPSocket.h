@@ -28,11 +28,49 @@
 
 #include "MuleUDPSocket.h"
 #include "ReservedProtocolFrames.h" // Needed for CUnknownFrameLogThrottle
+#include "UtpContext.h"             // Needed for CUtpContext / IUtpDatagramSink
+#include "UtpLibraryAdapter.h"      // Needed for CUtpLibraryAdapter
 
-class CClientUDPSocket : public CMuleUDPSocket
+/**
+ * The ed2k UDP socket, which is also the uTP socket.
+ *
+ * uTP gets no port of its own: its datagrams arrive and leave here, wrapped in
+ * OP_UDPRESERVEDPROT2 / OP_NATT_FRAME_UTP. Sharing the port is what lets uTP
+ * reuse the NAT mapping ed2k UDP already has, which is the whole reason uTP is
+ * useful for NAT traversal later. IUtpDatagramSink is how the context reaches
+ * this socket on the way out; ProcessUtpDatagram is the way in.
+ */
+class CClientUDPSocket : public CMuleUDPSocket, public IUtpDatagramSink
 {
 public:
 	CClientUDPSocket(const amuleIPV4Address &address, const CProxyData *ProxyData = NULL);
+
+	/**
+	 * Drive the uTP context. Called from CamuleApp::OnCoreTimer, i.e. every
+	 * CORE_TIMER_PERIOD ms and independently of any traffic: libutp does its
+	 * retransmission and congestion control in utp_check_timeouts(), so a
+	 * context serviced only from the receive path cannot recover a lost
+	 * packet on an idle connection.
+	 */
+	void ServiceUtp() { m_utpContext.Tick(); }
+
+	/**
+	 * Whether this client can serve a uTP connection to a peer right now.
+	 *
+	 * This is what gates the MOD_MISCOPT_NAT_TRAVERSAL bit in the handshake
+	 * (CUpDownClient::SendHelloTypePacket). It is not "was uTP compiled in":
+	 * a build configured with -DENABLE_UTP=YES has a context and still drops
+	 * every inbound uTP connection until the accept path is wired, and a peer
+	 * that read the bit would spend its connection attempts on a client that
+	 * discards them. False in every default build, where the context has no
+	 * library at all.
+	 */
+	bool CanServeUtpConnections() { return m_utpContext.CanServeConnections(); }
+
+	//! Outbound uTP datagrams, from the context's send callback. Framed and
+	//! queued on this socket so uTP and ed2k UDP share one port.
+	void SendUtpDatagram(
+		const uint8_t *payload, size_t length, const CNetworkAddress &to, uint16_t port) override;
 
 protected:
 	void OnReceive(int errorCode);
@@ -40,6 +78,26 @@ protected:
 private:
 	void OnPacketReceived(uint32 ip, uint16 port, uint8_t *buffer, size_t length);
 	void ProcessPacket(uint8_t *packet, int16 size, int8 opcode, uint32 host, uint16 port);
+
+	/**
+	 * The ed2k UDP parser: the protocol-byte switch this socket has always
+	 * had, unchanged. Reached only after the uTP context has declined the
+	 * datagram, and reached with the datagram exactly as it arrived.
+	 *
+	 * @param datagram  the decrypted datagram, protocol byte first.
+	 * @param datagramLength  its length, at least 1.
+	 * @param receivedLength  the length of the datagram as it came off the
+	 *                        wire, before decryption. This is what the Kad
+	 *                        overhead statistics count, so it is passed
+	 *                        rather than recomputed.
+	 */
+	void ProcessEd2kDatagram(uint8_t *datagram,
+		size_t datagramLength,
+		size_t receivedLength,
+		uint32 ip,
+		uint16 port,
+		uint32_t receiverVerifyKey,
+		uint32_t senderVerifyKey);
 
 	/**
 	 * OP_UDPRESERVEDPROT2: no opcode, a frame type byte instead.
@@ -54,6 +112,13 @@ private:
 	//! speaking a frame type this build does not know retries, so the useful
 	//! information is that it happened plus how often.
 	CUnknownFrameLogThrottle m_unknownFrameLog{ 60 * 1000 };
+
+	//! One uTP context per client instance, not per connection: libutp keeps
+	//! its own socket table inside a context. Unavailable unless this build
+	//! was configured with -DENABLE_UTP=YES, in which case the shared port
+	//! behaves exactly as it did before uTP existed.
+	CUtpContext m_utpContext;
+	CUtpLibraryAdapter m_utpLibrary{ &m_utpContext };
 };
 
 #endif // CLIENTUDPSOCKET_H

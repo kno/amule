@@ -50,6 +50,57 @@ The bundled copy is used by default. Distributions may configure with
 `-DUSE_SYSTEM_PICOJSON=ON` to use a system-installed `picojson.h` version
 1.3.0 or newer instead.
 
+## libutp
+
+The uTP (Micro Transport Protocol) reference implementation, used by the
+uTP transport when aMule is configured with `-DENABLE_UTP=YES`. License:
+MIT.
+
+Vendored at `src/extern/libutp`, from
+<https://github.com/transmission/libutp> at commit
+`490874c44a2ecf914404b0a20e043c9755fff47b` (version 3.4). The pinned
+commit, the files omitted from the upstream tree, and the reason each was
+omitted are recorded in `src/extern/libutp/AMULE_PROVENANCE.md`; no
+vendored file is patched. `cmake/libutp.cmake` builds that copy, or links
+a system-installed one with `-DUSE_SYSTEM_LIBUTP=YES`. Builds configured
+with `-DENABLE_UTP=NO` (the default) compile no libutp code at all, and
+this notice does not apply to them.
+
+> Copyright (c) 2010-2013 BitTorrent, Inc.
+>
+> Permission is hereby granted, free of charge, to any person obtaining a copy
+> of this software and associated documentation files (the "Software"), to deal
+> in the Software without restriction, including without limitation the rights
+> to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+> copies of the Software, and to permit persons to whom the Software is
+> furnished to do so, subject to the following conditions:
+>
+> The above copyright notice and this permission notice shall be included in
+> all copies or substantial portions of the Software.
+>
+> THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+> IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+> FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+> AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+> LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+> OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
+> THE SOFTWARE.
+
+### Ported uTP transport code
+
+The uTP transport shim in `src/Utp*.h` is not third-party code — it is
+GPLv2-or-later like the rest of aMule — but the write-buffer thresholds,
+the duplex-transfer heuristic and the transport-failure semantics are
+ported from eMuleAI's `CUtpSocket`
+(`srchybrid/eMuleAI/UtpSocket.cpp`). Both projects are GPL-2.0-or-later,
+so the code may move, and the original copyright travels with it:
+
+> Copyright (C) 2013 David Xanatos ( XanatosDavid (a) gmail.com / http://NeoLoader.to )
+> Copyright (C) 2026 eMule AI
+
+Those lines appear in the header of every file carrying ported code. Do
+not remove them when editing those files.
+
 ## muleunit
 
 Lightweight unit test framework used by the C++ test suite at

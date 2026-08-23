@@ -261,6 +261,24 @@ if (NEED_LIB_MULEAPPCOMMON OR BUILD_WEBSERVER)
 	option (ENABLE_UPNP "enable UPnP support in aMule" ON)
 endif()
 
+# uTP (Micro Transport Protocol) as a transport for ed2k client connections,
+# carried over the UDP port the client already uses for ed2k UDP. OFF by
+# default: libutp is vendored at src/extern/libutp, but a new transport is
+# opt-in until it has run in real use (see the change's staging notes). The
+# verification image in packaging/linux/dev/Dockerfile turns it ON so the
+# adapter is actually compiled and tested. With it OFF the shim still compiles
+# and is
+# still unit-tested — only the adapter that calls utp_* is compiled out, and
+# the client advertises no uTP capability to peers.
+option (ENABLE_UTP "enable the uTP transport (requires libutp)" OFF)
+option (USE_SYSTEM_LIBUTP "use a system-installed libutp instead of a bundled copy" OFF)
+
+if (NOT NEED_LIB_MULEAPPCORE)
+	# uTP lives entirely in the core (the client UDP socket and the client
+	# connection path); there is nothing for it to do in a build without one.
+	set (ENABLE_UTP FALSE)
+endif()
+
 # Master switch for the in-app "check for a new aMule version" feature: the
 # startup notification, the "Check for new version at startup" preference, and
 # the About dialog's "Check for updates" button. When OFF the whole feature

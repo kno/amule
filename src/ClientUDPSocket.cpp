@@ -49,6 +49,8 @@
 #include "kademlia/utils/KadUDPKey.h"
 #include <zlib.h>
 #include "EncryptedDatagramSocket.h"
+#include "NetworkAddress.h"     // Needed for CNetworkAddress
+#include "UtpDatagramRouting.h" // Needed for RouteInboundDatagram
 
 //
 // CClientUDPSocket -- Extended eMule UDP socket
@@ -60,6 +62,34 @@ CClientUDPSocket::CClientUDPSocket(const amuleIPV4Address &address, const CProxy
 	if (!thePrefs::IsUDPDisabled()) {
 		Open();
 	}
+
+#ifdef AMULE_UTP_TRANSPORT
+	// Only in a build that has libutp. Without this call the context has no
+	// library, IsAvailable() is false, and the shared port behaves exactly
+	// as it did before uTP existed -- which is what every default build
+	// does, because ENABLE_UTP is off by default.
+	m_utpContext.Configure(&m_utpLibrary, this);
+#endif
+}
+
+void CClientUDPSocket::SendUtpDatagram(
+	const uint8_t *payload, size_t length, const CNetworkAddress &to, uint16_t port)
+{
+	uint32_t ip = 0;
+	if (!to.ToIPv4NetworkOrder(ip) || length == 0) {
+		return;
+	}
+
+	// CPacket writes [protocol][opcode] as the UDP header, which is exactly
+	// the two framing bytes WriteUtpFrameHeader() defines and the receive
+	// path recognises: OP_UDPRESERVEDPROT2 then OP_NATT_FRAME_UTP.
+	CPacket *packet = new CPacket(OP_NATT_FRAME_UTP, length, OP_UDPRESERVEDPROT2);
+	packet->CopyToDataBuffer(0, payload, length);
+	theStats::AddUpOverheadOther(packet->GetPacketSize());
+
+	// Never obfuscated and never a Kad packet: uTP carries its own framing
+	// and the peer recognises it by the two header bytes.
+	SendPacket(packet, ip, port, false, NULL, false, 0);
 }
 
 void CClientUDPSocket::OnReceive(int errorCode)
@@ -82,10 +112,58 @@ void CClientUDPSocket::OnPacketReceived(uint32 ip, uint16 port, uint8_t *buffer,
 	int packetLen = CEncryptedDatagramSocket::DecryptReceivedClient(
 		buffer, length, &decryptedBuffer, ip, &receiverVerifyKey, &senderVerifyKey);
 
-	uint8_t protocol = decryptedBuffer[0];
-	uint8_t opcode = decryptedBuffer[1];
+	if (packetLen < 1) {
+		return;
+	}
 
-	if (packetLen >= 1) {
+	// uTP first, then the ed2k UDP parser. The order is the design decision,
+	// not a preference: offer the ed2k side everything first and uTP never
+	// sees a packet, and a datagram the uTP context declines has to continue
+	// to the ed2k parser whole and unmodified, because the ed2k side owns the
+	// other OP_UDPRESERVEDPROT2 frame types. RouteInboundDatagram() is where
+	// that order lives (UtpDatagramRouting.h), so this function cannot
+	// express it any other way, and UtpDatagramRoutingTest asserts it in both
+	// directions.
+	RouteInboundDatagram(
+		decryptedBuffer,
+		(size_t)packetLen,
+		m_utpContext.IsAvailable(),
+		[this, ip, port](const uint8_t *utpPayload, size_t utpPayloadLength) {
+			return m_utpContext.ProcessDatagram(utpPayload,
+				utpPayloadLength,
+				CNetworkAddress::FromIPv4NetworkOrder(ip),
+				port);
+		},
+		[this, decryptedBuffer, length, ip, port, receiverVerifyKey, senderVerifyKey](
+			const uint8_t *datagram, size_t datagramLength) {
+			// Same buffer, same length: the ed2k parser is entitled to
+			// the datagram it has always been given. The pointer is
+			// re-taken from the capture rather than cast away from the
+			// callback's const, so nothing here can quietly advance it.
+			wxASSERT(datagram == decryptedBuffer);
+			ProcessEd2kDatagram(decryptedBuffer,
+				datagramLength,
+				length,
+				ip,
+				port,
+				receiverVerifyKey,
+				senderVerifyKey);
+		});
+}
+
+void CClientUDPSocket::ProcessEd2kDatagram(uint8_t *decryptedBuffer,
+	size_t datagramLength,
+	size_t receivedLength,
+	uint32 ip,
+	uint16 port,
+	uint32_t receiverVerifyKey,
+	uint32_t senderVerifyKey)
+{
+	const int packetLen = (int)datagramLength;
+	uint8_t protocol = decryptedBuffer[0];
+	uint8_t opcode = datagramLength >= 2 ? decryptedBuffer[1] : 0;
+
+	{
 		try {
 			switch (protocol) {
 			case OP_EMULEPROT:
@@ -93,7 +171,7 @@ void CClientUDPSocket::OnPacketReceived(uint32 ip, uint16 port, uint8_t *buffer,
 				break;
 
 			case OP_KADEMLIAHEADER:
-				theStats::AddDownOverheadKad(length);
+				theStats::AddDownOverheadKad(receivedLength);
 				if (packetLen >= 2) {
 					Kademlia::CKademlia::ProcessPacket(decryptedBuffer,
 						packetLen,
@@ -108,7 +186,7 @@ void CClientUDPSocket::OnPacketReceived(uint32 ip, uint16 port, uint8_t *buffer,
 				break;
 
 			case OP_KADEMLIAPACKEDPROT:
-				theStats::AddDownOverheadKad(length);
+				theStats::AddDownOverheadKad(receivedLength);
 				if (packetLen >= 2) {
 					uint32_t newSize = packetLen * 10 + 300; // Should be enough...
 					std::vector<uint8_t> unpack(newSize);

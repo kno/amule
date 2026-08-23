@@ -51,6 +51,30 @@ is carrying traffic in both directions.
 - THEN the buffer MUST grow up to the documented maximum
 - AND growth MUST stop at that maximum rather than growing unbounded
 
+### Requirement: The uTP capability bit follows the ability to serve
+
+The `MOD_MISCOPT_NAT_TRAVERSAL` bit (bit 1, `0x00000002`) in the
+`CT_MOD_MISCOPTIONS` (`0xAA`) handshake tag MUST be set only when this client can
+serve a uTP connection, meaning a uTP context exists AND an inbound uTP
+connection attempt on it would be handled rather than dropped. Having the uTP
+transport compiled in MUST NOT by itself set the bit. When the resulting
+capability word is zero, the tag MUST NOT be emitted and MUST NOT be counted in
+the handshake tag count.
+
+#### Scenario: uTP compiled in but unable to serve
+
+- GIVEN a build configured with the uTP transport and a uTP context
+- WHEN the inbound accept path is not wired, so an inbound uTP attempt would be dropped
+- THEN the advertised capability word MUST NOT contain `MOD_MISCOPT_NAT_TRAVERSAL`
+- AND no `CT_MOD_MISCOPTIONS` tag MUST be emitted
+
+#### Scenario: uTP able to serve
+
+- GIVEN a uTP context whose inbound accept path is wired
+- WHEN the handshake is sent
+- THEN the advertised capability word MUST contain `MOD_MISCOPT_NAT_TRAVERSAL` (`0x00000002`)
+- AND the `CT_MOD_MISCOPTIONS` tag MUST be emitted and counted
+
 ### Requirement: Transport failure is distinct from peer refusal
 
 A failed uTP establishment MUST be reported as a transport failure, separately

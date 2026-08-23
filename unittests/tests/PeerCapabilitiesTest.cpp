@@ -159,7 +159,50 @@ TEST(PeerCapabilities, ReservedBitsAreMaskedOff)
 // accompanied by a shipped transport is the bug the spec warns about.
 TEST(PeerCapabilities, AdvertisesNoUnimplementedCapability)
 {
-	ASSERT_EQUALS(0x00000000u, LocalAdvertisedModMiscOptions());
+	// uTP is the first shipped transport, and it is compiled in only with
+	// -DENABLE_UTP=YES (which needs libutp; see cmake/libutp.cmake). The
+	// test binary is built without it, so even the ceiling -- the most this
+	// build could ever claim -- is zero. A bit that appears here without a
+	// transport behind it is the bug the spec warns about.
+	ASSERT_EQUALS(0x00000000u, AdvertisableModMiscOptions());
+}
+
+// The advertise decision as a function of whether the transport can actually
+// carry a connection. Both branches are asserted because only one of them
+// exists in any given build, and the one that is wrong is the one that produces
+// no symptom: a client advertising uTP it cannot serve gets handshakes it will
+// never complete.
+TEST(PeerCapabilities, AdvertisedWordFollowsWhatTheTransportCanServe)
+{
+	ASSERT_EQUALS(0x00000000u, AdvertisedModMiscOptions(false));
+
+	// Bit 1, MOD_MISCOPT_NAT_TRAVERSAL: the capability eMuleAI gates its
+	// uTP NAT traversal on. Nothing else is claimed -- QUIC and IPv6 uTP
+	// are other changes.
+	ASSERT_EQUALS(0x00000002u, AdvertisedModMiscOptions(true));
+	ASSERT_EQUALS(MOD_MISCOPT_NAT_TRAVERSAL, AdvertisedModMiscOptions(true));
+}
+
+// The distinction this gate exists for. Compiled in is the ceiling, not the
+// answer: a build configured with -DENABLE_UTP=YES whose accept path is not
+// wired has a utp_context and still drops every inbound uTP connection, so it
+// must advertise nothing. Advertising it anyway costs peers connection attempts
+// that are discarded with nothing logged on either side -- the failure mode
+// PeerCapabilities.h is written around.
+//
+// The runtime half of the gate is CUtpContext::CanServeConnections(), asserted
+// in UtpContextTest; this pins that the word follows that answer and not the
+// build flag. CUpDownClient, where the two meet, reaches theApp and cannot be
+// linked into a unit test -- see the note at the top of this file.
+TEST(PeerCapabilities, CompiledInButUnableToServeAdvertisesNothing)
+{
+	// Compiled in but cannot serve: exactly the false branch.
+	ASSERT_EQUALS(0x00000000u, AdvertisedModMiscOptions(false));
+
+	// Whatever this build's ceiling is, the word it actually sends never
+	// exceeds it, and the ceiling never leaves the five defined bits.
+	ASSERT_EQUALS(0x00000000u, AdvertisableModMiscOptions() & ~MOD_MISCOPT_KNOWN_MASK);
+	ASSERT_EQUALS(AdvertisedModMiscOptions(false), AdvertisedModMiscOptions(false) & AdvertisableModMiscOptions());
 }
 
 // Setters exist for the advertise side; they must land on the same bits the

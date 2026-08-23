@@ -68,8 +68,8 @@ constexpr uint32_t MOD_MISCOPT_KNOWN_MASK = 0x0000001Fu;
  * What a peer told us it can do.
  *
  * Read-only as far as this change is concerned: aMule records the peer's
- * claims so later changes in this set can act on them, and advertises nothing
- * new itself. See LocalAdvertisedModMiscOptions().
+ * claims so later changes in this set can act on them. What aMule sends back is
+ * decided by AdvertisedModMiscOptions().
  */
 class CPeerCapabilities
 {
@@ -151,21 +151,54 @@ private:
 };
 
 /**
- * The CT_MOD_MISCOPTIONS word aMule puts in its own handshake.
+ * The CT_MOD_MISCOPTIONS word aMule advertises, given what it can actually do
+ * for a peer right now.
  *
- * Zero, and deliberately so: none of the five features exists in this tree
- * yet. Recognising a capability and implementing it are separate changes, and
- * advertising one aMule does not have is worse than advertising nothing --
- * the peer opens a handshake that cannot complete and neither side logs a
- * reason. Each bit turns on in the change that ships its transport.
+ * Advertising a capability aMule does not have is worse than advertising
+ * nothing: the peer opens a handshake that cannot complete and neither side
+ * logs a reason. So each bit follows a transport that can carry a connection,
+ * not a transport that was compiled in. Those are different questions, and the
+ * difference is not academic -- a build configured with -DENABLE_UTP=YES has a
+ * utp_context and still drops every inbound uTP connection until the accept
+ * path is wired. Compiled and initialised is the equivalent of a bound socket:
+ * necessary, not sufficient. The same distinction already gates the IPv6 bit,
+ * which follows verified inbound connectivity rather than a bound socket.
  *
- * Because the word is zero, no CT_MOD_MISCOPTIONS tag is emitted at all: an
- * absent tag and an all-zero one mean the same thing to eMuleAI, and the
- * absent one costs no bytes.
+ * The answer travels as an argument rather than being read from a macro here,
+ * so both branches are testable in the one build a test binary is.
+ *
+ * @param utpTransportCanServe  whether this end can serve a uTP connection,
+ *        i.e. a utp_context exists and an inbound uTP attempt on it would be
+ *        handled rather than dropped. See CUtpContext::CanServeConnections().
  */
-constexpr uint32_t LocalAdvertisedModMiscOptions()
+constexpr uint32_t AdvertisedModMiscOptions(bool utpTransportCanServe)
 {
-	return 0;
+	return utpTransportCanServe ? static_cast<uint32_t>(MOD_MISCOPT_NAT_TRAVERSAL) : 0u;
+}
+
+/**
+ * The most this build could ever advertise: the ceiling, not the word.
+ *
+ * Zero in the default build -- uTP needs libutp and is off by default, and none
+ * of the other four features exists in this tree yet. A bit that appears here
+ * without a transport compiled behind it is a defect, which is what
+ * PeerCapabilitiesTest pins and what the static_assert in
+ * CUpDownClient::SendHelloTypePacket() bounds the emitted word against.
+ *
+ * This is deliberately NOT what goes on the wire. A non-zero ceiling only makes
+ * a bit possible; whether it is set is decided per handshake by
+ * AdvertisedModMiscOptions() from the runtime answer. When the resulting word is
+ * zero, no CT_MOD_MISCOPTIONS tag is emitted at all: an absent tag and an
+ * all-zero one mean the same thing to eMuleAI, and the absent one costs no
+ * bytes.
+ */
+constexpr uint32_t AdvertisableModMiscOptions()
+{
+#ifdef AMULE_UTP_TRANSPORT
+	return AdvertisedModMiscOptions(true);
+#else
+	return AdvertisedModMiscOptions(false);
+#endif
 }
 
 /**

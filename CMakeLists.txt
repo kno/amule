@@ -89,6 +89,10 @@ if (ENABLE_UPNP)
 	include (cmake/upnp.cmake)
 endif()
 
+if (ENABLE_UTP)
+	include (cmake/libutp.cmake)
+endif()
+
 if (NEED_GLIB_CHECK)
 	include (cmake/glib21.cmake)
 endif()
@@ -618,6 +622,7 @@ message (STATUS "
 	Should aMule be compiled with i18n support?			${ENABLE_NLS}
 	Which mode should aMule be compiled in?				${CMAKE_BUILD_TYPE}
 	Should aMule be compiled with UPnP support?			${ENABLE_UPNP}
+	Should aMule be compiled with the uTP transport?		${ENABLE_UTP}
 	Should aMule be compiled with IP2country support?		${ENABLE_IP2COUNTRY}
 	Should aMule monolithic application be built?			${BUILD_MONOLITHIC}
 	Should aMule daemon version be built?				${BUILD_DAEMON}
@@ -663,6 +668,10 @@ endif()
 
 if (ENABLE_UPNP)
 	message ("			libupnp				${LIBUPNP_VERSION}")
+endif()
+
+if (ENABLE_UTP)
+	message ("			libutp				${LIBUTP_VERSION}")
 endif()
 
 message ("			libintl				${ENABLE_NLS}")

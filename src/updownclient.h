@@ -37,7 +37,8 @@
 #include <ec/cpp/ECID.h>      // Needed for CECID
 #include "BitVector.h"        // Needed for BitVector
 #include "ClientRef.h"        // Needed for debug defines
-#include "PeerCapabilities.h" // Needed for CPeerCapabilities
+#include "PeerCapabilities.h"   // Needed for CPeerCapabilities
+#include "UtpTransportFailure.h" // Needed for CUtpTransportState
 
 #include <map>
 #include <wx/thread.h> // Needed for wxMutex
@@ -193,6 +194,43 @@ public:
 	bool Disconnected(const wxString &strReason, bool bFromSocket = false);
 	bool TryToConnect(bool bIgnoreMaxCon = false);
 	bool Connect();
+
+	/* uTP transport attempt, and the fallback to TCP */
+
+	/**
+	 * The uTP connection came up. Recorded so a subsequent failure on this
+	 * client is judged as a peer-level event and not as a transport one.
+	 */
+	void OnUtpConnected() { m_utpTransport.OnConnected(); }
+
+	/**
+	 * uTP could not be established for this peer: no usable uTP path, or a
+	 * handshake that never completed. Says nothing about the peer, so
+	 * Connect() falls back to TCP and Disconnected() must not blame it.
+	 *
+	 * This is the single entry point for every transport-level uTP failure.
+	 * A future live dial reports its timeout here and needs no other change.
+	 */
+	void OnUtpTransportFailure() { m_utpTransport.OnTransportFailure(); }
+
+	//! The peer answered the uTP attempt and refused it. This one IS about
+	//! the peer, so the pre-uTP rules apply unchanged.
+	void OnUtpPeerRefused() { m_utpTransport.OnPeerRefused(); }
+
+	//! What the connection path should do about the last uTP attempt.
+	SUtpAttemptDisposition GetUtpDisposition() const
+	{
+		return DisposeUtpAttempt(m_utpTransport.GetOutcome(), m_bUtpTcpAttempted);
+	}
+
+	/**
+	 * Attempt this peer over uTP. Called by Connect() before it dials TCP.
+	 *
+	 * @return true when a uTP attempt is under way and TCP must not be
+	 *         dialled; false when the caller must use TCP.
+	 */
+	bool ConnectOverUtp();
+
 	void ConnectionEstablished();
 	const wxString &GetUserName() const { return m_Username; }
 	// Only use this when you know the real IP or when your clearing it.
@@ -967,6 +1005,18 @@ private:
 
 	/* eMuleAI vendor capabilities, parsed from the CT_MOD_* hello tags */
 	CPeerCapabilities m_modCapabilities;
+
+	/* uTP transport attempt state. See src/UtpTransportFailure.h for why the
+	   transport failure and the peer refusal must not be one state. */
+
+	//! How the last uTP attempt to this peer ended. Reset the moment the TCP
+	//! fallback is dialled, so a TCP failure after a uTP one is judged on its
+	//! own merits rather than shielded by the uTP failure that preceded it.
+	CUtpTransportState m_utpTransport;
+	//! Whether a TCP connection to this peer has been dialled on this pass.
+	//! Decides between "fall back to TCP" and "give up but keep the source".
+	bool m_bUtpTcpAttempted;
+
 	uint8_t m_modIPv6[16];
 	uint8_t m_modServerIPv6[16];
 	bool m_hasModIPv6;

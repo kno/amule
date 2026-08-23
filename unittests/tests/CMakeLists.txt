@@ -895,6 +895,125 @@ target_link_libraries (ReservedProtocolFramesTest
 	mulecommon
 )
 
+# The uTP transport, in five suites and no libutp.
+#
+# Every one of these links nothing but muleunit, because the transport shim is
+# header-only and free of theApp, of wxWidgets and of libutp itself: the library
+# sits behind IUtpLibrary (UtpContext.h) and the tests drive a fake. That is
+# what makes the two behaviours with no visible failure mode assertable at all
+# -- the tick that must keep firing with no inbound traffic, and the write
+# buffer that must grow under sustained blocking and shrink on a duplex
+# transfer. Neither is observable through a real libutp without a peer on the
+# network, and a build with -DENABLE_UTP=NO has no libutp to observe.
+add_executable (UtpDatagramRoutingTest
+	UtpDatagramRoutingTest.cpp
+)
+
+add_test (NAME UtpDatagramRoutingTest
+	COMMAND UtpDatagramRoutingTest
+)
+
+target_include_directories (UtpDatagramRoutingTest
+	PRIVATE ${CMAKE_BINARY_DIR}
+	PRIVATE ${CMAKE_SOURCE_DIR}/src
+	PRIVATE ${CMAKE_SOURCE_DIR}/src/include
+)
+
+target_link_libraries (UtpDatagramRoutingTest
+	muleunit
+	# muleunit's MuleDebug.cpp calls CFormat, so every test binary needs
+	# mulecommon even when the code under test does not.
+	mulecommon
+)
+
+add_executable (UtpContextTest
+	UtpContextTest.cpp
+)
+
+add_test (NAME UtpContextTest
+	COMMAND UtpContextTest
+)
+
+target_include_directories (UtpContextTest
+	PRIVATE ${CMAKE_BINARY_DIR}
+	PRIVATE ${CMAKE_SOURCE_DIR}/src
+	PRIVATE ${CMAKE_SOURCE_DIR}/src/include
+	# CNetworkAddress is a boost::asio::ip::address, so the endpoint the
+	# context and the stream carry brings boost with it.
+	PRIVATE ${Boost_INCLUDE_DIR}
+)
+
+target_link_libraries (UtpContextTest
+	muleunit
+	mulecommon
+	${Boost_LIBRARIES}
+)
+
+add_executable (UtpWriteBufferPolicyTest
+	UtpWriteBufferPolicyTest.cpp
+)
+
+add_test (NAME UtpWriteBufferPolicyTest
+	COMMAND UtpWriteBufferPolicyTest
+)
+
+target_include_directories (UtpWriteBufferPolicyTest
+	PRIVATE ${CMAKE_BINARY_DIR}
+	PRIVATE ${CMAKE_SOURCE_DIR}/src
+	PRIVATE ${CMAKE_SOURCE_DIR}/src/include
+)
+
+target_link_libraries (UtpWriteBufferPolicyTest
+	muleunit
+	# muleunit's MuleDebug.cpp calls CFormat, so every test binary needs
+	# mulecommon even when the code under test does not.
+	mulecommon
+)
+
+add_executable (UtpStreamTest
+	UtpStreamTest.cpp
+)
+
+add_test (NAME UtpStreamTest
+	COMMAND UtpStreamTest
+)
+
+target_include_directories (UtpStreamTest
+	PRIVATE ${CMAKE_BINARY_DIR}
+	PRIVATE ${CMAKE_SOURCE_DIR}/src
+	PRIVATE ${CMAKE_SOURCE_DIR}/src/include
+	# CNetworkAddress is a boost::asio::ip::address, so the endpoint the
+	# context and the stream carry brings boost with it.
+	PRIVATE ${Boost_INCLUDE_DIR}
+)
+
+target_link_libraries (UtpStreamTest
+	muleunit
+	mulecommon
+	${Boost_LIBRARIES}
+)
+
+add_executable (UtpTransportFailureTest
+	UtpTransportFailureTest.cpp
+)
+
+add_test (NAME UtpTransportFailureTest
+	COMMAND UtpTransportFailureTest
+)
+
+target_include_directories (UtpTransportFailureTest
+	PRIVATE ${CMAKE_BINARY_DIR}
+	PRIVATE ${CMAKE_SOURCE_DIR}/src
+	PRIVATE ${CMAKE_SOURCE_DIR}/src/include
+)
+
+target_link_libraries (UtpTransportFailureTest
+	muleunit
+	# muleunit's MuleDebug.cpp calls CFormat, so every test binary needs
+	# mulecommon even when the code under test does not.
+	mulecommon
+)
+
 # EC_TAG_CLIENT_MOD_CAPABILITIES: the headless view of a peer's negotiated
 # vendor capabilities. The Client Details dialog that renders the same data
 # lives in amule/amulegui and needs an X server, so this tag is what makes that
