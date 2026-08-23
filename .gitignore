@@ -60,3 +60,6 @@ __pycache__/
 
 # Local agent tooling cache, not part of the project
 .atl/
+
+# Local CodeGraph index, per checkout
+.codegraph/
