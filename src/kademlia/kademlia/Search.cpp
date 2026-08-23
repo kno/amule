@@ -853,6 +853,25 @@ void CSearch::StorePacket()
 			taglist.push_back(
 				new CTagInt8(TAG_ENCRYPTION, CPrefs::GetMyConnectOptions(true, true)));
 
+			// Our IPv6 address, for peers that can use it -- the same "ip6"
+			// tag this file already reads from other publishers. Emitted only
+			// once an inbound IPv6 connection has verified the address, for the
+			// same reason as the handshake's CT_MOD_IP_V6: an unverified
+			// address sends peers somewhere that never answers.
+			//
+			// This does not widen Kad. Kad's own transport, routing table and
+			// wire format stay IPv4 -- this is source information about an ed2k
+			// endpoint, carried by a Kad publish that itself travels over IPv4,
+			// which is exactly how TAG_SERVERIP and TAG_SOURCEPORT already
+			// travel. Written with the 128-bit hex encoder because that is what
+			// the reference implementation reads it back with.
+			uint8_t ipv6Bytes[16];
+			if (theApp->GetReachability().MayAdvertiseIPv6() &&
+				theApp->GetVerifiedIPv6Address().ToIPv6Bytes(ipv6Bytes)) {
+				taglist.push_back(
+					new CTagString(TAG_IPV6, CMD4Hash(ipv6Bytes).Encode()));
+			}
+
 			// Send packet
 			CKademlia::GetUDPListener()->SendPublishSourcePacket(*from, m_target, id, taglist);
 			m_totalRequestAnswers++;

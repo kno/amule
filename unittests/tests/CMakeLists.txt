@@ -980,3 +980,135 @@ target_link_libraries (AddressCharacterisationTest
 	muleunit
 	${Boost_LIBRARIES}
 )
+
+# The listener plan of amule-dual-stack-reachability: which sockets are tried,
+# in which order, the fallback when a platform refuses a dual-stack socket, and
+# the once-per-family-per-start bind-failure latch. Decision logic over the
+# configured family set, so the three cases the spec names are reachable without
+# a host that has (or lacks) each network stack.
+add_executable (DualStackListenerTest
+	DualStackListenerTest.cpp
+	${CMAKE_SOURCE_DIR}/src/libs/common/Format.cpp
+	${CMAKE_SOURCE_DIR}/src/libs/common/strerror_r.c
+)
+
+add_test (NAME DualStackListenerTest
+	COMMAND DualStackListenerTest
+)
+
+target_include_directories (DualStackListenerTest
+	PRIVATE ${CMAKE_BINARY_DIR}
+	PRIVATE ${CMAKE_SOURCE_DIR}/src
+	PRIVATE ${CMAKE_SOURCE_DIR}/src/include
+	PRIVATE ${Boost_INCLUDE_DIR}
+)
+
+target_link_libraries (DualStackListenerTest
+	muleunit
+	${Boost_LIBRARIES}
+)
+
+# Outbound family selection and, more importantly, the dead-peer accounting: a
+# peer advertising two families must not be written off on the first connect
+# error. No app needed -- the accounting is a value type over CNetworkAddress.
+add_executable (OutboundFamilyFallbackTest
+	OutboundFamilyFallbackTest.cpp
+	${CMAKE_SOURCE_DIR}/src/libs/common/Format.cpp
+	${CMAKE_SOURCE_DIR}/src/libs/common/strerror_r.c
+)
+
+add_test (NAME OutboundFamilyFallbackTest
+	COMMAND OutboundFamilyFallbackTest
+)
+
+target_include_directories (OutboundFamilyFallbackTest
+	PRIVATE ${CMAKE_BINARY_DIR}
+	PRIVATE ${CMAKE_SOURCE_DIR}/src
+	PRIVATE ${CMAKE_SOURCE_DIR}/src/include
+	PRIVATE ${Boost_INCLUDE_DIR}
+)
+
+target_link_libraries (OutboundFamilyFallbackTest
+	muleunit
+	${Boost_LIBRARIES}
+)
+
+# The IP filter's IPv6 prefix table and the IPv4-mapped bypass it has to
+# survive. Security relevant: with an IPv6 socket bound, a blocked IPv4 peer can
+# reconnect as ::ffff:a.b.c.d, and this pins that it stays blocked and that the
+# block still names the IPv4 rule. CIPFilter itself is a wxEvtHandler that reads
+# thePrefs and writes theStats, hence the separate header under test.
+add_executable (IPFilterIPv6Test
+	IPFilterIPv6Test.cpp
+	${CMAKE_SOURCE_DIR}/src/libs/common/Format.cpp
+	${CMAKE_SOURCE_DIR}/src/libs/common/strerror_r.c
+)
+
+add_test (NAME IPFilterIPv6Test
+	COMMAND IPFilterIPv6Test
+)
+
+target_include_directories (IPFilterIPv6Test
+	PRIVATE ${CMAKE_BINARY_DIR}
+	PRIVATE ${CMAKE_SOURCE_DIR}/src
+	PRIVATE ${CMAKE_SOURCE_DIR}/src/include
+	PRIVATE ${Boost_INCLUDE_DIR}
+)
+
+target_link_libraries (IPFilterIPv6Test
+	muleunit
+	${Boost_LIBRARIES}
+)
+
+# What aMule may claim about its own IPv6 reachability, and when: a bound socket
+# is not verification. Also covers the reachability display, which the local GUI
+# and the remote GUI render from one function here -- with the EC word both
+# sides pass it through pinned as literals.
+add_executable (IPv6ReachabilityTest
+	IPv6ReachabilityTest.cpp
+	${CMAKE_SOURCE_DIR}/src/libs/common/Format.cpp
+	${CMAKE_SOURCE_DIR}/src/libs/common/strerror_r.c
+)
+
+add_test (NAME IPv6ReachabilityTest
+	COMMAND IPv6ReachabilityTest
+)
+
+target_include_directories (IPv6ReachabilityTest
+	PRIVATE ${CMAKE_BINARY_DIR}
+	PRIVATE ${CMAKE_SOURCE_DIR}/src
+	PRIVATE ${CMAKE_SOURCE_DIR}/src/include
+	PRIVATE ${Boost_INCLUDE_DIR}
+)
+
+target_link_libraries (IPv6ReachabilityTest
+	muleunit
+	${Boost_LIBRARIES}
+)
+
+# Peer identity: what makes two peers the same peer once a peer can be IPv6, how
+# much of an IPv6 address a rate limit counts against, and how far an inbound
+# datagram can be routed. All decision logic over CNetworkAddress, so it is
+# testable without an app -- which is why it lives in a header of its own rather
+# than inside CClientList.
+add_executable (PeerIdentityTest
+	PeerIdentityTest.cpp
+	${CMAKE_SOURCE_DIR}/src/libs/common/Format.cpp
+	${CMAKE_SOURCE_DIR}/src/libs/common/strerror_r.c
+)
+
+add_test (NAME PeerIdentityTest
+	COMMAND PeerIdentityTest
+)
+
+target_include_directories (PeerIdentityTest
+	PRIVATE ${CMAKE_BINARY_DIR}
+	PRIVATE ${CMAKE_SOURCE_DIR}/src
+	PRIVATE ${CMAKE_SOURCE_DIR}/src/include
+	PRIVATE ${Boost_INCLUDE_DIR}
+)
+
+target_link_libraries (PeerIdentityTest
+	muleunit
+	${Boost_LIBRARIES}
+)

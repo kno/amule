@@ -157,6 +157,10 @@ TEST(PeerCapabilities, ReservedBitsAreMaskedOff)
 // none of them, so it must advertise none of them. This assertion is expected
 // to change exactly once per shipped feature -- and a change to it that is not
 // accompanied by a shipped transport is the bug the spec warns about.
+//
+// The IPv6 bit is now shipped, but conditionally: it is set at runtime only
+// once an inbound IPv6 connection has verified the claim, so it is not part of
+// this unconditional floor. IPv6ReachabilityTest pins that decision.
 TEST(PeerCapabilities, AdvertisesNoUnimplementedCapability)
 {
 	ASSERT_EQUALS(0x00000000u, LocalAdvertisedModMiscOptions());

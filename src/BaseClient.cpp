@@ -126,13 +126,14 @@ CUpDownClient::CUpDownClient(uint16 in_port,
 	// If highID and Kad source, incoming IP needs swap for the IP
 
 	if (!HasLowID()) {
-		if (ed2kID) {
-			m_nConnectIP = in_userid;
-		} else {
-			m_nConnectIP = wxUINT32_SWAP_ALWAYS(in_userid);
-		}
-		// Will be on right endianness now
-		m_FullUserIP = m_nConnectIP;
+		// An ed2k source carries the address in ed2k order; a Kad source
+		// carries the same address in Kad's host order. Both conversions name
+		// the order they expect, so the swap that used to sit here as a bare
+		// wxUINT32_SWAP_ALWAYS is now in the function name -- and either way a
+		// zero field means "no address", not 0.0.0.0.
+		m_connectAddress = ed2kID ? CNetworkAddress::FromIPv4NetworkOrderOrAbsent(in_userid)
+					  : CNetworkAddress::FromIPv4HostOrderOrAbsent(in_userid);
+		m_fullUserAddress = m_connectAddress;
 	}
 
 	m_dwServerIP = in_serverip;
@@ -141,7 +142,7 @@ CUpDownClient::CUpDownClient(uint16 in_port,
 	ReGetClientSoft();
 
 	if (checkfriend) {
-		if ((m_Friend = theApp->friendlist->FindFriend(CMD4Hash(), m_dwUserIP, m_nUserPort)) !=
+		if ((m_Friend = theApp->friendlist->FindFriend(CMD4Hash(), GetIP(), m_nUserPort)) !=
 			NULL) {
 			m_Friend->LinkClient(
 				CCLIENTREF(this, "CUpDownClient::CUpDownClient m_Friend->LinkClient"));
@@ -245,8 +246,8 @@ void CUpDownClient::Init()
 	m_fExtMultiPacket = 0;
 	m_fIsSpammer = 0;
 
-	m_dwUserIP = 0;
-	m_nConnectIP = 0;
+	m_userAddress = CNetworkAddress::Absent();
+	m_connectAddress = CNetworkAddress::Absent();
 	m_dwServerIP = 0;
 
 	m_fNeedOurPublicIP = false;
@@ -267,9 +268,13 @@ void CUpDownClient::Init()
 	m_nSourceFrom = SF_NONE;
 
 	if (m_socket) {
-		SetIP(m_socket->GetPeerInt());
+		// The peer's address as the socket knows it, family intact. Taking the
+		// 32-bit form here is what left an inbound IPv6 peer with no address
+		// at all: it is accepted, filtered and greeted, and then indexed under
+		// nothing.
+		SetAddress(m_socket->GetPeerAddress());
 	} else {
-		SetIP(0);
+		SetAddress(CNetworkAddress::Absent());
 	}
 
 	/* Statistics */
@@ -351,10 +356,6 @@ void CUpDownClient::ClearHelloProperties()
 	SecIdentSupRec = 0;
 	m_byKadVersion = 0;
 	m_modCapabilities.Reset();
-	m_hasModIPv6 = false;
-	m_hasModServerIPv6 = false;
-	memset(m_modIPv6, 0, sizeof(m_modIPv6));
-	memset(m_modServerIPv6, 0, sizeof(m_modServerIPv6));
 	m_fRequestsCryptLayer = 0;
 	m_fSupportsCryptLayer = 0;
 	m_fRequiresCryptLayer = 0;
@@ -667,18 +668,25 @@ bool CUpDownClient::ProcessHelloTypePacket(const CMemFile &data)
 			break;
 
 		case CT_MOD_IP_V6:
-			// 16 bytes, big-endian. aMule has no IPv6 stack yet, so this
-			// is stored for the dual-stack change and otherwise unused.
+			// 16 bytes, big-endian, straight into the internal address type:
+			// this is the address the outbound fallback will dial, so it is
+			// stored as an address rather than as sixteen loose bytes.
+			//
+			// Only kept when the peer also claimed IPv6 support. An address
+			// without the capability bit is a peer telling us where it is not
+			// listening, and dialling it wastes a connect attempt on a family
+			// it never said it had.
 			if (temptag.IsHash()) {
-				md4cpy(m_modIPv6, temptag.GetHash().GetHash());
-				m_hasModIPv6 = true;
+				m_modIPv6 = CNetworkAddress::FromIPv6Bytes(temptag.GetHash().GetHash());
+				AddDebugLogLineN(logClient,
+					CFormat("Peer advertises IPv6 address %s") % m_modIPv6.ToString());
 			}
 			break;
 
 		case CT_MOD_SVR_IP_V6:
 			if (temptag.IsHash()) {
-				md4cpy(m_modServerIPv6, temptag.GetHash().GetHash());
-				m_hasModServerIPv6 = true;
+				m_modServerIPv6 =
+					CNetworkAddress::FromIPv6Bytes(temptag.GetHash().GetHash());
 			}
 			break;
 
@@ -717,7 +725,7 @@ bool CUpDownClient::ProcessHelloTypePacket(const CMemFile &data)
 	}
 
 	if (m_socket) {
-		SetIP(m_socket->GetPeerInt());
+		SetAddress(m_socket->GetPeerAddress());
 	} else {
 		throw wxString("Huh, socket failure. Avoided crash this time.");
 	}
@@ -734,15 +742,23 @@ bool CUpDownClient::ProcessHelloTypePacket(const CMemFile &data)
 	//(b)Some older clients will not send a ID, these client are HighID users that are not connected to a
 	// server. (c)Kad users with a *.*.*.0 IPs will look like a lowID user they are actually a highID
 	// user.. They can be detected easily because they will send a ID that is the same as their IP..
-	if (!HasLowID() || m_nUserIDHybrid == 0 || m_nUserIDHybrid == m_dwUserIP) {
-		SetUserIDHybrid(wxUINT32_SWAP_ALWAYS(m_dwUserIP));
+	if (!HasLowID() || m_nUserIDHybrid == 0 || m_nUserIDHybrid == GetIP()) {
+		// The hybrid ID is the address in Kad's host order, so the conversion
+		// that names that order is the one to use. It fails for a native IPv6
+		// peer, which has no ed2k ID to derive -- and the ID is then left at
+		// whatever the peer sent rather than being set to a fabricated value.
+		uint32 hostOrder = 0;
+		if (m_userAddress.ToIPv4HostOrder(hostOrder)) {
+			SetUserIDHybrid(hostOrder);
+		}
 	}
 
 	// get client credits
 	CClientCredits *pFoundCredits = theApp->clientcredits->GetCredit(m_UserHash);
 	if (credits == NULL) {
 		credits = pFoundCredits;
-		if (!theApp->clientlist->ComparePriorUserhash(m_dwUserIP, m_nUserPort, pFoundCredits)) {
+		if (!theApp->clientlist->ComparePriorUserhash(
+			    m_userAddress, m_nUserPort, pFoundCredits)) {
 			AddDebugLogLineN(logClient,
 				CFormat("Client: %s (%s) Banreason: Userhash changed (Found in "
 					"TrackedClientsList)") %
@@ -757,7 +773,7 @@ bool CUpDownClient::ProcessHelloTypePacket(const CMemFile &data)
 		Ban();
 	}
 
-	if ((m_Friend = theApp->friendlist->FindFriend(m_UserHash, m_dwUserIP, m_nUserPort)) != NULL) {
+	if ((m_Friend = theApp->friendlist->FindFriend(m_UserHash, GetIP(), m_nUserPort)) != NULL) {
 		m_Friend->LinkClient(
 			CCLIENTREF(this, "CUpDownClient::ProcessHelloTypePacket m_Friend->LinkClient"));
 	} else {
@@ -779,7 +795,7 @@ bool CUpDownClient::ProcessHelloTypePacket(const CMemFile &data)
 	// visits.
 	if (credits != nullptr) {
 		credits->UpdateMeta(m_Username,
-			m_dwUserIP,
+			GetIP(),
 			m_nUserPort,
 			m_nKadPort,
 			m_nClientVersion,
@@ -811,7 +827,7 @@ bool CUpDownClient::SendHelloPacket()
 	wxCHECK(m_socket != NULL, true);
 
 	// if IP is filtered, don't greet him but disconnect...
-	if (theApp->ipfilter->IsFiltered(m_socket->GetPeerInt())) {
+	if (theApp->ipfilter->IsFiltered(m_socket->GetPeerAddress())) {
 		if (Disconnected("IPFilter")) {
 			Safe_Delete();
 			return false;
@@ -1117,6 +1133,26 @@ void CUpDownClient::SendHelloTypePacket(CMemFile *data)
 	}
 	tagcount++; // eMule misc flags 2 (kad version)
 
+	// eMuleAI vendor capabilities, emitted only once inbound IPv6 connectivity
+	// has actually been verified -- see below and src/IPv6Reachability.h. Two
+	// tags: the capability word and the address itself. Counted here because
+	// the tagcount is written before the tags and a mismatch desynchronises the
+	// reader; the same condition is evaluated once and reused, so the count and
+	// the tags cannot disagree even if reachability changes mid-packet.
+	const uint32 modMiscOptions = theApp->GetReachability().AdvertisedModMiscOptions();
+	const bool emitModMiscOptions = modMiscOptions != 0;
+	// The bytes are produced here, once, and the tag below writes exactly what
+	// was counted: deciding twice is how a tagcount and its tags drift apart.
+	uint8 localIPv6Bytes[16] = { 0 };
+	const bool emitModIPv6 = emitModMiscOptions &&
+				 theApp->GetVerifiedIPv6Address().ToIPv6Bytes(localIPv6Bytes);
+	if (emitModMiscOptions) {
+		tagcount++;
+	}
+	if (emitModIPv6) {
+		tagcount++;
+	}
+
 #ifdef __GIT__
 	// Kry - This is the tagcount!!! Be sure to update it!!
 	// Last update: CT_EMULECOMPAT_OPTIONS included
@@ -1233,22 +1269,25 @@ void CUpDownClient::SendHelloTypePacket(CMemFile *data)
 
 	tagMisCompatOptions.WriteTagToFile(data);
 
-	// eMuleAI vendor capabilities (CT_MOD_MISCOPTIONS).
+	// eMuleAI vendor capabilities (CT_MOD_MISCOPTIONS) and this client's IPv6
+	// address (CT_MOD_IP_V6).
 	//
-	// Nothing is written, and that is the whole of the emit side for now:
-	// LocalAdvertisedModMiscOptions() is zero because aMule implements none
-	// of the five features, and eMuleAI treats an absent tag and an all-zero
-	// word identically. Advertising a capability aMule does not have is
-	// strictly worse than advertising none -- the peer opens a handshake that
-	// cannot complete and neither side logs a reason.
-	//
-	// A later change that ships one of these transports turns its bit on in
-	// LocalAdvertisedModMiscOptions(), emits the tag here, and adds one to
-	// `tagcount` above. Both must happen together: the tagcount is written
-	// before the tags and a mismatch desynchronises the reader.
-	static_assert(LocalAdvertisedModMiscOptions() == 0,
-		"a non-zero advertised capability word needs the CT_MOD_MISCOPTIONS tag emitted here "
-		"and tagcount incremented above");
+	// Both are gated on *verified* inbound IPv6 connectivity, not on having
+	// bound an IPv6 socket. A bound socket behind a firewall that drops every
+	// inbound packet would have aMule advertising an address that never
+	// answers: the peer opens a handshake, nothing completes, and neither side
+	// logs a reason -- the same failure mode as advertising a transport that
+	// is not implemented. The four other vendor bits stay off; each turns on in
+	// the change that ships its transport.
+	if (emitModMiscOptions) {
+		CTagVarInt tagModMiscOptions(CT_MOD_MISCOPTIONS, modMiscOptions, 32);
+		tagModMiscOptions.WriteTagToFile(data);
+	}
+	if (emitModIPv6) {
+		// Sixteen bytes, big-endian, in the tag type eMuleAI reads them from.
+		CTagHash tagModIPv6(CT_MOD_IP_V6, CMD4Hash(localIPv6Bytes));
+		tagModIPv6.WriteTagToFile(data);
+	}
 
 #ifdef __GIT__
 	wxString mod_name(MOD_VERSION_LONG);
@@ -1520,20 +1559,31 @@ bool CUpDownClient::TryToConnect(bool bIgnoreMaxCon)
 		}
 	}
 
-	// Ipfilter check
-	uint32 uClientIP = GetIP();
-	if (uClientIP == 0 && !HasLowID()) {
-		uClientIP = wxUINT32_SWAP_ALWAYS(m_nUserIDHybrid);
+	// Ipfilter check. The address the peer will actually be dialled at, which
+	// for a HighID peer with no recorded address is the one its ed2k ID encodes.
+	// The old test here was `uClientIP == 0`, left at the 32-bit boundary by
+	// amule-address-widening because the field was still 32-bit; it is now an
+	// explicit absence check, and a native IPv6 peer reaches it as an address
+	// rather than as a zero.
+	CNetworkAddress clientAddress = m_userAddress;
+	if (clientAddress.IsAbsent() && !HasLowID()) {
+		// The hybrid ID holds the address in Kad's host order.
+		clientAddress = CNetworkAddress::FromIPv4HostOrderOrAbsent(m_nUserIDHybrid);
+	}
+	if (clientAddress.IsAbsent()) {
+		// A peer this build knows an IPv6 address for but no IPv4 one is dialled
+		// at that address, so it is filtered and ban-checked at it.
+		clientAddress = m_connectAddress;
 	}
 
-	if (uClientIP) {
+	if (clientAddress.IsPresent()) {
 		// Although we filter all received IPs (server sources, source exchange) and all incoming
 		// connection attempts, we do have to filter outgoing connection attempts here too, because we
 		// may have updated the ip filter list
-		if (theApp->ipfilter->IsFiltered(uClientIP)) {
+		if (theApp->ipfilter->IsFiltered(clientAddress)) {
 			AddDebugLogLineN(logIPFilter,
-				CFormat("Filtered ip %u (%s) on TryToConnect\n") % uClientIP %
-					Uint32toStringIP(uClientIP));
+				CFormat("Filtered ip %s on TryToConnect\n") %
+					wxString(clientAddress.ToString()));
 			if (Disconnected("IPFilter")) {
 				Safe_Delete();
 				return false;
@@ -1542,10 +1592,10 @@ bool CUpDownClient::TryToConnect(bool bIgnoreMaxCon)
 		}
 
 		// for safety: check again whether that IP is banned
-		if (theApp->clientlist->IsBannedClient(
-			    CNetworkAddress::FromIPv4NetworkOrderOrAbsent(uClientIP))) {
+		if (theApp->clientlist->IsBannedClient(clientAddress)) {
 			AddDebugLogLineN(logClient,
-				"Refused to connect to banned client " + Uint32toStringIP(uClientIP));
+				"Refused to connect to banned client " +
+					wxString(clientAddress.ToString()));
 			if (Disconnected("Banned IP")) {
 				Safe_Delete();
 				return false;
@@ -1751,6 +1801,25 @@ bool CUpDownClient::TryToConnect(bool bIgnoreMaxCon)
 
 bool CUpDownClient::Connect()
 {
+	// A fresh sequence: rebuild what this peer says it is reachable on. The
+	// IPv6 address counts only when the peer also set the IPv6 capability bit
+	// -- an address without the bit is a peer telling us where it is not
+	// listening, and dialling it spends a connect attempt on a family it never
+	// claimed. Tag order within a hello is the peer's business, so the bit is
+	// tested here rather than while parsing.
+	// The connect address is now family-agnostic, so an IPv6 peer that reached
+	// us directly is dialled at the address it arrived from -- it does not have
+	// to also have advertised CT_MOD_IP_V6 to be reachable.
+	const bool connectIsIPv6 = m_connectAddress.IsIPv6() && !m_connectAddress.IsIPv4Mapped();
+	const CNetworkAddress advertisedIPv6 =
+		m_modCapabilities.SupportsIPv6() ? m_modIPv6 : CNetworkAddress::Absent();
+	m_familyAttempts.Reset(connectIsIPv6 ? CNetworkAddress::Absent() : m_connectAddress,
+		connectIsIPv6 ? m_connectAddress : advertisedIPv6);
+	return ConnectToCurrentCandidate();
+}
+
+bool CUpDownClient::ConnectToCurrentCandidate()
+{
 	m_hasbeenobfuscatinglately = false;
 
 	if (!m_socket->IsOk()) {
@@ -1762,10 +1831,19 @@ bool CUpDownClient::Connect()
 			m_socket->SetConnectionEncryption(false, NULL, false);
 		}
 		amuleIPV4Address tmp;
-		tmp.Hostname(GetConnectIP());
+		// The candidate carries its own family, so the socket layer opens the
+		// right kind of socket for it -- see AddressFamilyPolicy.h. Falling
+		// back to the 32-bit path when there is no candidate keeps the
+		// behaviour of a peer with only an IPv4 address exactly as it was.
+		const CNetworkAddress target = m_familyAttempts.Current();
+		if (target.IsPresent()) {
+			tmp.SetAddress(target);
+		} else {
+			tmp.Hostname(GetConnectIP());
+		}
 		tmp.Service(GetUserPort());
 		AddDebugLogLineN(logClient,
-			"Trying to connect to " + Uint32_16toStringIP_Port(GetConnectIP(), GetUserPort()));
+			CFormat("Trying to connect to %s:%u") % tmp.IPAddress() % GetUserPort());
 		m_socket->Connect(tmp, false);
 		// We should send hello packets AFTER connecting!
 		// so I moved it to OnConnect
@@ -1775,6 +1853,26 @@ bool CUpDownClient::Connect()
 	}
 }
 
+bool CUpDownClient::RetryNextAddressFamily()
+{
+	if (!m_familyAttempts.RecordFailureAndAdvance()) {
+		// Every advertised family has failed. The caller falls through to its
+		// existing dead-peer handling, which is now reached only here.
+		return false;
+	}
+	if (!m_socket) {
+		return false;
+	}
+	// The failed socket cannot be reused: asio's connect left it open in the
+	// other family. A fresh one is created exactly as TryToConnect() does it.
+	m_socket->Safe_Delete();
+	m_socket = new CClientTCPSocket(this, thePrefs::GetProxyData());
+	AddDebugLogLineN(logClient,
+		CFormat("Connect failed, falling back to the peer's other address family: %s") %
+			wxString(m_familyAttempts.Current().ToString()));
+	return ConnectToCurrentCandidate();
+}
+
 void CUpDownClient::ConnectionEstablished()
 {
 	/* Kry - First thing, check if this client was just used to retrieve
@@ -1782,6 +1880,10 @@ void CUpDownClient::ConnectionEstablished()
 	   definition */
 
 	m_hasbeenobfuscatinglately = (m_socket && m_socket->IsConnected() && m_socket->IsObfusicating());
+
+	// A connection came up, so the family sequence starts clean next time: a
+	// transient failure on one family is not a permanent verdict on it.
+	m_familyAttempts.RecordSuccess();
 
 #ifdef __DEBUG__
 	if (!connection_reason.IsEmpty()) {
@@ -2706,13 +2808,18 @@ void CUpDownClient::SetIP(uint32 val)
 {
 	// val is an ed2k-order field in which zero means "address unknown"; the
 	// boundary conversion resolves that overload once, here.
-	theApp->clientlist->UpdateClientIP(this, CNetworkAddress::FromIPv4NetworkOrderOrAbsent(val));
+	SetAddress(CNetworkAddress::FromIPv4NetworkOrderOrAbsent(val));
+}
 
-	m_dwUserIP = val;
+void CUpDownClient::SetAddress(const CNetworkAddress &address)
+{
+	// The index is updated before the field, because UpdateClientIP() finds the
+	// existing entry by reading the current one.
+	theApp->clientlist->UpdateClientIP(this, address);
 
-	m_nConnectIP = val;
-
-	m_FullUserIP = val;
+	m_userAddress = address;
+	m_connectAddress = address;
+	m_fullUserAddress = address;
 }
 
 void CUpDownClient::SetUserHash(const CMD4Hash &userhash)

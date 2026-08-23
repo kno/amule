@@ -1155,7 +1155,13 @@ CPacket *CKnownFile::CreateSrcInfoPacket(
 	for (; it != m_ClientUploadList.end(); ++it) {
 		const CUpDownClient *cur_src = it->GetClient();
 
-		if (cur_src->HasLowID() || cur_src == forClient ||
+		// A source is published here as a 32-bit address or ed2k id, so a
+		// native IPv6 source is omitted rather than written as a zero. Until
+		// this change an IPv6 peer was excluded incidentally, by having no ed2k
+		// id and therefore reading as LowID; it is now correctly HighID, so the
+		// wire boundary has to be stated.
+		if (cur_src->HasLowID() || !PeerIdentity::HasEd2kWireForm(cur_src->GetAddress()) ||
+			cur_src == forClient ||
 			!(cur_src->GetUploadState() == US_UPLOADING ||
 				cur_src->GetUploadState() == US_ONUPLOADQUEUE)) {
 			continue;

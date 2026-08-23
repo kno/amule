@@ -781,12 +781,37 @@ void CDownloadQueue::CheckAndAddKnownSource(CPartFile *sender, CUpDownClient *so
 	// "IPfilter" is not needed here, because that "known" client was already IPfiltered when receiving
 	// OP_HELLO.
 	if (!source->HasLowID()) {
-		uint32 nClientIP = wxUINT32_SWAP_ALWAYS(source->GetUserIDHybrid());
-		if (!IsGoodIP(nClientIP,
-			    thePrefs::FilterLanIPs())) { // check for 0-IP, localhost and LAN addresses
-			AddDebugLogLineN(logIPFilter,
-				"Ignored already known source with IP=%s" + Uint32toStringIP(nClientIP));
-			return;
+		if (source->GetAddress().IsIPv6() && !source->GetAddress().IsIPv4Mapped()) {
+			// IsGoodIP() is a 32-bit test, and the ed2k id an IPv6 peer has is
+			// zero -- which that test rejects, so without this branch every
+			// IPv6 source would be discarded as "IP=0.0.0.0". The equivalent
+			// question for IPv6 is whether the address is one we could route
+			// to at all, which the address type answers directly.
+			if (!source->GetAddress().IsGloballyRoutableIPv6()) {
+				AddDebugLogLineN(logIPFilter,
+					CFormat("Ignored already known source with non-routable IPv6 "
+						"address %s") %
+						wxString(source->GetAddress().ToString()));
+				return;
+			}
+		} else {
+			uint32 nClientIP = 0;
+			// ed2k order: what wxUINT32_SWAP_ALWAYS(hybrid id) produced here
+			// before, and what IsGoodIP() and Uint32toStringIP() read.
+			if (!source->GetAddress().ToIPv4NetworkOrder(nClientIP)) {
+				// No address at all. The id-derived one was the only source of
+				// this value before, and it is derived the same way, by the
+				// conversion that names the order.
+				nClientIP = CNetworkAddress::SwapOctets(source->GetUserIDHybrid());
+			}
+			if (!IsGoodIP(nClientIP,
+				    thePrefs::FilterLanIPs())) { // check for 0-IP, localhost and LAN
+								 // addresses
+				AddDebugLogLineN(logIPFilter,
+					"Ignored already known source with IP=%s" +
+						Uint32toStringIP(nClientIP));
+				return;
+			}
 		}
 	}
 
@@ -913,15 +938,24 @@ void CDownloadQueue::ClearCompleted(const ListOfUInts32 &ecids)
 	}
 }
 
-CUpDownClient *CDownloadQueue::GetDownloadClientByIP_UDP(uint32 dwIP, uint16 nUDPPort) const
+CUpDownClient *CDownloadQueue::GetDownloadClientByIP_UDP(
+	const CNetworkAddress &address, uint16 nUDPPort) const
 {
+	if (address.IsAbsent()) {
+		// A source whose address is unknown is not the source an
+		// unidentifiable datagram came from. The 32-bit comparison this
+		// replaces could not tell those apart.
+		return NULL;
+	}
+
 	wxMutexLocker lock(m_mutex);
 
 	for (FileQueue::size_type i = 0; i < m_filelist.size(); i++) {
 		const CKnownFile::SourceSet &set = m_filelist[i]->GetSourceList();
 
 		for (CKnownFile::SourceSet::const_iterator it = set.begin(); it != set.end(); ++it) {
-			if (it->GetIP() == dwIP && it->GetUDPPort() == nUDPPort) {
+			if (it->GetClient()->GetAddress() == address &&
+				it->GetUDPPort() == nUDPPort) {
 				return it->GetClient();
 			}
 		}

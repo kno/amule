@@ -42,7 +42,15 @@ public:
 	virtual void OnReceiveError(int errorCode, uint32 ip, uint16 port);
 
 private:
-	void OnPacketReceived(uint32 ip, uint16 port, uint8_t *buffer, size_t length);
+	/**
+	 * An ed2k server speaks a 32-bit protocol -- its address fields, its UDP
+	 * obfuscation key and its server list entries are all 32-bit -- so this
+	 * narrows at its own boundary and drops a datagram that has no 32-bit
+	 * form. Widening the server protocol is a separate matter from peer
+	 * identity and is not attempted here.
+	 */
+	void OnPacketReceived(
+		const CNetworkAddress &peer, uint16 port, uint8_t *buffer, size_t length);
 	void ProcessPacket(CMemFile &packet, uint8 opcode, uint32 ip, uint16 port);
 	void SendQueue();
 

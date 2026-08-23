@@ -29,6 +29,7 @@
 
 #include <boost/asio/ip/tcp.hpp>
 
+#include <atomic>
 #include <optional>
 
 /**
@@ -41,13 +42,15 @@
  * address, so that enabling IPv6 later is a change to Configured() and not a
  * hunt through LibSocketAsio.cpp.
  *
- * The configured answer is deliberately still IPv4-only. Widening it is
- * amule-dual-stack-reachability's job: the ed2k core, the EC listener and
- * Kademlia all still key clients on 32-bit addresses, so a socket layer that
- * accepted IPv6 today would hand the rest of the tree addresses it cannot
- * store. Every function here therefore returns exactly what the hardcoded
- * @c v4() calls used to return, and the value of the change is that the
- * hardcoding is gone.
+ * The configured answer is dual stack as of amule-dual-stack-reachability, and
+ * it is now a runtime value rather than a compile-time constant: a host with no
+ * IPv6 stack must keep working exactly as it did, and that is decided when the
+ * listeners are bound, not when the tree is compiled.
+ *
+ * What dual stack does @b not mean here: Kademlia stays IPv4. Its wire format
+ * carries 32-bit addresses and its routing table keys on them, so widening the
+ * socket layer gives Kad nothing to widen into. That boundary is deliberate and
+ * is documented in openspec/specs/network-addressing/spec.md.
  */
 namespace AddressFamilyPolicy
 {
@@ -59,10 +62,35 @@ enum class Families
 	DualStack
 };
 
-/** The configured family set. */
+/**
+ * The configured family set.
+ *
+ * Atomic because it is read from the Asio thread pool (socket opening, name
+ * resolution) and written once from the main thread during startup. Relaxed
+ * ordering is enough: nothing else is published with it, and a socket opened in
+ * the same instant as a reconfiguration is allowed to see either value.
+ */
+inline std::atomic<Families> &ConfiguredStorage() noexcept
+{
+	static std::atomic<Families> families{ Families::DualStack };
+	return families;
+}
+
 inline Families Configured() noexcept
 {
-	return Families::IPv4Only;
+	return ConfiguredStorage().load(std::memory_order_relaxed);
+}
+
+/**
+ * Sets the configured family set. Called once from startup with what the user
+ * asked for; also used by tests to reach the branches a given host cannot.
+ *
+ * Sockets already open are unaffected -- this decides what the @b next socket
+ * does, exactly like the bind-interface setting next to it.
+ */
+inline void SetConfigured(Families families) noexcept
+{
+	ConfiguredStorage().store(families, std::memory_order_relaxed);
 }
 
 inline bool PermitsIPv4() noexcept
@@ -132,16 +160,41 @@ inline std::optional<boost::asio::ip::tcp> TcpResolverProtocol() noexcept
 	return std::nullopt;
 }
 
+/** The IPv4 wildcard, @c 0.0.0.0. */
+inline boost::asio::ip::address AnyIPv4Address() noexcept
+{
+	return boost::asio::ip::address(boost::asio::ip::address_v4::any());
+}
+
 /**
- * The wildcard "any address of this machine" for the configured family.
- * Under dual stack this is the IPv6 wildcard, which accepts v4-mapped peers.
+ * The IPv6 wildcard, @c ::. With @c IPV6_V6ONLY off it also accepts IPv4 peers,
+ * which arrive in IPv4-mapped form.
+ */
+inline boost::asio::ip::address AnyIPv6Address() noexcept
+{
+	return boost::asio::ip::address(boost::asio::ip::address_v6::any());
+}
+
+/**
+ * The wildcard "any address of this machine" for a caller that has not said
+ * which family it wants.
+ *
+ * This stays the IPv4 wildcard whenever IPv4 is permitted, dual stack included,
+ * and that is deliberate. The callers are the ones that bind a single socket
+ * and are not part of the ed2k dual-stack work: the external-connection
+ * listener and the web server. Handing them @c :: because the ed2k listener now
+ * wants both families would silently move the daemon's control channel onto
+ * another family -- a change to what an EC client must dial, made as a side
+ * effect. A caller that genuinely wants both families says so by asking for
+ * AnyIPv6Address() and clearing @c IPV6_V6ONLY, which is what the ed2k
+ * listeners do; see DualStackListeners.h.
  */
 inline boost::asio::ip::address AnyAddress() noexcept
 {
-	if (Configured() == Families::IPv4Only) {
-		return boost::asio::ip::address(boost::asio::ip::address_v4::any());
+	if (PermitsIPv4()) {
+		return AnyIPv4Address();
 	}
-	return boost::asio::ip::address(boost::asio::ip::address_v6::any());
+	return AnyIPv6Address();
 }
 
 } // namespace AddressFamilyPolicy

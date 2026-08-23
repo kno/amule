@@ -251,43 +251,128 @@ TEST(NetworkAddress, OrderingIsTotalAndUsableAsAKey)
 
 // Task 3.4: the family a socket is opened in comes from the target address or
 // the configuration, never from a literal v4() at the call site.
+//
+// The configured answer was IPv4-only when this file was written, which was what
+// kept every removed v4() pin behaviourally identical. Dual stack is now the
+// default -- that is what amule-dual-stack-reachability ships -- so both
+// configurations are pinned here: the IPv4-only branch is still exercised
+// because a user who restricts the client to IPv4, and a host with no IPv6
+// stack, must behave exactly as this tree did before.
 TEST(NetworkAddress, FamilySelectionForV4AndV6Targets)
 {
 	using namespace AddressFamilyPolicy;
 
-	// The configured answer is still IPv4-only, which is what keeps every
-	// removed v4() pin behaviourally identical.
-	ASSERT_TRUE(Configured() == Families::IPv4Only);
-	ASSERT_TRUE(PermitsIPv4());
-	ASSERT_FALSE(PermitsIPv6());
-
 	const CNetworkAddress v4 = CNetworkAddress::FromIPv4NetworkOrder(TEST_IP_ED2K_ORDER);
-	ASSERT_TRUE(Permits(v4));
-	ASSERT_TRUE(TcpProtocolForTarget(v4).has_value());
-	ASSERT_TRUE(TcpProtocolForTarget(v4).value() == boost::asio::ip::tcp::v4());
-
-	// A v4-mapped target narrows losslessly, so it is reachable, in the v4
-	// family.
 	const CNetworkAddress mapped = CNetworkAddress::FromString("::ffff:192.0.2.1");
+	const CNetworkAddress v6 = CNetworkAddress::FromString("2001:db8::1");
+
+	// --- The default: dual stack.
+	ASSERT_TRUE(Configured() == Families::DualStack);
+	ASSERT_TRUE(PermitsIPv4());
+	ASSERT_TRUE(PermitsIPv6());
+
+	ASSERT_TRUE(Permits(v4));
+	ASSERT_TRUE(TcpProtocolForTarget(v4).value() == boost::asio::ip::tcp::v4());
+	// A v4-mapped target narrows losslessly, so it is reached in the v4
+	// family whatever the configuration says.
 	ASSERT_TRUE(Permits(mapped));
 	ASSERT_TRUE(TcpProtocolForTarget(mapped).value() == boost::asio::ip::tcp::v4());
+	// And a native v6 target now gets a v6 socket rather than no socket.
+	ASSERT_TRUE(Permits(v6));
+	ASSERT_TRUE(TcpProtocolForTarget(v6).value() == boost::asio::ip::tcp::v6());
 
-	// A native v6 target yields no protocol at all. It is not quietly
-	// downgraded to a v4 socket, which is how a truncated address becomes a
-	// connection to the wrong host.
-	const CNetworkAddress v6 = CNetworkAddress::FromString("2001:db8::1");
-	ASSERT_FALSE(Permits(v6));
-	ASSERT_FALSE(TcpProtocolForTarget(v6).has_value());
-
-	// Absence is not a family.
+	// Absence is not a family, in any configuration.
 	ASSERT_FALSE(Permits(CNetworkAddress::Absent()));
 	ASSERT_FALSE(TcpProtocolForTarget(CNetworkAddress::Absent()).has_value());
 
-	// Name resolution and the wildcard listener address come from the same
-	// decision, and today produce exactly what the removed literals produced.
-	ASSERT_TRUE(TcpResolverProtocol().has_value());
+	// Under dual stack a name lookup states no family, so the caller queries
+	// unrestricted and picks from the answers. The wildcard for a caller that
+	// did not say which family it wants stays 0.0.0.0 -- the callers are the EC
+	// listener and the web server, and moving their socket to :: as a side
+	// effect of the ed2k work would change what an EC client has to dial.
+	ASSERT_FALSE(TcpResolverProtocol().has_value());
+	ASSERT_EQUALS(wxString("0.0.0.0"), wxString(AnyAddress().to_string()));
+	ASSERT_EQUALS(wxString("::"), wxString(AnyIPv6Address().to_string()));
+
+	// --- Restricted to IPv4: exactly the old behaviour, pin for pin.
+	SetConfigured(Families::IPv4Only);
+	ASSERT_TRUE(PermitsIPv4());
+	ASSERT_FALSE(PermitsIPv6());
+	ASSERT_TRUE(Permits(v4));
+	ASSERT_TRUE(TcpProtocolForTarget(v4).value() == boost::asio::ip::tcp::v4());
+	ASSERT_TRUE(Permits(mapped));
+	ASSERT_TRUE(TcpProtocolForTarget(mapped).value() == boost::asio::ip::tcp::v4());
+	// No protocol at all for a native v6 target: it is not quietly downgraded
+	// to a v4 socket, which is how a truncated address becomes a connection to
+	// the wrong host.
+	ASSERT_FALSE(Permits(v6));
+	ASSERT_FALSE(TcpProtocolForTarget(v6).has_value());
 	ASSERT_TRUE(TcpResolverProtocol().value() == boost::asio::ip::tcp::v4());
 	ASSERT_EQUALS(wxString("0.0.0.0"), wxString(AnyAddress().to_string()));
+
+	// --- Restricted to IPv6.
+	SetConfigured(Families::IPv6Only);
+	ASSERT_FALSE(PermitsIPv4());
+	ASSERT_TRUE(PermitsIPv6());
+	ASSERT_FALSE(Permits(v4));
+	ASSERT_TRUE(TcpProtocolForTarget(v6).value() == boost::asio::ip::tcp::v6());
+	ASSERT_TRUE(TcpResolverProtocol().value() == boost::asio::ip::tcp::v6());
+	// With no IPv4 permitted there is nothing else the wildcard can be.
+	ASSERT_EQUALS(wxString("::"), wxString(AnyAddress().to_string()));
+
+	// Left as the process found it: the policy is global, and a later test
+	// reading a value this one set would be a test depending on run order.
+	SetConfigured(Families::DualStack);
+}
+
+TEST(NetworkAddress, TruncatedToPrefixClearsHostBits)
+{
+	// The prefix operation a per-block limit or rule needs. Asserted against
+	// literal prefixes rather than against a mask computed the same way the
+	// implementation computes it -- a symmetric off-by-one in a shift would
+	// cancel out and pass.
+	ASSERT_EQUALS(wxString("192.0.2.0"),
+		wxString(CNetworkAddress::FromString("192.0.2.130").TruncatedToPrefix(24).ToString()));
+	ASSERT_EQUALS(wxString("192.0.0.0"),
+		wxString(CNetworkAddress::FromString("192.0.2.130").TruncatedToPrefix(16).ToString()));
+	ASSERT_EQUALS(wxString("0.0.0.0"),
+		wxString(CNetworkAddress::FromString("192.0.2.130").TruncatedToPrefix(0).ToString()));
+	// A prefix at or beyond the family width is the address itself, not an
+	// undefined shift.
+	ASSERT_EQUALS(wxString("192.0.2.130"),
+		wxString(CNetworkAddress::FromString("192.0.2.130").TruncatedToPrefix(32).ToString()));
+	ASSERT_EQUALS(wxString("192.0.2.130"),
+		wxString(CNetworkAddress::FromString("192.0.2.130").TruncatedToPrefix(128).ToString()));
+
+	// IPv6, including a prefix that ends mid-byte -- /60 keeps the high nibble
+	// of the eighth byte and clears the low one.
+	ASSERT_EQUALS(wxString("2001:db8:1::"),
+		wxString(CNetworkAddress::FromString("2001:db8:1:2:3:4:5:6")
+				 .TruncatedToPrefix(48)
+				 .ToString()));
+	ASSERT_EQUALS(wxString("2001:db8:1:f0::"),
+		wxString(CNetworkAddress::FromString("2001:db8:1:f2:3:4:5:6")
+				 .TruncatedToPrefix(60)
+				 .ToString()));
+	ASSERT_EQUALS(wxString("2001:db8:1:2::"),
+		wxString(CNetworkAddress::FromString("2001:db8:1:2:3:4:5:6")
+				 .TruncatedToPrefix(64)
+				 .ToString()));
+	ASSERT_EQUALS(wxString("::"),
+		wxString(CNetworkAddress::FromString("2001:db8:1:2:3:4:5:6")
+				 .TruncatedToPrefix(0)
+				 .ToString()));
+	ASSERT_TRUE(CNetworkAddress::FromString("2001:db8:1:2:3:4:5:6").TruncatedToPrefix(128) ==
+		CNetworkAddress::FromString("2001:db8:1:2:3:4:5:6"));
+
+	// A prefix of an absent address is still absent: no prefix is invented for
+	// a peer that has no address.
+	ASSERT_TRUE(CNetworkAddress::Absent().TruncatedToPrefix(64).IsAbsent());
+
+	// The truncation stays inside its family. A /24 of an IPv4 address is an
+	// IPv4 address, and no prefix width turns one family into the other.
+	ASSERT_TRUE(CNetworkAddress::FromString("192.0.2.130").TruncatedToPrefix(24).IsIPv4());
+	ASSERT_TRUE(CNetworkAddress::FromString("2001:db8::1").TruncatedToPrefix(64).IsIPv6());
 }
 
 // File_checked_for_headers

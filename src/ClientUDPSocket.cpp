@@ -45,6 +45,7 @@
 #include "ClientTCPSocket.h" // Needed for CClientTCPSocket
 #include "MemFile.h"         // Needed for CMemFile
 #include "Logger.h"
+#include "PeerIdentity.h" // Needed for PeerIdentity::ClassifyUdpPeer
 #include "kademlia/kademlia/Kademlia.h"
 #include "kademlia/utils/KadUDPKey.h"
 #include <zlib.h>
@@ -72,15 +73,44 @@ void CClientUDPSocket::OnReceive(int errorCode)
 	}
 }
 
-void CClientUDPSocket::OnPacketReceived(uint32 ip, uint16 port, uint8_t *buffer, size_t length)
+void CClientUDPSocket::OnPacketReceived(
+	const CNetworkAddress &peer, uint16 port, uint8_t *buffer, size_t length)
 {
 	wxCHECK_RET(length >= 2, "Invalid packet.");
 
-	uint8_t *decryptedBuffer;
-	uint32_t receiverVerifyKey;
-	uint32_t senderVerifyKey;
-	int packetLen = CEncryptedDatagramSocket::DecryptReceivedClient(
-		buffer, length, &decryptedBuffer, ip, &receiverVerifyKey, &senderVerifyKey);
+	const PeerIdentity::EUdpRoute route = PeerIdentity::ClassifyUdpPeer(peer);
+	if (route == PeerIdentity::EUdpRoute::Reject) {
+		// The receive path already rejects an absent or unspecified peer, so
+		// reaching this is a caller bug rather than hostile traffic.
+		AddDebugLogLineN(logClientUDP,
+			CFormat("Dropped UDP packet from unusable peer address %s") %
+				wxString(peer.ToString()));
+		return;
+	}
+
+	// The 32-bit form, for the parts of this path that are 32-bit by protocol:
+	// Kad, and the ed2k UDP obfuscation key. Zero for a native IPv6 peer, and
+	// every use of it below is guarded by the route rather than by that zero.
+	uint32_t ip = 0;
+	peer.ToIPv4NetworkOrder(ip);
+
+	uint8_t *decryptedBuffer = buffer;
+	uint32_t receiverVerifyKey = 0;
+	uint32_t senderVerifyKey = 0;
+	int packetLen = static_cast<int>(length);
+	if (route == PeerIdentity::EUdpRoute::Ed2kAndKad) {
+		packetLen = CEncryptedDatagramSocket::DecryptReceivedClient(
+			buffer, length, &decryptedBuffer, ip, &receiverVerifyKey, &senderVerifyKey);
+	}
+	// Otherwise the datagram is left exactly as it arrived. The ed2k UDP
+	// obfuscation key is MD5 over our user hash, a 32-bit address and a magic
+	// byte, and the protocol defines no IPv6 input to it, so an obfuscated
+	// datagram from a native IPv6 peer is undecryptable by any implementation.
+	// Passing a fabricated zero to the derivation would produce a wrong key and
+	// the packet would then read as junk with no reason recorded. An
+	// unobfuscated datagram -- which is what its first byte being a known
+	// protocol byte means, and what DecryptReceivedClient() itself checks
+	// first -- is unaffected and handled in full below.
 
 	uint8_t protocol = decryptedBuffer[0];
 	uint8_t opcode = decryptedBuffer[1];
@@ -89,12 +119,23 @@ void CClientUDPSocket::OnPacketReceived(uint32 ip, uint16 port, uint8_t *buffer,
 		try {
 			switch (protocol) {
 			case OP_EMULEPROT:
-				ProcessPacket(decryptedBuffer + 2, packetLen - 2, opcode, ip, port);
+				ProcessPacket(decryptedBuffer + 2, packetLen - 2, opcode, peer, port);
 				break;
 
 			case OP_KADEMLIAHEADER:
 				theStats::AddDownOverheadKad(length);
-				if (packetLen >= 2) {
+				if (route != PeerIdentity::EUdpRoute::Ed2kAndKad) {
+					// Kad's interface is 32-bit behind a documented
+					// conversion boundary (amule-address-widening
+					// design), so a Kad datagram from a native IPv6
+					// peer has no contact to be attributed to. Dropped
+					// with the boundary named, not narrowed to a zero
+					// that would enter the routing table as 0.0.0.0.
+					AddDebugLogLineN(logClientKadUDP,
+						CFormat("Dropped Kad packet from IPv6 peer %s: Kad is "
+							"IPv4 in this build") %
+							wxString(peer.ToString()));
+				} else if (packetLen >= 2) {
 					Kademlia::CKademlia::ProcessPacket(decryptedBuffer,
 						packetLen,
 						wxUINT32_SWAP_ALWAYS(ip),
@@ -109,7 +150,12 @@ void CClientUDPSocket::OnPacketReceived(uint32 ip, uint16 port, uint8_t *buffer,
 
 			case OP_KADEMLIAPACKEDPROT:
 				theStats::AddDownOverheadKad(length);
-				if (packetLen >= 2) {
+				if (route != PeerIdentity::EUdpRoute::Ed2kAndKad) {
+					AddDebugLogLineN(logClientKadUDP,
+						CFormat("Dropped compressed Kad packet from IPv6 peer %s: "
+							"Kad is IPv4 in this build") %
+							wxString(peer.ToString()));
+				} else if (packetLen >= 2) {
 					uint32_t newSize = packetLen * 10 + 300; // Should be enough...
 					std::vector<uint8_t> unpack(newSize);
 					uLongf unpackedsize = newSize - 2;
@@ -151,7 +197,7 @@ void CClientUDPSocket::OnPacketReceived(uint32 ip, uint16 port, uint8_t *buffer,
 				// (kademlia/net/KademliaUDPListener.cpp:263), and an
 				// eMuleAI peer's NAT-T traffic would otherwise arrive
 				// here as an unknown protocol and read as malformed.
-				ProcessReservedProt2Frame(decryptedBuffer + 1, packetLen - 1, ip, port);
+				ProcessReservedProt2Frame(decryptedBuffer + 1, packetLen - 1, peer, port);
 				break;
 
 			default:
@@ -170,8 +216,12 @@ void CClientUDPSocket::OnPacketReceived(uint32 ip, uint16 port, uint8_t *buffer,
 }
 
 void CClientUDPSocket::ProcessReservedProt2Frame(
-	const uint8_t *frame, size_t frameLength, uint32 ip, uint16 port)
+	const uint8_t *frame, size_t frameLength, const CNetworkAddress &peer, uint16 port)
 {
+	// Nothing in this path needs a 32-bit address: every branch drops the
+	// frame with a reason, so the peer only has to be printable. An eMuleAI
+	// peer's NAT traversal frames arrive over both families.
+	const wxString peerText = wxString(peer.ToString());
 	const SReservedProt2Frame classified = ClassifyReservedProt2Frame(frame, frameLength);
 
 	switch (classified.disposition) {
@@ -180,8 +230,7 @@ void CClientUDPSocket::ProcessReservedProt2Frame(
 		// to read. Dropped without reading the window -- the guard is the
 		// point, this is the shortest datagram that can reach here.
 		AddDebugLogLineN(logClientUDP,
-			CFormat("Dropping truncated NAT-T datagram from %s:%u") % Uint32toStringIP(ip) %
-				port);
+			CFormat("Dropping truncated NAT-T datagram from %s:%u") % peerText % port);
 		return;
 
 	case RP2_UNKNOWN_TYPE:
@@ -192,7 +241,7 @@ void CClientUDPSocket::ProcessReservedProt2Frame(
 			AddDebugLogLineN(logClientUDP,
 				CFormat("Dropping NAT-T frame of unknown type 0x%02X from %s:%u (%u further "
 					"occurrences suppressed)") %
-					classified.type % Uint32toStringIP(ip) % port %
+					classified.type % peerText % port %
 					m_unknownFrameLog.TakeSuppressedCount());
 		}
 		return;
@@ -210,13 +259,13 @@ void CClientUDPSocket::ProcessReservedProt2Frame(
 	case OP_NATT_FRAME_UTP:
 		AddDebugLogLineN(logClientUDP,
 			CFormat("Ignoring uTP NAT-T frame from %s:%u: no uTP transport in this build") %
-				Uint32toStringIP(ip) % port);
+				peerText % port);
 		break;
 
 	case OP_NATT_FRAME_QUIC:
 		AddDebugLogLineN(logClientUDP,
 			CFormat("Ignoring QUIC NAT-T frame from %s:%u: no QUIC transport in this build") %
-				Uint32toStringIP(ip) % port);
+				peerText % port);
 		break;
 
 	case OP_NATT_FRAME_CAPS:
@@ -225,13 +274,13 @@ void CClientUDPSocket::ProcessReservedProt2Frame(
 		// aMule does not have. Silence is the correct answer here.
 		AddDebugLogLineN(logClientUDP,
 			CFormat("Ignoring NAT-T capability frame 0x%02X from %s:%u: nothing to negotiate") %
-				classified.type % Uint32toStringIP(ip) % port);
+				classified.type % peerText % port);
 		break;
 
 	case OP_NATT_FRAME_KEY:
 		AddDebugLogLineN(logClientUDP,
 			CFormat("Ignoring NAT-T key frame from %s:%u: no NAT traversal in this build") %
-				Uint32toStringIP(ip) % port);
+				peerText % port);
 		break;
 
 	default:
@@ -244,8 +293,19 @@ void CClientUDPSocket::ProcessReservedProt2Frame(
 	}
 }
 
-void CClientUDPSocket::ProcessPacket(uint8_t *packet, int16 size, int8 opcode, uint32 host, uint16 port)
+void CClientUDPSocket::ProcessPacket(
+	uint8_t *packet, int16 size, int8 opcode, const CNetworkAddress &host, uint16 port)
 {
+	// Printable form for the logs, and the 32-bit form for the two handlers
+	// whose *payload* is an ed2k wire field -- the relayed callback address and
+	// the ed2k id a new client object is built from. Replies go to the address
+	// itself, so an IPv6 peer gets answered. The 32-bit form is zero for a
+	// native IPv6 peer and both uses of it are guarded, because a zero there
+	// would name the wrong host inside a packet.
+	const wxString hostText = wxString(host.ToString());
+	uint32 hostIPv4 = 0;
+	const bool hasIPv4 = host.ToIPv4NetworkOrder(hostIPv4);
+
 	switch (opcode) {
 	case OP_REASKCALLBACKUDP: {
 		AddDebugLogLineN(logClientUDP, "Client UDP socket; OP_REASKCALLBACKUDP");
@@ -253,6 +313,18 @@ void CClientUDPSocket::ProcessPacket(uint8_t *packet, int16 size, int8 opcode, u
 		CUpDownClient *buddy = theApp->clientlist->GetBuddy();
 		if (buddy) {
 			if (size < 17 || buddy->GetSocket() == NULL) {
+				break;
+			}
+			if (!hasIPv4) {
+				// The relayed OP_REASKCALLBACKTCP carries the
+				// requester's address as a 32-bit ed2k field, so there
+				// is nowhere in this packet to put an IPv6 address. The
+				// wire format is not widened here; the request is
+				// dropped with the reason named.
+				AddDebugLogLineN(logClientUDP,
+					CFormat("Dropping OP_REASKCALLBACKUDP from %s: the relayed "
+						"callback field is a 32-bit ed2k address") %
+						hostText);
 				break;
 			}
 			if (!md4cmp(packet, buddy->GetBuddyID())) {
@@ -265,7 +337,7 @@ void CClientUDPSocket::ProcessPacket(uint8_t *packet, int16 size, int8 opcode, u
 				CMemFile mem_packet(packet + 10, size - 10);
 				// Change the ip and port while leaving the rest untouched
 				mem_packet.Seek(0, wxFromStart);
-				mem_packet.WriteUInt32(host);
+				mem_packet.WriteUInt32(hostIPv4);
 				mem_packet.WriteUInt16(port);
 				CPacket *response =
 					new CPacket(mem_packet, OP_EMULEPROT, OP_REASKCALLBACKTCP);
@@ -377,7 +449,7 @@ void CClientUDPSocket::ProcessPacket(uint8_t *packet, int16 size, int8 opcode, u
 					CFormat("UDP Packet received - multiple clients with the same IP but "
 						"different UDP port found. Possible UDP Portmapping problem, "
 						"enforcing TCP connection. IP: %s, Port: %u") %
-						Uint32toStringIP(host) % port);
+						hostText % port);
 			}
 		}
 		break;
@@ -421,7 +493,7 @@ void CClientUDPSocket::ProcessPacket(uint8_t *packet, int16 size, int8 opcode, u
 		theStats::AddDownOverheadOther(size);
 		if (!theApp->clientlist->AllowCallbackRequest(host)) {
 			AddDebugLogLineN(logClientUDP,
-				"Ignored DirectCallback Request because this IP (" + Uint32toStringIP(host) +
+				"Ignored DirectCallback Request because this IP (" + hostText +
 					") has sent too many requests within a short time");
 			break;
 		}
@@ -436,29 +508,35 @@ void CClientUDPSocket::ProcessPacket(uint8_t *packet, int16 size, int8 opcode, u
 			CClientList::SourceList clients = theApp->clientlist->GetClientsByHash(userHash);
 			for (CClientList::SourceList::iterator it = clients.begin(); it != clients.end();
 				++it) {
-				if ((host == 0 || it->GetIP() == host) &&
+				if ((host.IsAbsent() ||
+					    it->GetClient()->GetAddress() == host) &&
 					(remoteTCPPort == 0 || it->GetUserPort() == remoteTCPPort)) {
 					requester = it->GetClient();
 					break;
 				}
 			}
 			if (requester == NULL) {
-				requester = new CUpDownClient(remoteTCPPort, host, 0, 0, NULL, true, true);
+				// The ed2k id argument is the peer's 32-bit address, so a
+				// native IPv6 requester is created with none and given its
+				// real address immediately below. SetAddress() is what
+				// makes it findable afterwards, in either family.
+				requester = new CUpDownClient(
+					remoteTCPPort, hostIPv4, 0, 0, NULL, true, true);
 				requester->SetUserHash(CMD4Hash(userHash));
 				theApp->clientlist->AddClient(requester);
 			}
 			requester->SetConnectOptions(connectOptions, true, false);
 			requester->SetDirectUDPCallbackSupport(false);
-			requester->SetIP(host);
+			requester->SetAddress(host);
 			requester->SetUserPort(remoteTCPPort);
 			AddDebugLogLineN(logClientUDP,
-				"Accepting incoming DirectCallback Request from " + Uint32toStringIP(host));
+				"Accepting incoming DirectCallback Request from " + hostText);
 			requester->TryToConnect();
 		} else {
 			AddDebugLogLineN(logClientUDP,
 				"Ignored DirectCallback Request because we do not accept Direct Callbacks at "
 				"all (" +
-					Uint32toStringIP(host) + ")");
+					hostText + ")");
 		}
 		break;
 	}
