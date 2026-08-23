@@ -302,3 +302,94 @@ TEST(SafeKad, ClearEmptiesEveryTable)
 	ASSERT_EQUALS(0u, (unsigned)safe.GetProblematicNodeCount());
 	ASSERT_EQUALS(0u, (unsigned)safe.GetBannedAddressCount());
 }
+
+// An unverified identity change against a verified tracked entry is refused
+// outright rather than rate-limited, which is stricter than the spec asks for.
+// It must still escalate: a refusal that costs the sender nothing lets a sybil
+// retry the same rotation for as long as it likes, which is precisely what the
+// problematic-then-banned ladder exists to stop.
+TEST(SafeKad, AnUnverifiedIdentityChangeAgainstAVerifiedEntryEscalates)
+{
+	CSafeKad safe;
+	ASSERT_TRUE(safe.TrackNode(IP_A, PORT_A, Id(1), true, T0));
+
+	// First attempt, well inside the one-hour interval: refused, and the
+	// address is now on the problematic list.
+	ASSERT_TRUE(safe.IsBadNode(IP_A, PORT_A, Id(2), KADEMLIA_VERSION, false, false, T0 + 10));
+	ASSERT_TRUE(safe.IsProblematic(IP_A, PORT_A, T0 + 10));
+	ASSERT_FALSE(safe.IsBanned(IP_A, T0 + 10));
+
+	// Retrying costs it the address: a second attempt while problematic bans.
+	ASSERT_TRUE(safe.IsBadNode(IP_A, PORT_A, Id(3), KADEMLIA_VERSION, false, false, T0 + 20));
+	ASSERT_TRUE(safe.IsBanned(IP_A, T0 + 20));
+	// A banned address stops being tracked; there is nothing left to weigh.
+	ASSERT_EQUALS(0u, (unsigned)safe.GetTrackedNodeCount());
+
+	// And the ban covers the address, not just the rotation: even the
+	// identity we had verified is refused for as long as it lasts.
+	ASSERT_TRUE(safe.IsBadNode(IP_A, PORT_A, Id(1), KADEMLIA_VERSION, true, false, T0 + 30));
+}
+
+// The same ladder for a pre-0x08 node, where it is the version rather than the
+// verification state of the tracked entry that refuses the change.
+TEST(SafeKad, AnUnverifiedPreVersion8IdentityChangeEscalates)
+{
+	CSafeKad safe;
+	ASSERT_TRUE(safe.TrackNode(IP_A, PORT_A, Id(1), false, T0));
+
+	ASSERT_TRUE(safe.IsBadNode(IP_A, PORT_A, Id(2), KADEMLIA_VERSION7_49a, false, false, T0 + 10));
+	ASSERT_TRUE(safe.IsProblematic(IP_A, PORT_A, T0 + 10));
+	ASSERT_FALSE(safe.IsBanned(IP_A, T0 + 10));
+
+	ASSERT_TRUE(safe.IsBadNode(IP_A, PORT_A, Id(3), KADEMLIA_VERSION7_49a, false, false, T0 + 20));
+	ASSERT_TRUE(safe.IsBanned(IP_A, T0 + 20));
+}
+
+// One rejected rotation is one step up the ladder, never two. Both refusal
+// paths -- the outright one here and TrackNode's rate limit -- share a single
+// escalation, so a single call must leave the address problematic and not
+// banned. Double-counting would ban on first contact.
+TEST(SafeKad, OneRejectedRotationEscalatesExactlyOneStep)
+{
+	CSafeKad safe;
+	ASSERT_FALSE(safe.IsBadNode(IP_A, PORT_A, Id(1), KADEMLIA_VERSION, true, false, T0));
+
+	// Verified, so this goes through TrackNode's rate limit rather than the
+	// outright refusal.
+	ASSERT_TRUE(safe.IsBadNode(IP_A, PORT_A, Id(2), KADEMLIA_VERSION, true, false, T0 + 10));
+	ASSERT_TRUE(safe.IsProblematic(IP_A, PORT_A, T0 + 10));
+	ASSERT_FALSE(safe.IsBanned(IP_A, T0 + 10));
+	ASSERT_EQUALS(1u, (unsigned)safe.GetProblematicNodeCount());
+
+	CSafeKad other;
+	ASSERT_FALSE(other.IsBadNode(IP_B, PORT_A, Id(1), KADEMLIA_VERSION, true, false, T0));
+	// Unverified, so this takes the outright refusal instead.
+	ASSERT_TRUE(other.IsBadNode(IP_B, PORT_A, Id(2), KADEMLIA_VERSION, false, false, T0 + 10));
+	ASSERT_TRUE(other.IsProblematic(IP_B, PORT_A, T0 + 10));
+	ASSERT_FALSE(other.IsBanned(IP_B, T0 + 10));
+	ASSERT_EQUALS(1u, (unsigned)other.GetProblematicNodeCount());
+}
+
+// A change refused only because it could not be verified, long past the
+// interval, is not rapid rotation and must not escalate: a legacy client that
+// legitimately reinstalled once a year is not a sybil, and banning it for four
+// hours over a single refused change would be the protection misfiring.
+TEST(SafeKad, ARefusedChangePastTheIntervalIsNotEscalated)
+{
+	CSafeKad safe;
+	ASSERT_TRUE(safe.TrackNode(IP_A, PORT_A, Id(1), true, T0));
+
+	// Keep the entry referenced while its last identity change ages, so the
+	// reference horizon does not reclaim it before the interval elapses.
+	// The refresh goes through TrackNode on purpose: IsBadNode() runs
+	// Cleanup() before it looks the entry up, so refreshing through it would
+	// reclaim the entry first and turn the next call into a first sighting.
+	const time_t later = T0 + CSafeKad::MIN_ID_CHANGE_INTERVAL * 2;
+	ASSERT_TRUE(safe.TrackNode(IP_A, PORT_A, Id(1), true, later - 1));
+
+	ASSERT_TRUE(safe.IsBadNode(IP_A, PORT_A, Id(9), KADEMLIA_VERSION, false, false, later));
+	ASSERT_FALSE(safe.IsProblematic(IP_A, PORT_A, later));
+	ASSERT_FALSE(safe.IsBanned(IP_A, later));
+	// The verified identity we hold is untouched and still usable.
+	ASSERT_FALSE(safe.IsBadNode(IP_A, PORT_A, Id(1), KADEMLIA_VERSION, true, false, later));
+}

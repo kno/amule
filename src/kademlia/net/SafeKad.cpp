@@ -85,11 +85,7 @@ bool CSafeKad::TrackNode(uint32_t ip, uint16_t port, const CUInt128 &id, bool id
 			// problematic already -- one rejected change is a
 			// plausible accident, two inside 300 s is not.
 			accepted = false;
-			if (IsProblematic(ip, port, now)) {
-				BanAddress(ip, now);
-			} else {
-				TrackProblematicNode(ip, port, now);
-			}
+			Escalate(ip, port, now);
 		} else {
 			tracked.m_lastID = id;
 			tracked.m_lastIDChange = now;
@@ -110,6 +106,15 @@ bool CSafeKad::TrackNode(uint32_t ip, uint16_t port, const CUInt128 &id, bool id
 		m_trackedNodes.Erase(address);
 	}
 	return accepted;
+}
+
+void CSafeKad::Escalate(uint32_t ip, uint16_t port, time_t now)
+{
+	if (IsProblematic(ip, port, now)) {
+		BanAddress(ip, now);
+	} else {
+		TrackProblematicNode(ip, port, now);
+	}
 }
 
 void CSafeKad::TrackProblematicNode(uint32_t ip, uint16_t port, time_t now)
@@ -266,6 +271,18 @@ bool CSafeKad::IsBadNode(uint32_t ip,
 		// port it listens on, so an unverified identity change from one
 		// is refused outright rather than rate-limited.
 		if ((it->second.m_idVerified || kadVersion < KADEMLIA_VERSION8_49b) && !idVerified) {
+			// Refusing alone costs the sender nothing, so a rotation
+			// inside the one-hour interval still climbs the ladder:
+			// otherwise a sybil that always arrives unverified against
+			// a verified entry could retry the same rotation forever
+			// for free, which is exactly what the ladder exists to
+			// stop. Past the interval the change is not rotation, only
+			// unverifiable, and a legacy client that reinstalled once
+			// is not worth a four-hour ban. Escalate() may ban and so
+			// invalidate `it`; nothing reads it after this.
+			if (now - it->second.m_lastIDChange < MIN_ID_CHANGE_INTERVAL) {
+				Escalate(ip, port, now);
+			}
 			return true;
 		}
 		// TrackNode applies the one-hour interval and the escalation.

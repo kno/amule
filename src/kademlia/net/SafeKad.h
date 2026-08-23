@@ -241,6 +241,11 @@ private:
 		time_t m_lastReferenced;
 	};
 
+	// One step up the escalation ladder for a rejected identity change:
+	// problematic the first time, banned if the address was problematic
+	// already. Both refusal paths share this so that one rejection is
+	// always exactly one step.
+	void Escalate(uint32_t ip, uint16_t port, time_t now);
 	// True when this address already has a tracked node on another port.
 	bool HasOtherTrackedPort(uint32_t ip, uint16_t port);
 	// Forgets every tracked and problematic entry for `ip`, on every port.

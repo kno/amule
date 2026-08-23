@@ -51,3 +51,23 @@ Out of scope: IPv6 inside Kad. Neither client has it — eMuleAI's Kad still key
 ## Dependencies
 
 None. Blocks nothing.
+
+## Post-merge correction: identity-rotation escalation
+
+`CSafeKad::IsBadNode()` refused an unverified identity change against a
+verified (or pre-0x08) tracked entry without recording it, so the address never
+climbed the problematic-then-banned ladder that the "Rapid identity rotation"
+scenario requires. An attacker arriving unverified was therefore refused every
+time at no cost and could retry indefinitely.
+
+The refusal is unchanged — it is stricter than the spec asks for, deliberately.
+What was added is the bookkeeping: a refused change inside
+`MIN_ID_CHANGE_INTERVAL` now escalates through the same `Escalate()` helper
+`TrackNode()` uses, so one rejection is always exactly one step and the two
+paths cannot double-count. A refused change *past* the interval is not rotation,
+only unverifiable, and does not escalate: banning a legacy client that
+reinstalled once would be the protection misfiring.
+
+Covered by `unittests/tests/SafeKadTest.cpp`; the literal wire values of
+`CT_MOD_MISCOPTIONS`, `CT_MOD_IP_V6`, `CT_MOD_SVR_IP_V6`, `TAG_IPV6` and
+`TAG_SERVINGBUDDYIPV6` are now pinned in `unittests/tests/PeerCapabilitiesTest.cpp`.
