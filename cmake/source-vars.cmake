@@ -4,8 +4,10 @@ if (BUILD_MONOLITHIC OR BUILD_DAEMON)
 		kademlia/kademlia/Prefs.cpp
 		kademlia/kademlia/Search.cpp
 		kademlia/kademlia/UDPFirewallTester.cpp
+		kademlia/net/FastKad.cpp
 		kademlia/net/KademliaUDPListener.cpp
 		kademlia/net/PacketTracking.cpp
+		kademlia/net/SafeKad.cpp
 		kademlia/routing/Contact.cpp
 		kademlia/routing/RoutingZone.cpp
 		amule.cpp
