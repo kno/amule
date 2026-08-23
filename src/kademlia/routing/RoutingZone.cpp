@@ -198,8 +198,11 @@ void CRoutingZone::ReadFile(const wxString &specialNodesdat)
 					// IP appears valid
 					if (contactVersion > 1) {
 						if (IsGoodIPPort(wxUINT32_SWAP_ALWAYS(ip), udpPort)) {
+							// ip is in Kad host order; the conversion names
+							// the byte order the bare swap only implied.
 							if (!theApp->ipfilter->IsFiltered(
-								    wxUINT32_SWAP_ALWAYS(ip)) &&
+								    CNetworkAddress::FromIPv4HostOrder(
+									    ip)) &&
 								!(
 									udpPort == 53 && contactVersion <= 5 /*No DNS Port without encryption*/)) {
 								// This was not a dead contact, inc counter if
@@ -274,7 +277,8 @@ void CRoutingZone::ReadBootstrapNodesDat(CFileDataIO &file)
 			uint8_t contactVersion = file.ReadUInt8();
 
 			if (::IsGoodIPPort(wxUINT32_SWAP_ALWAYS(ip), udpPort)) {
-				if (!theApp->ipfilter->IsFiltered(wxUINT32_SWAP_ALWAYS(ip)) &&
+				// ip is in Kad host order.
+				if (!theApp->ipfilter->IsFiltered(CNetworkAddress::FromIPv4HostOrder(ip)) &&
 					!(udpPort == 53 && contactVersion <= 5) &&
 					(contactVersion > 1)) // only kad2 nodes
 				{
@@ -465,7 +469,8 @@ bool CRoutingZone::Add(const CUInt128 &id,
 	bool fromHello)
 {
 	if (IsGoodIPPort(wxUINT32_SWAP_ALWAYS(ip), port)) {
-		if (!theApp->ipfilter->IsFiltered(wxUINT32_SWAP_ALWAYS(ip)) &&
+		// ip is in Kad host order.
+		if (!theApp->ipfilter->IsFiltered(CNetworkAddress::FromIPv4HostOrder(ip)) &&
 			!(port == 53 && version <= 5) /*No DNS Port without encryption*/) {
 			return AddUnfiltered(
 				id, ip, port, tport, version, key, ipVerified, update, fromHello);

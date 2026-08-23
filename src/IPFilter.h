@@ -28,7 +28,8 @@
 
 #include <wx/event.h> // Needed for wxEvent
 
-#include "Types.h" // Needed for uint8, uint16 and uint32
+#include "NetworkAddress.h" // Needed for CNetworkAddress
+#include "Types.h"          // Needed for uint8, uint16 and uint32
 
 class CIPFilterEvent;
 
@@ -62,6 +63,20 @@ public:
 	 * Note: IP2Test must be in anti-host order (BE on LE platform, LE on BE platform).
 	 */
 	bool IsFiltered(uint32 IP2test, bool isServer = false);
+
+	/**
+	 * Checks if an address is filtered with the current list and AccessLevel.
+	 *
+	 * The family-agnostic entry point. The range table is still a table of
+	 * 32-bit IPv4 ranges -- see the note on RangeIPs below -- so an address
+	 * with no 32-bit form cannot be looked up in it. Rather than truncate it
+	 * to something the table can answer, that case is treated the way an
+	 * unloaded filter already is: filtered, and logged. Refusing to decide is
+	 * not the same as deciding "allowed".
+	 *
+	 * An absent address is not filtered: there is no connection to block.
+	 */
+	bool IsFiltered(const CNetworkAddress &address, bool isServer = false);
 
 	/**
 	 * Returns the number of banned ranges.
@@ -117,7 +132,15 @@ private:
 	//! The URL from which the IP filter was downloaded
 	wxString m_URL;
 
-	// The IP ranges
+	/**
+	 * The IP ranges. Host (numeric) order, sorted ascending.
+	 *
+	 * Still 32-bit IPv4. This is the documented conversion boundary for the
+	 * filter: IsFiltered(const CNetworkAddress&) narrows to it explicitly and
+	 * reports failure rather than truncating. Widening the table means a new
+	 * on-disk format for ipfilter.dat, which belongs to the change that first
+	 * needs to filter an IPv6 peer.
+	 */
 	typedef std::vector<uint32> RangeIPs;
 	RangeIPs m_rangeIPs;
 	typedef std::vector<uint16> RangeLengths;

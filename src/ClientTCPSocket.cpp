@@ -101,7 +101,8 @@ bool CClientTCPSocket::InitNetworkData()
 	if (theApp->ipfilter->IsFiltered(m_remoteip)) {
 		AddDebugLogLineN(logClient, "Denied connection from " + GetPeer() + "(Filtered IP)");
 		return false;
-	} else if (theApp->clientlist->IsBannedClient(m_remoteip)) {
+	} else if (theApp->clientlist->IsBannedClient(
+			   CNetworkAddress::FromIPv4NetworkOrderOrAbsent(m_remoteip))) {
 		AddDebugLogLineN(logClient, "Denied connection from " + GetPeer() + "(Banned IP)");
 		return false;
 	} else {

@@ -28,6 +28,7 @@
 
 #include "DeadSourceList.h" // Needed for CDeadSourceList
 #include "ClientRef.h"
+#include "NetworkAddress.h" // Needed for CNetworkAddress
 
 #include <deque>
 #include <set>
@@ -95,10 +96,16 @@ public:
 	 * @param newIP The new IP address of the client.
 	 *
 	 * This function is to be called before the client actually changes its
-	 * IP-address, and will update the old entry with the new value. There
-	 * will only be added an entry if the new IP isn't zero.
+	 * IP-address, and will update the old entry with the new value. An absent
+	 * address adds no entry.
+	 *
+	 * The absence test used to be @c if (newIP), i.e. a client at @c 0.0.0.0 was
+	 * indistinguishable from one whose address is unknown. It is now an explicit
+	 * IsAbsent() check, and callers holding a 32-bit ed2k field resolve the
+	 * overload at the boundary with
+	 * CNetworkAddress::FromIPv4NetworkOrderOrAbsent().
 	 */
-	void UpdateClientIP(CUpDownClient *client, uint32 newIP);
+	void UpdateClientIP(CUpDownClient *client, const CNetworkAddress &newIP);
 
 	/**
 	 * Updates the recorded ID of the specified client.
@@ -200,24 +207,26 @@ public:
 	/**
 	 * Bans an IP address for 2 hours.
 	 *
-	 * @param dwIP The IP from which all clients will be banned.
+	 * @param address The address from which all clients will be banned. An
+	 *                absent address bans nothing.
 	 */
-	void AddBannedClient(uint32 dwIP);
+	void AddBannedClient(const CNetworkAddress &address);
 
 	/**
 	 * Checks if a client has been banned.
 	 *
-	 * @param dwIP The IP to check.
-	 * @return True if the IP is banned, false otherwise.
+	 * @param address The address to check.
+	 * @return True if the address is banned, false otherwise. An absent address
+	 *         is never banned -- there is nothing to have banned.
 	 */
-	bool IsBannedClient(uint32 dwIP);
+	bool IsBannedClient(const CNetworkAddress &address);
 
 	/**
 	 * Unbans an IP address, if it has been banned.
 	 *
-	 * @param dwIP The IP address to unban.
+	 * @param address The address to unban. An absent address unbans nothing.
 	 */
-	void RemoveBannedClient(uint32 dwIP);
+	void RemoveBannedClient(const CNetworkAddress &address);
 
 	/**
 	 * Main loop.
@@ -255,13 +264,22 @@ public:
 	 *
 	 * @param ip The IP-address to search for.
 	 *
-	 * This function will return a list of clients with the specified IP,
-	 * provided that the IP is a non-zero value. A value of zero will not
-	 * result in any results.
+	 * This function will return a list of clients with the specified address.
+	 * An absent address yields no results, as does an address that was never
+	 * recorded -- UpdateClientIP() refuses to record an absent one.
 	 */
-	SourceList GetClientsByIP(unsigned long ip);
+	SourceList GetClientsByIP(const CNetworkAddress &address);
 
-	//! The type of the lists used to store IPs and IDs.
+	/**
+	 * The type of the lists used to store IPs and IDs.
+	 *
+	 * Still keyed on a 32-bit ed2k-order address. This is the documented
+	 * conversion boundary: the public address-taking functions above speak
+	 * CNetworkAddress and narrow to this key on the way in, so the overloaded
+	 * zero never reaches a caller. Widening the key itself waits for
+	 * amule-dual-stack-reachability, which is the change that first has an IPv6
+	 * client to store.
+	 */
 	typedef std::multimap<uint32, CClientRef> IDMap;
 	//! The pairs of the IP/ID list.
 	typedef std::pair<uint32, CClientRef> IDMapPair;
@@ -364,9 +382,9 @@ private:
 	 * This function is used to determine if the given IP address
 	 * is already known.
 	 *
-	 * @param ip The IP address to check.
+	 * @param address The address to check. An absent address is never known.
 	 */
-	bool IsIPAlreadyKnown(uint32_t ip);
+	bool IsIPAlreadyKnown(const CNetworkAddress &address);
 
 	/**
 	 * Helperfunction which removes the client from the IP-list.

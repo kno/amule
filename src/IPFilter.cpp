@@ -27,6 +27,7 @@
 #include <wx/ffile.h>
 
 #include "IPFilter.h"               // Interface declarations.
+#include "IPFilterRanges.h"         // Needed for IPFilterRangesContain
 #include "IPFilterScanner.h"        // Interface for flexer
 #include "Preferences.h"            // Needed for thePrefs
 #include "amule.h"                  // Needed for theApp
@@ -416,6 +417,30 @@ uint32 CIPFilter::BanCount() const
 	return m_rangeIPs.size();
 }
 
+bool CIPFilter::IsFiltered(const CNetworkAddress &address, bool isServer)
+{
+	if (address.IsAbsent()) {
+		// No connection to filter.
+		return false;
+	}
+	uint32 ed2kOrder = 0;
+	if (!address.ToIPv4NetworkOrder(ed2kOrder)) {
+		// The range table cannot answer for this address, so the filter has no
+		// verdict. Treated as filtered for the same reason an unloaded filter
+		// is: an undecidable address must not be waved through.
+		AddDebugLogLineN(logIPFilter,
+			CFormat("Filtered %s because the range table has no 32-bit form for it") %
+				address.ToString());
+		if (isServer) {
+			theStats::AddFilteredServer();
+		} else {
+			theStats::AddFilteredClient();
+		}
+		return true;
+	}
+	return IsFiltered(ed2kOrder, isServer);
+}
+
 bool CIPFilter::IsFiltered(uint32 IPTest, bool isServer)
 {
 	if ((!thePrefs::IsFilteringClients() && !isServer) || (!thePrefs::IsFilteringServers() && isServer)) {
@@ -434,35 +459,16 @@ bool CIPFilter::IsFiltered(uint32 IPTest, bool isServer)
 		return true;
 	}
 	wxMutexLocker lock(m_mutex);
-	// The IP needs to be in host order
-	uint32 ip = wxUINT32_SWAP_ALWAYS(IPTest);
-	int imin = 0;
-	int imax = m_rangeIPs.size() - 1;
-	int i;
-	bool found = false;
-	while (imin <= imax) {
-		i = (imin + imax) / 2;
-		uint32 curIP = m_rangeIPs[i];
-		if (curIP <= ip) {
-			uint32 curLength = m_rangeLengths[i];
-			if (curLength >= 0x8000) {
-				curLength = ((curLength & 0x7fff) << 12) + 0xfff;
-			}
-			if (curIP + curLength >= ip) {
-				found = true;
-				break;
-			}
-		}
-		if (curIP > ip) {
-			imax = i - 1;
-		} else {
-			imin = i + 1;
-		}
-	}
+	// The range table is in host order; the address handed to us is in ed2k
+	// order. IPFilterRangesContain() owns the search itself -- see
+	// IPFilterRanges.h for why it lives outside this class.
+	const uint32 ip = wxUINT32_SWAP_ALWAYS(IPTest);
+	size_t i = 0;
+	const bool found = IPFilterRangesContain(m_rangeIPs, m_rangeLengths, ip, i);
 	if (found) {
 		AddDebugLogLineN(logIPFilter,
 			CFormat("Filtered IP %s%s") % Uint32toStringIP(IPTest) %
-				(i < (int)m_rangeNames.size()
+				(i < m_rangeNames.size()
 						? (" (" + wxString(char2unicode(m_rangeNames[i].c_str())) +
 							  ")")
 						: wxString("")));

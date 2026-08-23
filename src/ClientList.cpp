@@ -152,17 +152,26 @@ void CClientList::UpdateClientID(CUpDownClient *client, uint32 newID)
 	m_clientList.insert(IDMapPair(newID, CCLIENTREF(client, "CClientList::UpdateClientID")));
 }
 
-void CClientList::UpdateClientIP(CUpDownClient *client, uint32 newIP)
+void CClientList::UpdateClientIP(CUpDownClient *client, const CNetworkAddress &newIP)
 {
-	// Sanity check
-	if ((client->GetClientState() != CS_LISTED) || (client->GetIP() == newIP))
+	// Sanity check. The client still stores a 32-bit ed2k field, so the
+	// comparison happens on this side of the boundary: an absent new address
+	// compares equal to a client that has no address, which is exactly the
+	// "nothing to do" case the old `GetIP() == newIP` covered.
+	if ((client->GetClientState() != CS_LISTED) ||
+		(CNetworkAddress::FromIPv4NetworkOrderOrAbsent(client->GetIP()) == newIP)) {
 		return;
+	}
 
 	// Remove the old IP entry
 	RemoveIPFromList(client);
 
-	if (newIP) {
-		m_ipList.insert(IDMapPair(newIP, CCLIENTREF(client, "CClientList::UpdateClientIP")));
+	// Explicit absence check, not `if (newIP)`. An address that has no 32-bit
+	// form is not recordable in m_ipList either, and ToIPv4NetworkOrder()
+	// reports that rather than fabricating a key.
+	uint32 key = 0;
+	if (newIP.ToIPv4NetworkOrder(key)) {
+		m_ipList.insert(IDMapPair(key, CCLIENTREF(client, "CClientList::UpdateClientIP")));
 	}
 }
 
@@ -205,8 +214,10 @@ bool CClientList::RemoveIDFromList(CUpDownClient *client)
 
 void CClientList::RemoveIPFromList(CUpDownClient *client)
 {
-	// Check if we need to look for the IP entry
-	if (!client->GetIP()) {
+	// Check if we need to look for the IP entry. Explicit absence check rather
+	// than `if (!client->GetIP())`: UpdateClientIP() never records an absent
+	// address, so there can be no entry to remove for one.
+	if (CNetworkAddress::FromIPv4NetworkOrderOrAbsent(client->GetIP()).IsAbsent()) {
 		return;
 	}
 
@@ -445,10 +456,16 @@ CUpDownClient *CClientList::FindClientByECID(uint32 ecid) const
 	return NULL;
 }
 
-bool CClientList::IsIPAlreadyKnown(uint32_t ip)
+bool CClientList::IsIPAlreadyKnown(const CNetworkAddress &address)
 {
+	uint32 key = 0;
+	if (!address.ToIPv4NetworkOrder(key)) {
+		// Absent, or an address m_ipList cannot key on. Either way it was
+		// never recorded, so it is not known.
+		return false;
+	}
 	// Find all items with the specified ip
-	std::pair<IDMap::iterator, IDMap::iterator> range = m_ipList.equal_range(ip);
+	std::pair<IDMap::iterator, IDMap::iterator> range = m_ipList.equal_range(key);
 	return range.first != range.second;
 }
 
@@ -729,29 +746,48 @@ void CClientList::Process()
 	ProcessPendingBrowseList();
 }
 
-void CClientList::AddBannedClient(uint32 dwIP)
+void CClientList::AddBannedClient(const CNetworkAddress &address)
 {
-	m_bannedList[dwIP] = ::GetTickCount64();
+	uint32 key = 0;
+	if (!address.ToIPv4NetworkOrder(key)) {
+		// Nothing to ban. Previously an absent address arrived here as the
+		// literal 0 and was banned as "0.0.0.0", banning a value no real peer
+		// has while telling theStats one more client was banned.
+		AddDebugLogLineN(logClient,
+			CFormat("AddBannedClient: no bannable address (%s), ignored") %
+				address.ToString());
+		return;
+	}
+	m_bannedList[key] = ::GetTickCount64();
 	theStats::AddBannedClient();
 }
 
-bool CClientList::IsBannedClient(uint32 dwIP)
+bool CClientList::IsBannedClient(const CNetworkAddress &address)
 {
-	ClientMap::iterator it = m_bannedList.find(dwIP);
+	uint32 key = 0;
+	if (!address.ToIPv4NetworkOrder(key)) {
+		return false;
+	}
+
+	ClientMap::iterator it = m_bannedList.find(key);
 
 	if (it != m_bannedList.end()) {
 		if (it->second + CLIENTBANTIME > ::GetTickCount64()) {
 			return true;
 		} else {
-			RemoveBannedClient(dwIP);
+			RemoveBannedClient(address);
 		}
 	}
 	return false;
 }
 
-void CClientList::RemoveBannedClient(uint32 dwIP)
+void CClientList::RemoveBannedClient(const CNetworkAddress &address)
 {
-	m_bannedList.erase(dwIP);
+	uint32 key = 0;
+	if (!address.ToIPv4NetworkOrder(key)) {
+		return;
+	}
+	m_bannedList.erase(key);
 	theStats::RemoveBannedClient();
 }
 
@@ -782,12 +818,19 @@ CClientList::SourceList CClientList::GetClientsByHash(const CMD4Hash &hash)
 	return results;
 }
 
-CClientList::SourceList CClientList::GetClientsByIP(unsigned long ip)
+CClientList::SourceList CClientList::GetClientsByIP(const CNetworkAddress &address)
 {
 	SourceList results;
 
-	// Find all items with the specified hash
-	std::pair<IDMap::iterator, IDMap::iterator> range = m_ipList.equal_range(ip);
+	uint32 key = 0;
+	if (!address.ToIPv4NetworkOrder(key)) {
+		// Absent, or unrepresentable as an m_ipList key: no client can be
+		// recorded under it, so the empty list is the whole answer.
+		return results;
+	}
+
+	// Find all items with the specified address
+	std::pair<IDMap::iterator, IDMap::iterator> range = m_ipList.equal_range(key);
 
 	for (; range.first != range.second; range.first++) {
 		results.push_back(range.first->second);
@@ -973,7 +1016,9 @@ void CClientList::AddToKadList(CUpDownClient *toadd)
 bool CClientList::DoRequestFirewallCheckUDP(const Kademlia::CContact &contact)
 {
 	// first make sure we don't know this IP already from somewhere
-	if (IsIPAlreadyKnown(wxUINT32_SWAP_ALWAYS(contact.GetIPAddress()))) {
+	// contact.GetIPAddress() is in Kad host order; the conversion says so
+	// instead of a bare wxUINT32_SWAP_ALWAYS.
+	if (IsIPAlreadyKnown(CNetworkAddress::FromIPv4HostOrderOrAbsent(contact.GetIPAddress()))) {
 		return false;
 	}
 	// fine, just create the client object, set the state and wait

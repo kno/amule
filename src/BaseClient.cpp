@@ -1542,7 +1542,8 @@ bool CUpDownClient::TryToConnect(bool bIgnoreMaxCon)
 		}
 
 		// for safety: check again whether that IP is banned
-		if (theApp->clientlist->IsBannedClient(uClientIP)) {
+		if (theApp->clientlist->IsBannedClient(
+			    CNetworkAddress::FromIPv4NetworkOrderOrAbsent(uClientIP))) {
 			AddDebugLogLineN(logClient,
 				"Refused to connect to banned client " + Uint32toStringIP(uClientIP));
 			if (Disconnected("Banned IP")) {
@@ -2703,7 +2704,9 @@ void CUpDownClient::SetUserIDHybrid(uint32 nUserID)
 
 void CUpDownClient::SetIP(uint32 val)
 {
-	theApp->clientlist->UpdateClientIP(this, val);
+	// val is an ed2k-order field in which zero means "address unknown"; the
+	// boundary conversion resolves that overload once, here.
+	theApp->clientlist->UpdateClientIP(this, CNetworkAddress::FromIPv4NetworkOrderOrAbsent(val));
 
 	m_dwUserIP = val;
 

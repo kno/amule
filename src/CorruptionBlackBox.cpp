@@ -232,7 +232,8 @@ void CCorruptionBlackBox::EvaluateData()
 				}
 			} else {
 				clientName = Uint32toStringIP(ip);
-				theApp->clientlist->AddBannedClient(ip);
+				theApp->clientlist->AddBannedClient(
+					CNetworkAddress::FromIPv4NetworkOrderOrAbsent(ip));
 			}
 			AddLogLineN(CFormat(_("Banned client %s for sending %s corrupt data of %s total for "
 					      "the file '%s'")) %
