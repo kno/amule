@@ -236,6 +236,13 @@ EC_TAG_CAN_CLIENT_HISTORY                 0x0026
 ## make such a daemon look capable and earn it an unknown opcode.
 EC_TAG_CAN_CHAT_SESSIONS                  0x0027
 
+## This client's own reachability per address family, two bits each: IPv4 in
+## bits 0-1, IPv6 in bits 2-3, values 0 unavailable / 1 listening / 2 verified.
+## Bits 4-7 are reserved and travel as zero. Sub-tag of EC_TAG_CONNSTATE.
+## Additive: a missing tag means an older daemon, which is a distinct third
+## state from "no family is listening".
+EC_TAG_LOCAL_REACHABILITY                 0x0028
+
 
 EC_TAG_CLIENT_NAME                        0x0100
 	EC_TAG_CLIENT_VERSION                     0x0101

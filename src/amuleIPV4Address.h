@@ -71,6 +71,28 @@ public:
 	// Set address to any of the addresses of the current machine.
 	virtual bool AnyAddress();
 
+	// Set the address from the internal address type, family and all. The one
+	// way in for an IPv6 address: Hostname(uint32) cannot carry one and
+	// Hostname(wxString) would go through a textual round trip.
+	bool SetAddress(const CNetworkAddress &address);
+
+	// The address as the internal type, or an absent address when this object
+	// still holds asio's default-constructed 0.0.0.0.
+	CNetworkAddress GetAddress() const;
+
+	// Whether a socket bound to this address must be opened with IPV6_V6ONLY.
+	//
+	// This is a bind-time socket option rather than a property of an address,
+	// and it lives here because this object is what already travels from the
+	// caller that makes the decision (the listener setup, which knows whether
+	// it is opening one socket for both families or one per family) all the way
+	// down to the bind() call. The alternative was threading a flag through
+	// four wrapper constructors -- CListenSocket, CSocketServerProxy,
+	// CLibSocketServer and the asio impl -- for every socket type. Meaningless,
+	// and ignored, for an IPv4 address.
+	void SetV6Only(bool v6Only);
+	bool IsV6Only() const;
+
 	const class CamuleIPV4Endpoint &GetEndpoint() const;
 	class CamuleIPV4Endpoint &GetEndpoint();
 

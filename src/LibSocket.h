@@ -26,6 +26,7 @@
 #ifndef __LIBSOCKET_H__
 #define __LIBSOCKET_H__
 
+#include "NetworkAddress.h" // Needed for CNetworkAddress
 #include "Types.h"
 #include <memory> // shared_ptr for CAsioUDPSocketImpl ownership
 class amuleIPV4Address;
@@ -127,6 +128,14 @@ public:
 	// Get peer address (better API than wx)
 	wxString GetPeer();
 	uint32 GetPeerInt();
+	// The peer's address with its family intact. GetPeerInt() answers zero for
+	// an IPv6 peer -- the same zero it answers for 0.0.0.0 -- so a caller that
+	// has to tell those apart, such as the ed2k accept path, reads this.
+	const CNetworkAddress &GetPeerAddress() const;
+	// The local end of the connection. For an accepted socket this is the
+	// address the peer reached us on, which is where a wildcard-bound listener
+	// learns which of the machine's own addresses is reachable from outside.
+	CNetworkAddress GetLocalAddress() const;
 
 	// Turn on TCP keepalive with per-socket timings so a half-open
 	// connection (peer gone, FIN/RST lost or never sent) gets torn

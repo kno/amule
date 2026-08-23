@@ -1077,7 +1077,10 @@ void CPartFile::SaveSourceSeeds()
 
 	CClientRefList::iterator it = m_downloadingSourcesList.begin();
 	for (; it != m_downloadingSourcesList.end() && n_sources < MAX_SAVED_SOURCES; ++it) {
-		if (!it->HasLowID()) {
+		// The .part.met.seeds record holds a 32-bit ed2k id, so a native IPv6
+		// source cannot be persisted in it and is skipped rather than written
+		// as a zero that the next start would try to dial.
+		if (!it->HasLowID() && PeerIdentity::HasEd2kWireForm(it->GetClient()->GetAddress())) {
 			source_seeds.push_back(*it);
 			++n_sources;
 		}
@@ -1088,7 +1091,9 @@ void CPartFile::SaveSourceSeeds()
 		if (GetSourceCount() > 0) {
 			SourceSet::reverse_iterator rit = m_SrcList.rbegin();
 			for (; ((rit != m_SrcList.rend()) && (n_sources < MAX_SAVED_SOURCES)); ++rit) {
-				if (!rit->HasLowID()) {
+				if (!rit->HasLowID() &&
+					PeerIdentity::HasEd2kWireForm(
+						rit->GetClient()->GetAddress())) {
 					source_seeds.push_back(*rit);
 					++n_sources;
 				}
@@ -2995,7 +3000,11 @@ CPacket *CPartFile::CreateSrcInfoPacket(
 		int valid =
 			(state == DS_DOWNLOADING) || (state == DS_ONQUEUE && !cur_src->IsRemoteQueueFull());
 
-		if (cur_src->HasLowID() || !valid) {
+		// Same 32-bit wire boundary as CKnownFile::CreateSrcInfoPacket(): an
+		// IPv6 source has no address this packet can carry, so it is omitted
+		// rather than published as 0.0.0.0.
+		if (cur_src->HasLowID() || !PeerIdentity::HasEd2kWireForm(cur_src->GetAddress()) ||
+			!valid) {
 			continue;
 		}
 

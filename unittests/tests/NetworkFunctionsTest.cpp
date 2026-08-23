@@ -1,4 +1,5 @@
 #include <muleunit/test.h>
+#include <AddressFamilyPolicy.h>
 #include <NetworkFunctions.h>
 #include <amuleIPV4Address.h>
 
@@ -195,10 +196,17 @@ TEST(NetworkFunctions, IsGoodIP)
 	}
 }
 
-// amuleIPV4Address is v4-only by contract: the endpoint feeds uint32 IPs
-// and v4 sockets throughout aMule. Name resolution used to hand back
-// whatever the platform resolver ranked first, which on a dual-stack name
-// is routinely an AAAA record -- issue #695.
+// amuleIPV4Address can hold an IPv6 address since
+// amule-dual-stack-reachability -- the name is now historical -- but a *name*
+// still resolves to IPv4. Name resolution used to hand back whatever the
+// platform resolver ranked first, which on a dual-stack name is routinely an
+// AAAA record -- issue #695.
+//
+// That restriction stays, for a different reason than it started with: the
+// callers of this overload bind or dial a single address from a name the user
+// typed, and answering with an IPv6 address for a name that has both would
+// silently move that traffic onto the other family. The dual-stack listeners
+// ask for the family they want explicitly instead of going through a name.
 //
 // Every case here resolves offline: numeric addresses and "localhost" (hosts
 // file) need no DNS server, so the test cannot go flaky when a public zone
@@ -215,7 +223,7 @@ TEST(NetworkFunctions, IsGoodIP)
 // surfaces varies by platform and between runs (round-robin, resolver
 // ordering), so pinning one would be flaky by construction. The invariant is
 // the address family.
-TEST(NetworkFunctions, HostnameResolvesToIPv4Only)
+TEST(NetworkFunctions, HostnameFamilySelection)
 {
 	amuleIPV4Address addr;
 
@@ -223,12 +231,21 @@ TEST(NetworkFunctions, HostnameResolvesToIPv4Only)
 	ASSERT_TRUE(addr.Hostname(wxT("127.0.0.1")));
 	ASSERT_EQUALS(wxString(wxT("127.0.0.1")), addr.IPAddress());
 
-	// An IPv6 literal has no v4 answer, so it must be refused outright
-	// rather than stored in a v4-only endpoint.
+	// An IPv6 literal is now stored as itself: the endpoint can hold one, and
+	// the socket layer opens a v6 socket for it.
 	amuleIPV4Address v6literal;
-	ASSERT_FALSE(v6literal.Hostname(wxT("::1")));
+	ASSERT_TRUE(v6literal.Hostname(wxT("::1")));
+	ASSERT_EQUALS(wxString(wxT("::1")), v6literal.IPAddress());
 	amuleIPV4Address v6global;
-	ASSERT_FALSE(v6global.Hostname(wxT("2001:4860:4860::8888")));
+	ASSERT_TRUE(v6global.Hostname(wxT("2001:4860:4860::8888")));
+
+	// Under a configuration that excludes IPv6 it is refused outright, exactly
+	// as it was before dual stack -- that is what a user restricting the client
+	// to IPv4, or a host with no IPv6 stack, gets.
+	AddressFamilyPolicy::SetConfigured(AddressFamilyPolicy::Families::IPv4Only);
+	amuleIPV4Address v6refused;
+	ASSERT_FALSE(v6refused.Hostname(wxT("::1")));
+	AddressFamilyPolicy::SetConfigured(AddressFamilyPolicy::Families::DualStack);
 
 	// A name that has both A and AAAA records must still yield IPv4.
 	amuleIPV4Address local;

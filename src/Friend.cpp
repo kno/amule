@@ -99,6 +99,13 @@ void CFriend::LinkClient(CClientRef client)
 	if (!client.GetUserHash().IsEmpty()) {
 		m_UserHash = client.GetUserHash();
 	}
+	// emfriends.met stores the last-used address as a 32-bit field, and this
+	// reads it through CClientRef, which amulegui also links -- where the
+	// client's address is an EC-delivered 32-bit tag. So this site stays at the
+	// 32-bit boundary: widening it means widening the persisted file format and
+	// the EC tag, each of which needs its own capability gate. Listed in the
+	// amule-address-widening audit and still unconverted, now for a different
+	// reason than the original one.
 	if (client.GetIP() != 0) {
 		m_dwLastUsedIP = client.GetIP();
 		m_nLastUsedPort = client.GetUserPort();

@@ -111,6 +111,19 @@ public:
 	 * Note that CMuleUDPSocket takes ownership of the packet.
 	 */
 	void SendPacket(CPacket *packet,
+		const CNetworkAddress &target,
+		uint16 port,
+		bool bEncrypt,
+		const uint8 *pachTargetClientHashORKadID,
+		bool bKad,
+		uint32 nReceiverVerifyKey);
+
+	/**
+	 * The 32-bit form, for the callers that hold an ed2k wire field or a Kad
+	 * contact address. Zero means "no target" here, as it does in those fields,
+	 * and the packet is dropped exactly as it was before.
+	 */
+	void SendPacket(CPacket *packet,
 		uint32 IP,
 		uint16 port,
 		bool bEncrypt,
@@ -132,11 +145,21 @@ protected:
 	/**
 	 * This function is called when a packet has been received.
 	 *
-	 * @param addr The address from where data was received.
+	 * @param peer The address the datagram came from, with its family intact
+	 *             and any IPv4-mapped form already collapsed. Present and not
+	 *             unspecified: the receive path rejects those before calling.
+	 * @param port The port the datagram came from.
 	 * @param buffer The data that has been received.
 	 * @param length The length of the data buffer.
+	 *
+	 * Took a @c uint32 until amule-dual-stack-reachability. A datagram from a
+	 * native IPv6 peer had no value to pass here, so it was dropped at the
+	 * socket with a logged reason; the implementations now decide per subsystem
+	 * what they can do with an IPv6 peer, which is not the same answer for ed2k
+	 * and for Kad.
 	 */
-	virtual void OnPacketReceived(uint32 ip, uint16 port, uint8_t *buffer, size_t length) = 0;
+	virtual void OnPacketReceived(
+		const CNetworkAddress &peer, uint16 port, uint8_t *buffer, size_t length) = 0;
 
 	/** See ThrottledControlSocket::SendControlData */
 	SocketSentBytes SendControlData(uint32 maxNumberOfBytesToSend, uint32 minFragSize);
@@ -150,7 +173,7 @@ private:
 	 * @param ip The target ip address.
 	 * @param port The target port.
 	 */
-	bool SendTo(uint8_t *buffer, uint32_t length, uint32_t ip, uint16_t port);
+	bool SendTo(uint8_t *buffer, uint32_t length, const CNetworkAddress &target, uint16_t port);
 
 	/**
 	 * Creates a new socket.
@@ -187,7 +210,11 @@ private:
 		CPacket *packet;
 		//! The timestamp of when the packet was queued.
 		uint64 time;
-		//! Target IP address.
+		//! Target address, in either family.
+		CNetworkAddress target;
+		//! The target's 32-bit form, or zero when it has none. Kept beside the
+		//! address because the obfuscation and Kad verify-key derivations are
+		//! 32-bit by protocol and are guarded on this being non-zero.
 		uint32 IP;
 		//! Target port.
 		uint16 port;

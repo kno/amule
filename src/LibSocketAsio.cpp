@@ -444,6 +444,12 @@ public:
 		*(ip::tcp::endpoint *)this = ep;
 		return *this;
 	}
+
+	// Bind-time IPV6_V6ONLY for a socket bound to this endpoint. See
+	// amuleIPV4Address::SetV6Only() for why the flag travels with the address.
+	// Not touched by the endpoint assignments above: assigning an asio endpoint
+	// replaces the address, not the caller's decision about the socket.
+	bool m_v6Only = false;
 };
 
 // See the comment above CAsioUDPSocketImpl for the rationale on enable_shared_from_this:
@@ -869,6 +875,26 @@ public:
 	const wxChar *GetIP() const { return m_IP; }
 	uint16 GetPort() const { return m_port; }
 
+	const CNetworkAddress &GetPeerAddress() const { return m_peerAddress; }
+
+	/**
+	 * The local end of the connection.
+	 *
+	 * For an accepted socket this is the address the peer actually reached us
+	 * on -- which for IPv6 is the only trustworthy source of "our IPv6
+	 * address": the listener is bound to the wildcard, and the machine may have
+	 * several addresses of which only some are routable from outside.
+	 */
+	CNetworkAddress GetLocalAddress() const
+	{
+		error_code ec;
+		const ip::tcp::endpoint local = m_socket->local_endpoint(ec);
+		if (ec) {
+			return CNetworkAddress::Absent();
+		}
+		return CNetworkAddress(local.address());
+	}
+
 	ip::tcp::socket &GetAsioSocket() { return *m_socket; }
 
 	bool GetProxyState() const { return m_proxyState; }
@@ -1260,7 +1286,16 @@ private:
 		m_IPstring = adr.IPAddress();
 		m_IP = m_IPstring.c_str();
 		m_IPint = StringIPtoUint32(m_IPstring);
+		// Kept alongside the 32-bit form rather than replacing it: the ed2k
+		// core still keys clients on m_IPint, but an IPv6 peer has no such
+		// value, and StringIPtoUint32() answers zero for it -- the same zero
+		// it answers for 0.0.0.0 and for an unparsable string. The peer's
+		// actual address has to survive the trip for the accept path to be
+		// able to tell those three apart.
+		m_peerAddress = adr.GetAddress();
 	}
+
+
 
 	// Atomic so OnWrapperGone() (called from the wrapper's dtor on any
 	// thread) and the strand-side load in Destroy() can both touch it
@@ -1270,8 +1305,9 @@ private:
 	// remote IP
 	wxString m_IPstring; // as String (use nowhere because of threading!)
 	const wxChar *m_IP;  // as char*  (use in debug logs)
-	uint32 m_IPint;      // as int
-	uint16 m_port;       // remote port
+	uint32 m_IPint;      // as int (zero for an IPv6 peer -- see SetIp)
+	CNetworkAddress m_peerAddress; // family and all
+	uint16 m_port;                 // remote port
 	bool m_OK;
 	int m_ErrorCode;
 	bool m_blocksRead;
@@ -1359,6 +1395,16 @@ wxString CLibSocket::GetPeer()
 uint32 CLibSocket::GetPeerInt()
 {
 	return m_aSocket->GetPeerInt();
+}
+
+const CNetworkAddress &CLibSocket::GetPeerAddress() const
+{
+	return m_aSocket->GetPeerAddress();
+}
+
+CNetworkAddress CLibSocket::GetLocalAddress() const
+{
+	return m_aSocket->GetLocalAddress();
 }
 
 void CLibSocket::Destroy()
@@ -1497,6 +1543,30 @@ public:
 				m_bindInterfaceOverride ? m_bindInterface : s_bindToInterface,
 				false);
 			set_option(ip::tcp::acceptor::reuse_address(true));
+			// IPV6_V6ONLY, for IPv6 acceptors only. Off means this one
+			// socket also accepts IPv4 peers, which arrive in mapped
+			// form; on means it serves IPv6 exclusively and a separate
+			// IPv4 acceptor takes the other family. Both arrangements
+			// are used -- see DualStackListeners.h -- and the platform
+			// default is not the same everywhere, so it is always set
+			// explicitly rather than inherited.
+			if (m_address.GetEndpoint().address().is_v6()) {
+				error_code v6Ec;
+				set_option(ip::v6_only(m_address.IsV6Only()), v6Ec);
+				if (v6Ec) {
+					AddDebugLogLineN(logAsio,
+						CFormat("CAsioSocketServerImpl could not set IPV6_V6ONLY=%d "
+							"on %s: %s") %
+							(m_address.IsV6Only() ? 1 : 0) %
+							m_address.IPAddress() % v6Ec.message());
+					// A platform that will not let the option be set cannot
+					// be trusted to have the arrangement the caller asked
+					// for. Failing here is what makes the caller fall back
+					// to one socket per family instead of silently running
+					// with a socket that serves the wrong set.
+					throw system_error(v6Ec);
+				}
+			}
 			bind(m_address.GetEndpoint());
 			listen();
 			StartAccept();
@@ -1956,6 +2026,13 @@ private:
 			// without binding".
 			m_socket = new ip::udp::socket(s_io_service);
 			m_socket->open(endpoint.protocol());
+			// Same explicit IPV6_V6ONLY decision as the TCP acceptor: with
+			// one UDP socket per family on the same port, an unrestricted
+			// IPv6 socket would also claim mapped IPv4 datagrams and the two
+			// bindings would contend for them.
+			if (endpoint.address().is_v6()) {
+				m_socket->set_option(ip::v6_only(m_address.IsV6Only()));
+			}
 			// SO_REUSEADDR so a post-suspend rebind (DestroySocket +
 			// CreateSocket in CMuleUDPSocket::OnReceive when a read
 			// callback returns an error) doesn't hit EADDRINUSE while
@@ -2231,9 +2308,26 @@ bool amuleIPV4Address::Hostname(const wxString &name)
 	// Belt and braces: the restricted query above should only ever yield
 	// entries of the permitted family, but scan for one rather than trusting
 	// begin() the way the unrestricted query did.
-	for (const auto &entry : endpoint_iterator) {
-		const CNetworkAddress resolved(entry.endpoint().address());
-		if (AddressFamilyPolicy::Permits(resolved)) {
+	//
+	// Under a dual-stack configuration the query is unrestricted, so both
+	// families come back and their order is the platform resolver's choice --
+	// IPv6 routinely first, on Windows even for "localhost". IPv4 is preferred
+	// here in that case, and deliberately: every caller of this overload binds
+	// or dials a single address from a name the user typed (the bind address, a
+	// server hostname), and answering with an IPv6 address for a name that has
+	// both would silently move that traffic onto the other family. The
+	// dual-stack listeners ask for the family they want explicitly instead of
+	// going through a name.
+	for (int pass = 0; pass < 2; ++pass) {
+		for (const auto &entry : endpoint_iterator) {
+			const CNetworkAddress resolved(entry.endpoint().address());
+			if (!AddressFamilyPolicy::Permits(resolved)) {
+				continue;
+			}
+			const bool isV4 = resolved.IsIPv4() || resolved.IsIPv4Mapped();
+			if (pass == 0 && !isV4) {
+				continue;
+			}
 			m_endpoint->address(resolved.Get());
 			AddDebugLogLineN(
 				logAsio, CFormat("Hostname(\"%s\") resolved to %s") % name % IPAddress());
@@ -2280,6 +2374,32 @@ bool amuleIPV4Address::AnyAddress()
 	m_endpoint->address(AddressFamilyPolicy::AnyAddress());
 	AddDebugLogLineN(logAsio, CFormat("AnyAddress: set to %s") % IPAddress());
 	return true;
+}
+
+bool amuleIPV4Address::SetAddress(const CNetworkAddress &address)
+{
+	if (address.IsAbsent()) {
+		return false;
+	}
+	m_endpoint->address(address.Get());
+	return true;
+}
+
+CNetworkAddress amuleIPV4Address::GetAddress() const
+{
+	// Present even for a wildcard: a listener legitimately binds one, and the
+	// family of that wildcard is exactly what the caller is asking about.
+	return CNetworkAddress(m_endpoint->address());
+}
+
+void amuleIPV4Address::SetV6Only(bool v6Only)
+{
+	m_endpoint->m_v6Only = v6Only;
+}
+
+bool amuleIPV4Address::IsV6Only() const
+{
+	return m_endpoint->m_v6Only;
 }
 
 const CamuleIPV4Endpoint &amuleIPV4Address::GetEndpoint() const

@@ -151,15 +151,22 @@ private:
 };
 
 /**
- * The CT_MOD_MISCOPTIONS word aMule puts in its own handshake.
+ * The part of the CT_MOD_MISCOPTIONS word that aMule advertises
+ * unconditionally.
  *
- * Zero, and deliberately so: none of the five features exists in this tree
- * yet. Recognising a capability and implementing it are separate changes, and
- * advertising one aMule does not have is worse than advertising nothing --
- * the peer opens a handshake that cannot complete and neither side logs a
- * reason. Each bit turns on in the change that ships its transport.
+ * Zero, and deliberately so. Recognising a capability and implementing it are
+ * separate changes, and advertising one aMule does not have is worse than
+ * advertising nothing -- the peer opens a handshake that cannot complete and
+ * neither side logs a reason. Each bit turns on in the change that ships its
+ * transport.
  *
- * Because the word is zero, no CT_MOD_MISCOPTIONS tag is emitted at all: an
+ * Not the whole word on the wire any more: amule-dual-stack-reachability sets
+ * MOD_MISCOPT_IPV6 at runtime, and only once an inbound IPv6 connection has
+ * verified that the claim is true. That decision cannot be a constant, so it
+ * lives in DualStack::CLocalReachability::AdvertisedModMiscOptions() -- see
+ * src/IPv6Reachability.h -- and this stays the floor it starts from.
+ *
+ * When the whole word is zero, no CT_MOD_MISCOPTIONS tag is emitted at all: an
  * absent tag and an all-zero one mean the same thing to eMuleAI, and the
  * absent one costs no bytes.
  */

@@ -1789,6 +1789,14 @@ void CServerConnectRem::HandlePacket(const CECPacket *packet)
 	theApp->m_clientID = tag->GetClientId();
 	tag->GetKadID(theApp->m_kadID);
 
+	// A daemon that predates EC_TAG_LOCAL_REACHABILITY sends no such tag. That
+	// is a third state, not "nothing is listening", so the mirror is only
+	// replaced when the tag is actually there.
+	uint8 reachability = 0;
+	if (tag->GetLocalReachability(reachability)) {
+		theApp->m_reachability = DualStack::CLocalReachability::FromECWord(reachability);
+	}
+
 	if (tag->IsConnectedED2K()) {
 		const CECTag *srvtag = tag->GetTagByName(EC_TAG_SERVER);
 		if (srvtag) {

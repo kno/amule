@@ -37,7 +37,10 @@
 #include <ec/cpp/ECID.h>      // Needed for CECID
 #include "BitVector.h"        // Needed for BitVector
 #include "ClientRef.h"        // Needed for debug defines
-#include "PeerCapabilities.h" // Needed for CPeerCapabilities
+#include "NetworkAddress.h"    // Needed for CNetworkAddress
+#include "PeerCapabilities.h"  // Needed for CPeerCapabilities
+#include "PeerFamilyAttempts.h" // Needed for DualStack::CPeerConnectAttempts
+#include "PeerIdentity.h"       // Needed for PeerIdentity::IsDirectlyReachable
 
 #include <map>
 #include <wx/thread.h> // Needed for wxMutex
@@ -192,19 +195,81 @@ public:
 
 	bool Disconnected(const wxString &strReason, bool bFromSocket = false);
 	bool TryToConnect(bool bIgnoreMaxCon = false);
+	/**
+	 * Starts a fresh connection sequence: rebuilds the peer's candidate
+	 * addresses and dials the first of them.
+	 */
 	bool Connect();
+	/** Dials the candidate the attempt accounting is currently on. */
+	bool ConnectToCurrentCandidate();
 	void ConnectionEstablished();
 	const wxString &GetUserName() const { return m_Username; }
-	// Only use this when you know the real IP or when your clearing it.
+	/**
+	 * Sets the peer's address from a 32-bit ed2k-order field, in which zero
+	 * means "address unknown". Only use this when you know the real IP or when
+	 * you are clearing it.
+	 *
+	 * Prefer SetAddress() wherever the caller has a real address: this overload
+	 * exists for the ed2k packet fields and the server protocol, which carry
+	 * 32 bits and nothing else.
+	 */
 	void SetIP(uint32 val);
-	uint32 GetIP() const { return m_dwUserIP; }
-	bool HasLowID() const { return IsLowID(m_nUserIDHybrid); }
-	wxString GetFullIP() const { return Uint32toStringIP(m_FullUserIP); }
+
+	/**
+	 * Sets the peer's address, whatever family it is in.
+	 *
+	 * This is the widened form of SetIP(), and the one an inbound connection
+	 * uses: a socket knows the peer's address with its family intact, and the
+	 * 32-bit form of a native IPv6 peer is nothing at all.
+	 */
+	void SetAddress(const CNetworkAddress &address);
+
+	//! The peer's address. Absent when unknown -- which is not the same as
+	//! 0.0.0.0, and no longer spelled the same way.
+	const CNetworkAddress &GetAddress() const { return m_userAddress; }
+
+	/**
+	 * The peer's address narrowed to a 32-bit ed2k-order field.
+	 *
+	 * @return Zero when the peer has no address @b and when it has one with no
+	 *         32-bit form, i.e. a native IPv6 peer. Those two cases are not
+	 *         distinguishable here and this signature cannot report either, so
+	 *         it is for the edges that still speak 32 bits -- Kad, the ed2k
+	 *         wire, the EC tags and the GUI row structs. Anything that decides
+	 *         something about the peer should use GetAddress().
+	 */
+	uint32 GetIP() const { return m_userAddress.ToIPv4NetworkOrderOrZero(); }
+
+	/**
+	 * Whether this peer needs a callback to be reached.
+	 *
+	 * LowID is an ed2k concept: a server issues a low ID to a client it could
+	 * not reach. A native IPv6 peer has no ed2k ID at all, so the ID field says
+	 * nothing about it -- and left to the ID alone, an IPv6 peer would read as
+	 * firewalled and be sent down the callback path, which goes through an ed2k
+	 * server or a Kad buddy and so cannot carry its address. A globally
+	 * routable IPv6 address is direct evidence of the opposite, so it decides.
+	 * See PeerIdentity::IsDirectlyReachable().
+	 */
+	bool HasLowID() const
+	{
+		return IsLowID(m_nUserIDHybrid) && !PeerIdentity::IsDirectlyReachable(m_userAddress) &&
+		       !PeerIdentity::IsDirectlyReachable(m_connectAddress);
+	}
+
+	//! The peer's address as text, in its own family's notation. A peer with no
+	//! address prints as "<absent>" rather than as 0.0.0.0 -- the two used to be
+	//! the same string, which is what made an unknown address look like a real
+	//! one in every log line.
+	wxString GetFullIP() const { return wxString(m_fullUserAddress.ToString()); }
 	// The numeric form of GetFullIP(), for callers that do not need the string.
 	// Named to be hard to confuse with it: the GeoIP resolver overloads on the
 	// argument type, so passing the string variant compiles and silently takes
-	// the uncached path.
-	uint32 GetFullIPNumeric() const { return m_FullUserIP; }
+	// the uncached path. Zero for a native IPv6 peer, which the GeoIP databases
+	// this build reads cannot resolve anyway.
+	uint32 GetFullIPNumeric() const { return m_fullUserAddress.ToIPv4NetworkOrderOrZero(); }
+	//! The full address with its family intact, for callers that can use it.
+	const CNetworkAddress &GetFullAddress() const { return m_fullUserAddress; }
 	// Country ISO code accessors (#439). Unconditional (libmaxminddb-free) so the
 	// shared client-list drawing code compiles regardless of the resolver gate.
 	// Unused by monolithic amule, which resolves country locally via
@@ -216,7 +281,11 @@ public:
 		m_countryCode = code;
 		m_countryFromCore = true;
 	}
-	uint32 GetConnectIP() const { return m_nConnectIP; }
+	//! The address to dial: the supposed one, or the real one once a connection
+	//! has been established. Zero from the 32-bit accessor for a native IPv6
+	//! peer, so the connect path uses GetConnectAddress().
+	uint32 GetConnectIP() const { return m_connectAddress.ToIPv4NetworkOrderOrZero(); }
+	const CNetworkAddress &GetConnectAddress() const { return m_connectAddress; }
 	uint32 GetUserIDHybrid() const { return m_nUserIDHybrid; }
 	void SetUserIDHybrid(uint32 val);
 	uint16_t GetUserPort() const { return m_nUserPort; }
@@ -639,13 +708,35 @@ public:
 	//! implements none of these features yet and advertises none of them
 	//! back. See src/PeerCapabilities.h.
 	const CPeerCapabilities &GetModCapabilities() const { return m_modCapabilities; }
-	//! The peer's own IPv6 address from CT_MOD_IP_V6, big-endian, 16 bytes.
-	//! Only meaningful while HasModIPv6() is true.
-	const uint8_t *GetModIPv6() const { return m_modIPv6; }
-	bool HasModIPv6() const { return m_hasModIPv6; }
+	/**
+	 * The peer's own IPv6 address from CT_MOD_IP_V6.
+	 *
+	 * Was a raw uint8[16] left by amule-peer-capability-recognition, which had
+	 * nowhere to route it. Now the internal address type, because this is the
+	 * address the outbound fallback dials: keeping it as sixteen loose bytes
+	 * would mean re-deriving its family, its mapped-ness and its printable form
+	 * at every one of those sites.
+	 */
+	const CNetworkAddress &GetModIPv6() const { return m_modIPv6; }
+	bool HasModIPv6() const { return m_modIPv6.IsPresent(); }
 	//! The peer's server IPv6 address from CT_MOD_SVR_IP_V6.
-	const uint8_t *GetModServerIPv6() const { return m_modServerIPv6; }
-	bool HasModServerIPv6() const { return m_hasModServerIPv6; }
+	const CNetworkAddress &GetModServerIPv6() const { return m_modServerIPv6; }
+	bool HasModServerIPv6() const { return m_modServerIPv6.IsPresent(); }
+
+	/**
+	 * Advances to the peer's next advertised address family after a connect
+	 * failure, and starts a connection to it.
+	 *
+	 * @return True when another family was tried, in which case the caller must
+	 *         NOT treat this failure as the peer being unreachable: the spec
+	 *         requires that a peer advertising two families is not marked dead
+	 *         until both have failed.
+	 */
+	bool RetryNextAddressFamily();
+
+	//! The address the current connection attempt is aimed at. Absent until a
+	//! connection has been attempted, and for a peer with no usable address.
+	const CNetworkAddress &GetCurrentConnectAddress() const { return m_familyAttempts.Current(); }
 	// Kad added by me
 	bool SendBuddyPing();
 
@@ -802,8 +893,15 @@ private:
 	void SendFirewallCheckUDPRequest();
 	void ClearHelloProperties(); // eMule 0.42
 
-	uint32 m_dwUserIP;
-	uint32 m_nConnectIP; // holds the supposed IP or (after we had a connection) the real IP
+	//! The peer's address. Was a 32-bit ed2k-order field in which zero meant
+	//! both 0.0.0.0 and "unknown", which is why an inbound IPv6 peer could be
+	//! accepted and then not identified: it had no 32-bit form to be indexed
+	//! under. See PeerIdentity.h.
+	CNetworkAddress m_userAddress;
+	//! The supposed address or (after we had a connection) the real one.
+	CNetworkAddress m_connectAddress;
+	//! Still 32-bit: an ed2k server is IPv4, and this field is written to and
+	//! read from the ed2k server protocol unchanged.
 	uint32 m_dwServerIP;
 	uint32 m_nUserIDHybrid;
 	uint16_t m_nUserPort;
@@ -817,7 +915,7 @@ private:
 	uint8 m_byDataCompVer;
 	bool m_bEmuleProtocol;
 	wxString m_Username;
-	uint32 m_FullUserIP;
+	CNetworkAddress m_fullUserAddress;
 	// EC-delivered peer country (remote GUI only; #439). See the accessors.
 	wxString m_countryCode;
 	bool m_countryFromCore = false;
@@ -967,10 +1065,10 @@ private:
 
 	/* eMuleAI vendor capabilities, parsed from the CT_MOD_* hello tags */
 	CPeerCapabilities m_modCapabilities;
-	uint8_t m_modIPv6[16];
-	uint8_t m_modServerIPv6[16];
-	bool m_hasModIPv6;
-	bool m_hasModServerIPv6;
+	CNetworkAddress m_modIPv6;
+	CNetworkAddress m_modServerIPv6;
+	//! Outbound attempt accounting across the families this peer advertises.
+	DualStack::CPeerConnectAttempts m_familyAttempts;
 
 	uint64 m_dwLastBuddyPingPongTime;
 	uint64_t m_dwDirectCallbackTimeout;

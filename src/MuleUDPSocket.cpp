@@ -151,8 +151,13 @@ void CMuleUDPSocket::OnReceive(int errorCode)
 	// string it could not parse, so the peer address is taken through the
 	// address type as well: the reject below can then say which of the two
 	// happened instead of testing one value that means either.
-	const CNetworkAddress peer = CNetworkAddress::FromString(addr.IPAddress().ToStdString());
-	const uint32 ip = StringIPtoUint32(addr.IPAddress());
+	// Mapped forms are normalised here, once, so everything below -- the ban
+	// check, the filter and the ed2k handlers -- sees the IPv4 address the peer
+	// really is rather than its ::ffff: spelling.
+	const CNetworkAddress peer =
+		CNetworkAddress::FromString(addr.IPAddress().ToStdString()).Unmapped();
+	uint32 ip = 0;
+	peer.ToIPv4NetworkOrder(ip);
 	const uint16 port = addr.Service();
 	if (error) {
 		OnReceiveError(lastError, ip, port);
@@ -171,14 +176,21 @@ void CMuleUDPSocket::OnReceive(int errorCode)
 	} else if (!port) {
 		// wxFAIL;
 		AddDebugLogLineN(logMuleUDP, "Unknown port receiving a UDP packet! Ignoring");
-	} else if (theApp->clientlist->IsBannedClient(
-			   CNetworkAddress::FromIPv4NetworkOrderOrAbsent(ip))) {
+	} else if (theApp->clientlist->IsBannedClient(peer)) {
+		// The ban list is keyed on the address now, so an IPv6 peer is checked
+		// against it as itself rather than being unbannable.
 		AddDebugLogLineN(logMuleUDP, m_name + ": Dropped packet from banned IP " + addr.IPAddress());
 	} else {
+		// A datagram from a native IPv6 peer used to be dropped right here: the
+		// handlers below identified a peer by its 32-bit address and this one
+		// has none, and a fabricated zero was refused on purpose. They now take
+		// the address, so the peer is handled -- each handler deciding for
+		// itself what it can do for a family its subsystem may not speak. See
+		// PeerIdentity::ClassifyUdpPeer().
 		AddDebugLogLineN(logMuleUDP,
 			(m_name + ": Packet received (")
 				<< addr.IPAddress() << ":" << port << "): " << length << "b");
-		OnPacketReceived(ip, port, (uint8_t *)buffer, length);
+		OnPacketReceived(peer, port, (uint8_t *)buffer, length);
 	}
 }
 
@@ -210,37 +222,67 @@ void CMuleUDPSocket::SendPacket(CPacket *packet,
 	bool bKad,
 	uint32 nReceiverVerifyKey)
 {
+	// Zero has always meant "no target" in the 32-bit fields this overload
+	// serves, and the conversion resolves that overload at the boundary. The
+	// address form then rejects it, as `!IP` did here.
+	SendPacket(packet,
+		CNetworkAddress::FromIPv4NetworkOrderOrAbsent(IP),
+		port,
+		bEncrypt,
+		pachTargetClientHashORKadID,
+		bKad,
+		nReceiverVerifyKey);
+}
+
+void CMuleUDPSocket::SendPacket(CPacket *packet,
+	const CNetworkAddress &target,
+	uint16 port,
+	bool bEncrypt,
+	const uint8 *pachTargetClientHashORKadID,
+	bool bKad,
+	uint32 nReceiverVerifyKey)
+{
 	wxCHECK_RET(packet, "Invalid packet.");
 	/*wxCHECK_RET(port, "Invalid port.");
 	wxCHECK_RET(IP, "Invalid IP.");
 	*/
 
-	if (!port || !IP) {
+	// Absent and unspecified are both refused, exactly as `!IP` refused both.
+	if (!port || target.IsAbsent() || target.IsUnspecified()) {
 		return;
 	}
+
+	const wxString targetText = wxString(target.ToString()) + ":" + (CFormat("%u") % port).GetString();
 
 	if (!Ok()) {
 		AddDebugLogLineN(logMuleUDP,
 			(m_name + ": Packet discarded, socket not Ok (")
-				<< Uint32_16toStringIP_Port(IP, port) << "): " << packet->GetPacketSize()
-				<< "b");
+				<< targetText << "): " << packet->GetPacketSize() << "b");
 		delete packet;
 
 		return;
 	}
 
 	AddDebugLogLineN(logMuleUDP,
-		(m_name + ": Packet queued (")
-			<< Uint32_16toStringIP_Port(IP, port) << "): " << packet->GetPacketSize() << "b");
+		(m_name + ": Packet queued (") << targetText << "): " << packet->GetPacketSize() << "b");
 
 	UDPPack newpending;
-	newpending.IP = IP;
+	newpending.target = target;
+	// Zero when the target has no 32-bit form, i.e. a native IPv6 peer. Every
+	// use of it below tests it first.
+	newpending.IP = target.ToIPv4NetworkOrderOrZero();
 	newpending.port = port;
 	newpending.packet = packet;
 	newpending.time = GetTickCount64();
+	// The ed2k UDP obfuscation key is derived from a 32-bit address on both
+	// sides (CEncryptedDatagramSocket), so a native IPv6 target cannot derive
+	// the same key and would read an obfuscated datagram as junk. Sending it in
+	// the clear is the only thing the protocol allows for that peer; a peer
+	// requiring obfuscation is one that could not have reached us over IPv6 in
+	// the first place.
 	newpending.bEncrypt = bEncrypt &&
 			      (pachTargetClientHashORKadID != NULL || (bKad && nReceiverVerifyKey != 0)) &&
-			      thePrefs::IsClientCryptLayerSupported();
+			      thePrefs::IsClientCryptLayerSupported() && newpending.IP != 0;
 	newpending.bKad = bKad;
 	newpending.nReceiverVerifyKey = nReceiverVerifyKey;
 	if (newpending.bEncrypt && pachTargetClientHashORKadID != NULL) {
@@ -286,7 +328,7 @@ SocketSentBytes CMuleUDPSocket::SendControlData(uint32 maxNumberOfBytesToSend, u
 					(item.bKad ? Kademlia::CPrefs::GetUDPVerifyKey(item.IP) : 0));
 			}
 
-			if (SendTo(sendbuffer, len, item.IP, item.port)) {
+			if (SendTo(sendbuffer, len, item.target, item.port)) {
 				sentBytes += len;
 				m_queue.pop_front();
 				delete packet;
@@ -309,7 +351,8 @@ SocketSentBytes CMuleUDPSocket::SendControlData(uint32 maxNumberOfBytesToSend, u
 	return returnVal;
 }
 
-bool CMuleUDPSocket::SendTo(uint8_t *buffer, uint32_t length, uint32_t ip, uint16_t port)
+bool CMuleUDPSocket::SendTo(
+	uint8_t *buffer, uint32_t length, const CNetworkAddress &target, uint16_t port)
 {
 	// Just pretend that we sent the packet in order to avoid infinite loops.
 	if (!(m_socket && m_socket->IsOk())) {
@@ -317,8 +360,12 @@ bool CMuleUDPSocket::SendTo(uint8_t *buffer, uint32_t length, uint32_t ip, uint1
 	}
 
 	amuleIPV4Address addr;
-	addr.Hostname(ip);
+	// SetAddress() keeps the family, where Hostname(uint32) could only ever
+	// produce an IPv4 endpoint -- which is why a reply to an IPv6 peer had
+	// nowhere to go before.
+	addr.SetAddress(target);
 	addr.Service(port);
+	const wxString targetText = wxString(target.ToString()) + ":" + (CFormat("%u") % port).GetString();
 
 	// We better clear this flag here, status might have been changed
 	// between the U.B.T. addition and the real sending happening later
@@ -335,12 +382,11 @@ bool CMuleUDPSocket::SendTo(uint8_t *buffer, uint32_t length, uint32_t ip, uint1
 		// the packet rather than risk entering an infinite loop.
 		AddLogLineN(
 			CFormat(_("WARNING! %s: Packet to %s discarded due to error (%s) while sending.")) %
-			m_name % Uint32_16toStringIP_Port(ip, port) % error);
+			m_name % targetText % error);
 		sent = true;
 	} else {
 		AddDebugLogLineN(logMuleUDP,
-			(m_name + ": Packet sent (")
-				<< Uint32_16toStringIP_Port(ip, port) << "): " << length << "b");
+			(m_name + ": Packet sent (") << targetText << "): " << length << "b");
 		sent = true;
 	}
 

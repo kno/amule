@@ -110,10 +110,13 @@ void CClientList::AddClient(CUpDownClient *toadd)
 		m_clientList.insert(IDMapPair(toadd->GetUserIDHybrid(),
 			CCLIENTREF(toadd, "CClientList::AddClient m_clientList.insert")));
 
-		// We only add the IP if it is valid
-		if (toadd->GetIP()) {
-			m_ipList.insert(IDMapPair(
-				toadd->GetIP(), CCLIENTREF(toadd, "CClientList::AddClient m_ipList.insert")));
+		// We only add the address if we have one. `if (toadd->GetIP())` used to
+		// mean that, and no longer can: a native IPv6 peer's 32-bit form is
+		// zero, so it would have been read as "no address" and left unindexed --
+		// which is exactly the drop this change exists to remove.
+		if (PeerIdentity::IsIndexable(toadd->GetAddress())) {
+			m_ipList.insert(AddressMapPair(PeerIdentity::IndexKey(toadd->GetAddress()),
+				CCLIENTREF(toadd, "CClientList::AddClient m_ipList.insert")));
 		}
 
 		// We only add the hash if it is valid
@@ -154,24 +157,22 @@ void CClientList::UpdateClientID(CUpDownClient *client, uint32 newID)
 
 void CClientList::UpdateClientIP(CUpDownClient *client, const CNetworkAddress &newIP)
 {
-	// Sanity check. The client still stores a 32-bit ed2k field, so the
-	// comparison happens on this side of the boundary: an absent new address
-	// compares equal to a client that has no address, which is exactly the
-	// "nothing to do" case the old `GetIP() == newIP` covered.
-	if ((client->GetClientState() != CS_LISTED) ||
-		(CNetworkAddress::FromIPv4NetworkOrderOrAbsent(client->GetIP()) == newIP)) {
+	// Sanity check. The client now stores the address itself, so this is a
+	// direct comparison: an absent new address compares equal to a client that
+	// has no address, which is the "nothing to do" case the old
+	// `GetIP() == newIP` covered.
+	if ((client->GetClientState() != CS_LISTED) || (client->GetAddress() == newIP)) {
 		return;
 	}
 
 	// Remove the old IP entry
 	RemoveIPFromList(client);
 
-	// Explicit absence check, not `if (newIP)`. An address that has no 32-bit
-	// form is not recordable in m_ipList either, and ToIPv4NetworkOrder()
-	// reports that rather than fabricating a key.
-	uint32 key = 0;
-	if (newIP.ToIPv4NetworkOrder(key)) {
-		m_ipList.insert(IDMapPair(key, CCLIENTREF(client, "CClientList::UpdateClientIP")));
+	// Explicit absence check, not `if (newIP)`. Every present address has a key
+	// now, whatever family it is in; absence still has none.
+	if (PeerIdentity::IsIndexable(newIP)) {
+		m_ipList.insert(AddressMapPair(PeerIdentity::IndexKey(newIP),
+			CCLIENTREF(client, "CClientList::UpdateClientIP")));
 	}
 }
 
@@ -217,12 +218,13 @@ void CClientList::RemoveIPFromList(CUpDownClient *client)
 	// Check if we need to look for the IP entry. Explicit absence check rather
 	// than `if (!client->GetIP())`: UpdateClientIP() never records an absent
 	// address, so there can be no entry to remove for one.
-	if (CNetworkAddress::FromIPv4NetworkOrderOrAbsent(client->GetIP()).IsAbsent()) {
+	if (!PeerIdentity::IsIndexable(client->GetAddress())) {
 		return;
 	}
 
 	// Remove the IP entry
-	std::pair<IDMap::iterator, IDMap::iterator> range = m_ipList.equal_range(client->GetIP());
+	std::pair<AddressMap::iterator, AddressMap::iterator> range =
+		m_ipList.equal_range(PeerIdentity::IndexKey(client->GetAddress()));
 
 	for (; range.first != range.second; ++range.first) {
 		if (client == range.first->second.GetClient()) {
@@ -257,9 +259,10 @@ void CClientList::RemoveHashFromList(CUpDownClient *client)
 CUpDownClient *CClientList::FindMatchingClient(CUpDownClient *client)
 {
 	typedef std::pair<IDMap::const_iterator, IDMap::const_iterator> IDMapIteratorPair;
+	typedef std::pair<AddressMap::const_iterator, AddressMap::const_iterator> AddressMapIteratorPair;
 	wxCHECK(client, NULL);
 
-	const uint32 userIP = client->GetIP();
+	const CNetworkAddress userAddress = PeerIdentity::IndexKey(client->GetAddress());
 	const uint32 userID = client->GetUserIDHybrid();
 	const uint16 userPort = client->GetUserPort();
 	const uint16 userKadPort = client->GetKadPort();
@@ -267,12 +270,12 @@ CUpDownClient *CClientList::FindMatchingClient(CUpDownClient *client)
 	// LowID clients need a different set of checks
 	if (client->HasLowID()) {
 		// User is firewalled ... Must do two checks.
-		if (userIP && (userPort || userKadPort)) {
-			IDMapIteratorPair range = m_ipList.equal_range(userIP);
+		if (userAddress.IsPresent() && (userPort || userKadPort)) {
+			AddressMapIteratorPair range = m_ipList.equal_range(userAddress);
 
 			for (; range.first != range.second; ++range.first) {
 				CUpDownClient *other = range.first->second.GetClient();
-				wxASSERT(userIP == other->GetIP());
+				wxASSERT(userAddress == PeerIdentity::IndexKey(other->GetAddress()));
 
 				if (userPort && (userPort == other->GetUserPort())) {
 					return other;
@@ -300,24 +303,16 @@ CUpDownClient *CClientList::FindMatchingClient(CUpDownClient *client)
 			}
 		}
 	} else if (userPort || userKadPort) {
-		// Check by IP first, then by ID
-		struct
-		{
-			const IDMap &map;
-			uint32 value;
-		} toCheck[] = { { m_ipList, userIP }, { m_clientList, userID } };
-
-		for (size_t i = 0; i < itemsof(toCheck); ++i) {
-			if (toCheck[i].value == 0) {
-				// We may not have both (or any) of these values.
-				continue;
-			}
-
-			IDMapIteratorPair range = toCheck[i].map.equal_range(toCheck[i].value);
+		// Check by address first, then by ID. The two indexes are keyed on
+		// different types now -- an address and an ed2k ID are not the same kind
+		// of value and never were -- so the pair is walked as two passes rather
+		// than as one table over a shared key type.
+		if (userAddress.IsPresent()) {
+			AddressMapIteratorPair range = m_ipList.equal_range(userAddress);
 
 			if (userPort) {
-				IDMap::const_iterator it = range.first;
-				for (; it != range.second; ++it) {
+				for (AddressMap::const_iterator it = range.first; it != range.second;
+					++it) {
 					if (userPort == it->second.GetUserPort()) {
 						return it->second.GetClient();
 					}
@@ -325,8 +320,28 @@ CUpDownClient *CClientList::FindMatchingClient(CUpDownClient *client)
 			}
 
 			if (userKadPort) {
-				IDMap::const_iterator it = range.first;
-				for (; it != range.second; ++it) {
+				for (AddressMap::const_iterator it = range.first; it != range.second;
+					++it) {
+					if (userKadPort == it->second.GetClient()->GetKadPort()) {
+						return it->second.GetClient();
+					}
+				}
+			}
+		}
+
+		if (userID != 0) {
+			IDMapIteratorPair range = m_clientList.equal_range(userID);
+
+			if (userPort) {
+				for (IDMap::const_iterator it = range.first; it != range.second; ++it) {
+					if (userPort == it->second.GetUserPort()) {
+						return it->second.GetClient();
+					}
+				}
+			}
+
+			if (userKadPort) {
+				for (IDMap::const_iterator it = range.first; it != range.second; ++it) {
 					if (userKadPort == it->second.GetClient()->GetKadPort()) {
 						return it->second.GetClient();
 					}
@@ -386,7 +401,7 @@ bool CClientList::AttachToAlreadyKnown(CUpDownClient **client, CClientTCPSocket 
 		if (sender) {
 			if (found_client->GetSocket()) {
 				if (found_client->IsConnected() &&
-					(found_client->GetIP() != tocheck->GetIP() ||
+					(found_client->GetAddress() != tocheck->GetAddress() ||
 						found_client->GetUserPort() != tocheck->GetUserPort())) {
 					// if found_client is connected and has the IS_IDENTIFIED, it's safe
 					// to say that the other one is a bad guy
@@ -421,10 +436,15 @@ bool CClientList::AttachToAlreadyKnown(CUpDownClient **client, CClientTCPSocket 
 	return false;
 }
 
-CUpDownClient *CClientList::FindClientByIP(uint32 clientip, uint16 port)
+CUpDownClient *CClientList::FindClientByIP(const CNetworkAddress &address, uint16 port)
 {
-	// Find all items with the specified ip
-	std::pair<IDMap::iterator, IDMap::iterator> range = m_ipList.equal_range(clientip);
+	if (!PeerIdentity::IsIndexable(address)) {
+		return NULL;
+	}
+
+	// Find all items with the specified address
+	std::pair<AddressMap::iterator, AddressMap::iterator> range =
+		m_ipList.equal_range(PeerIdentity::IndexKey(address));
 
 	for (; range.first != range.second; ++range.first) {
 		CUpDownClient *cur_client = range.first->second.GetClient();
@@ -437,12 +457,27 @@ CUpDownClient *CClientList::FindClientByIP(uint32 clientip, uint16 port)
 	return NULL;
 }
 
-CUpDownClient *CClientList::FindClientByIP(uint32 clientip)
+CUpDownClient *CClientList::FindClientByIP(const CNetworkAddress &address)
 {
-	// Find all items with the specified ip
-	std::pair<IDMap::iterator, IDMap::iterator> range = m_ipList.equal_range(clientip);
+	if (!PeerIdentity::IsIndexable(address)) {
+		return NULL;
+	}
+
+	// Find all items with the specified address
+	std::pair<AddressMap::iterator, AddressMap::iterator> range =
+		m_ipList.equal_range(PeerIdentity::IndexKey(address));
 
 	return (range.first != range.second) ? range.first->second.GetClient() : NULL;
+}
+
+CUpDownClient *CClientList::FindClientByIP(uint32 clientip, uint16 port)
+{
+	return FindClientByIP(CNetworkAddress::FromIPv4NetworkOrderOrAbsent(clientip), port);
+}
+
+CUpDownClient *CClientList::FindClientByIP(uint32 clientip)
+{
+	return FindClientByIP(CNetworkAddress::FromIPv4NetworkOrderOrAbsent(clientip));
 }
 
 CUpDownClient *CClientList::FindClientByECID(uint32 ecid) const
@@ -458,20 +493,25 @@ CUpDownClient *CClientList::FindClientByECID(uint32 ecid) const
 
 bool CClientList::IsIPAlreadyKnown(const CNetworkAddress &address)
 {
-	uint32 key = 0;
-	if (!address.ToIPv4NetworkOrder(key)) {
-		// Absent, or an address m_ipList cannot key on. Either way it was
-		// never recorded, so it is not known.
+	if (!PeerIdentity::IsIndexable(address)) {
+		// Absence was never recorded, so it is not known.
 		return false;
 	}
-	// Find all items with the specified ip
-	std::pair<IDMap::iterator, IDMap::iterator> range = m_ipList.equal_range(key);
+	// Find all items with the specified address
+	std::pair<AddressMap::iterator, AddressMap::iterator> range =
+		m_ipList.equal_range(PeerIdentity::IndexKey(address));
 	return range.first != range.second;
 }
 
-bool CClientList::ComparePriorUserhash(uint32 dwIP, uint16 nPort, void *pNewHash)
+bool CClientList::ComparePriorUserhash(const CNetworkAddress &address, uint16 nPort, void *pNewHash)
 {
-	std::map<uint32, CDeletedClient *>::iterator it = m_trackedClientsList.find(dwIP);
+	if (!PeerIdentity::IsIndexable(address)) {
+		// No address, no tracked history to contradict the new hash. Formerly
+		// this looked the literal 0 up, which could only ever miss.
+		return true;
+	}
+	std::map<CNetworkAddress, CDeletedClient *>::iterator it =
+		m_trackedClientsList.find(PeerIdentity::IndexKey(address));
 
 	if (it != m_trackedClientsList.end()) {
 		CDeletedClient *pResult = it->second;
@@ -492,7 +532,13 @@ bool CClientList::ComparePriorUserhash(uint32 dwIP, uint16 nPort, void *pNewHash
 
 void CClientList::AddTrackClient(CUpDownClient *toadd)
 {
-	std::map<uint32, CDeletedClient *>::iterator it = m_trackedClientsList.find(toadd->GetIP());
+	if (!PeerIdentity::IsIndexable(toadd->GetAddress())) {
+		// Nothing to track a hash change against: the entry would be keyed on
+		// "unknown", where every addressless client would collide.
+		return;
+	}
+	const CNetworkAddress key = PeerIdentity::IndexKey(toadd->GetAddress());
+	std::map<CNetworkAddress, CDeletedClient *>::iterator it = m_trackedClientsList.find(key);
 
 	if (it != m_trackedClientsList.end()) {
 		CDeletedClient *pResult = it->second;
@@ -512,7 +558,7 @@ void CClientList::AddTrackClient(CUpDownClient *toadd)
 		CDeletedClient::PortAndHash porthash = { toadd->GetUserPort(), toadd->GetCreditsHash() };
 		pResult->m_ItemsList.push_back(porthash);
 	} else {
-		m_trackedClientsList[toadd->GetIP()] = new CDeletedClient(toadd);
+		m_trackedClientsList[key] = new CDeletedClient(toadd);
 	}
 }
 
@@ -539,9 +585,9 @@ void CClientList::Process()
 	if (m_dwLastTrackedCleanUp + TRACKED_CLEANUP_TIME < cur_tick) {
 		m_dwLastTrackedCleanUp = cur_tick;
 
-		std::map<uint32, CDeletedClient *>::iterator it = m_trackedClientsList.begin();
+		std::map<CNetworkAddress, CDeletedClient *>::iterator it = m_trackedClientsList.begin();
 		while (it != m_trackedClientsList.end()) {
-			std::map<uint32, CDeletedClient *>::iterator cur_src = it++;
+			std::map<CNetworkAddress, CDeletedClient *>::iterator cur_src = it++;
 
 			if (cur_src->second->m_dwInserted + KEEPTRACK_TIME < cur_tick) {
 				delete cur_src->second;
@@ -748,8 +794,7 @@ void CClientList::Process()
 
 void CClientList::AddBannedClient(const CNetworkAddress &address)
 {
-	uint32 key = 0;
-	if (!address.ToIPv4NetworkOrder(key)) {
+	if (!PeerIdentity::IsIndexable(address)) {
 		// Nothing to ban. Previously an absent address arrived here as the
 		// literal 0 and was banned as "0.0.0.0", banning a value no real peer
 		// has while telling theStats one more client was banned.
@@ -758,18 +803,19 @@ void CClientList::AddBannedClient(const CNetworkAddress &address)
 				address.ToString());
 		return;
 	}
-	m_bannedList[key] = ::GetTickCount64();
+	// An IPv6 peer is bannable now: the key is the address, so there is no
+	// longer a family the ban list cannot express.
+	m_bannedList[PeerIdentity::IndexKey(address)] = ::GetTickCount64();
 	theStats::AddBannedClient();
 }
 
 bool CClientList::IsBannedClient(const CNetworkAddress &address)
 {
-	uint32 key = 0;
-	if (!address.ToIPv4NetworkOrder(key)) {
+	if (!PeerIdentity::IsIndexable(address)) {
 		return false;
 	}
 
-	ClientMap::iterator it = m_bannedList.find(key);
+	ClientMap::iterator it = m_bannedList.find(PeerIdentity::IndexKey(address));
 
 	if (it != m_bannedList.end()) {
 		if (it->second + CLIENTBANTIME > ::GetTickCount64()) {
@@ -783,21 +829,20 @@ bool CClientList::IsBannedClient(const CNetworkAddress &address)
 
 void CClientList::RemoveBannedClient(const CNetworkAddress &address)
 {
-	uint32 key = 0;
-	if (!address.ToIPv4NetworkOrder(key)) {
+	if (!PeerIdentity::IsIndexable(address)) {
 		return;
 	}
-	m_bannedList.erase(key);
+	m_bannedList.erase(PeerIdentity::IndexKey(address));
 	theStats::RemoveBannedClient();
 }
 
 void CClientList::FilterQueues()
 {
 	// Filter client list
-	for (IDMap::iterator it = m_ipList.begin(); it != m_ipList.end();) {
-		IDMap::iterator tmp = it++; // Don't change this to a ++it!
+	for (AddressMap::iterator it = m_ipList.begin(); it != m_ipList.end();) {
+		AddressMap::iterator tmp = it++; // Don't change this to a ++it!
 		CUpDownClient *client = tmp->second.GetClient();
-		if (theApp->ipfilter->IsFiltered(client->GetConnectIP())) {
+		if (theApp->ipfilter->IsFiltered(client->GetConnectAddress())) {
 			client->Disconnected("Filtered by IPFilter");
 			client->Safe_Delete();
 		}
@@ -822,18 +867,43 @@ CClientList::SourceList CClientList::GetClientsByIP(const CNetworkAddress &addre
 {
 	SourceList results;
 
-	uint32 key = 0;
-	if (!address.ToIPv4NetworkOrder(key)) {
-		// Absent, or unrepresentable as an m_ipList key: no client can be
-		// recorded under it, so the empty list is the whole answer.
+	if (!PeerIdentity::IsIndexable(address)) {
+		// Absence is not a key: no client can be recorded under it, so the
+		// empty list is the whole answer.
 		return results;
 	}
 
 	// Find all items with the specified address
-	std::pair<IDMap::iterator, IDMap::iterator> range = m_ipList.equal_range(key);
+	std::pair<AddressMap::iterator, AddressMap::iterator> range =
+		m_ipList.equal_range(PeerIdentity::IndexKey(address));
 
 	for (; range.first != range.second; range.first++) {
 		results.push_back(range.first->second);
+	}
+
+	return results;
+}
+
+CClientList::SourceList CClientList::GetClientsInRateLimitScope(const CNetworkAddress &address)
+{
+	SourceList results;
+
+	const CNetworkAddress scope = PeerIdentity::RateLimitScope(address);
+	if (scope.IsAbsent()) {
+		return results;
+	}
+
+	// The index is ordered by address, octets most significant first, so every
+	// member of a prefix occupies one contiguous run of it. Starting at the
+	// prefix's network address and stopping when the scope changes therefore
+	// visits exactly that run -- O(log n + k), the same cost class as the
+	// exact-address lookup this replaces, rather than a scan of every client.
+	AddressMap::iterator it = m_ipList.lower_bound(scope);
+	for (; it != m_ipList.end(); ++it) {
+		if (PeerIdentity::RateLimitScope(it->first) != scope) {
+			break;
+		}
+		results.push_back(it->second);
 	}
 
 	return results;
@@ -1224,10 +1294,17 @@ void CClientList::ProcessDirectCallbackList()
 	}
 }
 
-void CClientList::AddTrackCallbackRequests(uint32_t ip)
+void CClientList::AddTrackCallbackRequests(const CNetworkAddress &address)
 {
+	const CNetworkAddress scope = PeerIdentity::RateLimitScope(address);
+	if (scope.IsAbsent()) {
+		// No address, no budget to charge. Recording absence would put every
+		// addressless requester in one bucket and let one of them throttle the
+		// rest.
+		return;
+	}
 	uint64_t now = ::GetTickCount64();
-	IpAndTicks add = { ip, now };
+	ScopeAndTicks add = { scope, now };
 	m_directCallbackRequests.push_front(add);
 	while (!m_directCallbackRequests.empty()) {
 		if (now - m_directCallbackRequests.back().inserted > MIN2MS(3)) {
@@ -1238,13 +1315,19 @@ void CClientList::AddTrackCallbackRequests(uint32_t ip)
 	}
 }
 
-bool CClientList::AllowCallbackRequest(uint32_t ip) const
+bool CClientList::AllowCallbackRequest(const CNetworkAddress &address) const
 {
+	const CNetworkAddress scope = PeerIdentity::RateLimitScope(address);
+	if (scope.IsAbsent()) {
+		// An unidentifiable requester gets no callback: it cannot be charged
+		// for one either, so allowing it would be an unlimited budget.
+		return false;
+	}
 	uint64_t now = ::GetTickCount64();
-	for (IpAndTicksList::const_iterator it = m_directCallbackRequests.begin();
+	for (ScopeAndTicksList::const_iterator it = m_directCallbackRequests.begin();
 		it != m_directCallbackRequests.end();
 		++it) {
-		if (it->ip == ip && now - it->inserted < MIN2MS(3)) {
+		if (it->scope == scope && now - it->inserted < MIN2MS(3)) {
 			return false;
 		}
 	}

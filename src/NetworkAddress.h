@@ -27,6 +27,7 @@
 
 #include <boost/asio/ip/address.hpp>
 
+#include <cstddef>
 #include <cstdint>
 #include <optional>
 #include <string>
@@ -140,6 +141,35 @@ public:
 	static CNetworkAddress FromIPv4HostOrderOrAbsent(std::uint32_t ip)
 	{
 		return ip == 0 ? Absent() : FromIPv4HostOrder(ip);
+	}
+
+	/**
+	 * Builds an IPv6 address from sixteen big-endian bytes -- the form the
+	 * @c CT_MOD_IP_V6 hello tag and the Kad @c "ip6" tag carry.
+	 *
+	 * @return The address, or an @b absent address when @a bytes is NULL or
+	 *         the sixteen bytes are all zero. The all-zero value is @c :: ,
+	 *         which is what a peer that has no IPv6 address sends when it
+	 *         emits the tag anyway; treating it as an address would have aMule
+	 *         dialling the unspecified address.
+	 */
+	static CNetworkAddress FromIPv6Bytes(const std::uint8_t *bytes)
+	{
+		if (bytes == nullptr) {
+			return Absent();
+		}
+		boost::asio::ip::address_v6::bytes_type raw;
+		bool allZero = true;
+		for (std::size_t i = 0; i < raw.size(); ++i) {
+			raw[i] = bytes[i];
+			if (bytes[i] != 0) {
+				allZero = false;
+			}
+		}
+		if (allZero) {
+			return Absent();
+		}
+		return CNetworkAddress(boost::asio::ip::address(boost::asio::ip::address_v6(raw)));
 	}
 
 	/**
@@ -262,6 +292,103 @@ public:
 		std::uint32_t value = 0;
 		ToIPv4NetworkOrder(value);
 		return value;
+	}
+
+	/**
+	 * Writes an IPv6 address out as sixteen big-endian bytes -- the form the
+	 * @c CT_MOD_IP_V6 hello tag and the Kad @c "ip6" tag carry.
+	 *
+	 * @param out Sixteen bytes, written only on success, so a caller that
+	 *            ignores the result cannot emit a half-filled address.
+	 * @return False for an absent or IPv4 address. An IPv4-mapped one is
+	 *         written as the mapped IPv6 address it is: that is what the peer
+	 *         asked for when it asked for an IPv6 address.
+	 */
+	bool ToIPv6Bytes(std::uint8_t *out) const noexcept
+	{
+		if (out == nullptr || !IsIPv6()) {
+			return false;
+		}
+		const boost::asio::ip::address_v6::bytes_type bytes = m_address->to_v6().to_bytes();
+		for (std::size_t i = 0; i < bytes.size(); ++i) {
+			out[i] = bytes[i];
+		}
+		return true;
+	}
+
+	/**
+	 * Whether this is an IPv6 address worth telling a peer about: present,
+	 * IPv6, not mapped, and globally routable as far as the address itself can
+	 * say -- so not the unspecified address, not loopback, not link-local and
+	 * not a unique-local address.
+	 *
+	 * Advertising any of those is worse than advertising nothing: the peer
+	 * cannot reach them and spends a connect attempt finding out.
+	 */
+	bool IsGloballyRoutableIPv6() const noexcept
+	{
+		if (!IsIPv6() || IsIPv4Mapped() || IsUnspecified()) {
+			return false;
+		}
+		const boost::asio::ip::address_v6 v6 = m_address->to_v6();
+		if (v6.is_loopback() || v6.is_link_local() || v6.is_site_local() ||
+			v6.is_multicast()) {
+			return false;
+		}
+		// fc00::/7, unique-local. asio's is_site_local() only covers the
+		// deprecated fec0::/10, so this is tested here rather than assumed.
+		const boost::asio::ip::address_v6::bytes_type bytes = v6.to_bytes();
+		return (bytes[0] & 0xFE) != 0xFC;
+	}
+
+	/**
+	 * The network address of the prefix this address falls in: the same
+	 * address with every bit below @a prefixBits cleared.
+	 *
+	 * Used where a limit or a rule applies to a block rather than to a host --
+	 * an IPv6 subscriber is delegated a prefix, not an address, so a per-address
+	 * budget under IPv6 counts to one forever (see PeerIdentity.h).
+	 *
+	 * @param prefixBits Counted from the most significant bit of the address in
+	 *                   its own family: 0..32 for IPv4, 0..128 for IPv6. A value
+	 *                   at or above the family's width returns the address
+	 *                   unchanged.
+	 * @return The prefix's network address. An absent address is returned
+	 *         unchanged -- there is no prefix to compute and none is invented.
+	 */
+	CNetworkAddress TruncatedToPrefix(unsigned prefixBits) const
+	{
+		if (IsAbsent()) {
+			return *this;
+		}
+		if (m_address->is_v4()) {
+			if (prefixBits >= 32) {
+				return *this;
+			}
+			const std::uint32_t mask =
+				prefixBits == 0 ? 0u : (0xFFFFFFFFu << (32 - prefixBits));
+			return FromIPv4HostOrder(m_address->to_v4().to_uint() & mask);
+		}
+		if (prefixBits >= 128) {
+			return *this;
+		}
+		boost::asio::ip::address_v6::bytes_type bytes = m_address->to_v6().to_bytes();
+		for (std::size_t i = 0; i < bytes.size(); ++i) {
+			const unsigned bitsBefore = static_cast<unsigned>(i) * 8u;
+			if (prefixBits >= bitsBefore + 8u) {
+				continue; // Wholly inside the prefix.
+			}
+			if (prefixBits <= bitsBefore) {
+				bytes[i] = 0; // Wholly outside it.
+			} else {
+				bytes[i] = static_cast<std::uint8_t>(
+					bytes[i] & (0xFFu << (bitsBefore + 8u - prefixBits)));
+			}
+		}
+		// The scope id is deliberately not carried over: a prefix is not
+		// interface-scoped, and keeping it would make the same prefix seen on
+		// two interfaces into two prefixes.
+		return CNetworkAddress(boost::asio::ip::address(boost::asio::ip::address_v6(bytes)));
 	}
 
 	/** Textual form, or @c "<absent>" when there is no address. */

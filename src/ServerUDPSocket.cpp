@@ -58,9 +58,22 @@ CServerUDPSocket::CServerUDPSocket(amuleIPV4Address &address, const CProxyData *
 	Open();
 }
 
-void CServerUDPSocket::OnPacketReceived(uint32 serverip, uint16 serverport, uint8_t *buffer, size_t length)
+void CServerUDPSocket::OnPacketReceived(
+	const CNetworkAddress &peer, uint16 serverport, uint8_t *buffer, size_t length)
 {
 	wxCHECK_RET(length >= 2, "Invalid packet.");
+
+	uint32 serverip = 0;
+	if (!peer.ToIPv4NetworkOrder(serverip)) {
+		// No ed2k server in this tree is reachable over IPv6: the server list,
+		// the server protocol's address fields and the server UDP obfuscation
+		// key are all 32-bit. Dropped with a reason rather than narrowed to a
+		// zero, which would look up the wrong server.
+		AddDebugLogLineN(logServerUDP,
+			CFormat("Dropped server UDP packet from %s:%u: the ed2k server protocol is IPv4") %
+				wxString(peer.ToString()) % serverport);
+		return;
+	}
 
 	size_t nPayLoadLen = length;
 	uint8_t *pBuffer = buffer;
