@@ -147,6 +147,11 @@ void CMuleUDPSocket::OnReceive(int errorCode)
 		error = lastError != 0;
 	}
 
+	// StringIPtoUint32() answers zero both for the address 0.0.0.0 and for a
+	// string it could not parse, so the peer address is taken through the
+	// address type as well: the reject below can then say which of the two
+	// happened instead of testing one value that means either.
+	const CNetworkAddress peer = CNetworkAddress::FromString(addr.IPAddress().ToStdString());
 	const uint32 ip = StringIPtoUint32(addr.IPAddress());
 	const uint16 port = addr.Service();
 	if (error) {
@@ -154,14 +159,20 @@ void CMuleUDPSocket::OnReceive(int errorCode)
 	} else if (length < 2) {
 		// 2 bytes (protocol and opcode) is the smallets possible packet.
 		AddDebugLogLineN(logMuleUDP, m_name + ": Invalid Packet received");
-	} else if (!ip) {
+	} else if (peer.IsAbsent() || peer.IsUnspecified()) {
 		// wxFAIL;
+		// Both are rejected, exactly as `!ip` rejected both before, but they
+		// are no longer the same condition: absent is an address this build
+		// cannot parse or represent, unspecified is a peer claiming 0.0.0.0.
 		AddDebugLogLineN(logMuleUDP,
-			"Unknown ip receiving a UDP packet! Ignoring: '" + addr.IPAddress() + "'");
+			(peer.IsAbsent() ? "Unparsable ip receiving a UDP packet! Ignoring: '"
+					 : "Unspecified ip receiving a UDP packet! Ignoring: '") +
+				addr.IPAddress() + "'");
 	} else if (!port) {
 		// wxFAIL;
 		AddDebugLogLineN(logMuleUDP, "Unknown port receiving a UDP packet! Ignoring");
-	} else if (theApp->clientlist->IsBannedClient(ip)) {
+	} else if (theApp->clientlist->IsBannedClient(
+			   CNetworkAddress::FromIPv4NetworkOrderOrAbsent(ip))) {
 		AddDebugLogLineN(logMuleUDP, m_name + ": Dropped packet from banned IP " + addr.IPAddress());
 	} else {
 		AddDebugLogLineN(logMuleUDP,

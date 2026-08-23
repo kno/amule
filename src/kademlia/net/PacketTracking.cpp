@@ -222,7 +222,11 @@ bool CPacketTracking::InTrackListIsAllowedPacket(uint32_t ip, uint8_t opcode, bo
 					CFormat("Massive request flood detected for opcode 0x%X (0x%X) from "
 						"IP %s - Banning IP") %
 						opcode % dbgOrgOpcode % KadIPToString(ip));
-				theApp->clientlist->AddBannedClient(wxUINT32_SWAP_ALWAYS(ip));
+				// ip is in Kad host order. The conversion states that, so the
+				// bare wxUINT32_SWAP_ALWAYS that used to stand in for the
+				// statement is gone.
+				theApp->clientlist->AddBannedClient(
+					CNetworkAddress::FromIPv4HostOrderOrAbsent(ip));
 				return false; // drop packet
 			} else if (it->m_count > allowedPacketsPerMinute) {
 				// over the limit, drop the packet but do nothing else

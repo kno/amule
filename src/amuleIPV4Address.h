@@ -26,6 +26,7 @@
 #ifndef AMULEIPV4ADDRESS_H
 #define AMULEIPV4ADDRESS_H
 
+#include "NetworkAddress.h"   // Needed for CNetworkAddress
 #include "NetworkFunctions.h" // Needed for Uint32toStringIP
 
 class amuleIPV4Address
@@ -42,8 +43,12 @@ public:
 
 	virtual bool Hostname(uint32 ip)
 	{
-		// Some people are sometimes fools.
-		if (!ip) {
+		// Some people are sometimes fools. The rejection is an explicit
+		// absence check rather than `if (!ip)`: the ed2k field the caller
+		// holds overloads zero to mean "no address", and this is the boundary
+		// where that overload is resolved.
+		const CNetworkAddress address = CNetworkAddress::FromIPv4NetworkOrderOrAbsent(ip);
+		if (address.IsAbsent()) {
 			return false;
 		}
 

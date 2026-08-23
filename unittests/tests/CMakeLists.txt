@@ -924,3 +924,59 @@ target_link_libraries (ECClientCapabilitiesTest
 	ec
 	mulecommon
 )
+
+# The internal address type introduced by amule-address-widening. Byte order in
+# the signature, absence distinct from 0.0.0.0, explicit failure instead of
+# truncation, and a total order -- all of it value-type behaviour over
+# boost::asio::ip::address, so no app and no daemon.
+add_executable (NetworkAddressTest
+	NetworkAddressTest.cpp
+	${CMAKE_SOURCE_DIR}/src/libs/common/Format.cpp
+	${CMAKE_SOURCE_DIR}/src/libs/common/strerror_r.c
+)
+
+add_test (NAME NetworkAddressTest
+	COMMAND NetworkAddressTest
+)
+
+target_include_directories (NetworkAddressTest
+	PRIVATE ${CMAKE_BINARY_DIR}
+	PRIVATE ${CMAKE_SOURCE_DIR}/src
+	PRIVATE ${CMAKE_SOURCE_DIR}/src/include
+	PRIVATE ${Boost_INCLUDE_DIR}
+)
+
+target_link_libraries (NetworkAddressTest
+	muleunit
+	${Boost_LIBRARIES}
+)
+
+# Characterisation of the address behaviour amule-address-widening must not
+# change: IP filter range matching and its byte order, client-list address
+# keying, and the bytes an address occupies on the wire. These hold current
+# behaviour, not intended behaviour -- editing one to make a refactor pass means
+# the refactor changed behaviour.
+add_executable (AddressCharacterisationTest
+	AddressCharacterisationTest.cpp
+	${CMAKE_SOURCE_DIR}/src/SafeFile.cpp
+	${CMAKE_SOURCE_DIR}/src/MemFile.cpp
+	${CMAKE_SOURCE_DIR}/src/Tag.cpp
+	${CMAKE_SOURCE_DIR}/src/libs/common/Format.cpp
+	${CMAKE_SOURCE_DIR}/src/libs/common/strerror_r.c
+)
+
+add_test (NAME AddressCharacterisationTest
+	COMMAND AddressCharacterisationTest
+)
+
+target_include_directories (AddressCharacterisationTest
+	PRIVATE ${CMAKE_BINARY_DIR}
+	PRIVATE ${CMAKE_SOURCE_DIR}/src
+	PRIVATE ${CMAKE_SOURCE_DIR}/src/include
+	PRIVATE ${Boost_INCLUDE_DIR}
+)
+
+target_link_libraries (AddressCharacterisationTest
+	muleunit
+	${Boost_LIBRARIES}
+)

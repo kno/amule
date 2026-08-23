@@ -78,6 +78,7 @@
 #endif
 
 #include "LibSocket.h"
+#include "AddressFamilyPolicy.h" // Needed for the family decisions this file used to hardcode
 #include <wx/thread.h>     // wxMutex
 #include <wx/intl.h>       // _()
 #include <common/Format.h> // Needed for CFormat
@@ -538,9 +539,25 @@ public:
 		if (!s_bindToInterface.IsEmpty()) {
 			error_code openEc;
 			if (!m_socket->is_open()) {
-				m_socket->open(ip::tcp::v4(), openEc);
+				// The family comes from the target address, not from a
+				// hardcoded v4(): see AddressFamilyPolicy.h. An address
+				// whose family the configuration does not permit yields no
+				// protocol, and then no socket is opened -- opening a v4
+				// socket for it would be how a truncated address turns into
+				// a connection to the wrong host.
+				const std::optional<ip::tcp> protocol =
+					AddressFamilyPolicy::TcpProtocolForTarget(
+						CNetworkAddress(adr.GetEndpoint().address()));
+				if (protocol) {
+					m_socket->open(*protocol, openEc);
+				} else {
+					AddDebugLogLineC(logAsio,
+						CFormat("Connect: no permitted address family for "
+							"%s, not binding to interface") %
+							adr.IPAddress());
+				}
 			}
-			if (!openEc) {
+			if (!openEc && m_socket->is_open()) {
 				SetBoundInterface(m_socket->native_handle(), s_bindToInterface, false);
 			}
 		}
@@ -781,10 +798,22 @@ public:
 	{
 		error_code ec;
 		if (!m_socket->is_open()) {
-			// Socket is usually still closed when this is called
-			m_socket->open(boost::asio::ip::tcp::v4(), ec);
-			if (ec) {
-				AddDebugLogLineC(logAsio, CFormat("Can't open socket : %s") % ec.message());
+			// Socket is usually still closed when this is called. The family
+			// is the local address's own, via AddressFamilyPolicy.h, rather
+			// than a hardcoded v4().
+			const std::optional<ip::tcp> protocol = AddressFamilyPolicy::TcpProtocolForTarget(
+				CNetworkAddress(local.GetEndpoint().address()));
+			if (protocol) {
+				m_socket->open(*protocol, ec);
+				if (ec) {
+					AddDebugLogLineC(
+						logAsio, CFormat("Can't open socket : %s") % ec.message());
+				}
+			} else {
+				AddDebugLogLineC(logAsio,
+					CFormat("Can't open socket : no permitted address family for %s") %
+						local.IPAddress());
+				return;
 			}
 		}
 		//
@@ -2156,52 +2185,66 @@ bool amuleIPV4Address::Hostname(const wxString &name)
 	}
 	// This is usually just an IP.
 	std::string sname(unicode2char(name));
-	error_code ec;
-	ip::address_v4 adr = ip::make_address_v4(sname, ec);
-	if (!ec) {
-		m_endpoint->address(adr);
+	// Parsed family-agnostically and then checked against the configured
+	// families, instead of parsing as v4 only. The outcome is the same for
+	// every input while the configuration is IPv4-only -- a v6 literal was
+	// rejected by make_address_v4() before and is rejected by the policy check
+	// now -- but the family is no longer welded into the parse.
+	const CNetworkAddress parsed = CNetworkAddress::FromString(sname);
+	if (parsed.IsPresent() && AddressFamilyPolicy::Permits(parsed)) {
+		m_endpoint->address(parsed.Get());
 		return true;
 	}
-	AddDebugLogLineN(
-		logAsio, CFormat("Hostname(\"%s\") failed, not an IP address %s") % name % ec.message());
+	if (parsed.IsPresent()) {
+		AddDebugLogLineN(logAsio,
+			CFormat("Hostname(\"%s\") rejected: address family not permitted") % name);
+	} else {
+		AddDebugLogLineN(logAsio, CFormat("Hostname(\"%s\") failed, not an IP address") % name);
+	}
 
 	// Try to resolve (sync). Normally not required. Unless you type in your hostname as "local IP
 	// address" or something.
 	//
-	// We only want IPv4 addresses. This has to be asked for explicitly:
+	// The family the query is restricted to has to be asked for explicitly:
 	// the resolve(host, service) overload passes a default-constructed
 	// flag set (0, so not even AI_ADDRCONFIG) and leaves the family
 	// unrestricted, so getaddrinfo answers with AAAA records too — on
 	// any host, whether or not it has IPv6 connectivity. Their order is
 	// up to the platform resolver, and IPv6 routinely comes first (on
 	// Windows, even for "localhost"), so taking the first result handed
-	// back would store an IPv6 address in what the rest of aMule treats
-	// as a v4-only endpoint: IPAddress() then fails StringIPtoUint32(),
-	// and connecting a v4 socket to it fails outright.
+	// back would store an address of a family the rest of aMule cannot
+	// use: IPAddress() then fails StringIPtoUint32(), and connecting a v4
+	// socket to it fails outright. Which family that is comes from
+	// AddressFamilyPolicy, which is IPv4-only today, so this asks for
+	// AF_INET exactly as the previous hardcoded v4() did.
 	error_code ec2;
 	ip::tcp::resolver res(s_io_service);
-	ip::tcp::resolver::results_type endpoint_iterator = res.resolve(ip::tcp::v4(), sname, "", ec2);
+	const std::optional<ip::tcp> resolverProtocol = AddressFamilyPolicy::TcpResolverProtocol();
+	ip::tcp::resolver::results_type endpoint_iterator =
+		resolverProtocol ? res.resolve(*resolverProtocol, sname, "", ec2)
+				 : res.resolve(sname, "", ec2);
 	if (ec2) {
 		AddDebugLogLineN(
 			logAsio, CFormat("Hostname(\"%s\") resolve failed: %s") % name % ec2.message());
 		return false;
 	}
-	// Belt and braces: the AF_INET query above should only ever yield v4
-	// entries, but the endpoint is v4-only by contract, so scan for one
-	// rather than trusting begin() the way the unrestricted query did.
+	// Belt and braces: the restricted query above should only ever yield
+	// entries of the permitted family, but scan for one rather than trusting
+	// begin() the way the unrestricted query did.
 	for (const auto &entry : endpoint_iterator) {
-		if (entry.endpoint().address().is_v4()) {
-			m_endpoint->address(entry.endpoint().address());
+		const CNetworkAddress resolved(entry.endpoint().address());
+		if (AddressFamilyPolicy::Permits(resolved)) {
+			m_endpoint->address(resolved.Get());
 			AddDebugLogLineN(
 				logAsio, CFormat("Hostname(\"%s\") resolved to %s") % name % IPAddress());
 			return true;
 		}
 	}
-	// A name that only has AAAA records lands here. aMule is IPv4-only
-	// end to end (amuleIPV4Address, the uint32 IPs, the EC listener), so
-	// failing is the honest answer — the caller reports it instead of
-	// dialling an address the socket layer cannot use.
-	AddDebugLogLineN(logAsio, CFormat("Hostname(\"%s\") resolve failed: no IPv4 address found") % name);
+	// A name with no record in a permitted family lands here. Failing is the
+	// honest answer — the caller reports it instead of dialling an address the
+	// socket layer cannot use.
+	AddDebugLogLineN(logAsio,
+		CFormat("Hostname(\"%s\") resolve failed: no address in a permitted family") % name);
 	return false;
 }
 
@@ -2234,7 +2277,7 @@ wxString amuleIPV4Address::IPAddress() const
 // wx does the same.
 bool amuleIPV4Address::AnyAddress()
 {
-	m_endpoint->address(ip::address_v4::any());
+	m_endpoint->address(AddressFamilyPolicy::AnyAddress());
 	AddDebugLogLineN(logAsio, CFormat("AnyAddress: set to %s") % IPAddress());
 	return true;
 }

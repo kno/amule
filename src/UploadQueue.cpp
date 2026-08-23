@@ -475,7 +475,8 @@ void CUploadQueue::AddClientToQueue(CUpDownClient *client)
 	}
 
 	// Count the number of clients with the same IP-address
-	found = theApp->clientlist->GetClientsByIP(client->GetIP());
+	found = theApp->clientlist->GetClientsByIP(
+		CNetworkAddress::FromIPv4NetworkOrderOrAbsent(client->GetIP()));
 
 	int ipCount = 0;
 	for (it = found.begin(); it != found.end(); ++it) {

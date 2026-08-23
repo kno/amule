@@ -3216,7 +3216,8 @@ void CPartFile::AddClientSources(CMemFile *sources,
 						Uint32toStringIP(dwIDED2K) % OriginToText(nSourceFrom));
 				continue;
 			}
-			if (theApp->clientlist->IsBannedClient(dwIDED2K)) {
+			if (theApp->clientlist->IsBannedClient(
+				    CNetworkAddress::FromIPv4NetworkOrderOrAbsent(dwIDED2K))) {
 				continue;
 			}
 		}
