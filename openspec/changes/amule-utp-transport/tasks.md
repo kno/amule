@@ -39,6 +39,34 @@
 - [x] 6.2 Unit test: uTP present but unable to serve advertises nothing; able to
       serve advertises the bit
 
+## 7. Live transport
+
+Task 3.1 asked for "the interface the client already consumes for TCP", and that
+interface was delivered: `CUtpStream` presents Write/Read with the TCP side's
+retry convention. Nothing substituted it under `CClientTCPSocket`, so uTP
+carried no data, and no task in sections 1-6 named that substitution or the
+inbound accept path. That is a hole in this breakdown rather than in the
+implementation of 3.1, and it is recorded here rather than folded into 3.1 so
+the plan shows where it was found.
+
+- [x] 7.1 Decide the dial from one testable policy: whether the peer advertises
+      uTP, whether this end has a context, and whether the transport carries
+      that address family
+- [x] 7.2 Unit test: a peer that does not advertise uTP takes the pre-uTP TCP
+      path with no transport failure recorded; every "this end cannot" answer
+      records one
+- [x] 7.3 Substitute `CUtpStream` under `CClientTCPSocket`, so an outbound
+      connection to a peer advertising `MOD_MISCOPT_NAT_TRAVERSAL` is carried
+      over uTP and the stack above the socket is unchanged
+- [x] 7.4 Unit test: application bytes cross a uTP transport in both directions;
+      a timeout is a transport failure and a refusal is the peer's
+- [x] 7.5 Register `UTP_ON_ACCEPT` and hand the accepted connection to the ed2k
+      accept path, so an inbound uTP attempt is served rather than dropped
+- [x] 7.6 Unit test: the capability word is absent while the accept path is
+      unwired and carries `MOD_MISCOPT_NAT_TRAVERSAL` once it is wired
+- [x] 7.7 Register the libutp callbacks the transport cannot work without:
+      clock, random and MTU, accounting for the two shared-port framing bytes
+
 ## Building and testing this change
 
 Do not assume a host toolchain. The supported route is the container:
@@ -86,13 +114,10 @@ The connection path now classifies and routes uTP outcomes:
 - `DisposeUtpAttempt()` (`src/UtpTransportFailure.h`) is the single decision both
   call sites read, and it is what `UtpTransportFailureTest` drives.
 
-What is still not live is the **dial**: `ConnectOverUtp()` has no established
-uTP connection to succeed with, because substituting `CUtpStream` under
-`CClientTCPSocket` for a real connection is the remaining half of 3.1. So in an
-`-DENABLE_UTP=YES` build a peer advertising uTP takes the fallback immediately
-and is reached over TCP -- byte-for-byte the behaviour of the default build. When
-the dial lands it reports its timeout through `OnUtpTransportFailure()` and needs
-no other change.
+The **dial is now live** -- see the 2026-08-23 (later) notes below. What 4.2
+established is unchanged by it: `ConnectOverUtp()` still reports every "this end
+cannot" answer through `OnUtpTransportFailure()`, and the fallback route it takes
+is the one a real dial timeout now takes.
 
 ### 4.3's title was corrected
 
@@ -105,11 +130,10 @@ says that. A real download over a real fallback needs the dial, i.e. 3.1.
 ### Still open
 
 - **5.2 is a later change by construction** -- it asks for IPv6 uTP only after
-  IPv4 uTP is stable in real use, which has not happened.
-- **3.1 delivers the interface, not the substitution.** `CUtpStream` presents the
-  Write/Read/Close surface the client consumes for TCP and is driven in tests.
-  Substituting it under `CClientTCPSocket` for real connections is the dial
-  described above.
+  IPv4 uTP is stable in real use, which has not happened. `CUtpContext::
+  IsUsableEndpoint()` is the one predicate that stages it, and the outbound dial,
+  the inbound accept and the datagram path all read it rather than restating the
+  family rule.
 
 ### Two things a reviewer should look at
 
@@ -143,3 +167,128 @@ says that. A real download over a real fallback needs the dial, i.e. 3.1.
   `std::byte`. The two cannot coexist in one translation unit in either order.
   `UtpLibraryAdapter.cpp` is now the only TU that includes libutp's headers and
   it includes none of aMule's. No upstream file was touched.
+
+## Apply notes, phase 7 (2026-08-23, later)
+
+### The breakdown had a hole, and this is it
+
+Task 3.1 reads "Present the interface the client already consumes for TCP", and
+that is exactly what the earlier apply delivered: `CUtpStream` presents
+Write/Read with the TCP side's retry convention. **Nothing substituted it under
+`CClientTCPSocket`**, so uTP carried no data at all, and outside its own header
+`CUtpStream` appeared only in comments acknowledging the gap. The substitution
+and the inbound accept path were named by no task in sections 1-6.
+
+That is a defect in this plan, not in the implementation of 3.1. Section 7 was
+added rather than widening 3.1, so the record shows where the plan was short.
+
+### How the stream is substituted
+
+`CLibSocket` (`src/LibSocket.h`) is the seam, and it is the right one because
+nothing above it touches the asio socket: `CProxySocket`,
+`CEncryptedStreamSocket`, `CEMSocket` and `CClientTCPSocket` consume
+`Read`/`Write`/`IsConnected`/`IsOk`/`BlocksRead`/`BlocksWrite`/`Close` and the
+peer accessors, and nothing else. A wrapper carrying a
+`CUtpSocketTransport` (`src/UtpSocketTransport.h`) routes exactly those calls
+through it; everything above is unchanged, obfuscation included.
+
+Two properties carry the substitution and neither is obvious:
+
+- **The would-block contract is exact.** `CEMSocket` reads `BlocksRead()` and
+  `BlocksWrite()` *before* `LastError()` (`src/EMSocket.cpp:240`, `:658`), so
+  "nothing right now" has to be a zero return with the blocks flag set and
+  `LastError()` still zero. Reporting an error there turns every closed send
+  window into a dropped connection, which looks exactly like a bad peer.
+- **`utp_write()` is only ever called from the thread that owns libutp.**
+  `CEMSocket::SendFileAndControlData()` runs on the upload throttler's thread, so
+  `CUtpSocketTransport::Write()` only queues -- under the transport's own mutex,
+  because libutp's callbacks arrive on the core thread -- and the queue is handed
+  to libutp on the core tick. libutp is not thread-safe and would corrupt its
+  per-context state with no reliable symptom.
+
+Events go back up as the same four `CoreNotify_LibSocket*` posts the asio reactor
+uses (`CUtpSocketNotifier`, `src/LibSocketAsio.cpp`), deferred rather than
+direct: libutp's callbacks fire from inside `utp_process_udp()` and
+`utp_check_timeouts()`, and the client code they would re-enter closes sockets --
+including the `utp_socket` libutp is standing on.
+
+### How the accept callback is registered
+
+`UTP_ON_ACCEPT` is registered by `CUtpLibraryAdapter::CreateContext()`, **and
+only when the context has an acceptor** (`CUtpContext::HasInboundAcceptor()`).
+libutp answers an inbound SYN as soon as that callback exists, so registering it
+with nowhere to put the connection would complete a handshake and then drop it --
+worse for the peer than never answering, because it looks like a working client.
+The registration and the claim `AcceptsInboundConnections()` makes are set
+together, in one statement, so they cannot disagree; `CanServeConnections()` is
+unchanged.
+
+The acceptor is `CUtpInboundAcceptor`, owned by `CClientUDPSocket` and passed to
+`Configure()` inside the existing `#ifdef AMULE_UTP_TRANSPORT`. It applies the
+admission tests `CListenSocket::AcceptFrom()` applies -- shutdown, connection
+limit, IP filter, ban list -- and then builds an ordinary `CClientTCPSocket`,
+which registers itself in the same socket list and counts in the same statistics.
+
+One ownership rule is written down because getting it wrong is a use-after-free:
+`utp_close()` is not safe to call twice on one socket, so **whoever refuses a
+connection closes it**. The acceptor owns the socket from the moment it is
+called, refusal included; the context closes only what it declines before the
+acceptor is reached; the `UTP_ON_ACCEPT` callback closes nothing.
+
+### Callbacks libutp has no defaults for
+
+`utp_call_get_milliseconds()` and its siblings return **zero** when unregistered
+(`src/extern/libutp/utp_callbacks.cpp`). The previous apply registered only
+`UTP_SENDTO`, so its context had a clock frozen at zero, connection IDs that were
+all zero and an MTU ceiling of zero. Nothing asserts and nothing logs; the
+transport simply never works. `UTP_GET_MILLISECONDS`, `UTP_GET_MICROSECONDS`,
+`UTP_GET_RANDOM`, `UTP_GET_UDP_MTU` and `UTP_GET_UDP_OVERHEAD` are now
+registered. libutp ships `utp_default_*` implementations, but in a header it does
+not install, so they are written out in the adapter rather than depended on --
+that also keeps `USE_SYSTEM_LIBUTP=YES` working. No vendored file was touched.
+
+The MTU and overhead are two bytes tighter than a plain UDP socket's, because
+every uTP datagram on this port carries the `OP_UDPRESERVEDPROT2` /
+`OP_NATT_FRAME_UTP` frame header that lets uTP and ed2k UDP share it. Reporting
+the untightened figures would have libutp build datagrams two bytes over the path
+MTU and read the resulting fragmentation as congestion.
+
+### A bug the tests found
+
+`UtpSocketTransportTest.AClosedWindowBlocksAndTheReopenIsAnnounced` failed on
+first run: after `utp_write` answered zero, `CUtpStream`'s zero-write backoff
+survived libutp's explicit `UTP_STATE_WRITABLE`, so the connection sat idle for
+up to `UTP_ZERO_WRITE_RETRY_MAX_MS` after being told it could send. The backoff
+exists to stop the pump polling a closed window; an explicit notification that
+the window opened makes holding it wrong. `CUtpStream::OnWindowOpened()` retires
+it, and the transport calls it on both `UTP_STATE_CONNECT` and
+`UTP_STATE_WRITABLE`.
+
+### The capability bit is now set, and that is the point
+
+`CanServeConnections()` can be true for a real reason for the first time, so an
+`-DENABLE_UTP=YES` build now advertises `MOD_MISCOPT_NAT_TRAVERSAL`. That is the
+behaviour section 6 was written for. `UtpInboundAcceptTest` asserts both sides of
+it through `AdvertisedModMiscOptions()`: the word is `0` with the accept path
+unwired and `0x00000002` with it wired. The count and the tag still move together
+through the one `bModMiscOptionsTagCounted` bool that
+`CUpDownClient::SendHelloTypePacket()` reads at `src/BaseClient.cpp:1196` and
+`:1340`, with the `wxASSERT` at `:1339` tying it back to the word -- untouched by
+this phase.
+
+### What defends the TCP path
+
+- `DecideUtpDial()` (`src/UtpDialPolicy.h`) is the whole dial decision, and
+  `UtpDialPolicyTest` pins the case that matters: a peer that does not advertise
+  uTP comes out with **both** flags clear, which is the pre-uTP connection
+  exactly. A transport failure recorded there would not break the dial -- the
+  fallback still reaches TCP -- it would change what `Connect()` and
+  `Disconnected()` do to the peer afterwards, and nothing would log.
+- Every intercepting method in `CLibSocket` is `if (m_utpTransport) {...}`
+  followed by the call it always made, so a wrapper without a transport is
+  byte-identical. Nothing attaches one unless this build has libutp *and* the
+  peer advertised uTP.
+- The encryption setup moved from the TCP branch to just above the transport
+  choice, so a uTP connection is obfuscated on the same terms. The TCP path sees
+  the identical pair of calls in the identical order, because `ConnectOverUtp()`
+  is a no-op for a peer that did not advertise uTP.
