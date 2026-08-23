@@ -128,6 +128,82 @@ target_link_libraries (CUInt128Test
 	muleunit
 )
 
+# The AICH-hash carriage Kad protocol version 0x09 added to keyword storage.
+# CKadAICHHashList is deliberately written against a plain 20-byte array rather
+# than CAICHHash, so the codec that pins TAG_KADAICHHASHRESULT's byte layout can
+# be tested without dragging in SHAHashSet.cpp and the whole file machinery
+# behind it.
+add_executable (KadAICHHashListTest
+	KadAICHHashListTest.cpp
+	${CMAKE_SOURCE_DIR}/src/kademlia/kademlia/AICHHashList.cpp
+	${CMAKE_SOURCE_DIR}/src/libs/common/Format.cpp
+	${CMAKE_SOURCE_DIR}/src/libs/common/strerror_r.c
+)
+
+add_test (NAME KadAICHHashListTest
+	COMMAND KadAICHHashListTest
+)
+
+target_include_directories (KadAICHHashListTest
+	PRIVATE ${CMAKE_BINARY_DIR}
+	PRIVATE ${CMAKE_SOURCE_DIR}/src
+	PRIVATE ${CMAKE_SOURCE_DIR}/src/include
+)
+
+target_link_libraries (KadAICHHashListTest
+	muleunit
+)
+
+# The adaptive Kad response-time ceiling. CFastKad takes "now" as a parameter
+# rather than reading a clock, which is what lets the cold start, the rising and
+# falling distributions and the window bound all be pinned without waiting.
+add_executable (FastKadTest
+	FastKadTest.cpp
+	${CMAKE_SOURCE_DIR}/src/kademlia/net/FastKad.cpp
+	${CMAKE_SOURCE_DIR}/src/libs/common/Format.cpp
+	${CMAKE_SOURCE_DIR}/src/libs/common/strerror_r.c
+)
+
+add_test (NAME FastKadTest
+	COMMAND FastKadTest
+)
+
+target_include_directories (FastKadTest
+	PRIVATE ${CMAKE_BINARY_DIR}
+	PRIVATE ${CMAKE_SOURCE_DIR}/src
+	PRIVATE ${CMAKE_SOURCE_DIR}/src/include
+)
+
+target_link_libraries (FastKadTest
+	muleunit
+)
+
+# The Kad identity protections: the one-hour identity-change interval, the
+# problematic list, the per-address ban and the bounds on all three tables.
+# Same reasoning as FastKad -- every entry point takes the time, so a four-hour
+# ban expiry is a single call rather than an untestable wait.
+add_executable (SafeKadTest
+	SafeKadTest.cpp
+	${CMAKE_SOURCE_DIR}/src/kademlia/net/SafeKad.cpp
+	${CMAKE_SOURCE_DIR}/src/kademlia/utils/UInt128.cpp
+	${CMAKE_SOURCE_DIR}/src/libs/common/Format.cpp
+	${CMAKE_SOURCE_DIR}/src/libs/common/strerror_r.c
+)
+
+add_test (NAME SafeKadTest
+	COMMAND SafeKadTest
+)
+
+target_include_directories (SafeKadTest
+	PRIVATE ${CMAKE_BINARY_DIR}
+	PRIVATE ${CMAKE_SOURCE_DIR}/src
+	PRIVATE ${CMAKE_SOURCE_DIR}/src/include
+)
+
+target_link_libraries (SafeKadTest
+	muleunit
+)
+
 add_executable (FileDataIOTest
 	FileDataIOTest.cpp
 	${CMAKE_SOURCE_DIR}/src/SafeFile.cpp
