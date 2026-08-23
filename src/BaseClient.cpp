@@ -356,6 +356,8 @@ void CUpDownClient::ClearHelloProperties()
 	SecIdentSupRec = 0;
 	m_byKadVersion = 0;
 	m_modCapabilities.Reset();
+	m_utpTransport.Reset();
+	m_bUtpTcpAttempted = false;
 	m_fRequestsCryptLayer = 0;
 	m_fSupportsCryptLayer = 0;
 	m_fRequiresCryptLayer = 0;
@@ -1133,20 +1135,61 @@ void CUpDownClient::SendHelloTypePacket(CMemFile *data)
 	}
 	tagcount++; // eMule misc flags 2 (kad version)
 
-	// eMuleAI vendor capabilities, emitted only once inbound IPv6 connectivity
-	// has actually been verified -- see below and src/IPv6Reachability.h. Two
-	// tags: the capability word and the address itself. Counted here because
-	// the tagcount is written before the tags and a mismatch desynchronises the
-	// reader; the same condition is evaluated once and reused, so the count and
-	// the tags cannot disagree even if reachability changes mid-packet.
-	const uint32 modMiscOptions = theApp->GetReachability().AdvertisedModMiscOptions();
-	const bool emitModMiscOptions = modMiscOptions != 0;
-	// The bytes are produced here, once, and the tag below writes exactly what
-	// was counted: deciding twice is how a tagcount and its tags drift apart.
+	// eMuleAI vendor capabilities (CT_MOD_MISCOPTIONS), emitted only when this
+	// client actually has something to claim. An absent tag and an all-zero
+	// word mean the same thing to eMuleAI, so a client with nothing to claim
+	// spends no bytes on it.
+	//
+	// Two independent gates compose into the one word, and both ask the same
+	// question -- can this end actually serve the thing it is about to claim?
+	// -- rather than whether it was compiled in or bound:
+	//
+	//   - bit 1, uTP NAT traversal: whether this end can *serve* a uTP
+	//     connection. An -DENABLE_UTP=YES build has a utp_context and still
+	//     drops every inbound uTP connection until the accept path is wired
+	//     (task 3.1), and a peer that read the bit would spend its connection
+	//     attempts on a client that discards them with nothing logged on
+	//     either side. Compiled and initialised is the equivalent of a bound
+	//     socket.
+	//   - bit 2, IPv6: whether inbound IPv6 connectivity has actually been
+	//     verified. A socket bound behind a firewall that drops every inbound
+	//     packet would have aMule advertising an address that never answers --
+	//     the same failure mode. See src/IPv6Reachability.h.
+	//
+	// The two are OR'd, not chosen between: a build that can serve uTP and has
+	// verified IPv6 advertises both, one that can do neither advertises zero.
+	//
+	// This makes the word a runtime value, where it used to be a compile-time
+	// constant guarded by a static_assert that a non-zero word implies the tag
+	// below is emitted and this count incremented. That assert cannot survive
+	// as an assert, so the guarantee is structural instead: the word is decided
+	// once, here, into a const, and bModMiscOptionsTagCounted is the single
+	// bool that both the count and the emission read. The count goes on the
+	// wire before the tags, so a disagreement between the two desynchronises
+	// the reader -- there must be no second expression able to disagree.
+	const uint32 uAdvertisedModMiscOptions =
+		AdvertisedModMiscOptions(theApp->clientudp != NULL && theApp->clientudp->CanServeUtpConnections()) |
+		theApp->GetReachability().AdvertisedModMiscOptions();
+	const bool bModMiscOptionsTagCounted = uAdvertisedModMiscOptions != 0;
+
+	// CT_MOD_IP_V6 is a second tag, gated on the IPv6 bit being in the word
+	// above and on there being an address to put in it. The bytes are produced
+	// here, once, and the tag below writes exactly what was counted: deciding
+	// twice is how a tagcount and its tags drift apart.
 	uint8 localIPv6Bytes[16] = { 0 };
-	const bool emitModIPv6 = emitModMiscOptions &&
+	const bool emitModIPv6 = ((uAdvertisedModMiscOptions & MOD_MISCOPT_IPV6) != 0) &&
 				 theApp->GetVerifiedIPv6Address().ToIPv6Bytes(localIPv6Bytes);
-	if (emitModMiscOptions) {
+
+	// The compile-time half of the old assert, which does survive: whatever
+	// this build can advertise stays inside the bits PeerCapabilities.h
+	// defines, so a bit can never reach a peer without a name.
+	static_assert((AdvertisableModMiscOptions() & ~MOD_MISCOPT_KNOWN_MASK) == 0,
+		"every advertisable CT_MOD_MISCOPTIONS bit must be one of the five defined in "
+		"PeerCapabilities.h");
+	// And the runtime half: the word never exceeds what this build could claim.
+	wxASSERT((uAdvertisedModMiscOptions & ~AdvertisableModMiscOptions()) == 0);
+
+	if (bModMiscOptionsTagCounted) {
 		tagcount++;
 	}
 	if (emitModIPv6) {
@@ -1272,15 +1315,26 @@ void CUpDownClient::SendHelloTypePacket(CMemFile *data)
 	// eMuleAI vendor capabilities (CT_MOD_MISCOPTIONS) and this client's IPv6
 	// address (CT_MOD_IP_V6).
 	//
-	// Both are gated on *verified* inbound IPv6 connectivity, not on having
-	// bound an IPv6 socket. A bound socket behind a firewall that drops every
-	// inbound packet would have aMule advertising an address that never
-	// answers: the peer opens a handshake, nothing completes, and neither side
-	// logs a reason -- the same failure mode as advertising a transport that
-	// is not implemented. The four other vendor bits stay off; each turns on in
-	// the change that ships its transport.
-	if (emitModMiscOptions) {
-		CTagVarInt tagModMiscOptions(CT_MOD_MISCOPTIONS, modMiscOptions, 32);
+	// Zero unless this client can really serve a peer the thing it would be
+	// claiming, in which case nothing is written at all: eMuleAI treats an
+	// absent tag and an all-zero word identically, and advertising a
+	// capability aMule does not have is strictly worse than advertising none
+	// -- the peer opens a handshake that cannot complete and neither side logs
+	// a reason. Both live bits are gated on that: uTP on being able to serve a
+	// connection, IPv6 on *verified* inbound connectivity rather than a bound
+	// socket. See AdvertisedModMiscOptions() in src/PeerCapabilities.h and
+	// DualStack::CLocalReachability in src/IPv6Reachability.h. The three
+	// remaining vendor bits stay off; each turns on in the change that ships
+	// its transport.
+	//
+	// The emission is governed by the same bool that incremented `tagcount`
+	// above, not by a second test of the word, because the count is already on
+	// the wire by the time we get here. The assert is what is left of the
+	// static_assert that used to guarantee this when the word was a
+	// compile-time constant: it trips if the two ever stop agreeing.
+	wxASSERT((uAdvertisedModMiscOptions != 0) == bModMiscOptionsTagCounted);
+	if (bModMiscOptionsTagCounted) {
+		CTagVarInt tagModMiscOptions(CT_MOD_MISCOPTIONS, uAdvertisedModMiscOptions, 32);
 		tagModMiscOptions.WriteTagToFile(data);
 	}
 	if (emitModIPv6) {
@@ -1475,11 +1529,32 @@ bool CUpDownClient::Disconnected(const wxString &DEBUG_ONLY(strReason), bool bFr
 		break;
 	};
 
+	// A uTP transport failure is a fact about the path -- a middlebox dropping
+	// UDP, a NAT that did not hold -- and never a fact about the peer, so it
+	// must not put the peer on the dead-source list. Read as a refusal, every
+	// peer behind one UDP-blocking middlebox gets marked dead, and the only
+	// symptom is a download with fewer sources than it should have; nothing
+	// logs, because from here it looks like an ordinary failed connection.
+	//
+	// The ordinary route for a failed uTP attempt does not come through here
+	// at all: Connect() falls back to TCP and clears the transport state, so a
+	// TCP failure afterwards is judged on its own merits and does mark the
+	// peer. This guard covers a uTP attempt that fails while the socket is
+	// already up, where the failure reaches Disconnected() directly.
+	const bool bMayBlameThePeer = !m_utpTransport.HasTransportFailed();
+	if (!bMayBlameThePeer) {
+		AddDebugLogLineN(logClient,
+			CFormat("uTP transport failure for %s: not marking the peer dead") %
+				GetClientFullInfo());
+	}
+
 	switch (m_nUploadState) {
 	case US_CONNECTING:
 	case US_WAITCALLBACK:
 	case US_ERROR:
-		theApp->clientlist->AddDeadSource(this);
+		if (bMayBlameThePeer) {
+			theApp->clientlist->AddDeadSource(this);
+		}
 		bDelete = true;
 	};
 
@@ -1488,7 +1563,9 @@ bool CUpDownClient::Disconnected(const wxString &DEBUG_ONLY(strReason), bool bFr
 	case DS_WAITCALLBACK:
 	case DS_ERROR:
 	case DS_BANNED:
-		theApp->clientlist->AddDeadSource(this);
+		if (bMayBlameThePeer) {
+			theApp->clientlist->AddDeadSource(this);
+		}
 		bDelete = true;
 	};
 
@@ -1799,6 +1876,39 @@ bool CUpDownClient::TryToConnect(bool bIgnoreMaxCon)
 	return true;
 }
 
+// Try to reach this peer over uTP instead of TCP.
+//
+// @return true when a uTP connection attempt is under way, so the caller must
+//         not dial TCP. False means TCP, and if a transport failure was
+//         recorded on the way out, the caller is running the fallback the spec
+//         delta requires rather than an ordinary TCP connection.
+//
+// Only "this end cannot use uTP for this peer" answers are recorded as transport
+// failures. That is deliberate: libutp missing from the build, a context that
+// could not be created, an address family this transport does not carry yet --
+// every one of those is a property of our side of the path, so blaming the peer
+// for any of them would cost a source for no reason.
+bool CUpDownClient::ConnectOverUtp()
+{
+	if (!m_modCapabilities.SupportsNatTraversal()) {
+		// The peer never claimed uTP, so nothing was attempted and nothing
+		// failed. Straight to TCP, with no transport failure recorded --
+		// this is every peer in an ordinary ed2k network.
+		return false;
+	}
+
+	// The peer advertises uTP. The live dial is the remaining half of task
+	// 3.1 -- substituting CUtpStream under CClientTCPSocket for a real
+	// connection -- so there is no established uTP attempt to succeed yet and
+	// this reports the transport failure unconditionally. The route out is
+	// the one a dial timeout will take unchanged: fall back to TCP, keep the
+	// source. Reporting it through OnUtpTransportFailure() rather than simply
+	// returning false is what makes that true; a plain false would take the
+	// peer down the pre-uTP path where a failure is the peer's fault.
+	OnUtpTransportFailure();
+	return false;
+}
+
 bool CUpDownClient::Connect()
 {
 	// A fresh sequence: rebuild what this peer says it is reachable on. The
@@ -1823,6 +1933,41 @@ bool CUpDownClient::ConnectToCurrentCandidate()
 	m_hasbeenobfuscatinglately = false;
 
 	if (!m_socket->IsOk()) {
+		if (ConnectOverUtp()) {
+			// A uTP attempt is in flight; it reports back through
+			// OnUtpConnected() or OnUtpTransportFailure().
+			return true;
+		}
+
+		const SUtpAttemptDisposition utp = GetUtpDisposition();
+		if (m_utpTransport.HasTransportFailed() && !utp.tryTcp) {
+			// uTP failed and TCP was already dialled on this pass, so
+			// there is nothing left to try right now. The peer keeps its
+			// place in the source list regardless: a peer behind a
+			// UDP-blocking middlebox is a candidate again next time. True
+			// rather than false -- false means "the client was deleted" to
+			// TryToConnect(), which is the opposite of keeping the source.
+			wxASSERT(!utp.markPeerDead && !utp.dropFromSourceList);
+			AddDebugLogLineN(logClient,
+				CFormat("uTP unavailable for %s and TCP already tried; keeping "
+					"the source") %
+					GetClientFullInfo());
+			return true;
+		}
+
+		if (m_utpTransport.HasTransportFailed()) {
+			AddDebugLogLineN(logClient,
+				CFormat("uTP transport failure for %s; falling back to TCP") %
+					GetClientFullInfo());
+		}
+
+		// The uTP attempt ends here. Clearing it is what keeps a TCP failure
+		// after a uTP one from being shielded by the uTP failure that
+		// preceded it: from this point the peer is on TCP and is judged on
+		// TCP's terms, exactly as it was before uTP existed.
+		m_bUtpTcpAttempted = true;
+		m_utpTransport.Reset();
+
 		// Enable or disable crypting based on our and the remote clients preference
 		if (HasValidHash() && SupportsCryptLayer() && thePrefs::IsClientCryptLayerSupported() &&
 			(RequestsCryptLayer() || thePrefs::IsClientCryptLayerRequested())) {

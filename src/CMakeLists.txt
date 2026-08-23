@@ -743,6 +743,22 @@ if (amule_HAVE_LIBCURL)
 	endforeach()
 endif()
 
+# uTP rides the client UDP socket, so it belongs to the two targets that have a
+# core. amulegui has none (CLIENT_GUI), which is why it is not in this loop.
+# AMULE_UTP_TRANSPORT is what every uTP call site is guarded by: without it the
+# transport shim still compiles, the adapter that calls utp_* does not, and no
+# uTP capability can be advertised to peers (AdvertisableModMiscOptions() is
+# zero). With it, the capability is still only advertised when the transport can
+# actually serve a connection -- see CUtpContext::CanServeConnections().
+if (ENABLE_UTP)
+	foreach (_tgt IN ITEMS amuled amule)
+		if (TARGET ${_tgt})
+			target_link_libraries (${_tgt} PRIVATE Utp::Utp)
+			target_compile_definitions (${_tgt} PRIVATE AMULE_UTP_TRANSPORT=1)
+		endif()
+	endforeach()
+endif()
+
 if (NEED_LIB_MULEAPPCOMMON)
 	add_library (muleappcommon STATIC
 		${UPNP_SOURCES}

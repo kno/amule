@@ -153,17 +153,92 @@ TEST(PeerCapabilities, ReservedBitsAreMaskedOff)
 	ASSERT_EQUALS(MOD_MISCOPT_KNOWN_MASK, caps.ToWire());
 }
 
-// The whole point of the change: aMule reads these capabilities but implements
-// none of them, so it must advertise none of them. This assertion is expected
-// to change exactly once per shipped feature -- and a change to it that is not
-// accompanied by a shipped transport is the bug the spec warns about.
+// aMule reads all five capabilities and implements two of them, so the ceiling
+// -- the most this build could ever claim -- names exactly those two and no
+// more. This assertion is expected to change exactly once per shipped feature,
+// and a change to it that is not accompanied by a shipped transport is the bug
+// the spec warns about.
 //
-// The IPv6 bit is now shipped, but conditionally: it is set at runtime only
-// once an inbound IPv6 connection has verified the claim, so it is not part of
-// this unconditional floor. IPv6ReachabilityTest pins that decision.
+// Neither shipped bit is unconditional on the wire. Each is decided per
+// handshake by its own runtime gate: uTP by AdvertisedModMiscOptions() below,
+// IPv6 by DualStack::CLocalReachability::AdvertisedModMiscOptions(), which
+// IPv6ReachabilityTest pins. The ceiling only says which bits are *possible*.
 TEST(PeerCapabilities, AdvertisesNoUnimplementedCapability)
 {
-	ASSERT_EQUALS(0x00000000u, LocalAdvertisedModMiscOptions());
+	// IPv6 is compiled unconditionally, so it is always in the ceiling. uTP is
+	// compiled in only with -DENABLE_UTP=YES (which needs libutp; see
+	// cmake/libutp.cmake), so it is in the ceiling only in such a build --
+	// asserted as a subset rather than a literal, because both builds are
+	// legitimate and this test runs in either.
+	ASSERT_EQUALS((uint32_t)MOD_MISCOPT_IPV6,
+		AdvertisableModMiscOptions() & (uint32_t)MOD_MISCOPT_IPV6);
+	const uint32_t shipped =
+		(uint32_t)MOD_MISCOPT_IPV6 | (uint32_t)MOD_MISCOPT_NAT_TRAVERSAL;
+	// Nothing unimplemented is reachable: no extended SX, no buddy pull, no
+	// QUIC, and no reserved bit.
+	ASSERT_EQUALS(0x00000000u, AdvertisableModMiscOptions() & ~shipped);
+}
+
+// The composition of the two gates, which is what actually goes on the wire.
+// CUpDownClient::SendHelloTypePacket() ORs the uTP word with the reachability
+// word; neither gate may leak into the other's bit, and a client that can do
+// both must claim both. The IPv6 half is produced here as a literal rather than
+// by linking DualStack::CLocalReachability, whose own branches
+// IPv6ReachabilityTest pins -- what is pinned here is the composition.
+TEST(PeerCapabilities, BothGatesComposeIntoOneWord)
+{
+	const uint32_t ipv6Verified = (uint32_t)MOD_MISCOPT_IPV6;
+	const uint32_t ipv6NotVerified = 0u;
+
+	// Neither: nothing is claimed, and the handshake omits the tag entirely.
+	ASSERT_EQUALS(0x00000000u, AdvertisedModMiscOptions(false) | ipv6NotVerified);
+
+	// One each, independently. Each gate sets its own bit and only its own.
+	ASSERT_EQUALS(0x00000002u, AdvertisedModMiscOptions(true) | ipv6NotVerified);
+	ASSERT_EQUALS(0x00000004u, AdvertisedModMiscOptions(false) | ipv6Verified);
+
+	// Both: bit 1 and bit 2 together, and nothing else.
+	ASSERT_EQUALS(0x00000006u, AdvertisedModMiscOptions(true) | ipv6Verified);
+	ASSERT_EQUALS(0x00000000u,
+		(AdvertisedModMiscOptions(true) | ipv6Verified) & ~MOD_MISCOPT_KNOWN_MASK);
+}
+
+// The advertise decision as a function of whether the transport can actually
+// carry a connection. Both branches are asserted because only one of them
+// exists in any given build, and the one that is wrong is the one that produces
+// no symptom: a client advertising uTP it cannot serve gets handshakes it will
+// never complete.
+TEST(PeerCapabilities, AdvertisedWordFollowsWhatTheTransportCanServe)
+{
+	ASSERT_EQUALS(0x00000000u, AdvertisedModMiscOptions(false));
+
+	// Bit 1, MOD_MISCOPT_NAT_TRAVERSAL: the capability eMuleAI gates its
+	// uTP NAT traversal on. Nothing else is claimed -- QUIC and IPv6 uTP
+	// are other changes.
+	ASSERT_EQUALS(0x00000002u, AdvertisedModMiscOptions(true));
+	ASSERT_EQUALS(MOD_MISCOPT_NAT_TRAVERSAL, AdvertisedModMiscOptions(true));
+}
+
+// The distinction this gate exists for. Compiled in is the ceiling, not the
+// answer: a build configured with -DENABLE_UTP=YES whose accept path is not
+// wired has a utp_context and still drops every inbound uTP connection, so it
+// must advertise nothing. Advertising it anyway costs peers connection attempts
+// that are discarded with nothing logged on either side -- the failure mode
+// PeerCapabilities.h is written around.
+//
+// The runtime half of the gate is CUtpContext::CanServeConnections(), asserted
+// in UtpContextTest; this pins that the word follows that answer and not the
+// build flag. CUpDownClient, where the two meet, reaches theApp and cannot be
+// linked into a unit test -- see the note at the top of this file.
+TEST(PeerCapabilities, CompiledInButUnableToServeAdvertisesNothing)
+{
+	// Compiled in but cannot serve: exactly the false branch.
+	ASSERT_EQUALS(0x00000000u, AdvertisedModMiscOptions(false));
+
+	// Whatever this build's ceiling is, the word it actually sends never
+	// exceeds it, and the ceiling never leaves the five defined bits.
+	ASSERT_EQUALS(0x00000000u, AdvertisableModMiscOptions() & ~MOD_MISCOPT_KNOWN_MASK);
+	ASSERT_EQUALS(AdvertisedModMiscOptions(false), AdvertisedModMiscOptions(false) & AdvertisableModMiscOptions());
 }
 
 // Setters exist for the advertise side; they must land on the same bits the

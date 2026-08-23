@@ -93,11 +93,19 @@ COPY . /src
 # CLAUDE.md: the preprocessor split means a change can compile in two of the
 # three and break the third. A baseline that covers only two is not a baseline
 # for anything a change will be judged against.
+#
+# ENABLE_UTP=YES here even though cmake/options.cmake defaults it to OFF. The
+# default is a user-facing choice -- uTP is opt-in -- but a verification build
+# that leaves it off never compiles a single call to utp_*, so a green test run
+# says nothing whatsoever about the uTP transport. The adapter behind
+# AMULE_UTP_TRANSPORT has to be compiled somewhere, and this is that somewhere.
+# It uses the vendored libutp in src/extern/libutp (see its AMULE_PROVENANCE.md).
 RUN cmake -B build -G Ninja \
         -DBUILD_TESTING=YES \
         -DBUILD_MONOLITHIC=YES \
         -DBUILD_DAEMON=YES \
         -DBUILD_REMOTEGUI=YES \
+        -DENABLE_UTP=YES \
     && cmake --build build -j"$(nproc)"
 
 # Recorded separately from the build so a compile failure and a test failure

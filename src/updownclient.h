@@ -37,10 +37,11 @@
 #include <ec/cpp/ECID.h>      // Needed for CECID
 #include "BitVector.h"        // Needed for BitVector
 #include "ClientRef.h"        // Needed for debug defines
-#include "NetworkAddress.h"    // Needed for CNetworkAddress
-#include "PeerCapabilities.h"  // Needed for CPeerCapabilities
-#include "PeerFamilyAttempts.h" // Needed for DualStack::CPeerConnectAttempts
-#include "PeerIdentity.h"       // Needed for PeerIdentity::IsDirectlyReachable
+#include "NetworkAddress.h"      // Needed for CNetworkAddress
+#include "PeerCapabilities.h"    // Needed for CPeerCapabilities
+#include "PeerFamilyAttempts.h"  // Needed for DualStack::CPeerConnectAttempts
+#include "PeerIdentity.h"        // Needed for PeerIdentity::IsDirectlyReachable
+#include "UtpTransportFailure.h" // Needed for CUtpTransportState
 
 #include <map>
 #include <wx/thread.h> // Needed for wxMutex
@@ -202,6 +203,43 @@ public:
 	bool Connect();
 	/** Dials the candidate the attempt accounting is currently on. */
 	bool ConnectToCurrentCandidate();
+
+	/* uTP transport attempt, and the fallback to TCP */
+
+	/**
+	 * The uTP connection came up. Recorded so a subsequent failure on this
+	 * client is judged as a peer-level event and not as a transport one.
+	 */
+	void OnUtpConnected() { m_utpTransport.OnConnected(); }
+
+	/**
+	 * uTP could not be established for this peer: no usable uTP path, or a
+	 * handshake that never completed. Says nothing about the peer, so
+	 * Connect() falls back to TCP and Disconnected() must not blame it.
+	 *
+	 * This is the single entry point for every transport-level uTP failure.
+	 * A future live dial reports its timeout here and needs no other change.
+	 */
+	void OnUtpTransportFailure() { m_utpTransport.OnTransportFailure(); }
+
+	//! The peer answered the uTP attempt and refused it. This one IS about
+	//! the peer, so the pre-uTP rules apply unchanged.
+	void OnUtpPeerRefused() { m_utpTransport.OnPeerRefused(); }
+
+	//! What the connection path should do about the last uTP attempt.
+	SUtpAttemptDisposition GetUtpDisposition() const
+	{
+		return DisposeUtpAttempt(m_utpTransport.GetOutcome(), m_bUtpTcpAttempted);
+	}
+
+	/**
+	 * Attempt this peer over uTP. Called by Connect() before it dials TCP.
+	 *
+	 * @return true when a uTP attempt is under way and TCP must not be
+	 *         dialled; false when the caller must use TCP.
+	 */
+	bool ConnectOverUtp();
+
 	void ConnectionEstablished();
 	const wxString &GetUserName() const { return m_Username; }
 	/**
@@ -1065,10 +1103,24 @@ private:
 
 	/* eMuleAI vendor capabilities, parsed from the CT_MOD_* hello tags */
 	CPeerCapabilities m_modCapabilities;
+	//! The peer's own IPv6 address and its server's, from the CT_MOD_IP_V6 and
+	//! CT_MOD_SERVER_IP_V6 tags. A CNetworkAddress carries its own validity, so
+	//! no separate "has" flag is needed and none should be reintroduced.
 	CNetworkAddress m_modIPv6;
 	CNetworkAddress m_modServerIPv6;
 	//! Outbound attempt accounting across the families this peer advertises.
 	DualStack::CPeerConnectAttempts m_familyAttempts;
+
+	/* uTP transport attempt state. See src/UtpTransportFailure.h for why the
+	   transport failure and the peer refusal must not be one state. */
+
+	//! How the last uTP attempt to this peer ended. Reset the moment the TCP
+	//! fallback is dialled, so a TCP failure after a uTP one is judged on its
+	//! own merits rather than shielded by the uTP failure that preceded it.
+	CUtpTransportState m_utpTransport;
+	//! Whether a TCP connection to this peer has been dialled on this pass.
+	//! Decides between "fall back to TCP" and "give up but keep the source".
+	bool m_bUtpTcpAttempted;
 
 	uint64 m_dwLastBuddyPingPongTime;
 	uint64_t m_dwDirectCallbackTimeout;

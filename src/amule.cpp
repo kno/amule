@@ -2098,6 +2098,17 @@ void CamuleApp::OnCoreTimer(CTimerEvent &WXUNUSED(evt))
 	}
 	recurse = true;
 
+	// uTP's timers, every core tick and independently of any traffic.
+	// libutp does retransmission and congestion control in
+	// utp_check_timeouts(), so a context driven only from the receive path
+	// cannot recover a lost packet on an idle connection -- the packet that
+	// would drive the recovery is the one that was lost. CORE_TIMER_PERIOD is
+	// 100 ms (300 ms in the daemon), comfortably inside libutp's 500 ms
+	// requirement. A no-op in a build without libutp.
+	if (clientudp) {
+		clientudp->ServiceUtp();
+	}
+
 	uploadqueue->Process();
 	downloadqueue->Process();
 	// theApp->clientcredits->Process();
