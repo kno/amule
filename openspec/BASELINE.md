@@ -17,6 +17,32 @@ and keep this record rather than overwriting it.
 | Image digest | `sha256:8b5f950ec30d93d83a444d22e52b7c5ea1d1632b97972327479fba46c81ca7b0` |
 | Host toolchain used | none — everything ran in the container |
 
+### Validity beyond the build commit
+
+This record was produced by building the tree at `36e28e73`. That stays the
+build-of-record and is not rewritten.
+
+It remains valid for any descendant commit that changes **no build input**. The
+compiled sources, `CMakeLists.txt`, `cmake/`, `unittests/` and
+`packaging/linux/dev/Dockerfile` are build inputs. `openspec/`, `AGENTS.md`,
+`.gitignore` and this file are not.
+
+Commit `255e5c7` ("docs(openspec): track the network-parity change set and dev
+container") is such a descendant. It only began tracking files that were already
+present in the working tree when the baseline was built — the Dockerfile's
+`COPY . /src` copies untracked files, and `openspec/`, `packaging/linux/dev/` and
+the patched `build.sh` were all verified present inside the baseline image. Not one
+byte the compiler consumed changed, so the compile and test results below still
+hold and no rebuild was performed.
+
+`AGENTS.md` postdates the baseline image and was therefore *not* inside it. It is
+documentation, referenced by neither `Dockerfile` nor `CMakeLists.txt`, so it is
+not a build input either.
+
+**When this does not apply:** the moment any commit touches a build input, this
+record is stale. Re-establish it with `packaging/linux/build.sh dev` and add a new
+record rather than editing this one.
+
 ## Toolchain
 
 | Component | Version |
