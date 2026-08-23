@@ -13,5 +13,21 @@ phases:
   design: skipped
   tasks: complete
   apply: complete
-  verify: pending
+  verify: complete
   archive: pending
+verification:
+  method: sdd-verify against specs, plus independent inspection of every pinned value
+  build: three apps, 40 ctest tests standalone / 45 on integrated master
+  failing: [FileDataIOTest]   # pre-existing aarch64 SEGFAULT, see BASELINE.md
+  findings: 0 critical
+  confirmed:
+    - KADEMLIA_VERSION 0x0a; AICH carriage gated at >= 0x09 in both directions
+    - bounds 10000/10000/1000, 3600 s identity change, 300 s problematic, 4 h ban
+    - CSafeKad composes with CPacketTracking and CRoutingBin; none modified
+    - Kad stays IPv4 (uint32) throughout
+  corrected_post_merge:
+    - a refused rapid identity rotation now escalates to the problematic list
+      (was rejected but never recorded, so a sybil retried for free)
+  outstanding:
+    - the 0x08 -> 0x0a wire step is capturable with tcpdump but has not been run
+    - the on-disk keyword-index v4 format has no unit test

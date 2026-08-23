@@ -15,5 +15,18 @@ phases:
   design: skipped
   tasks: complete
   apply: complete
-  verify: pending
+  verify: complete
   archive: pending
+verification:
+  method: sdd-verify against specs, plus independent inspection of every pinned value
+  build: three apps, 40 ctest tests standalone / 45 on integrated master
+  failing: [FileDataIOTest]   # pre-existing aarch64 SEGFAULT, see BASELINE.md
+  findings: 0 critical
+  confirmed:
+    - misc-options bit positions 0-4 in spec order, no offset; bits 5+ masked both ways
+    - CT_MOD_MISCOPTIONS 0xAA, CT_MOD_IP_V6 0xAE, CT_MOD_SVR_IP_V6 0xAF
+    - frame types 0x00/0x01/0x02/0x03/0xFF, all others dropped
+    - aMule advertises none of the five bits, guarded by a static_assert
+    - GUI client-details display and the EC tag render from one source of truth
+  outstanding:
+    - runtime frame-demux test needs a second container sending crafted datagrams
