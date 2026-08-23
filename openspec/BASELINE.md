@@ -1,5 +1,12 @@
 # Build baseline
 
+> **Two records live in this file.** The first is the *attribution* baseline: the
+> unmodified upstream tree at `36e28e73`, which is what tells you whether a failure
+> is yours or was already there. The second, at the end, is the current *reference
+> point* after phases 1-5, which changed a build input and therefore could not
+> extend the first. Neither replaces the other. Use the attribution baseline to
+> judge blame and the reference point to judge regression.
+
 Established by `amule-baseline-build` (change 0). **Valid only for the commit
 named below.** If the tree moves, re-establish it before further implementation
 and keep this record rather than overwriting it.
@@ -171,3 +178,78 @@ The arch-normalisation gap in (3) exists in five places in `packaging/linux/buil
 `build_flatpak` and `validate`. All of them fail the same way when invoked with
 `host` on a macOS host. Only `build_dev` was fixed, to keep the diff scoped. This
 is worth an upstream issue.
+
+---
+
+# Reference point after phases 1-5
+
+**This is not a baseline of unmodified code.** It is the reference the remaining
+changes are measured against. The attribution baseline above still stands and is
+still the only thing that can tell you a failure predates this work.
+
+## Why a second record exists
+
+The "Validity beyond the build commit" rule above says this file goes stale the
+moment a commit touches a build input, and that the fix is a new record rather than
+an edit to the old one. `amule-utp-transport` did exactly that: it added
+`-DENABLE_UTP=YES` to `packaging/linux/dev/Dockerfile`, so the verification build
+compiles the uTP adapter. That was deliberate and it paid for itself immediately —
+with `ENABLE_UTP=OFF` the build had been hiding a typedef collision between
+libutp's global `int64`/`byte` and `src/Types.h` plus `std::byte`, invisible until
+the adapter was actually compiled.
+
+## Subject
+
+| | |
+| --- | --- |
+| Commit | `f989cb5` (merge of phases 4 and 5) |
+| Durable tag | `localhost/amule-phases1-5:f989cb5` |
+| Image digest | `sha256:78ac496ce6ea2bac2c65088b24d445036688fc717e2ca3b3501aefe776bad3a5` |
+| Command | `packaging/linux/build.sh dev` |
+| Build configuration | as before, plus `-DENABLE_UTP=YES` |
+| Toolchain | unchanged from the attribution baseline above |
+
+## Result
+
+**Three apps built. 54 of 55 tests pass.**
+
+```
+98% tests passed, 1 tests failed out of 55
+
+The following tests FAILED:
+	  9 - FileDataIOTest (SEGFAULT)
+```
+
+`src/extern/libutp/libutp.a` (86 KB) is present, so uTP genuinely compiled rather
+than being configured away.
+
+`FileDataIOTest` is the same pre-existing aarch64 SEGFAULT as at `36e28e73`. It has
+never been attributable to any change in this set, and it still is not.
+
+## Reading the test count
+
+37 at the attribution baseline, 55 here. The suites each change added:
+
+| Change | Suites added |
+| --- | --- |
+| `amule-peer-capability-recognition` | 3 |
+| `amule-kad-protocol-catchup` | 3 |
+| `amule-address-widening` | 2 |
+| `amule-dual-stack-reachability` | 5 + 1 for the peer-identity widening |
+| `amule-utp-transport` | 5 |
+
+A change whose total does not move added no paired unit tests, which the
+`tasks.md` rule requires. Identify failures **by name**: adding a suite renumbers
+ctest, so `FileDataIOTest` was test 6 in one branch and test 9 in another, and
+comparing indices manufactures regressions that do not exist.
+
+## Addressing the images
+
+Never `amule-dev:aarch64`. `build_dev` writes that fixed tag on every run, so it
+names whatever was built last — including another agent's branch. Both records here
+are reachable by durable tag or by digest:
+
+```
+podman run --rm amule-baseline:36e28e73    /src/build/src/amuled --version   # attribution
+podman run --rm amule-phases1-5:f989cb5    /src/build/src/amuled --version   # reference
+```
