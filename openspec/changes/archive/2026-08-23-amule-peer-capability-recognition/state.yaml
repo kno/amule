@@ -16,7 +16,7 @@ phases:
   tasks: complete
   apply: complete
   verify: complete
-  archive: pending
+  archive: complete
 verification:
   method: sdd-verify against specs, plus independent inspection of every pinned value
   build: three apps, 40 ctest tests standalone / 45 on integrated master
