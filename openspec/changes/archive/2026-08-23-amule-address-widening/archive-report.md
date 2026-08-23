@@ -36,9 +36,26 @@ test covered the old behaviour.
 
 ## Carried forward — read this before touching address code
 
-**The byte-identical wire capture was never produced.** The runtime evidence
-recorded in `state.yaml` is equivalent in kind, not in rigour. Anyone claiming this
-change is fully verified against its stated criterion is overstating it.
+**The byte-identical comparison was produced after this change was archived.**
+Two measurements, both against a fixed `nodes.dat` fixture of 161 contacts:
+
+*Serialisation, network disabled.* Records for the contacts present in both the
+baseline and the post-change output were compared byte for byte: 150 in common,
+**0 records differing** in address, ports or version. Record size is 34 bytes in
+both builds.
+
+*The wire, network enabled.* 21 distinct UDP destinations were captured with
+tcpdump and cross-checked against the fixture read in both byte orders: **19 of 21
+match the normal reading, 0 match the reversed reading.** Had any conversion in
+this change inverted byte order, that result would be exactly inverted.
+
+**A trap for anyone repeating this.** The count of contacts read from an identical
+`nodes.dat` is NOT a valid basis for comparing two builds. It varies run to run
+within one build — the baseline alone produced 141, 141 and 161 across three runs.
+aMule generates a random Kad ID at startup and the routing tree buckets contacts by
+XOR distance from it, so per-bin capacity drops different contacts each time. A
+single-sample comparison of those counts reads as an 11-contact regression that
+does not exist. Compare records keyed by client ID instead.
 
 **`AddressCharacterisationTest` is not, by itself, a safety net.** It builds its
 range table and queries it through the same conversion, so a symmetric byte-order
