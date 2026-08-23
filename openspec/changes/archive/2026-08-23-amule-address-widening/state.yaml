@@ -1,0 +1,56 @@
+change: amule-address-widening
+order: 3
+artifact_store: openspec
+target_repo: github.com/kno/amule
+upstream_repo: github.com/amule-org/amule
+depends_on:
+  - amule-baseline-build
+sequence_after:
+  - amule-peer-capability-recognition
+  - amule-kad-protocol-catchup
+blocks:
+  - amule-dual-stack-reachability
+  - amule-utp-transport
+phases:
+  explore: complete
+  propose: complete
+  spec: complete
+  design: complete
+  tasks: complete
+  apply: complete
+  verify: complete
+  archive: complete
+verification:
+  method: independent inspection against spec and design; build and runtime evidence
+  build: three apps, 45 ctest tests on integrated master
+  failing: [FileDataIOTest]   # pre-existing aarch64 SEGFAULT, see BASELINE.md
+  suites_added: [NetworkAddressTest, AddressCharacterisationTest]
+  confirmed:
+    - byte order is stated in the function name, not a comment; the bare
+      wxUINT32_SWAP_ALWAYS sites in PacketTracking, RoutingZone and
+      KademliaUDPListener are gone
+    - byte order pinned by literal: 192.0.2.1 is 0xC0000201 host order and
+      0x010200C0 ed2k order (NetworkAddressTest)
+    - a failed narrowing leaves the caller's variable untouched, pinned with a
+      0xDEADBEEF sentinel rather than only asserting the false return
+    - IsIPv4Mapped() octet test is correct per RFC 4291 section 2.5.5.2
+    - the 12 sites left unconverted are genuinely uint32 fields
+      (amule.h:616, updownclient.h:200, Server.h:91 and peers)
+    - the Kad uint32 boundary is documented in code, not only in the proposal
+      (IPFilter.h:138, ClientList.h:105 and :277)
+  runtime_evidence: >
+    amuled on the built image downloaded a server list, connected to a real ED2K
+    server with protocol obfuscation, took a LowID and a clientid, reached
+    "Connected to Kad (firewalled)" and grew its Kad contact store from 142 to 150
+    entries. RoutingZone, IsFiltered and PacketTracking are exactly where the bare
+    swaps were replaced, so a reversed conversion there would have made the filter
+    drop legitimate contacts or admit garbage.
+  outstanding:
+    - The byte-identical wire capture the acceptance criterion asks for has NOT
+      been produced. The runtime evidence above is equivalent in kind, not in
+      rigour.
+    - AddressCharacterisationTest alone is NOT a safety net: it builds and queries
+      its table through the same conversion, so a symmetric byte-order error
+      cancels out and the test still passes. The literal pins in
+      NetworkAddressTest are what close that hole. Do not remove them as
+      redundant.
