@@ -1,0 +1,17 @@
+change: amule-kad-protocol-catchup
+order: 2
+artifact_store: openspec
+target_repo: github.com/kno/amule
+upstream_repo: github.com/amule-org/amule
+depends_on:
+  - amule-baseline-build
+blocks: []
+phases:
+  explore: complete
+  propose: complete
+  spec: complete
+  design: skipped
+  tasks: complete
+  apply: pending
+  verify: pending
+  archive: pending

@@ -1,0 +1,19 @@
+change: amule-peer-capability-recognition
+order: 1
+artifact_store: openspec
+target_repo: github.com/kno/amule
+upstream_repo: github.com/amule-org/amule
+depends_on:
+  - amule-baseline-build
+blocks:
+  - amule-dual-stack-reachability
+  - amule-nat-rendezvous
+phases:
+  explore: complete
+  propose: complete
+  spec: complete
+  design: skipped
+  tasks: complete
+  apply: pending
+  verify: pending
+  archive: pending

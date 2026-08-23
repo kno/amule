@@ -1,0 +1,73 @@
+schema: spec-driven
+
+context: |
+  Scope: these changes describe work in the **aMule** tree, not in eMuleAI.
+  They are tracked here because the reference implementation being matched is
+  eMuleAI.
+
+  Work repository:  github.com/kno/amule       (fork, local clone remote `origin`)
+  Upstream:         github.com/amule-org/amule (local clone remote `upstream`)
+  Changes land on the fork; upstreaming is a separate decision per change.
+
+  Reference implementation: eMuleAI @ a2f05dc (v1.6), C++20 / MFC, Windows-only.
+  Target implementation:    aMule @ 36e28e73 (2026-08-22), C++ / wxWidgets,
+                            CMake, Boost.Asio socket backend, cross-platform.
+  Both projects are GPL-2.0-or-later, so code may move in either direction
+  provided existing copyright lines travel with it.
+
+  Analysis of record: docs/network-parity-amule.md in the eMuleAI repository
+  (github.com/eMuleAI/eMuleAI). It is not part of this tree.
+
+  Execution order for this change set: changes/README.md. Directory listing is
+  alphabetical and is NOT execution order.
+
+rules:
+  proposal:
+    - State which side of the parity gap the change closes, with file/line evidence
+    - Name the dependency on other changes in this set explicitly
+  specs:
+    - Use Given/When/Then for scenarios
+    - Use RFC 2119 keywords (MUST, SHALL, SHOULD, MAY)
+    - Wire-format requirements MUST pin exact byte values, not descriptions
+  design:
+    - Document the addressing impact of every wire-level change
+    - Record why a dependency was added, and what ships without it
+  tasks:
+    - Group by phase, use hierarchical numbering
+    - Every wire-format task carries a paired unittests/ task
+  apply:
+    preconditions:
+      - >
+        HARD GATE. openspec/BASELINE.md MUST exist and MUST name the current
+        commit before any source file is modified. As of 2026-08-23 it names
+        36e28e73; if HEAD has moved, re-establish it via `packaging/linux/build.sh dev`. If the unmodified tree does not build,
+        report the environment failure and STOP — do not modify source to make
+        a build succeed.
+      - >
+        Before reporting any build or test failure as caused by a change, check
+        it against the pre-existing failures listed in openspec/BASELINE.md.
+    guidelines:
+      - >
+        Build and test in the container: `packaging/linux/build.sh dev`. Do not
+        assume a host toolchain — the bare cmake/ctest commands in AGENTS.md's
+        Build and Test sections require dependencies that may not be installed.
+      - Follow existing aMule patterns; prefer asio primitives over ported MFC types
+      - Never widen a public wire format without a capability bit gating it
+    tdd: true
+    test_command: "ctest --test-dir build --output-on-failure"
+  verify:
+    # VERIFIED 2026-08-23 against commit 36e28e73 — see openspec/BASELINE.md.
+    # Runs in a container; installs nothing on the host. The bare cmake/ctest
+    # commands previously recorded here were never executable on this host:
+    # no cmake, wxWidgets, pkg-config, libupnp, libmaxminddb or cryptopp.
+    build_command: "packaging/linux/build.sh dev"
+    test_command: "packaging/linux/build.sh dev"
+    # ctest inside the dev image is non-gating on purpose. Compare results
+    # against the pre-existing failures in openspec/BASELINE.md.
+    known_failing_tests:
+      - "FileDataIOTest (SEGFAULT) — pre-existing on aarch64 at 36e28e73"
+    # The dev image builds monolithic + daemon + remotegui. Do not narrow it:
+    # AGENTS.md:21 — a change can compile in two of the three and break the third.
+    coverage_threshold: 0
+  archive:
+    - Warn before merging destructive deltas

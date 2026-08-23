@@ -1,0 +1,24 @@
+change: amule-quic-transport
+order: 7
+artifact_store: openspec
+target_repo: github.com/kno/amule
+upstream_repo: github.com/amule-org/amule
+depends_on:
+  - amule-nat-rendezvous
+blocks: []
+new_dependencies:
+  - ngtcp2
+  - "TLS stack (undecided — see tasks 0.1-0.2)"
+optional: true
+phases:
+  explore: complete
+  propose: complete
+  spec: complete
+  design: complete
+  tasks: complete
+  apply: blocked
+  verify: pending
+  archive: pending
+blocked_reason: >
+  Requires a maintainer decision on adopting ngtcp2 and a TLS stack before
+  implementation can start. See tasks 0.1-0.3.

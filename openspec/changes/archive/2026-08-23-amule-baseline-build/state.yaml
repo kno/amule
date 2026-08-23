@@ -1,0 +1,32 @@
+change: amule-baseline-build
+order: 0
+gate: true
+artifact_store: openspec
+target_repo: github.com/kno/amule
+upstream_repo: github.com/amule-org/amule
+depends_on: []
+blocks:
+  - amule-peer-capability-recognition
+  - amule-kad-protocol-catchup
+  - amule-address-widening
+phases:
+  explore: complete
+  propose: complete
+  spec: complete
+  design: skipped
+  tasks: complete
+  apply: complete
+  verify: complete
+  archive: complete
+baseline:
+  commit: 36e28e73836f95e0391fdf26f349cfd9d57b7edf
+  record: openspec/BASELINE.md
+  image_digest: sha256:8b5f950ec30d93d83a444d22e52b7c5ea1d1632b97972327479fba46c81ca7b0
+  apps_built: [amule, amuled, amulegui]
+  compile: pass
+  tests: 36/37
+  known_failing:
+    - FileDataIOTest
+notes: >
+  Order 0 because it is a gate, not a parity phase. The parity phases stay
+  numbered 1-7 so that prose references to "phase 5" remain valid.

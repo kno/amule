@@ -30,6 +30,10 @@ Makefile.user
 # so ad-hoc build trees (build-macos, build-release, build-audit, ...) are all
 # covered while the tracked packaging/*/build.sh scripts are not.
 build*/
+# ...but an openspec capability directory may legitimately begin with "build"
+# (openspec/specs/build-baseline/), and build*/ above would silently swallow it,
+# dropping a promoted spec from the repository with no warning.
+!openspec/**/build*/
 dist/
 
 # Windows installer build artifacts
@@ -53,3 +57,6 @@ packaging/windows/installer_strings_generated.nsh
 # Python bytecode, from running the icon embedder by hand
 __pycache__/
 *.pyc
+
+# Local agent tooling cache, not part of the project
+.atl/

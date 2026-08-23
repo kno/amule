@@ -1,0 +1,22 @@
+change: amule-address-widening
+order: 3
+artifact_store: openspec
+target_repo: github.com/kno/amule
+upstream_repo: github.com/amule-org/amule
+depends_on:
+  - amule-baseline-build
+sequence_after:
+  - amule-peer-capability-recognition
+  - amule-kad-protocol-catchup
+blocks:
+  - amule-dual-stack-reachability
+  - amule-utp-transport
+phases:
+  explore: complete
+  propose: complete
+  spec: complete
+  design: complete
+  tasks: complete
+  apply: pending
+  verify: pending
+  archive: pending

@@ -1,0 +1,19 @@
+change: amule-nat-rendezvous
+order: 6
+artifact_store: openspec
+target_repo: github.com/kno/amule
+upstream_repo: github.com/amule-org/amule
+depends_on:
+  - amule-peer-capability-recognition
+  - amule-utp-transport
+blocks:
+  - amule-quic-transport
+phases:
+  explore: complete
+  propose: complete
+  spec: complete
+  design: complete
+  tasks: complete
+  apply: pending
+  verify: pending
+  archive: pending

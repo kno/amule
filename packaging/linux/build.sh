@@ -21,6 +21,11 @@ commands:
   static [arch]              produce a fully static musl daemon tarball
                              (amuled + amulecmd + amuleapi) in dist/
                              arch: host (default) | x86_64 | aarch64
+  dev [arch]                 build with tests enabled and run ctest inside
+                             a container, to establish a build baseline
+                             without installing a toolchain on the host.
+                             Produces no artifact — a successful run IS
+                             the result. arch: host (default) | x86_64 | aarch64
   validate [arch]            run amuled --version inside a fixed matrix
                              of distro Docker images to catch lib-load
                              regressions. arch: host (default) only —
@@ -467,8 +472,88 @@ validate_appimage() {
     [ "${fail}" -eq 0 ] || exit 1
 }
 
+build_dev() {
+    # Baseline verification: build the checkout with BUILD_TESTING=YES and
+    # run ctest, all inside a container. Produces no artifact — the point is
+    # the exit status and the recorded toolchain. Deliberately no buildx
+    # --output: nothing leaves the image.
+    # Resolve a real container CLI. `docker` is frequently only a shell alias
+    # for podman, which does not exist in this non-interactive bash.
+    local DOCKER
+    if command -v docker >/dev/null 2>&1; then
+        DOCKER=docker
+    elif command -v podman >/dev/null 2>&1; then
+        DOCKER=podman
+    else
+        echo "fatal: no container CLI found (looked for docker, podman)" >&2
+        exit 1
+    fi
+
+    # Normalise the machine name. macOS reports arm64 where Linux reports
+    # aarch64, so a bare `uname -m` falls through the arch case below and
+    # leaves the platform empty.
+    norm_arch() {
+        case "$1" in
+            arm64|aarch64)          echo aarch64 ;;
+            amd64|x86_64|x86-64)    echo x86_64  ;;
+            *)                      echo "$1"    ;;
+        esac
+    }
+
+    local host_arch
+    host_arch="$(norm_arch "$(uname -m)")"
+
+    local arch_in="${1:-host}"
+    local target_arch
+    case "${arch_in}" in
+        host)    target_arch="${host_arch}" ;;
+        x86_64)  target_arch=x86_64 ;;
+        aarch64) target_arch=aarch64 ;;
+        *)       echo "fatal: unsupported arch '${arch_in}' (choose host|x86_64|aarch64)" >&2; exit 1 ;;
+    esac
+
+    local docker_platform
+    case "${target_arch}" in
+        x86_64)  docker_platform=linux/amd64 ;;
+        aarch64) docker_platform=linux/arm64 ;;
+        *)       echo "fatal: cannot map arch '${target_arch}' to a container platform" >&2; exit 1 ;;
+    esac
+
+    if [ "${target_arch}" != "${host_arch}" ]; then
+        if ! "${DOCKER}" run --rm --platform "${docker_platform}" alpine:latest /bin/true 2>/dev/null; then
+            echo "fatal: cross-arch build requested (target=${target_arch}, host=$(uname -m)) but binfmt not registered." >&2
+            echo "       run once on this host: $0 setup-cross-arch" >&2
+            exit 1
+        fi
+    fi
+
+    local tag="amule-dev:${target_arch}"
+    # No --load: buildx's default docker driver already writes to the local
+    # image store, and podman's buildx shim (buildah) rejects the flag.
+    echo "==> Baseline build + ctest (${target_arch}, platform=${docker_platform}, cli=${DOCKER})"
+    "${DOCKER}" buildx build \
+        --platform "${docker_platform}" \
+        -f "${SCRIPT_DIR}/dev/Dockerfile" \
+        --build-arg "UBUNTU_BASE=${UBUNTU_BASE}" \
+        --build-arg "WX_VERSION=${WX_VERSION}" \
+        --build-arg "WX_TARBALL_URL=${WX_TARBALL_URL}" \
+        --build-arg "WX_SHA256=${WX_SHA256}" \
+        --build-arg "LIBUPNP_VERSION=${LIBUPNP_VERSION}" \
+        --build-arg "LIBUPNP_TARBALL_URL=${LIBUPNP_TARBALL_URL}" \
+        --build-arg "LIBUPNP_SHA256=${LIBUPNP_SHA256}" \
+        -t "${tag}" \
+        "${REPO_ROOT}"
+
+    echo "==> Baseline PASSED. Toolchain provenance for BASELINE.md:"
+    "${DOCKER}" run --rm "${tag}" cat /baseline-toolchain.txt
+    echo "==> Image digest:"
+    "${DOCKER}" image inspect "${tag}" --format '{{index .RepoDigests 0}}' 2>/dev/null \
+        || "${DOCKER}" image inspect "${tag}" --format 'local id {{.Id}}'
+}
+
 case "${target}" in
     appimage)                build_appimage "${1:-}" ;;
+    dev)                     build_dev "${1:-}" ;;
     flatpak)                 build_flatpak "${1:-}" ;;
     static)                  build_static "${1:-}" ;;
     render-flatpak-manifest) render_flatpak_manifest ;;

@@ -1,0 +1,20 @@
+change: amule-utp-transport
+order: 5
+artifact_store: openspec
+target_repo: github.com/kno/amule
+upstream_repo: github.com/amule-org/amule
+depends_on:
+  - amule-address-widening
+blocks:
+  - amule-nat-rendezvous
+new_dependencies:
+  - libutp
+phases:
+  explore: complete
+  propose: complete
+  spec: complete
+  design: complete
+  tasks: complete
+  apply: pending
+  verify: pending
+  archive: pending
