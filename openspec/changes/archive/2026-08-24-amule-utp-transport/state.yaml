@@ -17,7 +17,7 @@ phases:
   tasks: complete
   apply: complete
   verify: complete
-  archive: pending
+  archive: complete
 apply_notes: >
   25 of 26 tasks. Section 7 (Live transport) was added during implementation
   because the original breakdown asked for the stream interface to be presented

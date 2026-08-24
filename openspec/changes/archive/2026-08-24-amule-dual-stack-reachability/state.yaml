@@ -15,7 +15,7 @@ phases:
   tasks: complete
   apply: complete
   verify: complete
-  archive: pending
+  archive: complete
 verification:
   build: three apps, 58 ctest tests on merged master, only FileDataIOTest failing
   failing: [FileDataIOTest]   # pre-existing aarch64 SEGFAULT, see BASELINE.md
