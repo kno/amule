@@ -30,7 +30,54 @@
 ## 5. Staging
 
 - [x] 5.1 Ship IPv4-only first; keep the family generic in the interface
-- [ ] 5.2 Enable IPv6 uTP only after IPv4 uTP is stable in real use
+- [~] 5.2 Enable IPv6 uTP — **DEFERRED, gate rewritten.** See below.
+
+### 5.2 deferral record
+
+The original wording was *"enable IPv6 uTP only after IPv4 uTP is stable in real
+use"*. That gate cannot be satisfied from this tree at all: there is no deployment,
+no users and no weeks of traffic to observe, so the task would stay open forever by
+construction rather than by neglect. It is replaced by a gate that can actually
+close.
+
+**What is already done.** The whole uTP path is family-agnostic — it works in terms
+of `CNetworkAddress`, which carries either family. The IPv4 restriction lives in
+exactly one predicate:
+
+```cpp
+// src/UtpContext.h
+static bool IsUsableEndpoint(const CNetworkAddress &address) { return address.IsIPv4(); }
+```
+
+All three deciding sites read it rather than restating the rule: the outbound dial
+(`UtpDialPolicy.h`), outbound socket creation (`CreateOutboundSocket`) and inbound
+datagram classification (`ProcessDatagram`). Task 5.1 was built this way on purpose,
+so enabling IPv6 is a change to one predicate, not a change to the transport.
+
+**The replacement gate.** Enable IPv6 uTP when both hold:
+
+1. An IPv4 uTP transfer has completed between two aMule instances. This has never
+   happened — not once. Not for want of code, but for want of a peer-discovery
+   path: two containers on one podman network reach each other directly, yet no
+   reachable ED2K server will hand them each other as sources. It needs
+   cross-bootstrapped `nodes.dat` or a local ED2K server, which is shared
+   infrastructure the live tests for this change and for `amule-nat-rendezvous`
+   need anyway.
+2. libutp has been confirmed to handle `sockaddr_in6` at the vendored commit. It
+   uses `utp_packedsockaddr` internally and ships `libutp_inet_ntop.{cpp,h}` for
+   address formatting, so this is a reading exercise against
+   `src/extern/libutp`, not a guess.
+
+**Why not simply turn it on now.** The proposal's reasoning holds: *"Adding a new
+transport and a new address family in one change makes a stall impossible to
+attribute."* And the proposal separately warns that a port omitting the
+write-buffer thresholds "will appear to work in single-direction tests and stall
+under real load". If that stall arrives with IPv6 also newly enabled, there is no
+way to tell which of the two caused it. That is the same attribution discipline
+`openspec/BASELINE.md` exists to protect.
+
+**Recommended order:** land `amule-nat-rendezvous`, build the peer-discovery path,
+then flip the predicate and verify against both families.
 
 ## 6. Capability advertisement
 
