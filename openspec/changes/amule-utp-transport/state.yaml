@@ -16,7 +16,7 @@ phases:
   design: complete
   tasks: complete
   apply: complete
-  verify: pending
+  verify: complete
   archive: pending
 apply_notes: >
   25 of 26 tasks. Section 7 (Live transport) was added during implementation
@@ -37,3 +37,41 @@ apply_notes: >
   Not demonstrated: a live uTP transfer between two peers. Two containers on one
   podman network reach each other directly but have no ed2k peer-discovery path,
   so that needs cross-bootstrapped nodes.dat or a local server.
+verification:
+  build: three apps, 58 ctest tests on merged master, only FileDataIOTest failing
+  failing: [FileDataIOTest]   # pre-existing aarch64 SEGFAULT, see BASELINE.md
+  runtime_proven:
+    - >
+      libutp genuinely compiles and links: /src/build/src/extern/libutp/libutp.a
+      is present in the verification image. ENABLE_UTP=OFF had hidden a typedef
+      collision between libutp's global int64/byte and src/Types.h plus
+      std::byte, which only surfaced once the adapter was actually compiled.
+  supply_chain_verified:
+    - >
+      Every vendored file under src/extern/libutp compared byte-identical to a
+      clean clone of transmission/libutp at the pinned commit
+      490874c44a2ecf914404b0a20e043c9755fff47b. LICENSE verbatim, no .git, and
+      the commit recorded in AMULE_PROVENANCE.md is the one verified. Zero local
+      patches, so a future version bump is a replacement rather than a
+      reconciliation against patches.
+  unit_test_authoritative:
+    - >
+      The TCP-regression guard is UtpDialPolicyTest, in particular
+      PeerWithoutTheCapabilityTakesThePreUtpTcpPath and
+      PeerWithoutTheCapabilityIsUnaffectedByTheBuildConfiguration. The second
+      matters more: it pins that turning ENABLE_UTP on changes nothing for the
+      peers that do not speak uTP, which is almost all of them.
+    - >
+      Four dial refusals are classified as transport failures rather than the
+      peer's fault, so none costs a source: no context, an address family the
+      transport does not carry, an absent address, and a proxied socket.
+  not_demonstrated: >
+    No uTP transfer has ever completed between two peers. Not for want of code:
+    two containers on one podman network reach each other directly but no
+    reachable ED2K server will hand them each other as sources, so there is no
+    peer-discovery path. Building one -- cross-bootstrapped nodes.dat or a local
+    ED2K server -- is the precondition recorded in the rewritten 5.2 gate, and it
+    is shared with amule-nat-rendezvous's live traversal test.
+  outstanding:
+    - Task 5.2, IPv6 uTP. Deferred with a rewritten, closable gate; the IPv4
+      restriction is one predicate, CUtpContext::IsUsableEndpoint.

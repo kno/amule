@@ -14,5 +14,41 @@ phases:
   design: skipped
   tasks: complete
   apply: complete
-  verify: pending
+  verify: complete
   archive: pending
+verification:
+  build: three apps, 58 ctest tests on merged master, only FileDataIOTest failing
+  failing: [FileDataIOTest]   # pre-existing aarch64 SEGFAULT, see BASELINE.md
+  runtime_proven:
+    - >
+      IPv6 listeners replace the baseline's IPv4-only ones. Measured from
+      /proc/net in both images: baseline 36e28e73 has tcp 00000000:1236
+      (0.0.0.0:4662) and nothing in tcp6/udp6; master has tcp6
+      0000..0000:1236 ([::]:4662) and udp6 0000..0000:1240 ([::]:4672). The
+      dual-stack socket replaces both, accepting IPv4 peers in mapped form.
+    - >
+      The EC listener is unchanged at 0100007F:1268 (127.0.0.1:4712) in both,
+      confirming AnyAddress() still returns 0.0.0.0 where it should and only the
+      ed2k listeners ask for ::.
+  unit_test_authoritative:
+    - >
+      The IPv4-mapped filter-bypass property rests on IPFilterIPv6Test, not on a
+      runtime demo. Eleven tests, and the pair that matters is
+      MappedFormOfABlockedIPv4PeerIsStillBlockedByTheIPv4Rule (blocked, family
+      IPv4, ruleIndex 0, matchedAddress normalised to 192.0.2.5, arrivedMapped)
+      together with MappedFormOfAnAllowedIPv4PeerIsStillAllowed. Without the
+      second, a blanket block on every mapped address would satisfy the first.
+  runtime_test_attempted_and_inconclusive: >
+    A two-container attempt to observe the filter block at runtime could not
+    distinguish filtered from unfiltered. The block line is
+    AddDebugLogLineN(logIPFilter, ...) and Logger.h gates that on __DEBUG__,
+    which -DCMAKE_BUILD_TYPE=Release in the dev image does not define, so it is
+    compiled out. CountFiltered() still runs, but reading that counter needs EC
+    access and amulecmd is not built. A control run with the rule removed
+    produced byte-identical results to the run with it, so the probe proved
+    nothing either way and is recorded as inconclusive rather than as a pass.
+  outstanding:
+    - Task 4.4, interop against an IPv6-reachable eMuleAI build. Not performed:
+      no eMuleAI build exists in this tree and this host has no IPv6 transit.
+    - An inbound native-IPv6 ed2k connection from a second container was not
+      exercised end to end.
