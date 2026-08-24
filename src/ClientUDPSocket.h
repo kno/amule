@@ -130,11 +130,11 @@ public:
 		const uint8_t *payload, size_t length, const CNetworkAddress &to, uint16_t port) override;
 
 protected:
-	void OnReceive(int errorCode);
+	void OnReceive(int errorCode) override;
 
 private:
 	void OnPacketReceived(
-		const CNetworkAddress &peer, uint16 port, uint8_t *buffer, size_t length);
+		const CNetworkAddress &peer, uint16 port, uint8_t *buffer, size_t length) override;
 	void ProcessPacket(
 		uint8_t *packet, int16 size, int8 opcode, const CNetworkAddress &host, uint16 port);
 
