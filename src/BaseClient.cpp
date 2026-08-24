@@ -73,6 +73,10 @@
 #include "FriendList.h"      // Needed for CFriendList
 #include "Statistics.h"      // Needed for theStats
 #include "ClientUDPSocket.h"
+#include "UtpDialPolicy.h"      // Needed for DecideUtpDial
+#include "UtpSocketTransport.h" // Needed for CUtpSocketTransport / DialUtp
+
+#include <memory>
 #include "Logger.h"
 #include "DataToText.h" // Needed for GetSoftName()
 #include "GuiEvents.h"  // Needed for Notify_
@@ -1890,23 +1894,67 @@ bool CUpDownClient::TryToConnect(bool bIgnoreMaxCon)
 // for any of them would cost a source for no reason.
 bool CUpDownClient::ConnectOverUtp()
 {
-	if (!m_modCapabilities.SupportsNatTraversal()) {
-		// The peer never claimed uTP, so nothing was attempted and nothing
-		// failed. Straight to TCP, with no transport failure recorded --
-		// this is every peer in an ordinary ed2k network.
+	if (!m_socket) {
 		return false;
 	}
 
-	// The peer advertises uTP. The live dial is the remaining half of task
-	// 3.1 -- substituting CUtpStream under CClientTCPSocket for a real
-	// connection -- so there is no established uTP attempt to succeed yet and
-	// this reports the transport failure unconditionally. The route out is
-	// the one a dial timeout will take unchanged: fall back to TCP, keep the
-	// source. Reporting it through OnUtpTransportFailure() rather than simply
-	// returning false is what makes that true; a plain false would take the
-	// peer down the pre-uTP path where a failure is the peer's fault.
-	OnUtpTransportFailure();
-	return false;
+	if (m_socket->HasUtpTransport()) {
+		// A uTP attempt is already in flight on this socket. Reporting it as
+		// still in flight rather than dialling a second one: two utp_sockets to
+		// the same peer would both complete and the second hello would be
+		// answered on a connection nothing above the socket knows about.
+		return true;
+	}
+
+	// The address about to be dialled -- the same one the TCP branch below
+	// uses, so uTP and TCP cannot disagree about which peer this is.
+	const CNetworkAddress candidate = m_familyAttempts.Current();
+	const CNetworkAddress target =
+		candidate.IsPresent() ? candidate
+				      : CNetworkAddress::FromIPv4NetworkOrderOrAbsent(GetConnectIP());
+
+	CUtpContext *context = theApp->clientudp != NULL ? theApp->clientudp->GetUtpContext() : NULL;
+
+	// One decision, one place, and unit tested -- see UtpDialPolicy.h. The case
+	// that matters is the ordinary ed2k peer, which must come out of here with
+	// both flags clear so its connection is byte-for-byte the pre-uTP one.
+	const SUtpDialDecision decision = DecideUtpDial(m_modCapabilities.SupportsNatTraversal(),
+		context != NULL && context->IsAvailable(),
+		m_socket->GetUseProxy(),
+		target);
+
+	if (decision.recordTransportFailure) {
+		// Every reason *this end* cannot use uTP for a peer that asked for it.
+		// Reported as a transport failure rather than returning a plain false,
+		// because a plain false would take the peer down the pre-uTP path where
+		// a failure is the peer's fault -- and cost a source for a decision
+		// that was ours.
+		OnUtpTransportFailure();
+		return false;
+	}
+
+	if (!decision.attemptUtp) {
+		return false;
+	}
+
+	// The dial. utp_connect() puts the SYN on the wire inside DialUtp(), so
+	// from here the attempt is in flight and reports itself back through the
+	// socket's OnConnect / OnLost -- which is exactly what the TCP dial does.
+	std::unique_ptr<CUtpSocketTransport> transport(DialUtp(*context, target, GetUserPort()));
+	if (!transport) {
+		// libutp refused to create or connect the socket. Ours, not the
+		// peer's.
+		AddDebugLogLineN(logClient,
+			CFormat("uTP dial to %s could not be started; falling back to TCP") %
+				GetClientFullInfo());
+		OnUtpTransportFailure();
+		return false;
+	}
+
+	m_socket->AttachUtpTransport(std::move(transport));
+	AddDebugLogLineN(logClient,
+		CFormat("Dialling %s:%u over uTP") % wxString(target.ToString()) % GetUserPort());
+	return true;
 }
 
 bool CUpDownClient::Connect()
@@ -1933,6 +1981,20 @@ bool CUpDownClient::ConnectToCurrentCandidate()
 	m_hasbeenobfuscatinglately = false;
 
 	if (!m_socket->IsOk()) {
+		// Before the transport is chosen, not after: obfuscation lives in
+		// CEncryptedStreamSocket, which sits above the socket wrapper and
+		// therefore applies to a uTP connection on exactly the same terms as to
+		// a TCP one. Setting it here rather than in the TCP branch is what makes
+		// that true; the TCP path sees the identical pair of calls in the
+		// identical order, because ConnectOverUtp() is a no-op for a peer that
+		// did not advertise uTP.
+		if (HasValidHash() && SupportsCryptLayer() && thePrefs::IsClientCryptLayerSupported() &&
+			(RequestsCryptLayer() || thePrefs::IsClientCryptLayerRequested())) {
+			m_socket->SetConnectionEncryption(true, GetUserHash().GetHash(), false);
+		} else {
+			m_socket->SetConnectionEncryption(false, NULL, false);
+		}
+
 		if (ConnectOverUtp()) {
 			// A uTP attempt is in flight; it reports back through
 			// OnUtpConnected() or OnUtpTransportFailure().
@@ -1968,13 +2030,6 @@ bool CUpDownClient::ConnectToCurrentCandidate()
 		m_bUtpTcpAttempted = true;
 		m_utpTransport.Reset();
 
-		// Enable or disable crypting based on our and the remote clients preference
-		if (HasValidHash() && SupportsCryptLayer() && thePrefs::IsClientCryptLayerSupported() &&
-			(RequestsCryptLayer() || thePrefs::IsClientCryptLayerRequested())) {
-			m_socket->SetConnectionEncryption(true, GetUserHash().GetHash(), false);
-		} else {
-			m_socket->SetConnectionEncryption(false, NULL, false);
-		}
 		amuleIPV4Address tmp;
 		// The candidate carries its own family, so the socket layer opens the
 		// right kind of socket for it -- see AddressFamilyPolicy.h. Falling

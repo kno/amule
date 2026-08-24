@@ -276,6 +276,15 @@ through the one `bModMiscOptionsTagCounted` bool that
 `:1340`, with the `wxASSERT` at `:1339` tying it back to the word -- untouched by
 this phase.
 
+### One thing found on the way
+
+`CSocketClientProxy::Connect()` routes through the proxy state machine when a
+proxy is configured, and uTP rides the ed2k UDP socket -- it negotiates nothing
+with SOCKS or HTTP CONNECT. A proxied socket is therefore never dialled over uTP:
+`DecideUtpDial()` takes `GetUseProxy()` and answers `UTP_DIAL_PROXY_IN_USE`,
+which is a transport failure, so the peer falls back to TCP through the proxy and
+keeps its place. The user configured the proxy; that is ours, not the peer's.
+
 ### What defends the TCP path
 
 - `DecideUtpDial()` (`src/UtpDialPolicy.h`) is the whole dial decision, and

@@ -30,6 +30,7 @@
 #include "PeerIdentity.h"           // Needed for PeerIdentity::EUdpRoute
 #include "ReservedProtocolFrames.h" // Needed for CUnknownFrameLogThrottle
 #include "UtpContext.h"             // Needed for CUtpContext / IUtpDatagramSink
+#include "UtpInboundAcceptor.h"     // Needed for CUtpInboundAcceptor
 #include "UtpLibraryAdapter.h"      // Needed for CUtpLibraryAdapter
 
 /**
@@ -53,7 +54,10 @@ public:
 	 * context serviced only from the receive path cannot recover a lost
 	 * packet on an idle connection.
 	 */
-	void ServiceUtp() { m_utpContext.Tick(); }
+	//! @param nowMs a millisecond tick, for the per-connection write buffers
+	//!        and their idle accounting and their zero-write backoff. The context passes
+	//!        it to every live connection.
+	void ServiceUtp(uint64_t nowMs) { m_utpContext.Tick(nowMs); }
 
 	/**
 	 * Whether this client can serve a uTP connection to a peer right now.
@@ -67,6 +71,17 @@ public:
 	 * library at all.
 	 */
 	bool CanServeUtpConnections() { return m_utpContext.CanServeConnections(); }
+
+	/**
+	 * The one uTP context, for the outbound dial.
+	 *
+	 * CUpDownClient::ConnectOverUtp() needs it to create a connection. Handed
+	 * out rather than wrapped in a Dial() method here, because the dial belongs
+	 * to the client that owns the socket, not to the UDP socket that carries
+	 * the datagrams -- and there is exactly one context per client instance for
+	 * every connection to share.
+	 */
+	CUtpContext *GetUtpContext() { return &m_utpContext; }
 
 	//! Outbound uTP datagrams, from the context's send callback. Framed and
 	//! queued on this socket so uTP and ed2k UDP share one port.
@@ -133,6 +148,12 @@ private:
 	//! behaves exactly as it did before uTP existed.
 	CUtpContext m_utpContext;
 	CUtpLibraryAdapter m_utpLibrary{ &m_utpContext };
+
+	//! Where an inbound uTP connection becomes a CClientTCPSocket. Its
+	//! presence is what makes CUtpLibraryAdapter register UTP_ON_ACCEPT, and
+	//! therefore what makes CanServeUtpConnections() -- and the advertised
+	//! MOD_MISCOPT_NAT_TRAVERSAL bit -- able to be true.
+	CUtpInboundAcceptor m_utpAcceptor;
 };
 
 #endif // CLIENTUDPSOCKET_H

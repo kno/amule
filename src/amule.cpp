@@ -90,6 +90,7 @@
 #include "ServerList.h"                 // Needed for CServerList
 #include "ServerConnect.h"              // Needed for CServerConnect
 #include "ServerUDPSocket.h"            // Needed for CServerUDPSocket
+#include "GetTickCount.h"               // Needed for GetTickCount64
 #include "Statistics.h"                 // Needed for CStatistics
 #include "AmuleApiCredentials.h"        // Needed for AmuleApiCredentials::RefreshState
 #include <AtomicFile.h>                 // webcommon::WriteFileAtomic0600 for the EC token
@@ -2106,7 +2107,7 @@ void CamuleApp::OnCoreTimer(CTimerEvent &WXUNUSED(evt))
 	// 100 ms (300 ms in the daemon), comfortably inside libutp's 500 ms
 	// requirement. A no-op in a build without libutp.
 	if (clientudp) {
-		clientudp->ServiceUtp();
+		clientudp->ServiceUtp(::GetTickCount64());
 	}
 
 	uploadqueue->Process();

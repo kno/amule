@@ -64,6 +64,14 @@ public:
 	//! Not exercised here: the accept path gates the advertised capability,
 	//! and UtpContextTest drives it. The write path is what this suite is for.
 	bool AcceptsInboundConnections(void *) const override { return false; }
+	//! Nor the dial or the per-connection teardown: those are
+	//! CUtpSocketTransport's, and UtpSocketTransportTest drives them.
+	void *CreateOutboundSocket(void *, void *, const CNetworkAddress &, uint16_t) override
+	{
+		return nullptr;
+	}
+	void CloseSocket(void *) override {}
+	void NotifyReadDrained(void *) override {}
 
 	long WriteToSocket(void *, const uint8_t *data, size_t length) override
 	{

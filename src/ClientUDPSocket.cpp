@@ -69,7 +69,10 @@ CClientUDPSocket::CClientUDPSocket(const amuleIPV4Address &address, const CProxy
 	// library, IsAvailable() is false, and the shared port behaves exactly
 	// as it did before uTP existed -- which is what every default build
 	// does, because ENABLE_UTP is off by default.
-	m_utpContext.Configure(&m_utpLibrary, this);
+	// The acceptor is what turns the inbound half on: CUtpLibraryAdapter
+	// registers UTP_ON_ACCEPT only when the context has one, because libutp
+	// answers an inbound SYN as soon as that callback exists.
+	m_utpContext.Configure(&m_utpLibrary, this, &m_utpAcceptor);
 #endif
 }
 

@@ -30,6 +30,8 @@
 #include "Types.h"
 #include <memory> // shared_ptr for CAsioUDPSocketImpl ownership
 class amuleIPV4Address;
+class CUtpSocketTransport;
+class CUtpSocketNotifier;
 
 // Socket flags (unused in ASIO implementation, just provide the names)
 enum
@@ -149,6 +151,34 @@ public:
 	// the underlying socket is not open.
 	void EnableTcpKeepalive(int idleSec, int probeIntervalSec, int probeCount);
 
+	//
+	// uTP substitution
+	//
+	// aMule has no socket-layer abstraction -- that is the whole reason the
+	// uTP change needed a shim (see openspec/changes/amule-utp-transport). This
+	// wrapper is the seam: everything above it (CProxySocket,
+	// CEncryptedStreamSocket, CEMSocket, CClientTCPSocket) consumes
+	// Read/Write/IsConnected/IsOk/BlocksRead/BlocksWrite and the peer
+	// accessors, and never touches the asio socket directly. So a wrapper that
+	// wears a uTP transport routes exactly those calls through it and the
+	// entire stack above is unchanged, obfuscation included.
+	//
+	// The absence of a transport is the only thing an ordinary TCP connection
+	// can observe: every intercepting method is `if (m_utpTransport) {...}`
+	// followed by the call it always made. In a build configured with
+	// -DENABLE_UTP=NO nothing ever attaches one, so that branch is never taken.
+
+	/**
+	 * Substitute uTP for TCP on this wrapper. Takes ownership.
+	 *
+	 * Must be called before any connect: the asio socket is then never opened,
+	 * and the peer accessors answer from the transport instead of from a
+	 * connection that does not exist.
+	 */
+	void AttachUtpTransport(std::unique_ptr<CUtpSocketTransport> transport);
+	bool HasUtpTransport() const { return m_utpTransport != nullptr; }
+	CUtpSocketTransport *GetUtpTransport() const { return m_utpTransport.get(); }
+
 	// Handlers
 	virtual void OnConnect(int) {}
 	virtual void OnSend(int) {}
@@ -171,6 +201,17 @@ private:
 	// any in-flight async callback still holds a shared_from_this() ref.
 	// Required to fix the wake-from-sleep use-after-free crash (issue #384).
 	std::shared_ptr<class CAsioSocketImpl> m_aSocket;
+
+	// NULL for every TCP connection, which is every connection unless this
+	// build has libutp and the peer advertised uTP. Held by unique_ptr on an
+	// incomplete type, so ~CLibSocket() and AttachUtpTransport() are
+	// out-of-line in LibSocketAsio.cpp, where CUtpSocketTransport is complete.
+	std::unique_ptr<CUtpSocketTransport> m_utpTransport;
+	// Turns the transport's events back into the CoreNotify_LibSocket* events
+	// the asio reactor posts, so the socket above sees no difference. Defined
+	// in LibSocketAsio.cpp, next to those notifications.
+	std::unique_ptr<CUtpSocketNotifier> m_utpNotifier;
+
 	void LastCount();   // No. We don't have this. We return it directly with Read() and Write()
 	bool Error() const; // Only use LastError
 };

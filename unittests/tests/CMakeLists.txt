@@ -1014,6 +1014,75 @@ target_link_libraries (UtpTransportFailureTest
 	mulecommon
 )
 
+# The three suites the live transport added. Same shape as the five above and
+# for the same reason: the substitution, the dial decision and the accept path
+# are all header-only and libutp-free, so the fake IUtpLibrary is what makes
+# both answers to each question reachable in one build. Only one of them exists
+# in any given real build, and the wrong one produces no symptom.
+add_executable (UtpDialPolicyTest
+	UtpDialPolicyTest.cpp
+)
+
+add_test (NAME UtpDialPolicyTest
+	COMMAND UtpDialPolicyTest
+)
+
+target_include_directories (UtpDialPolicyTest
+	PRIVATE ${CMAKE_BINARY_DIR}
+	PRIVATE ${CMAKE_SOURCE_DIR}/src
+	PRIVATE ${CMAKE_SOURCE_DIR}/src/include
+	# CNetworkAddress is a boost::asio::ip::address.
+	PRIVATE ${Boost_INCLUDE_DIR}
+)
+
+target_link_libraries (UtpDialPolicyTest
+	muleunit
+	mulecommon
+	${Boost_LIBRARIES}
+)
+
+add_executable (UtpSocketTransportTest
+	UtpSocketTransportTest.cpp
+)
+
+add_test (NAME UtpSocketTransportTest
+	COMMAND UtpSocketTransportTest
+)
+
+target_include_directories (UtpSocketTransportTest
+	PRIVATE ${CMAKE_BINARY_DIR}
+	PRIVATE ${CMAKE_SOURCE_DIR}/src
+	PRIVATE ${CMAKE_SOURCE_DIR}/src/include
+	PRIVATE ${Boost_INCLUDE_DIR}
+)
+
+target_link_libraries (UtpSocketTransportTest
+	muleunit
+	mulecommon
+	${Boost_LIBRARIES}
+)
+
+add_executable (UtpInboundAcceptTest
+	UtpInboundAcceptTest.cpp
+)
+
+add_test (NAME UtpInboundAcceptTest
+	COMMAND UtpInboundAcceptTest
+)
+
+target_include_directories (UtpInboundAcceptTest
+	PRIVATE ${CMAKE_BINARY_DIR}
+	PRIVATE ${CMAKE_SOURCE_DIR}/src
+	PRIVATE ${CMAKE_SOURCE_DIR}/src/include
+	PRIVATE ${Boost_INCLUDE_DIR}
+)
+
+target_link_libraries (UtpInboundAcceptTest
+	muleunit
+	mulecommon
+	${Boost_LIBRARIES}
+)
+
 # EC_TAG_CLIENT_MOD_CAPABILITIES: the headless view of a peer's negotiated
 # vendor capabilities. The Client Details dialog that renders the same data
 # lives in amule/amulegui and needs an X server, so this tag is what makes that

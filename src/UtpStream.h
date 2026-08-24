@@ -247,6 +247,18 @@ public:
 	}
 
 	/**
+	 * libutp says its send window is open again.
+	 *
+	 * Clears the zero-write backoff. That backoff exists to stop the pump
+	 * calling utp_write thousands of times a second to be told no; an explicit
+	 * notification that the window opened makes holding it not merely
+	 * unnecessary but wrong, because the connection would then sit idle for up
+	 * to UTP_ZERO_WRITE_RETRY_MAX_MS after libutp had said it could take data.
+	 * A stall with nothing failing anywhere.
+	 */
+	void OnWindowOpened() { ClearZeroWriteBackoff(); }
+
+	/**
 	 * The periodic tick for one stream: drain what can be drained, then give
 	 * back a buffer that has been idle long enough.
 	 */
@@ -262,6 +274,11 @@ public:
 	void SetDuplexTransfer(bool duplex) { m_writeBuffer.SetDuplexTransfer(duplex); }
 
 	std::size_t GetPendingWriteBytes() const { return m_pendingWrite.size(); }
+	//! Bytes libutp delivered that the application has not read yet. This is
+	//! what UTP_GET_READ_BUFFER_SIZE answers: libutp subtracts it from the
+	//! receive window it advertises, so a stale zero here invites the peer to
+	//! keep sending into a buffer that is not draining.
+	std::size_t GetPendingReadBytes() const { return m_pendingRead.size(); }
 	std::size_t GetWriteBufferCapacity() const { return m_writeBuffer.GetCapacity(); }
 	std::size_t GetWriteBufferMaxCapacity() const { return m_writeBuffer.GetMaxCapacity(); }
 	std::uint64_t GetZeroWriteBackoffMs() const { return m_zeroWriteBackoffMs; }

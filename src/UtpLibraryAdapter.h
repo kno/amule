@@ -78,6 +78,12 @@ public:
 	void IssueDeferredAcks(void *context) override;
 	void CheckTimeouts(void *context) override;
 	long WriteToSocket(void *socket, const std::uint8_t *data, std::size_t length) override;
+	void *CreateOutboundSocket(void *context,
+		void *userData,
+		const CNetworkAddress &to,
+		std::uint16_t port) override;
+	void CloseSocket(void *socket) override;
+	void NotifyReadDrained(void *socket) override;
 
 private:
 	CUtpContext *m_owner = nullptr;
@@ -85,7 +91,11 @@ private:
 	/**
 	 * Whether CreateContext() registered UTP_ON_ACCEPT on the context it
 	 * built. Set at the point of registration and nowhere else, so it cannot
-	 * claim an accept path that is not there.
+	 * claim an accept path that is not there. The registration itself follows
+	 * whether the owning context has an acceptor
+	 * (CUtpContext::HasInboundAcceptor()): libutp answers an inbound SYN as
+	 * soon as the callback exists, so registering it with nowhere to put the
+	 * connection would complete a handshake and then drop it.
 	 *
 	 * Read through AcceptsInboundConnections(), which is what decides whether
 	 * this client advertises MOD_MISCOPT_NAT_TRAVERSAL. A libutp-free bool

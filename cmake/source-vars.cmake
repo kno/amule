@@ -56,6 +56,11 @@ if (BUILD_MONOLITHIC OR BUILD_DAEMON)
 		# the two cannot coexist. Compiled in every core build; without
 		# AMULE_UTP_TRANSPORT its methods are inert and it pulls in no libutp.
 		UtpLibraryAdapter.cpp
+		# Where an inbound uTP connection becomes a CClientTCPSocket. Needs
+		# theApp, so it cannot live in UtpLibraryAdapter.cpp; libutp-free, so
+		# it compiles in a build with ENABLE_UTP off, where nothing ever
+		# constructs a context for it to serve.
+		UtpInboundAcceptor.cpp
 	)
 endif()
 

@@ -29,10 +29,15 @@
 #ifndef UTPCONTEXT_H
 #define UTPCONTEXT_H
 
+#include <algorithm>
 #include <cstddef>
 #include <cstdint>
+#include <vector>
 
 #include "NetworkAddress.h" // Needed for CNetworkAddress
+
+class CUtpContext;
+class CUtpSocketTransport;
 
 /**
  * The uTP context: aMule's side of libutp.
@@ -65,6 +70,87 @@
  * the type does not appear here so that this header stays includable without
  * libutp's headers.
  */
+
+/**
+ * What libutp told us about one connection, in this shim's own vocabulary.
+ *
+ * libutp's UTP_STATE_* constants cannot appear outside UtpLibraryAdapter.cpp --
+ * that translation unit is the only one allowed to see libutp's headers -- so
+ * the adapter maps them onto these on the way out.
+ */
+enum EUtpSocketState
+{
+	//! UTP_STATE_CONNECT: the handshake completed. Implies writability.
+	UTP_SOCKET_CONNECTED,
+	//! UTP_STATE_WRITABLE: the send window opened again.
+	UTP_SOCKET_WRITABLE,
+	//! UTP_STATE_EOF: the peer closed the connection.
+	UTP_SOCKET_EOF,
+	//! UTP_STATE_DESTROYING: libutp is about to free the socket. Nothing may
+	//! refer to it afterwards.
+	UTP_SOCKET_DESTROYING
+};
+
+/**
+ * Why one connection failed -- and, crucially, whose fault that is.
+ *
+ * A refusal is a fact about the peer. A timeout or a reset is a fact about the
+ * path: a middlebox dropping UDP, a NAT that did not hold. See
+ * UtpTransportFailure.h for why conflating the two costs sources silently.
+ */
+enum EUtpSocketError
+{
+	//! UTP_ECONNREFUSED: the peer answered and refused. About the peer.
+	UTP_SOCKET_REFUSED,
+	//! UTP_ECONNRESET: the connection was reset. Not attributable.
+	UTP_SOCKET_RESET,
+	//! UTP_ETIMEDOUT: nothing came back. Not attributable.
+	UTP_SOCKET_TIMEDOUT
+};
+
+/**
+ * Something the context drives on every tick.
+ *
+ * Implemented by CUtpSocketTransport: libutp accepts a write only while its own
+ * send window allows, so queued application bytes need a periodic pass to be
+ * handed over, and that pass has to run on the thread that owns libutp.
+ */
+class IUtpTickable
+{
+public:
+	virtual ~IUtpTickable() = default;
+
+	virtual void OnUtpTick(std::uint64_t nowMs) = 0;
+};
+
+/**
+ * Where an inbound uTP connection goes.
+ *
+ * libutp discards an inbound connection outright unless UTP_ON_ACCEPT is
+ * registered, so this interface is the difference between a transport that can
+ * serve a peer and one that merely exists -- and it is what makes the advertised
+ * MOD_MISCOPT_NAT_TRAVERSAL bit honest. The registration follows the presence of
+ * an acceptor rather than the other way round: registering the callback with
+ * nowhere to put the connection would have libutp complete a handshake we then
+ * refuse, which is worse for the peer than never answering at all.
+ */
+class IUtpConnectionAcceptor
+{
+public:
+	virtual ~IUtpConnectionAcceptor() = default;
+
+	/**
+	 * Take ownership of an inbound uTP connection.
+	 *
+	 * @param socket  a `utp_socket *`, already handshaken by libutp.
+	 * @return the transport that now owns `socket`, or NULL to refuse it.
+	 *         The returned pointer becomes the socket's user data, so every
+	 *         later callback for that connection finds it.
+	 */
+	virtual CUtpSocketTransport *AcceptUtpConnection(
+		CUtpContext &context, void *socket, const CNetworkAddress &from, std::uint16_t port) = 0;
+};
+
 class IUtpLibrary
 {
 public:
@@ -115,6 +201,39 @@ public:
 	 *         backoff.
 	 */
 	virtual long WriteToSocket(void *socket, const std::uint8_t *data, std::size_t length) = 0;
+
+	/**
+	 * utp_create_socket() plus utp_connect(): the outbound dial.
+	 *
+	 * @param userData  becomes the socket's user data before the SYN goes out,
+	 *                  so the first callback for the connection already finds
+	 *                  the transport that owns it.
+	 * @return a `utp_socket *`, or NULL when the dial could not be started.
+	 */
+	virtual void *CreateOutboundSocket(void *context,
+		void *userData,
+		const CNetworkAddress &to,
+		std::uint16_t port) = 0;
+
+	/**
+	 * utp_close(), preceded by clearing the socket's user data.
+	 *
+	 * The order is the point: libutp keeps the socket alive after utp_close()
+	 * until it has flushed what it can, and fires UTP_STATE_DESTROYING at the
+	 * end. A callback arriving in that window with the old user data would
+	 * dereference a transport its owner has already destroyed.
+	 */
+	virtual void CloseSocket(void *socket) = 0;
+
+	/**
+	 * utp_read_drained(): the application consumed what it had buffered.
+	 *
+	 * libutp derives the receive window it advertises from
+	 * UTP_GET_READ_BUFFER_SIZE, so without this the window only reopens on
+	 * libutp's next scheduled ack. A connection whose window had closed
+	 * completely would then stall for as long as that takes.
+	 */
+	virtual void NotifyReadDrained(void *socket) = 0;
 };
 
 /**
@@ -153,15 +272,31 @@ public:
 	 *                 every path through it is inert -- the receive path and
 	 *                 the core timer both run in that build too.
 	 */
-	void Configure(IUtpLibrary *library, IUtpDatagramSink *sink)
+	void Configure(IUtpLibrary *library, IUtpDatagramSink *sink,
+		IUtpConnectionAcceptor *acceptor = nullptr)
 	{
 		Reset();
 		m_library = library;
 		m_sink = sink;
+		m_acceptor = acceptor;
 	}
 
 	//! Whether there is a library to talk to at all.
 	bool IsAvailable() const { return m_library != nullptr; }
+
+	//! The library, for a per-connection stream to write through. NULL in a
+	//! build without libutp, which is what makes CUtpStream inert there.
+	IUtpLibrary *GetLibrary() const { return m_library; }
+
+	/**
+	 * Whether an inbound uTP connection has somewhere to go.
+	 *
+	 * Read by the adapter's CreateContext(), which registers UTP_ON_ACCEPT only
+	 * when this is true: libutp answers an inbound SYN as soon as the callback
+	 * exists, so registering it with no acceptor would complete a handshake and
+	 * then drop the connection -- worse for the peer than never answering.
+	 */
+	bool HasInboundAcceptor() const { return m_acceptor != nullptr; }
 
 	/**
 	 * Whether this end can serve a uTP connection: a context exists, and an
@@ -229,15 +364,116 @@ public:
 	 * context is also created here if it does not exist yet, so the
 	 * guarantee does not depend on a first inbound packet.
 	 */
-	void Tick()
+	void Tick(std::uint64_t nowMs = 0)
 	{
 		void *context = EnsureContext();
 		if (context == nullptr) {
 			return;
 		}
 
+		// Queued application bytes first: libutp accepts a write only while
+		// its own send window allows, so bytes that arrived from the upload
+		// throttler's thread since the last tick are handed over here, on the
+		// thread that owns libutp. Over a copy, and re-checking registration,
+		// because handing bytes over can complete or fail a connection and
+		// tear its transport down mid-loop.
+		const std::vector<IUtpTickable *> tickables = m_tickables;
+		for (std::size_t i = 0; i < tickables.size(); ++i) {
+			if (IsRegistered(tickables[i])) {
+				tickables[i]->OnUtpTick(nowMs);
+			}
+		}
+
 		m_library->IssueDeferredAcks(context);
 		m_library->CheckTimeouts(context);
+	}
+
+	//! Start driving `tickable` on every tick. Called by CUtpSocketTransport's
+	//! constructor; the pairing with Unregister() is that object's lifetime.
+	void RegisterTickable(IUtpTickable *tickable)
+	{
+		if (tickable != nullptr && !IsRegistered(tickable)) {
+			m_tickables.push_back(tickable);
+		}
+	}
+
+	void UnregisterTickable(IUtpTickable *tickable)
+	{
+		m_tickables.erase(
+			std::remove(m_tickables.begin(), m_tickables.end(), tickable), m_tickables.end());
+	}
+
+	std::size_t GetTickableCount() const { return m_tickables.size(); }
+
+	/**
+	 * Dial a peer: utp_create_socket() plus utp_connect().
+	 *
+	 * @param userData  becomes the socket's user data before the SYN leaves,
+	 *                  so the connection's first callback already finds its
+	 *                  transport.
+	 * @return a `utp_socket *`, or NULL when there is no library, no context,
+	 *         or the peer is on an address family this transport does not
+	 *         carry yet.
+	 */
+	void *CreateOutboundSocket(void *userData, const CNetworkAddress &to, std::uint16_t port)
+	{
+		if (!IsUsableEndpoint(to)) {
+			return nullptr;
+		}
+
+		void *context = EnsureContext();
+		if (context == nullptr) {
+			return nullptr;
+		}
+
+		return m_library->CreateOutboundSocket(context, userData, to, port);
+	}
+
+	//! Close one connection. Safe with a NULL socket, which is what a transport
+	//! that never got off the ground holds.
+	void CloseSocket(void *socket)
+	{
+		if (m_library != nullptr && socket != nullptr) {
+			m_library->CloseSocket(socket);
+		}
+	}
+
+	//! The application drained its read buffer on `socket`, so libutp may
+	//! reopen the receive window it advertises.
+	void NotifyReadDrained(void *socket)
+	{
+		if (m_library != nullptr && socket != nullptr) {
+			m_library->NotifyReadDrained(socket);
+		}
+	}
+
+	/**
+	 * An inbound uTP connection arrived. Offer it to the acceptor.
+	 *
+	 * @return the transport that took it, or NULL when it must be refused --
+	 *         no acceptor, or a peer on an address family this transport does
+	 *         not carry yet. The caller closes a refused socket.
+	 */
+	CUtpSocketTransport *OnInboundConnection(
+		void *socket, const CNetworkAddress &from, std::uint16_t port)
+	{
+		if (socket == nullptr) {
+			return nullptr;
+		}
+
+		if (m_acceptor == nullptr || !IsUsableEndpoint(from)) {
+			// Nothing has taken the socket, so it is closed here. libutp had
+			// already answered the SYN by the time it told us, so leaving it
+			// open would keep a connection in its table that nobody reads.
+			CloseSocket(socket);
+			return nullptr;
+		}
+
+		// From here the acceptor owns the socket in every case, including
+		// refusal -- see IUtpConnectionAcceptor. Two owners of utp_close() for
+		// one socket would make double-closing a matter of which refusal path
+		// happened to be taken.
+		return m_acceptor->AcceptUtpConnection(*this, socket, from, port);
 	}
 
 	/**
@@ -294,9 +530,20 @@ private:
 		m_context = nullptr;
 	}
 
+	bool IsRegistered(IUtpTickable *tickable) const
+	{
+		return std::find(m_tickables.begin(), m_tickables.end(), tickable) != m_tickables.end();
+	}
+
 	IUtpLibrary *m_library = nullptr;
 	IUtpDatagramSink *m_sink = nullptr;
+	IUtpConnectionAcceptor *m_acceptor = nullptr;
 	void *m_context = nullptr;
+
+	//! The live connections, driven on every tick. Raw pointers: each entry is
+	//! owned by the socket wrapper that wears it and deregisters itself in its
+	//! destructor.
+	std::vector<IUtpTickable *> m_tickables;
 };
 
 #endif // UTPCONTEXT_H

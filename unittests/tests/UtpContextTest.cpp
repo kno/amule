@@ -101,6 +101,18 @@ public:
 	//! UtpStreamTest drives it.
 	long WriteToSocket(void *, const uint8_t *, size_t length) override { return (long)length; }
 
+	//! The dial and the per-connection teardown are CUtpSocketTransport's, and
+	//! UtpSocketTransportTest drives them. Present here because IUtpLibrary is
+	//! one interface: inert answers keep this fake honest about what it does
+	//! not stand in for.
+	void *CreateOutboundSocket(void *, void *, const CNetworkAddress &, uint16_t) override
+	{
+		return nullptr;
+	}
+
+	void CloseSocket(void *) override {}
+	void NotifyReadDrained(void *) override {}
+
 	//! Stands in for "UTP_ON_ACCEPT is registered on this context". The real
 	//! adapter answers from its own registration; the fake answers on command
 	//! so both sides of the gate are reachable in one build.
