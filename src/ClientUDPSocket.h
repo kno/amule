@@ -27,6 +27,8 @@
 #define CLIENTUDPSOCKET_H
 
 #include "MuleUDPSocket.h"
+#include "NatRendezvousManager.h"   // Needed for CNatRendezvousManager
+#include "NatRendezvousRelay.h"     // Needed for CRendezvousRelayLimiter
 #include "PeerIdentity.h"           // Needed for PeerIdentity::EUdpRoute
 #include "ReservedProtocolFrames.h" // Needed for CUnknownFrameLogThrottle
 #include "UtpContext.h"             // Needed for CUtpContext / IUtpDatagramSink
@@ -58,6 +60,45 @@ public:
 	//!        and their idle accounting and their zero-write backoff. The context passes
 	//!        it to every live connection.
 	void ServiceUtp(uint64_t nowMs) { m_utpContext.Tick(nowMs); }
+
+	/**
+	 * Drive the hole-punch schedules. Also called from
+	 * CamuleApp::OnCoreTimer, and for the same reason ServiceUtp() is: the
+	 * schedules are polled rather than timer-driven, so a rendezvous that is
+	 * waiting out an attempt's spacing has to be asked.
+	 *
+	 * Emits nothing at all unless a rendezvous is in flight, which for an
+	 * ordinary peer never happens -- see CNatRendezvousManager.
+	 */
+	void ServiceNatRendezvous(uint64_t nowMs);
+
+	/**
+	 * The rendezvous exchanges in flight, for the connect path.
+	 *
+	 * CUpDownClient needs it to fill SRendezvousInputs::backoffActive and to
+	 * report a connection coming up, both of which are per peer and neither of
+	 * which this socket can decide. Handed out rather than wrapped, on the same
+	 * reasoning as GetUtpContext(): there is one per client instance and the
+	 * decision belongs to the client, not to the socket that carries bytes.
+	 */
+	CNatRendezvousManager *GetNatRendezvousManager() { return &m_natRendezvous; }
+
+	/**
+	 * Ask a relay to reach @a peerHash on this client's behalf.
+	 *
+	 * @param ownEndpoint this client's believed external endpoint. Sent as a
+	 *        hint, and the relay is expected to ignore its value and forward
+	 *        what it observed instead -- which is what RelayRendezvousRequest()
+	 *        does when the roles are reversed. It is sent because the relay
+	 *        validates the hint against the source, so a request without one
+	 *        is discarded.
+	 * @return whether a request went out.
+	 */
+	bool SendRendezvousRequest(const uint8_t *peerHash,
+		const CNetworkAddress &relay,
+		uint16_t relayPort,
+		const CNetworkAddress &ownEndpoint,
+		uint16_t ownPort);
 
 	/**
 	 * Whether this client can serve a uTP connection to a peer right now.
@@ -137,6 +178,36 @@ private:
 	void ProcessReservedProt2Frame(
 		const uint8_t *frame, size_t frameLength, const CNetworkAddress &peer, uint16 port);
 
+	/**
+	 * The rendezvous and hole-punch control messages, inside an
+	 * OP_NATT_FRAME_UTP frame.
+	 *
+	 * Reached only after the uTP context declined the datagram, which is what
+	 * makes the two parsers on this frame type unambiguous: a libutp v1 header
+	 * cannot begin with 0xA0, 0xA1 or 0xAA, and none of those three can be a
+	 * libutp header -- see the classification argument in
+	 * NatRendezvousProtocol.h.
+	 *
+	 * This function is dispatch and no policy. Every decision it appears to
+	 * make is made in a header that a test binary can link: the relay
+	 * validation and its rate limit in RelayRendezvousRequest(), the guards on
+	 * the other direction in AcceptRelayedRendezvous(), the bounds in
+	 * CNatRendezvousManager. That split is deliberate -- this class needs
+	 * theApp and cannot be linked into a test at all, so anything decided here
+	 * could not be asserted anywhere.
+	 *
+	 * @param frame points at the control opcode, i.e. past the 0xB2 and 0x00
+	 *        framing bytes.
+	 */
+	void ProcessNattControlFrame(
+		const uint8_t *frame, size_t frameLength, const CNetworkAddress &peer, uint16 port);
+
+	//! Frame and queue one control message on this socket: OP_UDPRESERVEDPROT2
+	//! then OP_NATT_FRAME_UTP, exactly as SendUtpDatagram() does, so the punch
+	//! opens the mapping uTP will use rather than one of its own.
+	void SendNattControlMessage(
+		const uint8_t *payload, size_t length, const CNetworkAddress &to, uint16_t port);
+
 	//! One unknown-frame line per minute, with a suppressed count. A peer
 	//! speaking a frame type this build does not know retries, so the useful
 	//! information is that it happened plus how often.
@@ -154,6 +225,21 @@ private:
 	//! therefore what makes CanServeUtpConnections() -- and the advertised
 	//! MOD_MISCOPT_NAT_TRAVERSAL bit -- able to be true.
 	CUtpInboundAcceptor m_utpAcceptor;
+
+	//! The rendezvous exchanges in flight. Empty in every ordinary session:
+	//! an entry exists only for a firewalled peer that advertised traversal
+	//! and that this client could not reach any other way.
+	CNatRendezvousManager m_natRendezvous;
+
+	/**
+	 * One relay budget for both directions.
+	 *
+	 * Deliberately one object rather than two: a peer that has spent its
+	 * budget asking this client to relay must not get a second allowance by
+	 * sending forwards instead. Two limiters would be two budgets for one
+	 * peer, which is the amplification this change exists to not be.
+	 */
+	CRendezvousRelayLimiter m_relayLimiter;
 };
 
 #endif // CLIENTUDPSOCKET_H

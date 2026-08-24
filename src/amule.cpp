@@ -2107,7 +2107,15 @@ void CamuleApp::OnCoreTimer(CTimerEvent &WXUNUSED(evt))
 	// 100 ms (300 ms in the daemon), comfortably inside libutp's 500 ms
 	// requirement. A no-op in a build without libutp.
 	if (clientudp) {
-		clientudp->ServiceUtp(::GetTickCount64());
+		const uint64_t nowMs = ::GetTickCount64();
+		clientudp->ServiceUtp(nowMs);
+
+		// The hole-punch schedules, polled from the same tick. They hold no
+		// timer of their own precisely so that 120 seconds and a 60 second
+		// backoff are functions of a tick a test can supply -- neither bound is
+		// observable through a real NAT without a lab. Emits nothing unless a
+		// rendezvous is in flight, which for an ordinary peer never happens.
+		clientudp->ServiceNatRendezvous(nowMs);
 	}
 
 	uploadqueue->Process();

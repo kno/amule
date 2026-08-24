@@ -1909,11 +1909,36 @@ bool CUpDownClient::ConnectOverUtp()
 	// The address about to be dialled -- the same one the TCP branch below
 	// uses, so uTP and TCP cannot disagree about which peer this is.
 	const CNetworkAddress candidate = m_familyAttempts.Current();
-	const CNetworkAddress target =
+	CNetworkAddress target =
 		candidate.IsPresent() ? candidate
 				      : CNetworkAddress::FromIPv4NetworkOrderOrAbsent(GetConnectIP());
+	uint16_t targetPort = GetUserPort();
 
 	CUtpContext *context = theApp->clientudp != NULL ? theApp->clientudp->GetUtpContext() : NULL;
+
+	// A hole punch that landed is worth more than any address either side
+	// advertised: the mapping that delivered a packet is the mapping that is
+	// open, and behind a port-rewriting NAT it is frequently not the port the
+	// peer believes it has. So if a rendezvous for this peer saw a punch
+	// arrive, the uTP connection goes over that mapping -- which is what
+	// "establish the connection over the punched hole" means concretely, and
+	// it works because uTP shares the ed2k UDP port and therefore shares the
+	// hole. Only the uTP dial is redirected; the TCP fallback below keeps the
+	// advertised address, because a punched UDP mapping says nothing about TCP.
+	if (HasValidHash() && theApp->clientudp != NULL) {
+		CNetworkAddress punched;
+		uint16_t punchedPort = 0;
+		if (theApp->clientudp->GetNatRendezvousManager()->ObservedEndpoint(
+			    GetUserHash().GetHash(), punched, punchedPort)) {
+			AddDebugLogLineN(logClient,
+				CFormat("Dialling %s over the punched mapping %s:%u instead of "
+					"%s:%u") %
+					GetClientFullInfo() % wxString(punched.ToString()) %
+					punchedPort % wxString(target.ToString()) % targetPort);
+			target = punched;
+			targetPort = punchedPort;
+		}
+	}
 
 	// One decision, one place, and unit tested -- see UtpDialPolicy.h. The case
 	// that matters is the ordinary ed2k peer, which must come out of here with
@@ -1940,7 +1965,7 @@ bool CUpDownClient::ConnectOverUtp()
 	// The dial. utp_connect() puts the SYN on the wire inside DialUtp(), so
 	// from here the attempt is in flight and reports itself back through the
 	// socket's OnConnect / OnLost -- which is exactly what the TCP dial does.
-	std::unique_ptr<CUtpSocketTransport> transport(DialUtp(*context, target, GetUserPort()));
+	std::unique_ptr<CUtpSocketTransport> transport(DialUtp(*context, target, targetPort));
 	if (!transport) {
 		// libutp refused to create or connect the socket. Ours, not the
 		// peer's.
@@ -1953,7 +1978,7 @@ bool CUpDownClient::ConnectOverUtp()
 
 	m_socket->AttachUtpTransport(std::move(transport));
 	AddDebugLogLineN(logClient,
-		CFormat("Dialling %s:%u over uTP") % wxString(target.ToString()) % GetUserPort());
+		CFormat("Dialling %s:%u over uTP") % wxString(target.ToString()) % targetPort);
 	return true;
 }
 
@@ -2084,6 +2109,17 @@ void CUpDownClient::ConnectionEstablished()
 	// A connection came up, so the family sequence starts clean next time: a
 	// transient failure on one family is not a permanent verdict on it.
 	m_familyAttempts.RecordSuccess();
+
+	// And any hole punch for this peer is over. Cancelled here rather than
+	// where the punch is sent, because this is the one place that knows the
+	// connection exists -- and it is cancelled however the connection came up,
+	// including on the callback or buddy path, since the requirement is that no
+	// further hole-punch packets are sent for the pair and not that the punch
+	// is what succeeded. A no-op for the ordinary peer, which has no entry.
+	if (HasValidHash() && theApp->clientudp != NULL) {
+		theApp->clientudp->GetNatRendezvousManager()->OnConnectionEstablished(
+			GetUserHash().GetHash());
+	}
 
 #ifdef __DEBUG__
 	if (!connection_reason.IsEmpty()) {
