@@ -15,6 +15,25 @@ phases:
   spec: complete
   design: complete
   tasks: complete
-  apply: pending
+  apply: complete
   verify: pending
   archive: pending
+apply_notes: >
+  25 of 26 tasks. Section 7 (Live transport) was added during implementation
+  because the original breakdown asked for the stream interface to be presented
+  and never asked for it to be used: the change had merged green while uTP
+  carried no data at all. That section is complete -- the outbound dial goes
+  through DialUtp(), UTP_ON_ACCEPT is registered when the context has an
+  acceptor, and the libutp callbacks the transport cannot work without are
+  registered too. None of those had been named by a task.
+
+  Task 5.2 (IPv6 uTP) stays open on purpose: the proposal stages IPv4 first so a
+  stall stays attributable. It is a deferral, not a gap.
+
+  Build verified independently on the merged tree at e9b0b4a: three apps,
+  58 ctest tests, FileDataIOTest the only failure -- the pre-existing aarch64
+  SEGFAULT. 55 before this work, three suites added.
+
+  Not demonstrated: a live uTP transfer between two peers. Two containers on one
+  podman network reach each other directly but have no ed2k peer-discovery path,
+  so that needs cross-bootstrapped nodes.dat or a local server.
