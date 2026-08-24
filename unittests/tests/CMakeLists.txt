@@ -1300,3 +1300,134 @@ target_link_libraries (PeerIdentityTest
 	muleunit
 	${Boost_LIBRARIES}
 )
+
+# LowID-to-LowID rendezvous and hole punching, in four suites.
+#
+# The wire format comes first and is asserted as literal bytes, because the
+# three opcodes and two option bits are eMuleAI's and an opcode off by one is a
+# frame the peer drops -- which behind a NAT is indistinguishable from the NAT
+# not opening.
+#
+# NatRendezvousRelayTest is the security suite and the reason the emission lives
+# inside RelayRendezvousRequest() rather than in CClientUDPSocket: a rendezvous
+# request asks this client to send packets toward an address on behalf of
+# whoever asked, and "no packet is sent toward an unrelated address" is only
+# assertable when the send is inside the unit under test. CClientUDPSocket needs
+# theApp and cannot be linked into a test binary at all.
+#
+# Same shape and the same reasons as the uTP suites above: header-only, free of
+# theApp and of wxWidgets, so both answers to each question are reachable in the
+# one build a test binary is. Only one of them exists in any real build, and the
+# wrong one produces no symptom.
+add_executable (NatRendezvousProtocolTest
+	NatRendezvousProtocolTest.cpp
+)
+
+add_test (NAME NatRendezvousProtocolTest
+	COMMAND NatRendezvousProtocolTest
+)
+
+target_include_directories (NatRendezvousProtocolTest
+	PRIVATE ${CMAKE_BINARY_DIR}
+	PRIVATE ${CMAKE_SOURCE_DIR}/src
+	PRIVATE ${CMAKE_SOURCE_DIR}/src/include
+	# CNetworkAddress is a boost::asio::ip::address.
+	PRIVATE ${Boost_INCLUDE_DIR}
+)
+
+target_link_libraries (NatRendezvousProtocolTest
+	muleunit
+	# muleunit's MuleDebug.cpp calls CFormat, so every test binary needs
+	# mulecommon even when the code under test does not.
+	mulecommon
+	${Boost_LIBRARIES}
+)
+
+add_executable (NatRendezvousRelayTest
+	NatRendezvousRelayTest.cpp
+)
+
+add_test (NAME NatRendezvousRelayTest
+	COMMAND NatRendezvousRelayTest
+)
+
+target_include_directories (NatRendezvousRelayTest
+	PRIVATE ${CMAKE_BINARY_DIR}
+	PRIVATE ${CMAKE_SOURCE_DIR}/src
+	PRIVATE ${CMAKE_SOURCE_DIR}/src/include
+	PRIVATE ${Boost_INCLUDE_DIR}
+)
+
+target_link_libraries (NatRendezvousRelayTest
+	muleunit
+	mulecommon
+	${Boost_LIBRARIES}
+)
+
+add_executable (NatHolePunchScheduleTest
+	NatHolePunchScheduleTest.cpp
+)
+
+add_test (NAME NatHolePunchScheduleTest
+	COMMAND NatHolePunchScheduleTest
+)
+
+target_include_directories (NatHolePunchScheduleTest
+	PRIVATE ${CMAKE_BINARY_DIR}
+	PRIVATE ${CMAKE_SOURCE_DIR}/src
+	PRIVATE ${CMAKE_SOURCE_DIR}/src/include
+	PRIVATE ${Boost_INCLUDE_DIR}
+)
+
+target_link_libraries (NatHolePunchScheduleTest
+	muleunit
+	mulecommon
+	${Boost_LIBRARIES}
+)
+
+add_executable (NatTraversalPolicyTest
+	NatTraversalPolicyTest.cpp
+)
+
+add_test (NAME NatTraversalPolicyTest
+	COMMAND NatTraversalPolicyTest
+)
+
+target_include_directories (NatTraversalPolicyTest
+	PRIVATE ${CMAKE_BINARY_DIR}
+	PRIVATE ${CMAKE_SOURCE_DIR}/src
+	PRIVATE ${CMAKE_SOURCE_DIR}/src/include
+	PRIVATE ${Boost_INCLUDE_DIR}
+)
+
+target_link_libraries (NatTraversalPolicyTest
+	muleunit
+	mulecommon
+	${Boost_LIBRARIES}
+)
+
+# The set of in-flight exchanges, which is what the receive path and the core
+# timer drive. Separate from NatHolePunchScheduleTest because the bounds that
+# matter here are the ones that are right for one pair and wrong for the set:
+# cancellation that must not leak across pairs, and a table an inbound packet
+# can grow.
+add_executable (NatRendezvousManagerTest
+	NatRendezvousManagerTest.cpp
+)
+
+add_test (NAME NatRendezvousManagerTest
+	COMMAND NatRendezvousManagerTest
+)
+
+target_include_directories (NatRendezvousManagerTest
+	PRIVATE ${CMAKE_BINARY_DIR}
+	PRIVATE ${CMAKE_SOURCE_DIR}/src
+	PRIVATE ${CMAKE_SOURCE_DIR}/src/include
+	PRIVATE ${Boost_INCLUDE_DIR}
+)
+
+target_link_libraries (NatRendezvousManagerTest
+	muleunit
+	mulecommon
+	${Boost_LIBRARIES}
+)

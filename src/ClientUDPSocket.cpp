@@ -50,8 +50,11 @@
 #include "kademlia/utils/KadUDPKey.h"
 #include <zlib.h>
 #include "EncryptedDatagramSocket.h"
-#include "NetworkAddress.h"     // Needed for CNetworkAddress
-#include "UtpDatagramRouting.h" // Needed for RouteInboundDatagram
+#include "NatRendezvousProtocol.h" // Needed for the control message codec
+#include "NatRendezvousRelay.h"    // Needed for RelayRendezvousRequest
+#include "NatTraversalPolicy.h"    // Needed for CNattCandidateSet
+#include "NetworkAddress.h"        // Needed for CNetworkAddress
+#include "UtpDatagramRouting.h"    // Needed for RouteInboundDatagram
 
 //
 // CClientUDPSocket -- Extended eMule UDP socket
@@ -335,16 +338,21 @@ void CClientUDPSocket::ProcessReservedProt2Frame(
 		break;
 	}
 
-	// The five registered types. Every one of them belongs to a transport
-	// this build does not have, so each is dropped here rather than in a
-	// shared fallthrough: the change that ships a transport replaces its own
-	// case and nothing else, and until then a peer's NAT-T attempt is a
-	// recognised frame aMule cannot serve rather than malformed traffic.
+	// The five registered types. Each is handled or dropped in its own case:
+	// the change that ships a transport replaces its own case and nothing
+	// else, and until then a peer's NAT-T attempt is a recognised frame aMule
+	// cannot serve rather than malformed traffic.
 	switch (classified.type) {
 	case OP_NATT_FRAME_UTP:
-		AddDebugLogLineN(logClientUDP,
-			CFormat("Ignoring uTP NAT-T frame from %s:%u: no uTP transport in this build") %
-				peerText % port);
+		// The rendezvous and hole-punch control messages. Reached only after
+		// the uTP context declined the datagram in OnPacketReceived(), so
+		// libutp has already had its chance at these bytes; a payload that is
+		// neither a libutp header nor one of the three control opcodes is
+		// dropped inside ProcessNattControlFrame().
+		//
+		// classified.payload is past the frame type byte, so the control
+		// opcode is its first byte.
+		ProcessNattControlFrame(classified.payload, classified.payloadLength, peer, port);
 		break;
 
 	case OP_NATT_FRAME_QUIC:
@@ -375,6 +383,245 @@ void CClientUDPSocket::ProcessReservedProt2Frame(
 		// silently taking the drop path.
 		wxFAIL;
 		break;
+	}
+}
+
+void CClientUDPSocket::SendNattControlMessage(
+	const uint8_t *payload, size_t length, const CNetworkAddress &to, uint16_t port)
+{
+	uint32_t ip = 0;
+	if (payload == NULL || length == 0 || port == 0 || !to.ToIPv4NetworkOrder(ip)) {
+		// The same IPv4 narrowing SendUtpDatagram() has, and the same reason:
+		// this socket's send path takes a 32-bit address. A native IPv6 peer
+		// is not punched at rather than being punched at 0.0.0.0 -- see the
+		// address-widening boundary in PeerIdentity.h.
+		return;
+	}
+
+	CPacket *packet = new CPacket(OP_NATT_FRAME_UTP, length, OP_UDPRESERVEDPROT2);
+	packet->CopyToDataBuffer(0, payload, length);
+	theStats::AddUpOverheadOther(packet->GetPacketSize());
+
+	// Never obfuscated and never a Kad packet, exactly as a uTP datagram is
+	// not: the peer recognises this by the two header bytes.
+	SendPacket(packet, ip, port, false, NULL, false, 0);
+}
+
+bool CClientUDPSocket::SendRendezvousRequest(const uint8_t *peerHash,
+	const CNetworkAddress &relay,
+	uint16_t relayPort,
+	const CNetworkAddress &ownEndpoint,
+	uint16_t ownPort)
+{
+	uint8_t request[NATT_RENDEZVOUS_MAX_LENGTH];
+	const size_t length =
+		EncodeRendezvousRequest(peerHash, ownEndpoint, ownPort, request, sizeof(request));
+	if (length == 0) {
+		// No usable endpoint of our own to name. Not sent rather than sent
+		// blank: the relay validates the hint against the source and would
+		// discard it anyway, and a request with the hint bit set and nothing
+		// behind it is what makes the far parser read past the datagram.
+		return false;
+	}
+
+	SendNattControlMessage(request, length, relay, relayPort);
+	return true;
+}
+
+void CClientUDPSocket::ServiceNatRendezvous(uint64_t nowMs)
+{
+	// Our own identity travels in the punch, so the receiver pairs the packet
+	// by identity rather than by the address it arrived from -- the address is
+	// exactly what the NAT under test rewrites.
+	const CMD4Hash &ownHash = thePrefs::GetUserHash();
+	if (ownHash.IsEmpty()) {
+		return;
+	}
+
+	uint8_t punch[NATT_HOLEPUNCH_LENGTH];
+	if (EncodeHolePunch(ownHash.GetHash(), punch, sizeof(punch)) != NATT_HOLEPUNCH_LENGTH) {
+		return;
+	}
+
+	m_natRendezvous.Tick(nowMs,
+		[this, &punch](const uint8_t * /* peerHash */, const SNattPunchRequest &request) {
+			// The peer hash is the manager's key, not part of the packet: a
+			// punch names its SENDER, because that is the end whose identity
+			// the receiver cannot otherwise recover.
+			SendNattControlMessage(
+				punch, NATT_HOLEPUNCH_LENGTH, request.destination, request.port);
+		});
+}
+
+void CClientUDPSocket::ProcessNattControlFrame(
+	const uint8_t *frame, size_t frameLength, const CNetworkAddress &peer, uint16 port)
+{
+	const wxString peerText = wxString(peer.ToString());
+	const uint64_t nowMs = ::GetTickCount64();
+
+	switch (ClassifyNattControlMessage(frame, frameLength)) {
+	case NATT_CONTROL_RENDEZVOUS: {
+		// Which direction this is comes off the wire, never from local state.
+		// A relay request and a relayed rendezvous carry the same opcode and
+		// mean opposite things, and inferring the direction would leave the
+		// acting path reachable by a crafted request -- which is precisely the
+		// reflection the relay validation exists to prevent.
+		SNattRendezvousRequest peeked;
+		const bool parsed = ParseRendezvousRequest(frame, frameLength, peeked);
+
+		if (parsed && peeked.isRelayed) {
+			// A relay forwarded a rendezvous to us. Acted on only from a
+			// peer already in the client list, and only within the same
+			// per-peer budget a requester spends from.
+			const bool relayIsKnown =
+				theApp->clientlist->FindClientByIP(peer, port) != NULL;
+			const CNetworkAddress ownEndpoint =
+				CNetworkAddress::FromIPv4NetworkOrderOrAbsent(
+					theApp->GetPublicIP(false));
+
+			const SRelayedRendezvousDecision decision = AcceptRelayedRendezvous(
+				frame, frameLength, peer, relayIsKnown, ownEndpoint, nowMs,
+				m_relayLimiter);
+			if (!decision.punch) {
+				AddDebugLogLineN(logClientUDP,
+					CFormat("Dropping relayed rendezvous from %s:%u: reason %d") %
+						peerText % port % (int)decision.acceptance);
+				return;
+			}
+
+			// The addresses we already hold for that peer come first, so the
+			// relayed endpoint is one candidate among them and can never
+			// displace one. CNattCandidateSet has no method that removes
+			// anything, which is what makes that structural rather than
+			// remembered.
+			CNattCandidateSet known;
+			const CMD4Hash targetHash(decision.peerHash);
+			const CClientList::SourceList matches =
+				theApp->clientlist->GetClientsByHash(targetHash);
+			for (CClientList::SourceList::const_iterator it = matches.begin();
+				it != matches.end(); ++it) {
+				const CUpDownClient *client = it->GetClient();
+				if (client != NULL) {
+					known.AddKnown(client->GetConnectAddress(),
+						client->GetUserPort());
+				}
+			}
+
+			if (m_natRendezvous.OnRelayedRendezvous(decision, known, nowMs)) {
+				AddDebugLogLineN(logClientUDP,
+					CFormat("Punching toward %s:%u for a rendezvous relayed by "
+						"%s:%u") %
+						wxString(decision.punchEndpoint.ToString()) %
+						decision.punchPort % peerText % port);
+			}
+			return;
+		}
+
+		// Otherwise it is a request to relay -- including a malformed one,
+		// which reaches RelayRendezvousRequest() so that it is charged against
+		// its sender's budget rather than being free.
+		//
+		// The requester's identity comes from our own client list, never from
+		// the datagram: it is the value the forwarded message carries, so a
+		// datagram that could set it would make this relay vouch for anyone.
+		const CUpDownClient *requester = theApp->clientlist->FindClientByIP(peer, port);
+		const uint8_t *requesterHash =
+			requester != NULL && requester->HasValidHash()
+				? requester->GetUserHash().GetHash()
+				: NULL;
+
+		const SRelayDecision decision = RelayRendezvousRequest(frame,
+			frameLength,
+			peer,
+			port,
+			requesterHash,
+			nowMs,
+			m_relayLimiter,
+			// The only source of a destination address in this path: our own
+			// client list, looked up by hash. There is no branch in which an
+			// address out of the datagram is sent to.
+			[](const uint8_t *hash, CNetworkAddress &address, uint16_t &targetPort) {
+				const CMD4Hash wanted(hash);
+				const CClientList::SourceList candidates =
+					theApp->clientlist->GetClientsByHash(wanted);
+				for (CClientList::SourceList::const_iterator it = candidates.begin();
+					it != candidates.end(); ++it) {
+					const CUpDownClient *client = it->GetClient();
+					if (client == NULL) {
+						continue;
+					}
+					const CNetworkAddress candidate = client->GetConnectAddress();
+					if (candidate.IsPresent() && !candidate.IsUnspecified() &&
+						client->GetUserPort() != 0) {
+						address = candidate;
+						targetPort = client->GetUserPort();
+						return true;
+					}
+				}
+				return false;
+			},
+			[this](const CNetworkAddress &destination,
+				uint16_t destinationPort,
+				const uint8_t *payload,
+				size_t payloadLength) {
+				SendNattControlMessage(
+					payload, payloadLength, destination, destinationPort);
+			});
+
+		if (!decision.emitted) {
+			// No reply to the requester either. A refusal reply would be a
+			// second amplification channel with a smaller factor.
+			AddDebugLogLineN(logClientUDP,
+				CFormat("Discarding rendezvous request from %s:%u: reason %d") %
+					peerText % port % (int)decision.disposition);
+		}
+		return;
+	}
+
+	case NATT_CONTROL_HOLEPUNCH: {
+		SNattHolePunch punchMessage;
+		if (!ParseHolePunch(frame, frameLength, punchMessage)) {
+			AddDebugLogLineN(logClientUDP,
+				CFormat("Dropping malformed hole punch from %s:%u") % peerText % port);
+			return;
+		}
+
+		// Matched against the pairs already in flight, and it may not create
+		// one: a peer this client never punched toward gets no schedule and no
+		// budget out of sending a punch. The mapping it arrived from is
+		// recorded, because a mapping that delivered a packet is evidence and
+		// an endpoint hint is a guess.
+		if (m_natRendezvous.OnHolePunchReceived(punchMessage.senderHash, peer, port, nowMs)) {
+			AddDebugLogLineN(logClientUDP,
+				CFormat("Hole punch from %s:%u matched a rendezvous in flight") %
+					peerText % port);
+		}
+		return;
+	}
+
+	case NATT_CONTROL_ENDPOINT_HINT:
+		// A bare hint, outside any rendezvous. Dropped, and this is a decision
+		// rather than an omission: the message carries an address and a port
+		// and no identity at all, so the only peer it could be attributed to is
+		// whoever sent the datagram. Acting on it would mean letting an
+		// arbitrary host name an endpoint for this client to send toward, which
+		// is the reflection vector with the relay validation removed. Hints are
+		// acted on only where they arrive attributed -- inside an
+		// OP_RENDEZVOUS a known relay forwarded.
+		AddDebugLogLineN(logClientUDP,
+			CFormat("Ignoring unsolicited endpoint hint from %s:%u") % peerText % port);
+		return;
+
+	case NATT_CONTROL_NOT_A_CONTROL_MESSAGE:
+		// Neither a libutp header (the context already declined it) nor one of
+		// the three control opcodes. Dropped without guessing at a length.
+		if (m_unknownFrameLog.ShouldLog(nowMs)) {
+			AddDebugLogLineN(logClientUDP,
+				CFormat("Dropping uTP NAT-T frame from %s:%u that is neither uTP nor a "
+					"control message (%u further occurrences suppressed)") %
+					peerText % port % m_unknownFrameLog.TakeSuppressedCount());
+		}
+		return;
 	}
 }
 
