@@ -108,14 +108,36 @@ and do not "fix" it as part of a parity change.
 
 It is worth investigating on its own merits — a segfaulting test is a real
 defect, and `FileDataIO` is I/O code that several parity changes will touch.
-Two things are unknown and should not be assumed:
 
-- **Whether it is architecture-specific.** This baseline is `aarch64` only.
-  Confirming or ruling out an arm64-specific cause needs an `x86_64` run
-  (`packaging/linux/build.sh dev x86_64`), which requires binfmt and runs under
-  QEMU emulation.
-- **Whether upstream CI sees it.** If upstream CI is x86_64-only and green, that
-  is evidence for an arm64-specific fault.
+### Resolved 2026-08-24 — and the guess below was wrong
+
+The two questions this section originally left open were:
+
+- *Whether it is architecture-specific.* It proposed an `x86_64` run under QEMU to
+  find out.
+- *Whether upstream CI sees it.*
+
+**It is not architecture-specific.** It is static initialisation order, and the
+proposed `x86_64` run would have reproduced the same crash and taught us nothing.
+
+The test held its path as a file-scope `const CPath`. `CPath`'s constructor
+converts through `wxConvFileName`, which wxWidgets assigns from a dynamic
+initialiser in `strconv.cpp`, and relative order between translation units is
+unspecified. With wxWidgets linked statically — which this image does — the
+executable's `.init_array` entries run before the library's, so the file-scope
+`CPath` dereferences a null `wxConvFileName` and the process dies before any test
+body runs. Fixed in `91bd513` with a function-local static, which the standard
+guarantees is initialised on first use. Seven test cases and 197 assertions before
+and after; none removed, none weakened.
+
+That also answers the second question: a dynamically linked wxWidgets initialises
+in a different order, so upstream CI may legitimately never have seen it.
+
+**The record above stays as written.** `FileDataIOTest` did segfault at
+`36e28e73`, and that is what makes it the attribution baseline's honest data point.
+What changed is that the tree is now fully green, so from `91bd513` onward **any**
+failing test is attributable to the change that introduced it — a stronger
+position than a tolerated red.
 
 ## Reproducing
 
@@ -223,8 +245,10 @@ The following tests FAILED:
 `src/extern/libutp/libutp.a` (86 KB) is present, so uTP genuinely compiled rather
 than being configured away.
 
-`FileDataIOTest` is the same pre-existing aarch64 SEGFAULT as at `36e28e73`. It has
-never been attributable to any change in this set, and it still is not.
+`FileDataIOTest` is the same pre-existing SEGFAULT as at `36e28e73`. It was never
+attributable to any change in this set, and it has since been diagnosed and fixed
+in `91bd513` — see "Resolved 2026-08-24" above. Builds from that commit onward are
+expected to be **fully green**, so treat any failing test as attributable.
 
 ## Reading the test count
 

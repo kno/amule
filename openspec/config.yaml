@@ -64,8 +64,11 @@ rules:
     test_command: "packaging/linux/build.sh dev"
     # ctest inside the dev image is non-gating on purpose. Compare results
     # against the pre-existing failures in openspec/BASELINE.md.
-    known_failing_tests:
-      - "FileDataIOTest (SEGFAULT) — pre-existing on aarch64 at 36e28e73"
+    # Empty since 91bd513: FileDataIOTest's segfault was static initialisation
+    # order, not I/O, and is fixed. The suite is fully green, so ANY failing test
+    # is attributable to the change under test. Do not add an entry here to make
+    # a red build pass -- that is what this list existed to prevent.
+    known_failing_tests: []
     # The dev image builds monolithic + daemon + remotegui. Do not narrow it:
     # AGENTS.md:21 — a change can compile in two of the three and break the third.
     coverage_threshold: 0
