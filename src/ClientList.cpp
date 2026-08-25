@@ -171,8 +171,8 @@ void CClientList::UpdateClientIP(CUpDownClient *client, const CNetworkAddress &n
 	// Explicit absence check, not `if (newIP)`. Every present address has a key
 	// now, whatever family it is in; absence still has none.
 	if (PeerIdentity::IsIndexable(newIP)) {
-		m_ipList.insert(AddressMapPair(PeerIdentity::IndexKey(newIP),
-			CCLIENTREF(client, "CClientList::UpdateClientIP")));
+		m_ipList.insert(AddressMapPair(
+			PeerIdentity::IndexKey(newIP), CCLIENTREF(client, "CClientList::UpdateClientIP")));
 	}
 }
 
@@ -311,8 +311,7 @@ CUpDownClient *CClientList::FindMatchingClient(CUpDownClient *client)
 			AddressMapIteratorPair range = m_ipList.equal_range(userAddress);
 
 			if (userPort) {
-				for (AddressMap::const_iterator it = range.first; it != range.second;
-					++it) {
+				for (AddressMap::const_iterator it = range.first; it != range.second; ++it) {
 					if (userPort == it->second.GetUserPort()) {
 						return it->second.GetClient();
 					}
@@ -320,8 +319,7 @@ CUpDownClient *CClientList::FindMatchingClient(CUpDownClient *client)
 			}
 
 			if (userKadPort) {
-				for (AddressMap::const_iterator it = range.first; it != range.second;
-					++it) {
+				for (AddressMap::const_iterator it = range.first; it != range.second; ++it) {
 					if (userKadPort == it->second.GetClient()->GetKadPort()) {
 						return it->second.GetClient();
 					}
@@ -799,8 +797,7 @@ void CClientList::AddBannedClient(const CNetworkAddress &address)
 		// literal 0 and was banned as "0.0.0.0", banning a value no real peer
 		// has while telling theStats one more client was banned.
 		AddDebugLogLineN(logClient,
-			CFormat("AddBannedClient: no bannable address (%s), ignored") %
-				address.ToString());
+			CFormat("AddBannedClient: no bannable address (%s), ignored") % address.ToString());
 		return;
 	}
 	// An IPv6 peer is bannable now: the key is the address, so there is no

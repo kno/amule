@@ -265,15 +265,13 @@ std::uint64_t OnGetReadBufferSize(utp_callback_arguments *arguments)
 std::uint64_t OnGetMilliseconds(utp_callback_arguments *)
 {
 	using namespace std::chrono;
-	return (std::uint64_t)duration_cast<milliseconds>(steady_clock::now().time_since_epoch())
-		.count();
+	return (std::uint64_t)duration_cast<milliseconds>(steady_clock::now().time_since_epoch()).count();
 }
 
 std::uint64_t OnGetMicroseconds(utp_callback_arguments *)
 {
 	using namespace std::chrono;
-	return (std::uint64_t)duration_cast<microseconds>(steady_clock::now().time_since_epoch())
-		.count();
+	return (std::uint64_t)duration_cast<microseconds>(steady_clock::now().time_since_epoch()).count();
 }
 
 //! Connection IDs and initial sequence numbers. Not a security boundary --
@@ -474,9 +472,7 @@ void *CUtpLibraryAdapter::CreateContext()
 	return nullptr;
 }
 
-void CUtpLibraryAdapter::DestroyContext(void *)
-{
-}
+void CUtpLibraryAdapter::DestroyContext(void *) {}
 
 bool CUtpLibraryAdapter::AcceptsInboundConnections(void *) const
 {
@@ -490,31 +486,22 @@ bool CUtpLibraryAdapter::ProcessDatagram(
 	return false;
 }
 
-void CUtpLibraryAdapter::IssueDeferredAcks(void *)
-{
-}
+void CUtpLibraryAdapter::IssueDeferredAcks(void *) {}
 
-void CUtpLibraryAdapter::CheckTimeouts(void *)
-{
-}
+void CUtpLibraryAdapter::CheckTimeouts(void *) {}
 
 long CUtpLibraryAdapter::WriteToSocket(void *, const std::uint8_t *, std::size_t)
 {
 	return -1;
 }
 
-void *CUtpLibraryAdapter::CreateOutboundSocket(
-	void *, void *, const CNetworkAddress &, std::uint16_t)
+void *CUtpLibraryAdapter::CreateOutboundSocket(void *, void *, const CNetworkAddress &, std::uint16_t)
 {
 	return nullptr;
 }
 
-void CUtpLibraryAdapter::CloseSocket(void *)
-{
-}
+void CUtpLibraryAdapter::CloseSocket(void *) {}
 
-void CUtpLibraryAdapter::NotifyReadDrained(void *)
-{
-}
+void CUtpLibraryAdapter::NotifyReadDrained(void *) {}
 
 #endif // AMULE_UTP_TRANSPORT

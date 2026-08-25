@@ -100,10 +100,8 @@ struct SUtpDialDecision
  * @param proxyInUse  CProxySocket::GetUseProxy() on the socket about to dial.
  * @param peer  the address about to be dialled.
  */
-inline SUtpDialDecision DecideUtpDial(bool peerAdvertisesUtp,
-	bool contextAvailable,
-	bool proxyInUse,
-	const CNetworkAddress &peer)
+inline SUtpDialDecision DecideUtpDial(
+	bool peerAdvertisesUtp, bool contextAvailable, bool proxyInUse, const CNetworkAddress &peer)
 {
 	SUtpDialDecision decision;
 

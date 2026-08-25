@@ -29,7 +29,7 @@
 #include "ClientRef.h"      // Needed for CClientRefList
 #include "MD4Hash.h"        // Needed for CMD4Hash
 #include "NetworkAddress.h" // Needed for CNetworkAddress
-#include <wx/thread.h> // Needed for wxMutex
+#include <wx/thread.h>      // Needed for wxMutex
 
 // Experimental extended upload queue population
 //

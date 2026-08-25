@@ -209,8 +209,7 @@ public:
 	 * @param nUDPPort The UDP-port of the client.
 	 * @return The matching client or NULL if none was found.
 	 */
-	CUpDownClient *GetDownloadClientByIP_UDP(
-		const CNetworkAddress &address, uint16 nUDPPort) const;
+	CUpDownClient *GetDownloadClientByIP_UDP(const CNetworkAddress &address, uint16 nUDPPort) const;
 
 	/**
 	 * Queues the specified file for source-requestion from the connected server.

@@ -33,7 +33,7 @@
 
 #include "IPv6Reachability.h" // Needed for DualStack::CLocalReachability
 #include "Types.h"            // Needed for int32, uint16 and uint64
-#include <functional> // Needed for std::function (DeferShutDownToOuterLoop)
+#include <functional>         // Needed for std::function (DeferShutDownToOuterLoop)
 #include <map>
 #ifndef __WINDOWS__
 #include <signal.h>

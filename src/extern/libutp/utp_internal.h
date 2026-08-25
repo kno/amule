@@ -41,34 +41,39 @@
 /* These originally lived in utp_config.h */
 #define CCONTROL_TARGET (100 * 1000) // us
 
-enum bandwidth_type_t {
-	payload_bandwidth, connect_overhead,
-	close_overhead, ack_overhead,
-	header_overhead, retransmit_overhead
+enum bandwidth_type_t
+{
+	payload_bandwidth,
+	connect_overhead,
+	close_overhead,
+	ack_overhead,
+	header_overhead,
+	retransmit_overhead
 };
 
 #ifdef WIN32
-	#ifdef _MSC_VER
-		#include "libutp_inet_ntop.h"
-	#endif
-
-	// newer versions of MSVC define these in errno.h
-	#ifndef ECONNRESET
-		#define ECONNRESET WSAECONNRESET
-		#define EMSGSIZE WSAEMSGSIZE
-		#define ECONNREFUSED WSAECONNREFUSED
-		#define ETIMEDOUT WSAETIMEDOUT
-	#endif
+#ifdef _MSC_VER
+#include "libutp_inet_ntop.h"
 #endif
 
-struct PACKED_ATTRIBUTE RST_Info {
+// newer versions of MSVC define these in errno.h
+#ifndef ECONNRESET
+#define ECONNRESET WSAECONNRESET
+#define EMSGSIZE WSAEMSGSIZE
+#define ECONNREFUSED WSAECONNREFUSED
+#define ETIMEDOUT WSAETIMEDOUT
+#endif
+#endif
+
+struct PACKED_ATTRIBUTE RST_Info
+{
 	RST_Info() = default;
 
 	RST_Info(PackedSockAddr _addr, uint32 _connid, uint16 _ack_nr, uint64 _timestamp)
-		: addr{ _addr }
-		, connid{ _connid }
-		, ack_nr{ _ack_nr }
-		, timestamp{ _timestamp }
+	: addr{ _addr }
+	, connid{ _connid }
+	, ack_nr{ _ack_nr }
+	, timestamp{ _timestamp }
 	{
 	}
 
@@ -78,74 +83,68 @@ struct PACKED_ATTRIBUTE RST_Info {
 	uint64 timestamp;
 };
 
-struct UTPSocketKey {
+struct UTPSocketKey
+{
 	PackedSockAddr addr;
-	uint32 recv_id;		 // "conn_seed", "conn_id"
+	uint32 recv_id; // "conn_seed", "conn_id"
 
-	UTPSocketKey(const PackedSockAddr& _addr, uint32 _recv_id) {
+	UTPSocketKey(const PackedSockAddr &_addr, uint32 _recv_id)
+	{
 		addr = _addr;
 		recv_id = _recv_id;
 	}
 
-	bool operator == (const UTPSocketKey &other) const {
+	bool operator==(const UTPSocketKey &other) const
+	{
 		return recv_id == other.recv_id && addr == other.addr;
 	}
 
-	uint32 compute_hash() const {
-		return recv_id ^ addr.compute_hash();
-	}
+	uint32 compute_hash() const { return recv_id ^ addr.compute_hash(); }
 };
 
-template<>
-struct std::hash<UTPSocketKey>
+template <> struct std::hash<UTPSocketKey>
 {
 	// It's really important that we don't have duplicate keys in the hash table.
 	// If we do, we'll eventually crash. if we try to remove the second instance
 	// of the key, we'll accidentally remove the first instead. then later,
 	// checkTimeouts will try to access the second one's already freed memory.
-	std::size_t operator()(const UTPSocketKey& key) const {
-		return key.compute_hash();
-	}
+	std::size_t operator()(const UTPSocketKey &key) const { return key.compute_hash(); }
 };
 
-extern void utp_socket_delete(UTPSocket*);
+extern void utp_socket_delete(UTPSocket *);
 
 // Container that owns a set of UTPSockets.
 // The sockets are destroyed when removed from the container.
-class UTPSocketHT {
+class UTPSocketHT
+{
 	using Key = UTPSocketKey;
 	using Value = UTPSocket;
 
 	// UTPSocket is an opaque type, so we can't use it for V.
 	// Instead, use a unique_ptr<> which deletes via `utp_socket_delete()`.
-	struct SocketDeleter {
-		void operator()(UTPSocket* conn) const noexcept {
-			utp_socket_delete(conn);
-		}
+	struct SocketDeleter
+	{
+		void operator()(UTPSocket *conn) const noexcept { utp_socket_delete(conn); }
 	};
 	using V = std::unique_ptr<Value, SocketDeleter>;
 	using Map = std::unordered_map<Key, V>;
 
 public:
-	[[nodiscard]] auto contains(Key const& key) const {
-		return map_.count(key) != 0U;
-	}
+	[[nodiscard]] auto contains(Key const &key) const { return map_.count(key) != 0U; }
 
-	[[nodiscard]] auto size() const {
-		return map_.size();
-	}
+	[[nodiscard]] auto size() const { return map_.size(); }
 
-	[[nodiscard]] Value* lookup(Key const& key) const {
+	[[nodiscard]] Value *lookup(Key const &key) const
+	{
 		const auto iter = map_.find(key);
 		return iter != map_.end() ? iter->second.get() : nullptr;
 	}
 
-	void add(Key const& key, Value* value) {
-		map_[key].reset(value);
-	}
+	void add(Key const &key, Value *value) { map_[key].reset(value); }
 
-	void erase_if(std::function<bool(Map::iterator const&)> pred) {
-		for (auto it = map_.begin(); it != map_.end(); ) {
+	void erase_if(std::function<bool(Map::iterator const &)> pred)
+	{
+		for (auto it = map_.begin(); it != map_.end();) {
 			if (pred(it)) {
 				it = map_.erase(it);
 			} else {
@@ -158,14 +157,15 @@ private:
 	Map map_;
 };
 
-struct struct_utp_context {
+struct struct_utp_context
+{
 	void *userdata;
-	utp_callback_t* callbacks[UTP_ARRAY_SIZE];
+	utp_callback_t *callbacks[UTP_ARRAY_SIZE];
 
 	uint64 current_ms;
 	utp_context_stats context_stats;
 	UTPSocket *last_utp_socket;
-	std::vector<UTPSocket*> ack_sockets;
+	std::vector<UTPSocket *> ack_sockets;
 	std::vector<RST_Info> rst_info;
 	UTPSocketHT utp_sockets;
 	size_t target_delay;
@@ -179,9 +179,9 @@ struct struct_utp_context {
 	void log_unchecked(utp_socket *socket, char const *fmt, ...);
 	bool would_log(int level);
 
-	bool log_normal:1;	// log normal events?
-	bool log_mtu:1;		// log MTU related events?
-	bool log_debug:1;	// log debugging events? (Must also compile with UTP_DEBUG_LOGGING defined)
+	bool log_normal : 1; // log normal events?
+	bool log_mtu : 1;    // log MTU related events?
+	bool log_debug : 1;  // log debugging events? (Must also compile with UTP_DEBUG_LOGGING defined)
 
 private:
 	void log_impl(utp_socket *socket, char const *fmt, va_list va);

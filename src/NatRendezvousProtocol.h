@@ -155,8 +155,7 @@ constexpr size_t NATT_ENDPOINT_HINT_MAX_LENGTH = NATT_ENDPOINT_HINT_IPV6_LENGTH;
 
 //! opcode, options, hash.
 constexpr size_t NATT_RENDEZVOUS_FIXED_LENGTH = 2 + NATT_PEER_HASH_LENGTH;
-constexpr size_t NATT_RENDEZVOUS_MAX_LENGTH =
-	NATT_RENDEZVOUS_FIXED_LENGTH + NATT_ENDPOINT_HINT_MAX_LENGTH;
+constexpr size_t NATT_RENDEZVOUS_MAX_LENGTH = NATT_RENDEZVOUS_FIXED_LENGTH + NATT_ENDPOINT_HINT_MAX_LENGTH;
 
 //! opcode, options, hash. A hole punch carries no hint: the mapping it opens is
 //! observed by the receiver, which is worth more than anything the sender could
@@ -324,10 +323,9 @@ inline bool ParseEndpointHint(const uint8_t *frame, size_t frameLength, SNattEnd
 		if (frameLength < NATT_ENDPOINT_HINT_IPV4_LENGTH) {
 			return false;
 		}
-		const uint32_t hostOrder = (static_cast<uint32_t>(frame[2]) << 24) |
-					   (static_cast<uint32_t>(frame[3]) << 16) |
-					   (static_cast<uint32_t>(frame[4]) << 8) |
-					   static_cast<uint32_t>(frame[5]);
+		const uint32_t hostOrder =
+			(static_cast<uint32_t>(frame[2]) << 24) | (static_cast<uint32_t>(frame[3]) << 16) |
+			(static_cast<uint32_t>(frame[4]) << 8) | static_cast<uint32_t>(frame[5]);
 		const uint16_t port = static_cast<uint16_t>((frame[6] << 8) | frame[7]);
 		const CNetworkAddress address = CNetworkAddress::FromIPv4HostOrder(hostOrder);
 		if (port == 0 || address.IsUnspecified()) {
@@ -396,8 +394,8 @@ inline size_t EncodeRendezvousMessage(const uint8_t *peerHash,
 
 	out[0] = OP_RENDEZVOUS;
 	out[1] = static_cast<uint8_t>(CONNECT_OPT_NAT_TRAVERSAL_UTP |
-		(relayed ? CONNECT_OPT_NATT_RELAYED : 0) |
-		(hintLength != 0 ? CONNECT_OPT_NATT_ENDPOINT_HINT : 0));
+				      (relayed ? CONNECT_OPT_NATT_RELAYED : 0) |
+				      (hintLength != 0 ? CONNECT_OPT_NATT_ENDPOINT_HINT : 0));
 	for (size_t i = 0; i < NATT_PEER_HASH_LENGTH; ++i) {
 		out[2 + i] = peerHash[i];
 	}
@@ -445,11 +443,9 @@ inline size_t EncodeRelayedRendezvous(const uint8_t *peerHash,
  * @return false for a truncated message, a foreign opcode, or a hint bit whose
  *         element is absent or malformed.
  */
-inline bool ParseRendezvousRequest(
-	const uint8_t *frame, size_t frameLength, SNattRendezvousRequest &out)
+inline bool ParseRendezvousRequest(const uint8_t *frame, size_t frameLength, SNattRendezvousRequest &out)
 {
-	if (frame == nullptr || frameLength < NATT_RENDEZVOUS_FIXED_LENGTH ||
-		frame[0] != OP_RENDEZVOUS) {
+	if (frame == nullptr || frameLength < NATT_RENDEZVOUS_FIXED_LENGTH || frame[0] != OP_RENDEZVOUS) {
 		return false;
 	}
 

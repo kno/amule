@@ -30,7 +30,7 @@
 #include <map>
 #include <vector>
 
-#include "NatHolePunchSchedule.h" // Needed for CHolePunchSchedule
+#include "NatHolePunchSchedule.h"  // Needed for CHolePunchSchedule
 #include "NatRendezvousProtocol.h" // Needed for the codec and the bounds
 #include "NatRendezvousRelay.h"    // Needed for SRelayedRendezvousDecision
 #include "NatTraversalPolicy.h"    // Needed for CNattCandidateSet
@@ -138,8 +138,7 @@ public:
 	 *         full table. The caller's answer to all four is the same -- use
 	 *         the callback and buddy paths -- so they are not told apart here.
 	 */
-	bool BeginRendezvous(
-		const uint8_t *peerHash, const CNattCandidateSet &candidates, uint64_t nowMs)
+	bool BeginRendezvous(const uint8_t *peerHash, const CNattCandidateSet &candidates, uint64_t nowMs)
 	{
 		if (peerHash == NULL || candidates.Count() == 0) {
 			return false;
@@ -277,8 +276,7 @@ public:
 	 * records the send inside the schedule, so calling Tick() twice for the
 	 * same tick cannot send twice.
 	 */
-	template <class Sender>
-	void Tick(uint64_t nowMs, Sender &&send)
+	template <class Sender> void Tick(uint64_t nowMs, Sender &&send)
 	{
 		for (auto &pair : m_entries) {
 			SEntry &entry = pair.second;

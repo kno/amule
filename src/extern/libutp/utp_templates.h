@@ -34,8 +34,8 @@
 // This macro should be used exclusive-or with the inline directive (use one or the other but not both)
 // since Microsoft uses __forceinline to also mean inline,
 // and this code is following a Microsoft compatibility model.
-// Just setting the attribute without also specifying the inline directive apparently won't inline the function,
-// as evidenced by multiply-defined symbols found at link time.
+// Just setting the attribute without also specifying the inline directive apparently won't inline the
+// function, as evidenced by multiply-defined symbols found at link time.
 #define FORCEINLINE inline __attribute__((always_inline))
 #endif
 #endif
@@ -46,33 +46,56 @@
 
 template <typename T> static inline T clamp(T v, T mi, T ma)
 {
-	if (v > ma) v = ma;
-	if (v < mi) v = mi;
+	if (v > ma)
+		v = ma;
+	if (v < mi)
+		v = mi;
 	return v;
 }
 
 #if (defined(__SVR4) && defined(__sun))
-	#pragma pack(1)
+#pragma pack(1)
 #else
-	#pragma pack(push,1)
+#pragma pack(push, 1)
 #endif
-
 
 namespace aux
 {
-	FORCEINLINE uint16 host_to_network(uint16 i) { return htons(i); }
-	FORCEINLINE uint32 host_to_network(uint32 i) { return htonl(i); }
-	FORCEINLINE int32 host_to_network(int32 i) { return htonl(i); }
-	FORCEINLINE uint16 network_to_host(uint16 i) { return ntohs(i); }
-	FORCEINLINE uint32 network_to_host(uint32 i) { return ntohl(i); }
-	FORCEINLINE int32 network_to_host(int32 i) { return ntohl(i); }
-}
-
-template <class T>
-struct PACKED_ATTRIBUTE big_endian
+FORCEINLINE uint16 host_to_network(uint16 i)
 {
-	T operator=(T i) { m_integer = aux::host_to_network(i); return i; }
+	return htons(i);
+}
+FORCEINLINE uint32 host_to_network(uint32 i)
+{
+	return htonl(i);
+}
+FORCEINLINE int32 host_to_network(int32 i)
+{
+	return htonl(i);
+}
+FORCEINLINE uint16 network_to_host(uint16 i)
+{
+	return ntohs(i);
+}
+FORCEINLINE uint32 network_to_host(uint32 i)
+{
+	return ntohl(i);
+}
+FORCEINLINE int32 network_to_host(int32 i)
+{
+	return ntohl(i);
+}
+} // namespace aux
+
+template <class T> struct PACKED_ATTRIBUTE big_endian
+{
+	T operator=(T i)
+	{
+		m_integer = aux::host_to_network(i);
+		return i;
+	}
 	operator T() const { return aux::network_to_host(m_integer); }
+
 private:
 	T m_integer;
 };
@@ -82,11 +105,14 @@ typedef big_endian<uint32> uint32_big;
 typedef big_endian<uint16> uint16_big;
 
 #if (defined(__SVR4) && defined(__sun))
-	#pragma pack(0)
+#pragma pack(0)
 #else
-	#pragma pack(pop)
+#pragma pack(pop)
 #endif
 
-template<typename T> static inline void zeromem(T *a, size_t count = 1) { memset(a, 0, count * sizeof(T)); }
+template <typename T> static inline void zeromem(T *a, size_t count = 1)
+{
+	memset(a, 0, count * sizeof(T));
+}
 
 #endif //__TEMPLATES_H__

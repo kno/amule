@@ -41,7 +41,7 @@
 #include "amuleDlg.h" // Needed for CamuleDlg
 #include "amule.h"    // Needed for theApp
 #include "Logger.h"
-#include "IPFilter.h"          // Needed for CIPFilter::IsReady
+#include "IPFilter.h"         // Needed for CIPFilter::IsReady
 #include "IPv6Reachability.h" // Needed for DualStack::ReachabilityLabel
 #include "kademlia/utils/UInt128.h"
 

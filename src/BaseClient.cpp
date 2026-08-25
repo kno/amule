@@ -146,8 +146,7 @@ CUpDownClient::CUpDownClient(uint16 in_port,
 	ReGetClientSoft();
 
 	if (checkfriend) {
-		if ((m_Friend = theApp->friendlist->FindFriend(CMD4Hash(), GetIP(), m_nUserPort)) !=
-			NULL) {
+		if ((m_Friend = theApp->friendlist->FindFriend(CMD4Hash(), GetIP(), m_nUserPort)) != NULL) {
 			m_Friend->LinkClient(
 				CCLIENTREF(this, "CUpDownClient::CUpDownClient m_Friend->LinkClient"));
 		} else {
@@ -691,8 +690,7 @@ bool CUpDownClient::ProcessHelloTypePacket(const CMemFile &data)
 
 		case CT_MOD_SVR_IP_V6:
 			if (temptag.IsHash()) {
-				m_modServerIPv6 =
-					CNetworkAddress::FromIPv6Bytes(temptag.GetHash().GetHash());
+				m_modServerIPv6 = CNetworkAddress::FromIPv6Bytes(temptag.GetHash().GetHash());
 			}
 			break;
 
@@ -763,8 +761,7 @@ bool CUpDownClient::ProcessHelloTypePacket(const CMemFile &data)
 	CClientCredits *pFoundCredits = theApp->clientcredits->GetCredit(m_UserHash);
 	if (credits == NULL) {
 		credits = pFoundCredits;
-		if (!theApp->clientlist->ComparePriorUserhash(
-			    m_userAddress, m_nUserPort, pFoundCredits)) {
+		if (!theApp->clientlist->ComparePriorUserhash(m_userAddress, m_nUserPort, pFoundCredits)) {
 			AddDebugLogLineN(logClient,
 				CFormat("Client: %s (%s) Banreason: Userhash changed (Found in "
 					"TrackedClientsList)") %
@@ -1172,7 +1169,8 @@ void CUpDownClient::SendHelloTypePacket(CMemFile *data)
 	// wire before the tags, so a disagreement between the two desynchronises
 	// the reader -- there must be no second expression able to disagree.
 	const uint32 uAdvertisedModMiscOptions =
-		AdvertisedModMiscOptions(theApp->clientudp != NULL && theApp->clientudp->CanServeUtpConnections()) |
+		AdvertisedModMiscOptions(
+			theApp->clientudp != NULL && theApp->clientudp->CanServeUtpConnections()) |
 		theApp->GetReachability().AdvertisedModMiscOptions();
 	const bool bModMiscOptionsTagCounted = uAdvertisedModMiscOptions != 0;
 
@@ -1675,8 +1673,7 @@ bool CUpDownClient::TryToConnect(bool bIgnoreMaxCon)
 		// for safety: check again whether that IP is banned
 		if (theApp->clientlist->IsBannedClient(clientAddress)) {
 			AddDebugLogLineN(logClient,
-				"Refused to connect to banned client " +
-					wxString(clientAddress.ToString()));
+				"Refused to connect to banned client " + wxString(clientAddress.ToString()));
 			if (Disconnected("Banned IP")) {
 				Safe_Delete();
 				return false;
@@ -1909,9 +1906,9 @@ bool CUpDownClient::ConnectOverUtp()
 	// The address about to be dialled -- the same one the TCP branch below
 	// uses, so uTP and TCP cannot disagree about which peer this is.
 	const CNetworkAddress candidate = m_familyAttempts.Current();
-	CNetworkAddress target =
-		candidate.IsPresent() ? candidate
-				      : CNetworkAddress::FromIPv4NetworkOrderOrAbsent(GetConnectIP());
+	CNetworkAddress target = candidate.IsPresent()
+					 ? candidate
+					 : CNetworkAddress::FromIPv4NetworkOrderOrAbsent(GetConnectIP());
 	uint16_t targetPort = GetUserPort();
 
 	CUtpContext *context = theApp->clientudp != NULL ? theApp->clientudp->GetUtpContext() : NULL;
@@ -1933,8 +1930,8 @@ bool CUpDownClient::ConnectOverUtp()
 			AddDebugLogLineN(logClient,
 				CFormat("Dialling %s over the punched mapping %s:%u instead of "
 					"%s:%u") %
-					GetClientFullInfo() % wxString(punched.ToString()) %
-					punchedPort % wxString(target.ToString()) % targetPort);
+					GetClientFullInfo() % wxString(punched.ToString()) % punchedPort %
+					wxString(target.ToString()) % targetPort);
 			target = punched;
 			targetPort = punchedPort;
 		}
@@ -1977,8 +1974,8 @@ bool CUpDownClient::ConnectOverUtp()
 	}
 
 	m_socket->AttachUtpTransport(std::move(transport));
-	AddDebugLogLineN(logClient,
-		CFormat("Dialling %s:%u over uTP") % wxString(target.ToString()) % targetPort);
+	AddDebugLogLineN(
+		logClient, CFormat("Dialling %s:%u over uTP") % wxString(target.ToString()) % targetPort);
 	return true;
 }
 
@@ -2067,8 +2064,8 @@ bool CUpDownClient::ConnectToCurrentCandidate()
 			tmp.Hostname(GetConnectIP());
 		}
 		tmp.Service(GetUserPort());
-		AddDebugLogLineN(logClient,
-			CFormat("Trying to connect to %s:%u") % tmp.IPAddress() % GetUserPort());
+		AddDebugLogLineN(
+			logClient, CFormat("Trying to connect to %s:%u") % tmp.IPAddress() % GetUserPort());
 		m_socket->Connect(tmp, false);
 		// We should send hello packets AFTER connecting!
 		// so I moved it to OnConnect

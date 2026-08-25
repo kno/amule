@@ -857,10 +857,10 @@ void CKademliaUDPListener::ProcessKademlia2Response(const uint8_t *packetData,
 		if (version > 1) { // Kad1 nodes are no longer accepted and ignored
 			if (::IsGoodIPPort(hostIP, contactPort)) {
 				// contactIP is in Kad host order; hostIP is its ed2k-order
-			// form. Naming the order in the conversion beats relying on
-			// which of the two locals a reader picks.
-			if (!theApp->ipfilter->IsFiltered(
-				    CNetworkAddress::FromIPv4HostOrder(contactIP)) &&
+				// form. Naming the order in the conversion beats relying on
+				// which of the two locals a reader picks.
+				if (!theApp->ipfilter->IsFiltered(
+					    CNetworkAddress::FromIPv4HostOrder(contactIP)) &&
 					!(contactPort == 53 &&
 						version <= 5) /*No DNS Port without encryption*/) {
 					if (isFirewallUDPCheckSearch) {

@@ -1092,8 +1092,7 @@ void CPartFile::SaveSourceSeeds()
 			SourceSet::reverse_iterator rit = m_SrcList.rbegin();
 			for (; ((rit != m_SrcList.rend()) && (n_sources < MAX_SAVED_SOURCES)); ++rit) {
 				if (!rit->HasLowID() &&
-					PeerIdentity::HasEd2kWireForm(
-						rit->GetClient()->GetAddress())) {
+					PeerIdentity::HasEd2kWireForm(rit->GetClient()->GetAddress())) {
 					source_seeds.push_back(*rit);
 					++n_sources;
 				}
@@ -3003,8 +3002,7 @@ CPacket *CPartFile::CreateSrcInfoPacket(
 		// Same 32-bit wire boundary as CKnownFile::CreateSrcInfoPacket(): an
 		// IPv6 source has no address this packet can carry, so it is omitted
 		// rather than published as 0.0.0.0.
-		if (cur_src->HasLowID() || !PeerIdentity::HasEd2kWireForm(cur_src->GetAddress()) ||
-			!valid) {
+		if (cur_src->HasLowID() || !PeerIdentity::HasEd2kWireForm(cur_src->GetAddress()) || !valid) {
 			continue;
 		}
 

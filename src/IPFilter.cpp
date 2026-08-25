@@ -499,8 +499,7 @@ bool CIPFilter::IsFiltered(const CNetworkAddress &address, bool isServer)
 		// No connection to filter.
 		return false;
 	}
-	if ((!thePrefs::IsFilteringClients() && !isServer) ||
-		(!thePrefs::IsFilteringServers() && isServer)) {
+	if ((!thePrefs::IsFilteringClients() && !isServer) || (!thePrefs::IsFilteringServers() && isServer)) {
 		return false;
 	}
 	if (!m_ready) {

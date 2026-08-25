@@ -201,8 +201,7 @@ void CRoutingZone::ReadFile(const wxString &specialNodesdat)
 							// ip is in Kad host order; the conversion names
 							// the byte order the bare swap only implied.
 							if (!theApp->ipfilter->IsFiltered(
-								    CNetworkAddress::FromIPv4HostOrder(
-									    ip)) &&
+								    CNetworkAddress::FromIPv4HostOrder(ip)) &&
 								!(
 									udpPort == 53 && contactVersion <= 5 /*No DNS Port without encryption*/)) {
 								// This was not a dead contact, inc counter if

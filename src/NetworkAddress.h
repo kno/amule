@@ -96,7 +96,10 @@ public:
 	/** Constructs an absent address -- @b not @c 0.0.0.0. */
 	CNetworkAddress() = default;
 
-	explicit CNetworkAddress(const boost::asio::ip::address &address) : m_address(address) {}
+	explicit CNetworkAddress(const boost::asio::ip::address &address)
+	: m_address(address)
+	{
+	}
 
 	/** An explicitly absent address, for call sites where the name reads better. */
 	static CNetworkAddress Absent() { return CNetworkAddress(); }
@@ -107,8 +110,8 @@ public:
 	 */
 	static CNetworkAddress FromIPv4HostOrder(std::uint32_t ip)
 	{
-		return CNetworkAddress(boost::asio::ip::address(
-			boost::asio::ip::address_v4(static_cast<boost::asio::ip::address_v4::uint_type>(ip))));
+		return CNetworkAddress(boost::asio::ip::address(boost::asio::ip::address_v4(
+			static_cast<boost::asio::ip::address_v4::uint_type>(ip))));
 	}
 
 	/**
@@ -331,8 +334,7 @@ public:
 			return false;
 		}
 		const boost::asio::ip::address_v6 v6 = m_address->to_v6();
-		if (v6.is_loopback() || v6.is_link_local() || v6.is_site_local() ||
-			v6.is_multicast()) {
+		if (v6.is_loopback() || v6.is_link_local() || v6.is_site_local() || v6.is_multicast()) {
 			return false;
 		}
 		// fc00::/7, unique-local. asio's is_site_local() only covers the
@@ -365,8 +367,7 @@ public:
 			if (prefixBits >= 32) {
 				return *this;
 			}
-			const std::uint32_t mask =
-				prefixBits == 0 ? 0u : (0xFFFFFFFFu << (32 - prefixBits));
+			const std::uint32_t mask = prefixBits == 0 ? 0u : (0xFFFFFFFFu << (32 - prefixBits));
 			return FromIPv4HostOrder(m_address->to_v4().to_uint() & mask);
 		}
 		if (prefixBits >= 128) {
@@ -401,10 +402,7 @@ public:
 	}
 
 	// Comparison. See the class comment for the single rule these implement.
-	bool operator==(const CNetworkAddress &other) const noexcept
-	{
-		return m_address == other.m_address;
-	}
+	bool operator==(const CNetworkAddress &other) const noexcept { return m_address == other.m_address; }
 	bool operator!=(const CNetworkAddress &other) const noexcept { return !(*this == other); }
 
 	bool operator<(const CNetworkAddress &other) const noexcept
@@ -454,8 +452,9 @@ private:
 	boost::asio::ip::address_v4 EmbeddedIPv4() const noexcept
 	{
 		const boost::asio::ip::address_v6::bytes_type bytes = m_address->to_v6().to_bytes();
-		boost::asio::ip::address_v4::bytes_type v4Bytes = { { bytes[12], bytes[13], bytes[14],
-			bytes[15] } };
+		boost::asio::ip::address_v4::bytes_type v4Bytes = {
+			{ bytes[12], bytes[13], bytes[14], bytes[15] }
+		};
 		return boost::asio::ip::address_v4(v4Bytes);
 	}
 

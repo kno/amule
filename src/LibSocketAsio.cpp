@@ -78,11 +78,11 @@
 #endif
 
 #include "LibSocket.h"
-#include "UtpSocketTransport.h" // Needed for CUtpSocketTransport (uTP substitution)
+#include "UtpSocketTransport.h"  // Needed for CUtpSocketTransport (uTP substitution)
 #include "AddressFamilyPolicy.h" // Needed for the family decisions this file used to hardcode
-#include <wx/thread.h>     // wxMutex
-#include <wx/intl.h>       // _()
-#include <common/Format.h> // Needed for CFormat
+#include <wx/thread.h>           // wxMutex
+#include <wx/intl.h>             // _()
+#include <common/Format.h>       // Needed for CFormat
 #include "Logger.h"
 #include "GuiEvents.h"
 #include "amuleIPV4Address.h"
@@ -1304,17 +1304,15 @@ private:
 		m_IPint = m_peerAddress.ToIPv4NetworkOrderOrZero();
 	}
 
-
-
 	// Atomic so OnWrapperGone() (called from the wrapper's dtor on any
 	// thread) and the strand-side load in Destroy() can both touch it
 	// without an external lock.
 	std::atomic<CLibSocket *> m_libSocket;
 	ip::tcp::socket *m_socket;
 	// remote IP
-	wxString m_IPstring; // as String (use nowhere because of threading!)
-	const wxChar *m_IP;  // as char*  (use in debug logs)
-	uint32 m_IPint;      // as int (zero for an IPv6 peer -- see SetIp)
+	wxString m_IPstring;           // as String (use nowhere because of threading!)
+	const wxChar *m_IP;            // as char*  (use in debug logs)
+	uint32 m_IPint;                // as int (zero for an IPv6 peer -- see SetIp)
 	CNetworkAddress m_peerAddress; // family and all
 	uint16 m_port;                 // remote port
 	bool m_OK;
@@ -2384,8 +2382,8 @@ bool amuleIPV4Address::Hostname(const wxString &name)
 		return true;
 	}
 	if (parsed.IsPresent()) {
-		AddDebugLogLineN(logAsio,
-			CFormat("Hostname(\"%s\") rejected: address family not permitted") % name);
+		AddDebugLogLineN(
+			logAsio, CFormat("Hostname(\"%s\") rejected: address family not permitted") % name);
 	} else {
 		AddDebugLogLineN(logAsio, CFormat("Hostname(\"%s\") failed, not an IP address") % name);
 	}
@@ -2448,8 +2446,8 @@ bool amuleIPV4Address::Hostname(const wxString &name)
 	// A name with no record in a permitted family lands here. Failing is the
 	// honest answer — the caller reports it instead of dialling an address the
 	// socket layer cannot use.
-	AddDebugLogLineN(logAsio,
-		CFormat("Hostname(\"%s\") resolve failed: no address in a permitted family") % name);
+	AddDebugLogLineN(
+		logAsio, CFormat("Hostname(\"%s\") resolve failed: no address in a permitted family") % name);
 	return false;
 }
 

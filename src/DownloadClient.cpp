@@ -101,8 +101,7 @@ bool CUpDownClient::Compare(const CUpDownClient *tocomp, bool bIgnoreUserhash) c
 		// User has a Port, lets check the rest.
 		if (GetAddress().IsPresent() && tocomp->GetAddress().IsPresent()) {
 			// Both clients have a verified IP..
-			if (GetAddress() == tocomp->GetAddress() &&
-				GetUserPort() == tocomp->GetUserPort()) {
+			if (GetAddress() == tocomp->GetAddress() && GetUserPort() == tocomp->GetUserPort()) {
 				// IP and UserPort match..
 				return true;
 			}
@@ -120,8 +119,7 @@ bool CUpDownClient::Compare(const CUpDownClient *tocomp, bool bIgnoreUserhash) c
 		// User has a Kad Port.
 		if (GetAddress().IsPresent() && tocomp->GetAddress().IsPresent()) {
 			// Both clients have a verified IP.
-			if (GetAddress() == tocomp->GetAddress() &&
-				GetKadPort() == tocomp->GetKadPort()) {
+			if (GetAddress() == tocomp->GetAddress() && GetKadPort() == tocomp->GetKadPort()) {
 				// IP and KadPort Match..
 				return true;
 			}

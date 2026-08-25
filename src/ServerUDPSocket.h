@@ -49,8 +49,7 @@ private:
 	 * form. Widening the server protocol is a separate matter from peer
 	 * identity and is not attempted here.
 	 */
-	void OnPacketReceived(
-		const CNetworkAddress &peer, uint16 port, uint8_t *buffer, size_t length);
+	void OnPacketReceived(const CNetworkAddress &peer, uint16 port, uint8_t *buffer, size_t length);
 	void ProcessPacket(CMemFile &packet, uint8 opcode, uint32 ip, uint16 port);
 	void SendQueue();
 

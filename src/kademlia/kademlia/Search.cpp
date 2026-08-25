@@ -868,8 +868,7 @@ void CSearch::StorePacket()
 			uint8_t ipv6Bytes[16];
 			if (theApp->GetReachability().MayAdvertiseIPv6() &&
 				theApp->GetVerifiedIPv6Address().ToIPv6Bytes(ipv6Bytes)) {
-				taglist.push_back(
-					new CTagString(TAG_IPV6, CMD4Hash(ipv6Bytes).Encode()));
+				taglist.push_back(new CTagString(TAG_IPV6, CMD4Hash(ipv6Bytes).Encode()));
 			}
 
 			// Send packet

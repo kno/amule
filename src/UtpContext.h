@@ -210,10 +210,8 @@ public:
 	 *                  the transport that owns it.
 	 * @return a `utp_socket *`, or NULL when the dial could not be started.
 	 */
-	virtual void *CreateOutboundSocket(void *context,
-		void *userData,
-		const CNetworkAddress &to,
-		std::uint16_t port) = 0;
+	virtual void *CreateOutboundSocket(
+		void *context, void *userData, const CNetworkAddress &to, std::uint16_t port) = 0;
 
 	/**
 	 * utp_close(), preceded by clearing the socket's user data.
@@ -272,8 +270,8 @@ public:
 	 *                 every path through it is inert -- the receive path and
 	 *                 the core timer both run in that build too.
 	 */
-	void Configure(IUtpLibrary *library, IUtpDatagramSink *sink,
-		IUtpConnectionAcceptor *acceptor = nullptr)
+	void Configure(
+		IUtpLibrary *library, IUtpDatagramSink *sink, IUtpConnectionAcceptor *acceptor = nullptr)
 	{
 		Reset();
 		m_library = library;

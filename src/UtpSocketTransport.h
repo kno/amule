@@ -494,8 +494,7 @@ private:
  *         UtpTransportFailure.h defines: it is about our side of the path, so
  *         the peer keeps its place in the source list.
  */
-inline CUtpSocketTransport *DialUtp(
-	CUtpContext &context, const CNetworkAddress &peer, std::uint16_t port)
+inline CUtpSocketTransport *DialUtp(CUtpContext &context, const CNetworkAddress &peer, std::uint16_t port)
 {
 	CUtpSocketTransport *transport = new CUtpSocketTransport(context, peer, port);
 

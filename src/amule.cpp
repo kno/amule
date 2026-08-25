@@ -1568,8 +1568,8 @@ bool CamuleApp::ReinitializeNetwork(wxString *msg)
 	// that address, and quietly adding a listener on another family would
 	// expose the client on a network they thought they had excluded.
 	const bool wildcardBind = thePrefs::GetAddress().IsEmpty();
-	const DualStack::CListenPlan listenPlan(wildcardBind ? AddressFamilyPolicy::Configured()
-							     : AddressFamilyPolicy::Families::IPv4Only);
+	const DualStack::CListenPlan listenPlan(
+		wildcardBind ? AddressFamilyPolicy::Configured() : AddressFamilyPolicy::Families::IPv4Only);
 	m_reachability.Reset();
 	m_listenerState.Reset();
 
@@ -1600,8 +1600,7 @@ bool CamuleApp::ReinitializeNetwork(wxString *msg)
 		for (const DualStack::SBindAttempt &attempt : listenPlan.FallbackAttempts()) {
 			amuleIPV4Address listenAddr = myaddr[2];
 			if (attempt.family == DualStack::EFamily::IPv6) {
-				listenAddr.SetAddress(
-					CNetworkAddress(AddressFamilyPolicy::AnyIPv6Address()));
+				listenAddr.SetAddress(CNetworkAddress(AddressFamilyPolicy::AnyIPv6Address()));
 				listenAddr.SetV6Only(attempt.v6Only);
 			}
 			listenAddr.Service(thePrefs::GetPort());
@@ -1625,10 +1624,10 @@ bool CamuleApp::ReinitializeNetwork(wxString *msg)
 		}
 	}
 
-	m_reachability.SetBound(DualStack::EFamily::IPv4,
-		m_listenerState.IsListening(DualStack::EFamily::IPv4));
-	m_reachability.SetBound(DualStack::EFamily::IPv6,
-		m_listenerState.IsListening(DualStack::EFamily::IPv6));
+	m_reachability.SetBound(
+		DualStack::EFamily::IPv4, m_listenerState.IsListening(DualStack::EFamily::IPv4));
+	m_reachability.SetBound(
+		DualStack::EFamily::IPv6, m_listenerState.IsListening(DualStack::EFamily::IPv6));
 
 	*msg << CFormat("*** TCP socket (TCP) listening on %s:%u\n") % ip %
 			(unsigned int)(thePrefs::GetPort());

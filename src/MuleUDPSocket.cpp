@@ -154,8 +154,7 @@ void CMuleUDPSocket::OnReceive(int errorCode)
 	// Mapped forms are normalised here, once, so everything below -- the ban
 	// check, the filter and the ed2k handlers -- sees the IPv4 address the peer
 	// really is rather than its ::ffff: spelling.
-	const CNetworkAddress peer =
-		CNetworkAddress::FromString(addr.IPAddress().ToStdString()).Unmapped();
+	const CNetworkAddress peer = CNetworkAddress::FromString(addr.IPAddress().ToStdString()).Unmapped();
 	uint32 ip = 0;
 	peer.ToIPv4NetworkOrder(ip);
 	const uint16 port = addr.Service();
@@ -351,8 +350,7 @@ SocketSentBytes CMuleUDPSocket::SendControlData(uint32 maxNumberOfBytesToSend, u
 	return returnVal;
 }
 
-bool CMuleUDPSocket::SendTo(
-	uint8_t *buffer, uint32_t length, const CNetworkAddress &target, uint16_t port)
+bool CMuleUDPSocket::SendTo(uint8_t *buffer, uint32_t length, const CNetworkAddress &target, uint16_t port)
 {
 	// Just pretend that we sent the packet in order to avoid infinite loops.
 	if (!(m_socket && m_socket->IsOk())) {
@@ -385,8 +383,8 @@ bool CMuleUDPSocket::SendTo(
 			m_name % targetText % error);
 		sent = true;
 	} else {
-		AddDebugLogLineN(logMuleUDP,
-			(m_name + ": Packet sent (") << targetText << "): " << length << "b");
+		AddDebugLogLineN(
+			logMuleUDP, (m_name + ": Packet sent (") << targetText << "): " << length << "b");
 		sent = true;
 	}
 

@@ -674,8 +674,7 @@ void CUpDownClient::Ban()
 
 bool CUpDownClient::IsBanned() const
 {
-	return (theApp->clientlist->IsBannedClient(GetAddress()) &&
-		m_nDownloadState != DS_DOWNLOADING);
+	return (theApp->clientlist->IsBannedClient(GetAddress()) && m_nDownloadState != DS_DOWNLOADING);
 }
 
 void CUpDownClient::CheckForAggressive()

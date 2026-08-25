@@ -31,7 +31,10 @@ inline uint32 Read32(const void *p)
 	return tmp;
 }
 #else
-inline uint32 Read32(const void *p) { return *(uint32*)p; }
+inline uint32 Read32(const void *p)
+{
+	return *(uint32 *)p;
+}
 #endif
 
 uint utp_hash_mem(const void *keyp, size_t keysize)
@@ -40,13 +43,13 @@ uint utp_hash_mem(const void *keyp, size_t keysize)
 	uint n = keysize;
 	while (n >= 4) {
 		hash ^= Read32(keyp);
-		keyp = (byte*)keyp + sizeof(uint32);
+		keyp = (byte *)keyp + sizeof(uint32);
 		hash = (hash << 13) | (hash >> 19);
 		n -= 4;
 	}
 	while (n != 0) {
-		hash ^= *(byte*)keyp;
-		keyp = (byte*)keyp + sizeof(byte);
+		hash ^= *(byte *)keyp;
+		keyp = (byte *)keyp + sizeof(byte);
 		hash = (hash << 8) | (hash >> 24);
 		n--;
 	}

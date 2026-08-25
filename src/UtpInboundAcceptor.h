@@ -58,10 +58,8 @@ public:
 	 * @return the transport that now owns the connection, or NULL when it was
 	 *         refused.
 	 */
-	CUtpSocketTransport *AcceptUtpConnection(CUtpContext &context,
-		void *socket,
-		const CNetworkAddress &from,
-		std::uint16_t port) override;
+	CUtpSocketTransport *AcceptUtpConnection(
+		CUtpContext &context, void *socket, const CNetworkAddress &from, std::uint16_t port) override;
 };
 
 #endif // UTPINBOUNDACCEPTOR_H

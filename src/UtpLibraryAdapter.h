@@ -78,10 +78,8 @@ public:
 	void IssueDeferredAcks(void *context) override;
 	void CheckTimeouts(void *context) override;
 	long WriteToSocket(void *socket, const std::uint8_t *data, std::size_t length) override;
-	void *CreateOutboundSocket(void *context,
-		void *userData,
-		const CNetworkAddress &to,
-		std::uint16_t port) override;
+	void *CreateOutboundSocket(
+		void *context, void *userData, const CNetworkAddress &to, std::uint16_t port) override;
 	void CloseSocket(void *socket) override;
 	void NotifyReadDrained(void *socket) override;
 

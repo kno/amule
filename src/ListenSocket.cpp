@@ -88,8 +88,8 @@ CListenSocket::CListenSocket(amuleIPV4Address &addr, const CProxyData *ProxyData
 					       "IPv4 peers in mapped form).")) %
 				     addr.IPAddress());
 		} else {
-			AddLogLineNS(CFormat(_("ListenSocket: listening on %s (%s).")) %
-				     addr.IPAddress() % DualStack::FamilyName(m_primaryFamily));
+			AddLogLineNS(CFormat(_("ListenSocket: listening on %s (%s).")) % addr.IPAddress() %
+				     DualStack::FamilyName(m_primaryFamily));
 		}
 	} else {
 		// Debug only. Which arrangements were attempted is implementation
@@ -105,8 +105,7 @@ CListenSocket::CListenSocket(amuleIPV4Address &addr, const CProxyData *ProxyData
 
 bool CListenSocket::AddSecondaryListener(amuleIPV4Address &addr, const CProxyData *ProxyData)
 {
-	std::unique_ptr<CListenSocketSecondary> secondary(
-		new CListenSocketSecondary(addr, this, ProxyData));
+	std::unique_ptr<CListenSocketSecondary> secondary(new CListenSocketSecondary(addr, this, ProxyData));
 	const CNetworkAddress bound = addr.GetAddress();
 	const DualStack::EFamily family =
 		bound.IsIPv6() ? DualStack::EFamily::IPv6 : DualStack::EFamily::IPv4;
@@ -205,11 +204,10 @@ void CListenSocket::AcceptFrom(CLibSocketServer &server)
 							newclient->GetLocalAddress();
 						theApp->SetVerifiedIPv6Address(localAddress);
 						if (!wasVerified) {
-							AddLogLineNS(
-								CFormat(_("Inbound IPv6 connection from "
-									  "%s on %s.")) %
-								wxString(peer.ToString()) %
-								wxString(localAddress.ToString()));
+							AddLogLineNS(CFormat(_("Inbound IPv6 connection from "
+									       "%s on %s.")) %
+								     wxString(peer.ToString()) %
+								     wxString(localAddress.ToString()));
 						}
 					}
 				}

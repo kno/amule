@@ -116,8 +116,7 @@ bool CClientTCPSocket::InitNetworkData()
 	} else {
 		AddDebugLogLineN(logClient,
 			CFormat("Accepted %s connection from %s") %
-					(peer.IsIPv6() && !peer.IsIPv4Mapped() ? "IPv6" : "IPv4") %
-				GetPeer());
+				(peer.IsIPv6() && !peer.IsIPv4Mapped() ? "IPv6" : "IPv4") % GetPeer());
 		return true;
 	}
 }

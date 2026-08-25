@@ -35,7 +35,7 @@
 #include "Preferences.h"
 #include "Statistics.h"
 #include "RLE.h"
-#include "IPv6Reachability.h"        // Needed for DualStack::CLocalReachability
+#include "IPv6Reachability.h"       // Needed for DualStack::CLocalReachability
 #include "SearchList.h"             // Needed for CSearchFile
 #include "kademlia/utils/UInt128.h" // Needed for CUInt128
 

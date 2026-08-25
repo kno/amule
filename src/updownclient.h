@@ -33,10 +33,10 @@
 #include <common/Macros.h>
 #include "NetworkFunctions.h"
 #include "OtherStructs.h"
-#include "ClientCredits.h"    // Needed for EIdentState
-#include <ec/cpp/ECID.h>      // Needed for CECID
-#include "BitVector.h"        // Needed for BitVector
-#include "ClientRef.h"        // Needed for debug defines
+#include "ClientCredits.h"       // Needed for EIdentState
+#include <ec/cpp/ECID.h>         // Needed for CECID
+#include "BitVector.h"           // Needed for BitVector
+#include "ClientRef.h"           // Needed for debug defines
 #include "NetworkAddress.h"      // Needed for CNetworkAddress
 #include "PeerCapabilities.h"    // Needed for CPeerCapabilities
 #include "PeerFamilyAttempts.h"  // Needed for DualStack::CPeerConnectAttempts

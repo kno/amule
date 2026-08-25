@@ -443,8 +443,8 @@ void CClientUDPSocket::ServiceNatRendezvous(uint64_t nowMs)
 		return;
 	}
 
-	m_natRendezvous.Tick(nowMs,
-		[this, &punch](const uint8_t * /* peerHash */, const SNattPunchRequest &request) {
+	m_natRendezvous.Tick(
+		nowMs, [this, &punch](const uint8_t * /* peerHash */, const SNattPunchRequest &request) {
 			// The peer hash is the manager's key, not part of the packet: a
 			// punch names its SENDER, because that is the end whose identity
 			// the receiver cannot otherwise recover.
@@ -473,15 +473,12 @@ void CClientUDPSocket::ProcessNattControlFrame(
 			// A relay forwarded a rendezvous to us. Acted on only from a
 			// peer already in the client list, and only within the same
 			// per-peer budget a requester spends from.
-			const bool relayIsKnown =
-				theApp->clientlist->FindClientByIP(peer, port) != NULL;
+			const bool relayIsKnown = theApp->clientlist->FindClientByIP(peer, port) != NULL;
 			const CNetworkAddress ownEndpoint =
-				CNetworkAddress::FromIPv4NetworkOrderOrAbsent(
-					theApp->GetPublicIP(false));
+				CNetworkAddress::FromIPv4NetworkOrderOrAbsent(theApp->GetPublicIP(false));
 
 			const SRelayedRendezvousDecision decision = AcceptRelayedRendezvous(
-				frame, frameLength, peer, relayIsKnown, ownEndpoint, nowMs,
-				m_relayLimiter);
+				frame, frameLength, peer, relayIsKnown, ownEndpoint, nowMs, m_relayLimiter);
 			if (!decision.punch) {
 				AddDebugLogLineN(logClientUDP,
 					CFormat("Dropping relayed rendezvous from %s:%u: reason %d") %
@@ -499,11 +496,11 @@ void CClientUDPSocket::ProcessNattControlFrame(
 			const CClientList::SourceList matches =
 				theApp->clientlist->GetClientsByHash(targetHash);
 			for (CClientList::SourceList::const_iterator it = matches.begin();
-				it != matches.end(); ++it) {
+				it != matches.end();
+				++it) {
 				const CUpDownClient *client = it->GetClient();
 				if (client != NULL) {
-					known.AddKnown(client->GetConnectAddress(),
-						client->GetUserPort());
+					known.AddKnown(client->GetConnectAddress(), client->GetUserPort());
 				}
 			}
 
@@ -525,12 +522,12 @@ void CClientUDPSocket::ProcessNattControlFrame(
 		// the datagram: it is the value the forwarded message carries, so a
 		// datagram that could set it would make this relay vouch for anyone.
 		const CUpDownClient *requester = theApp->clientlist->FindClientByIP(peer, port);
-		const uint8_t *requesterHash =
-			requester != NULL && requester->HasValidHash()
-				? requester->GetUserHash().GetHash()
-				: NULL;
+		const uint8_t *requesterHash = requester != NULL && requester->HasValidHash()
+						       ? requester->GetUserHash().GetHash()
+						       : NULL;
 
-		const SRelayDecision decision = RelayRendezvousRequest(frame,
+		const SRelayDecision decision = RelayRendezvousRequest(
+			frame,
 			frameLength,
 			peer,
 			port,
@@ -545,7 +542,8 @@ void CClientUDPSocket::ProcessNattControlFrame(
 				const CClientList::SourceList candidates =
 					theApp->clientlist->GetClientsByHash(wanted);
 				for (CClientList::SourceList::const_iterator it = candidates.begin();
-					it != candidates.end(); ++it) {
+					it != candidates.end();
+					++it) {
 					const CUpDownClient *client = it->GetClient();
 					if (client == NULL) {
 						continue;
@@ -564,16 +562,15 @@ void CClientUDPSocket::ProcessNattControlFrame(
 				uint16_t destinationPort,
 				const uint8_t *payload,
 				size_t payloadLength) {
-				SendNattControlMessage(
-					payload, payloadLength, destination, destinationPort);
+				SendNattControlMessage(payload, payloadLength, destination, destinationPort);
 			});
 
 		if (!decision.emitted) {
 			// No reply to the requester either. A refusal reply would be a
 			// second amplification channel with a smaller factor.
 			AddDebugLogLineN(logClientUDP,
-				CFormat("Discarding rendezvous request from %s:%u: reason %d") %
-					peerText % port % (int)decision.disposition);
+				CFormat("Discarding rendezvous request from %s:%u: reason %d") % peerText %
+					port % (int)decision.disposition);
 		}
 		return;
 	}
@@ -593,8 +590,8 @@ void CClientUDPSocket::ProcessNattControlFrame(
 		// an endpoint hint is a guess.
 		if (m_natRendezvous.OnHolePunchReceived(punchMessage.senderHash, peer, port, nowMs)) {
 			AddDebugLogLineN(logClientUDP,
-				CFormat("Hole punch from %s:%u matched a rendezvous in flight") %
-					peerText % port);
+				CFormat("Hole punch from %s:%u matched a rendezvous in flight") % peerText %
+					port);
 		}
 		return;
 	}
@@ -840,8 +837,7 @@ void CClientUDPSocket::ProcessPacket(
 			CClientList::SourceList clients = theApp->clientlist->GetClientsByHash(userHash);
 			for (CClientList::SourceList::iterator it = clients.begin(); it != clients.end();
 				++it) {
-				if ((host.IsAbsent() ||
-					    it->GetClient()->GetAddress() == host) &&
+				if ((host.IsAbsent() || it->GetClient()->GetAddress() == host) &&
 					(remoteTCPPort == 0 || it->GetUserPort() == remoteTCPPort)) {
 					requester = it->GetClient();
 					break;
@@ -852,8 +848,8 @@ void CClientUDPSocket::ProcessPacket(
 				// native IPv6 requester is created with none and given its
 				// real address immediately below. SetAddress() is what
 				// makes it findable afterwards, in either family.
-				requester = new CUpDownClient(
-					remoteTCPPort, hostIPv4, 0, 0, NULL, true, true);
+				requester =
+					new CUpDownClient(remoteTCPPort, hostIPv4, 0, 0, NULL, true, true);
 				requester->SetUserHash(CMD4Hash(userHash));
 				theApp->clientlist->AddClient(requester);
 			}
@@ -861,8 +857,8 @@ void CClientUDPSocket::ProcessPacket(
 			requester->SetDirectUDPCallbackSupport(false);
 			requester->SetAddress(host);
 			requester->SetUserPort(remoteTCPPort);
-			AddDebugLogLineN(logClientUDP,
-				"Accepting incoming DirectCallback Request from " + hostText);
+			AddDebugLogLineN(
+				logClientUDP, "Accepting incoming DirectCallback Request from " + hostText);
 			requester->TryToConnect();
 		} else {
 			AddDebugLogLineN(logClientUDP,

@@ -52,7 +52,8 @@
  * @return True if the address falls inside one of the ranges.
  */
 inline bool IPFilterRangesContain(const std::vector<std::uint32_t> &rangeIPs,
-	const std::vector<std::uint16_t> &rangeLengths, std::uint32_t hostOrderIP,
+	const std::vector<std::uint16_t> &rangeLengths,
+	std::uint32_t hostOrderIP,
 	std::size_t &matchIndex)
 {
 	int imin = 0;

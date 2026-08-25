@@ -356,8 +356,7 @@ private:
 
 		const CNetworkAddress unmapped = address.Unmapped();
 		for (size_t i = 0; i < m_count; ++i) {
-			if (m_candidates[i].port == port &&
-				m_candidates[i].address.Unmapped() == unmapped) {
+			if (m_candidates[i].port == port && m_candidates[i].address.Unmapped() == unmapped) {
 				// Already here. The one that stays is the one that was
 				// already in the set, so a hint that happens to agree with a
 				// known address does not relabel it as a hint.

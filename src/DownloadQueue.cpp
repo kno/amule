@@ -954,8 +954,7 @@ CUpDownClient *CDownloadQueue::GetDownloadClientByIP_UDP(
 		const CKnownFile::SourceSet &set = m_filelist[i]->GetSourceList();
 
 		for (CKnownFile::SourceSet::const_iterator it = set.begin(); it != set.end(); ++it) {
-			if (it->GetClient()->GetAddress() == address &&
-				it->GetUDPPort() == nUDPPort) {
+			if (it->GetClient()->GetAddress() == address && it->GetUDPPort() == nUDPPort) {
 				return it->GetClient();
 			}
 		}
