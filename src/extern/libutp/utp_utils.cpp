@@ -26,24 +26,24 @@
 #include "utp_types.h"
 
 #ifdef WIN32
-#define WIN32_LEAN_AND_MEAN
-#include <windows.h>
-#include <winsock2.h>
-#include <ws2tcpip.h>
-#else //! WIN32
-#include <time.h>
-#include <sys/time.h> // Linux needs both time.h and sys/time.h
+	#define WIN32_LEAN_AND_MEAN
+	#include <windows.h>
+	#include <winsock2.h>
+	#include <ws2tcpip.h>
+#else //!WIN32
+	#include <time.h>
+	#include <sys/time.h>		// Linux needs both time.h and sys/time.h
 #endif
 
 #if defined(__APPLE__)
-#include <mach/mach_time.h>
+	#include <mach/mach_time.h>
 #endif
 
 #include "utp_utils.h"
 
 #ifdef WIN32
 
-typedef ULONGLONG(WINAPI GetTickCount64Proc)(void);
+typedef ULONGLONG (WINAPI GetTickCount64Proc)(void);
 static GetTickCount64Proc *pt2GetTickCount64;
 static GetTickCount64Proc *pt2RealGetTickCount;
 
@@ -68,21 +68,18 @@ static uint64 UTGetTickCount64()
 static void Time_Initialize()
 {
 	HMODULE kernel32 = GetModuleHandleA("kernel32.dll");
-	pt2GetTickCount64 = (GetTickCount64Proc *)GetProcAddress(kernel32, "GetTickCount64");
+	pt2GetTickCount64 = (GetTickCount64Proc*)GetProcAddress(kernel32, "GetTickCount64");
 	// not a typo. GetTickCount actually returns 64 bits
-	pt2RealGetTickCount = (GetTickCount64Proc *)GetProcAddress(kernel32, "GetTickCount");
+	pt2RealGetTickCount = (GetTickCount64Proc*)GetProcAddress(kernel32, "GetTickCount");
 
 	uint64 frequency;
-	QueryPerformanceCounter((LARGE_INTEGER *)&startPerformanceCounter);
-	QueryPerformanceFrequency((LARGE_INTEGER *)&frequency);
+	QueryPerformanceCounter((LARGE_INTEGER*)&startPerformanceCounter);
+	QueryPerformanceFrequency((LARGE_INTEGER*)&frequency);
 	counterPerMicrosecond = (double)frequency / 1000000.0f;
 	startGetTickCount = UTGetTickCount64();
 }
 
-static int64 abs64(int64 x)
-{
-	return x < 0 ? -x : x;
-}
+static int64 abs64(int64 x) { return x < 0 ? -x : x; }
 
 static uint64 __GetMicroseconds()
 {
@@ -95,7 +92,7 @@ static uint64 __GetMicroseconds()
 	uint64 counter;
 	uint64 tick;
 
-	QueryPerformanceCounter((LARGE_INTEGER *)&counter);
+	QueryPerformanceCounter((LARGE_INTEGER*) &counter);
 	tick = UTGetTickCount64();
 
 	// unfortunately, QueryPerformanceCounter is not guaranteed
@@ -116,7 +113,7 @@ static inline uint64 UTP_GetMilliseconds()
 	return GetTickCount();
 }
 
-#else //! WIN32
+#else //!WIN32
 
 static inline uint64 UTP_GetMicroseconds(void);
 static inline uint64 UTP_GetMilliseconds()
@@ -146,8 +143,8 @@ static uint64 __GetMicroseconds()
 
 #else // !__APPLE__
 
-#if !((defined(_POSIX_TIMERS) && _POSIX_TIMERS > 0 && defined(CLOCK_MONOTONIC)) || defined(__OpenBSD__))
-#pragma message("Using non-monotonic function gettimeofday() in UTP_GetMicroseconds()")
+#if ! ((defined(_POSIX_TIMERS) && _POSIX_TIMERS > 0 && defined(CLOCK_MONOTONIC)) || defined(__OpenBSD__))
+    #pragma message ("Using non-monotonic function gettimeofday() in UTP_GetMicroseconds()")
 #endif
 
 /* Unfortunately, #ifdef CLOCK_MONOTONIC is not enough to make sure that
@@ -158,26 +155,26 @@ static uint64_t __GetMicroseconds()
 {
 	struct timeval tv;
 
-#if ((defined(_POSIX_TIMERS) && _POSIX_TIMERS > 0 && defined(CLOCK_MONOTONIC)) || defined(__OpenBSD__))
-	static int have_posix_clocks = -1;
-	int rc;
+	#if ((defined(_POSIX_TIMERS) && _POSIX_TIMERS > 0 && defined(CLOCK_MONOTONIC)) || defined(__OpenBSD__))
+		static int have_posix_clocks = -1;
+		int rc;
 
-	if (have_posix_clocks < 0) {
-		struct timespec ts;
-		rc = clock_gettime(CLOCK_MONOTONIC, &ts);
-		if (rc < 0) {
-			have_posix_clocks = 0;
-		} else {
-			have_posix_clocks = 1;
+		if (have_posix_clocks < 0) {
+			struct timespec ts;
+			rc = clock_gettime(CLOCK_MONOTONIC, &ts);
+			if (rc < 0) {
+				have_posix_clocks = 0;
+			} else {
+				have_posix_clocks = 1;
+			}
 		}
-	}
 
-	if (have_posix_clocks) {
-		struct timespec ts;
-		rc = clock_gettime(CLOCK_MONOTONIC, &ts);
-		return uint64(ts.tv_sec) * 1000000 + uint64(ts.tv_nsec) / 1000;
-	}
-#endif
+		if (have_posix_clocks) {
+			struct timespec ts;
+			rc = clock_gettime(CLOCK_MONOTONIC, &ts);
+			return uint64(ts.tv_sec) * 1000000 + uint64(ts.tv_nsec) / 1000;
+		}
+	#endif
 
 	gettimeofday(&tv, NULL);
 	return uint64(tv.tv_sec) * 1000000 + tv.tv_usec;
@@ -185,12 +182,12 @@ static uint64_t __GetMicroseconds()
 
 #endif //!__APPLE__
 
-#endif //! WIN32
+#endif //!WIN32
 
 /*
  * Whew.  Okay.  After that #ifdef maze above, we now know we have a working
  * __GetMicroseconds() implementation on all platforms.
- *
+ * 
  * Because there are a number of assertions in libutp that will cause a crash
  * if monotonic time isn't monotonic, now apply some safety checks.  While in
  * principle we're already protecting ourselves in cases where non-monotonic
@@ -228,39 +225,30 @@ static inline uint64 UTP_GetMicroseconds()
 #define UDP_IPV6_OVERHEAD (IPV6_HEADER_SIZE + UDP_HEADER_SIZE)
 #define UDP_TEREDO_OVERHEAD (UDP_IPV4_OVERHEAD + UDP_IPV6_OVERHEAD)
 
-#define UDP_IPV4_MTU \
-	(ETHERNET_MTU - IPV4_HEADER_SIZE - UDP_HEADER_SIZE - GRE_HEADER_SIZE - PPPOE_HEADER_SIZE - \
-		MPPE_HEADER_SIZE - FUDGE_HEADER_SIZE)
-#define UDP_IPV6_MTU \
-	(ETHERNET_MTU - IPV6_HEADER_SIZE - UDP_HEADER_SIZE - GRE_HEADER_SIZE - PPPOE_HEADER_SIZE - \
-		MPPE_HEADER_SIZE - FUDGE_HEADER_SIZE)
+#define UDP_IPV4_MTU (ETHERNET_MTU - IPV4_HEADER_SIZE - UDP_HEADER_SIZE - GRE_HEADER_SIZE - PPPOE_HEADER_SIZE - MPPE_HEADER_SIZE - FUDGE_HEADER_SIZE)
+#define UDP_IPV6_MTU (ETHERNET_MTU - IPV6_HEADER_SIZE - UDP_HEADER_SIZE - GRE_HEADER_SIZE - PPPOE_HEADER_SIZE - MPPE_HEADER_SIZE - FUDGE_HEADER_SIZE)
 #define UDP_TEREDO_MTU (TEREDO_MTU - IPV6_HEADER_SIZE - UDP_HEADER_SIZE)
 
-uint64 utp_default_get_udp_mtu(utp_callback_arguments *args)
-{
+uint64 utp_default_get_udp_mtu(utp_callback_arguments *args) {
 	// Since we don't know the local address of the interface,
 	// be conservative and assume all IPv6 connections are Teredo.
 	return (args->address->sa_family == AF_INET6) ? UDP_TEREDO_MTU : UDP_IPV4_MTU;
 }
 
-uint64 utp_default_get_udp_overhead(utp_callback_arguments *args)
-{
+uint64 utp_default_get_udp_overhead(utp_callback_arguments *args) {
 	// Since we don't know the local address of the interface,
 	// be conservative and assume all IPv6 connections are Teredo.
 	return (args->address->sa_family == AF_INET6) ? UDP_TEREDO_OVERHEAD : UDP_IPV4_OVERHEAD;
 }
 
-uint64 utp_default_get_random(utp_callback_arguments * /*args*/)
-{
+uint64 utp_default_get_random(utp_callback_arguments * /*args*/) {
 	return rand();
 }
 
-uint64 utp_default_get_milliseconds(utp_callback_arguments * /*args*/)
-{
+uint64 utp_default_get_milliseconds(utp_callback_arguments * /*args*/) {
 	return UTP_GetMilliseconds();
 }
 
-uint64 utp_default_get_microseconds(utp_callback_arguments * /*args*/)
-{
+uint64 utp_default_get_microseconds(utp_callback_arguments * /*args*/) {
 	return UTP_GetMicroseconds();
 }
