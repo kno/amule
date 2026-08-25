@@ -2153,11 +2153,16 @@ void CamuleApp::OnCoreTimer(CTimerEvent &WXUNUSED(evt))
 			Kademlia::CKademlia::Process();
 			if (Kademlia::CKademlia::GetPrefs()->HasLostConnection()) {
 				StopKad();
-				clientudp->Close();
-				clientudp->Open();
-				// The other family's socket is rebound with it: this
-				// path exists to recover from a socket the OS dropped,
-				// and both were opened by the same call.
+				// Both sockets are rebound here: this path exists to
+				// recover from a socket the OS dropped, and both were
+				// opened by the same call. Each is checked because
+				// either can be absent -- clientudp starts NULL and is
+				// only assigned once the UDP socket is created, which
+				// is why every other caller in the tree tests it too.
+				if (clientudp) {
+					clientudp->Close();
+					clientudp->Open();
+				}
 				if (clientudpV6) {
 					clientudpV6->Close();
 					clientudpV6->Open();
