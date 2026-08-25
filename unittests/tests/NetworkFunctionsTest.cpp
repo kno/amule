@@ -305,4 +305,3 @@ TEST(NetworkFunctions, MappedPeerNarrowsLikeItsDottedForm)
 	ASSERT_FALSE(v6.IsIPv4Mapped());
 	ASSERT_EQUALS(0u, v6.ToIPv4NetworkOrderOrZero());
 }
-

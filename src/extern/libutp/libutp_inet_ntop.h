@@ -29,7 +29,7 @@
 // Defined in:
 // ut_utils/src/sockaddr.cpp
 // libutp/win32_inet_ntop.obj
-//
+// 
 // When we drop support for XP we can just #include <ws2tcpip.h>, and use the system functions
 // For now, we will always use our functions on windows, on all builds
 // The reason is: we would like the debug build to behave as much as the release build as possible
@@ -38,30 +38,31 @@
 
 #if defined(_WIN32_WINNT)
 #if _WIN32_WINNT >= 0x600 // Win32, post-XP
-#include <ws2tcpip.h>     // for inet_ntop, inet_pton
+#include <ws2tcpip.h> // for inet_ntop, inet_pton
 #define INET_NTOP inet_ntop
 #define INET_PTON inet_pton
 #else
 #define INET_NTOP libutp::inet_ntop // Win32, pre-XP: Use ours
 #define INET_PTON libutp::inet_pton
 #endif
-#else                  // not WIN32
+#else // not WIN32
 #include <arpa/inet.h> // for inet_ntop, inet_pton
 #define INET_NTOP inet_ntop
 #define INET_PTON inet_pton
 #endif
 
-// ######################################################################
-// ######################################################################
-namespace libutp
-{
+//######################################################################
+//######################################################################
+namespace libutp {
 
-// ######################################################################
+
+//######################################################################
 const char *inet_ntop(int af, const void *src, char *dest, size_t length);
 
-// ######################################################################
-int inet_pton(int af, const char *src, void *dest);
+//######################################################################
+int inet_pton(int af, const char* src, void* dest);
 
-} // namespace libutp
+
+} //namespace libutp
 
 #endif // LIBUTP_INET_NTOP_H

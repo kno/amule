@@ -87,8 +87,7 @@ public:
 
 	void DestroyContext(void *) override {}
 
-	bool ProcessDatagram(
-		void *, const uint8_t *, size_t, const CNetworkAddress &, uint16_t) override
+	bool ProcessDatagram(void *, const uint8_t *, size_t, const CNetworkAddress &, uint16_t) override
 	{
 		return true;
 	}
@@ -131,10 +130,8 @@ public:
 class CFakeAcceptor : public IUtpConnectionAcceptor
 {
 public:
-	CUtpSocketTransport *AcceptUtpConnection(CUtpContext &context,
-		void *socket,
-		const CNetworkAddress &from,
-		std::uint16_t port) override
+	CUtpSocketTransport *AcceptUtpConnection(
+		CUtpContext &context, void *socket, const CNetworkAddress &from, std::uint16_t port) override
 	{
 		++calls;
 		offeredSocket = socket;

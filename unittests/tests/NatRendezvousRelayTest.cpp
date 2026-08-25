@@ -285,8 +285,8 @@ TEST(NatRendezvousRelay, ValidRequestForwardsTheObservedEndpointToTheTargetFromO
 	// The forwarded frame: a rendezvous naming the requester, carrying the
 	// observed endpoint.
 	SNattRendezvousRequest forwarded;
-	ASSERT_TRUE(
-		ParseRendezvousRequest(sender.m_sent[0].payload.data(), sender.m_sent[0].payload.size(), forwarded));
+	ASSERT_TRUE(ParseRendezvousRequest(
+		sender.m_sent[0].payload.data(), sender.m_sent[0].payload.size(), forwarded));
 	ASSERT_TRUE(forwarded.hasEndpointHint);
 	ASSERT_TRUE(forwarded.hintAddress == Requester());
 	ASSERT_EQUALS(kSourcePort, forwarded.hintPort);
@@ -499,15 +499,8 @@ TEST(NatRendezvousRelay, RequestFromAnUnknownHostEmitsNothing)
 	CFakeClientList clients(Target(), kTargetPort, 0x20);
 	CRecordingSender sender;
 
-	const SRelayDecision decision = RelayRendezvousRequest(frame.data(),
-		frame.size(),
-		Requester(),
-		kSourcePort,
-		NULL,
-		1000,
-		limiter,
-		clients,
-		sender);
+	const SRelayDecision decision = RelayRendezvousRequest(
+		frame.data(), frame.size(), Requester(), kSourcePort, NULL, 1000, limiter, clients, sender);
 
 	ASSERT_EQUALS((int)RELAY_DISCARD_UNKNOWN_REQUESTER, (int)decision.disposition);
 	ASSERT_EQUALS(0u, sender.m_sent.size());
@@ -650,15 +643,8 @@ TEST(NatRendezvousRelay, RequestFromAnUnusableSourceAddressEmitsNothing)
 		sender);
 	ASSERT_EQUALS((int)RELAY_DISCARD_UNUSABLE_SOURCE, (int)absent.disposition);
 
-	const SRelayDecision noPort = RelayRendezvousRequest(frame.data(),
-		frame.size(),
-		Requester(),
-		0,
-		requesterHash,
-		1000,
-		limiter,
-		clients,
-		sender);
+	const SRelayDecision noPort = RelayRendezvousRequest(
+		frame.data(), frame.size(), Requester(), 0, requesterHash, 1000, limiter, clients, sender);
 	ASSERT_EQUALS((int)RELAY_DISCARD_UNUSABLE_SOURCE, (int)noPort.disposition);
 
 	ASSERT_EQUALS(0u, sender.m_sent.size());
@@ -771,15 +757,8 @@ TEST(NatRendezvousRelay, AlreadyRelayedMessageIsNotRelayedAgain)
 	CFakeClientList clients(Target(), kTargetPort, 0x20);
 	CRecordingSender sender;
 
-	const SRelayDecision decision = RelayRendezvousRequest(frame,
-		length,
-		Requester(),
-		kSourcePort,
-		requesterHash,
-		1000,
-		limiter,
-		clients,
-		sender);
+	const SRelayDecision decision = RelayRendezvousRequest(
+		frame, length, Requester(), kSourcePort, requesterHash, 1000, limiter, clients, sender);
 
 	ASSERT_EQUALS((int)RELAY_DISCARD_ALREADY_RELAYED, (int)decision.disposition);
 	ASSERT_EQUALS(0u, sender.m_sent.size());
@@ -803,17 +782,12 @@ TEST(NatRendezvousRelay, RelayedRendezvousFromAKnownRelayIsAccepted)
 	FillHash(peerHash, 0x30);
 
 	uint8_t frame[NATT_RENDEZVOUS_MAX_LENGTH];
-	const size_t length =
-		EncodeRelayedRendezvous(peerHash, CNetworkAddress::FromString("198.51.100.7"), 4662, frame, sizeof(frame));
+	const size_t length = EncodeRelayedRendezvous(
+		peerHash, CNetworkAddress::FromString("198.51.100.7"), 4662, frame, sizeof(frame));
 
 	CRendezvousRelayLimiter limiter;
-	const SRelayedRendezvousDecision decision = AcceptRelayedRendezvous(frame,
-		length,
-		Target(),
-		true,
-		CNetworkAddress::FromString("192.0.2.10"),
-		1000,
-		limiter);
+	const SRelayedRendezvousDecision decision = AcceptRelayedRendezvous(
+		frame, length, Target(), true, CNetworkAddress::FromString("192.0.2.10"), 1000, limiter);
 
 	ASSERT_EQUALS((int)RELAYED_ACCEPT, (int)decision.acceptance);
 	ASSERT_TRUE(decision.punch);
@@ -854,17 +828,12 @@ TEST(NatRendezvousRelay, RelayedRendezvousFromAnUnknownRelayIsRejected)
 	FillHash(peerHash, 0x30);
 
 	uint8_t frame[NATT_RENDEZVOUS_MAX_LENGTH];
-	const size_t length =
-		EncodeRelayedRendezvous(peerHash, CNetworkAddress::FromString("198.51.100.7"), 4662, frame, sizeof(frame));
+	const size_t length = EncodeRelayedRendezvous(
+		peerHash, CNetworkAddress::FromString("198.51.100.7"), 4662, frame, sizeof(frame));
 
 	CRendezvousRelayLimiter limiter;
-	const SRelayedRendezvousDecision decision = AcceptRelayedRendezvous(frame,
-		length,
-		Target(),
-		false,
-		CNetworkAddress::FromString("192.0.2.10"),
-		1000,
-		limiter);
+	const SRelayedRendezvousDecision decision = AcceptRelayedRendezvous(
+		frame, length, Target(), false, CNetworkAddress::FromString("192.0.2.10"), 1000, limiter);
 
 	ASSERT_EQUALS((int)RELAYED_REJECT_UNKNOWN_RELAY, (int)decision.acceptance);
 	ASSERT_FALSE(decision.punch);
@@ -879,13 +848,18 @@ TEST(NatRendezvousRelay, RelayedRendezvousIsRateLimitedPerRelay)
 	FillHash(peerHash, 0x30);
 
 	uint8_t frame[NATT_RENDEZVOUS_MAX_LENGTH];
-	const size_t length =
-		EncodeRelayedRendezvous(peerHash, CNetworkAddress::FromString("198.51.100.7"), 4662, frame, sizeof(frame));
+	const size_t length = EncodeRelayedRendezvous(
+		peerHash, CNetworkAddress::FromString("198.51.100.7"), 4662, frame, sizeof(frame));
 
 	CRendezvousRelayLimiter limiter;
 	for (uint32_t i = 0; i < kRendezvousMaxAttempts; ++i) {
-		const SRelayedRendezvousDecision accepted = AcceptRelayedRendezvous(
-			frame, length, Target(), true, CNetworkAddress::FromString("192.0.2.10"), 1000, limiter);
+		const SRelayedRendezvousDecision accepted = AcceptRelayedRendezvous(frame,
+			length,
+			Target(),
+			true,
+			CNetworkAddress::FromString("192.0.2.10"),
+			1000,
+			limiter);
 		ASSERT_EQUALS((int)RELAYED_ACCEPT, (int)accepted.acceptance);
 	}
 
@@ -903,17 +877,12 @@ TEST(NatRendezvousRelay, RelayedRendezvousNamingOurOwnEndpointIsRejected)
 	FillHash(peerHash, 0x30);
 
 	uint8_t frame[NATT_RENDEZVOUS_MAX_LENGTH];
-	const size_t length =
-		EncodeRelayedRendezvous(peerHash, CNetworkAddress::FromString("192.0.2.10"), 4662, frame, sizeof(frame));
+	const size_t length = EncodeRelayedRendezvous(
+		peerHash, CNetworkAddress::FromString("192.0.2.10"), 4662, frame, sizeof(frame));
 
 	CRendezvousRelayLimiter limiter;
-	const SRelayedRendezvousDecision decision = AcceptRelayedRendezvous(frame,
-		length,
-		Target(),
-		true,
-		CNetworkAddress::FromString("192.0.2.10"),
-		1000,
-		limiter);
+	const SRelayedRendezvousDecision decision = AcceptRelayedRendezvous(
+		frame, length, Target(), true, CNetworkAddress::FromString("192.0.2.10"), 1000, limiter);
 
 	ASSERT_EQUALS((int)RELAYED_REJECT_ENDPOINT_IS_OURSELVES, (int)decision.acceptance);
 	ASSERT_FALSE(decision.punch);

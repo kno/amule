@@ -188,8 +188,8 @@ TEST(NatHolePunchSchedule, SuccessCancelsEveryRemainingAttempt)
 	ASSERT_EQUALS((int)HOLEPUNCH_SUCCEEDED, (int)schedule.Poll(now));
 	ASSERT_EQUALS((int)HOLEPUNCH_SUCCEEDED, (int)schedule.Poll(now + kHolePunchAttemptSpacingMs));
 	ASSERT_EQUALS((int)HOLEPUNCH_SUCCEEDED, (int)schedule.Poll(1000 + kRendezvousTotalBudgetMs));
-	ASSERT_EQUALS(
-		(int)HOLEPUNCH_SUCCEEDED, (int)schedule.Poll(1000 + kRendezvousTotalBudgetMs + kRendezvousBackoffMs));
+	ASSERT_EQUALS((int)HOLEPUNCH_SUCCEEDED,
+		(int)schedule.Poll(1000 + kRendezvousTotalBudgetMs + kRendezvousBackoffMs));
 	ASSERT_EQUALS(sentBeforeSuccess, schedule.PacketsSent());
 }
 

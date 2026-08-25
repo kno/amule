@@ -210,8 +210,7 @@ TEST(UtpTransportFailure, DispositionOfATransportFailureSparesThePeerAndTriesTcp
 
 	// Nothing decided, or a connection that came up: no fallback, no mark.
 	for (int outcome : { (int)UTP_ATTEMPT_PENDING, (int)UTP_ATTEMPT_CONNECTED }) {
-		SUtpAttemptDisposition quiet =
-			DisposeUtpAttempt((EUtpAttemptOutcome)outcome, false);
+		SUtpAttemptDisposition quiet = DisposeUtpAttempt((EUtpAttemptOutcome)outcome, false);
 		ASSERT_FALSE(quiet.tryTcp);
 		ASSERT_FALSE(quiet.markPeerDead);
 		ASSERT_FALSE(quiet.dropFromSourceList);

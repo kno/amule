@@ -74,8 +74,8 @@ TEST(NetworkAddress, ByteOrderIsInTheSignature)
 	// Feeding a value in the wrong convention cannot be a silent no-op: it
 	// yields a different, visibly wrong address. Nothing stops a caller doing
 	// that, but nothing hides it either.
-	ASSERT_EQUALS(
-		wxString("1.2.0.192"), wxString(CNetworkAddress::FromIPv4HostOrder(TEST_IP_ED2K_ORDER).ToString()));
+	ASSERT_EQUALS(wxString("1.2.0.192"),
+		wxString(CNetworkAddress::FromIPv4HostOrder(TEST_IP_ED2K_ORDER).ToString()));
 }
 
 TEST(NetworkAddress, MappedAndNativeAreDistinct)
@@ -177,7 +177,7 @@ TEST(NetworkAddress, AbsenceIsNotTheAllZeroAddress)
 	ASSERT_TRUE(CNetworkAddress::FromIPv4NetworkOrder(0).IsPresent());
 	ASSERT_TRUE(CNetworkAddress::FromIPv4HostOrder(0).IsPresent());
 	ASSERT_TRUE(CNetworkAddress::FromIPv4NetworkOrderOrAbsent(TEST_IP_ED2K_ORDER) ==
-		CNetworkAddress::FromIPv4NetworkOrder(TEST_IP_ED2K_ORDER));
+		    CNetworkAddress::FromIPv4NetworkOrder(TEST_IP_ED2K_ORDER));
 
 	// A string that is not an address is absent, not 0.0.0.0 -- unlike
 	// StringIPtoUint32(), which cannot tell the caller the difference.
@@ -359,11 +359,10 @@ TEST(NetworkAddress, TruncatedToPrefixClearsHostBits)
 				 .TruncatedToPrefix(64)
 				 .ToString()));
 	ASSERT_EQUALS(wxString("::"),
-		wxString(CNetworkAddress::FromString("2001:db8:1:2:3:4:5:6")
-				 .TruncatedToPrefix(0)
-				 .ToString()));
+		wxString(
+			CNetworkAddress::FromString("2001:db8:1:2:3:4:5:6").TruncatedToPrefix(0).ToString()));
 	ASSERT_TRUE(CNetworkAddress::FromString("2001:db8:1:2:3:4:5:6").TruncatedToPrefix(128) ==
-		CNetworkAddress::FromString("2001:db8:1:2:3:4:5:6"));
+		    CNetworkAddress::FromString("2001:db8:1:2:3:4:5:6"));
 
 	// A prefix of an absent address is still absent: no prefix is invented for
 	// a peer that has no address.
