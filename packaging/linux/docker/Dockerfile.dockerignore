@@ -1,0 +1,11 @@
+# Build context hygiene for the runtime image. The Dockerfile does COPY . into
+# the build stage, so exclude only what the CMake build never reads — never a
+# source or docs directory (CMakeLists.txt add_subdirectory(docs) needs docs/).
+.git
+.github
+build*/
+**/build*/
+build-macos
+.codegraph
+.atl
+.DS_Store

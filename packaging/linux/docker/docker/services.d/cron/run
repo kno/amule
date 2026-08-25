@@ -1,0 +1,4 @@
+#!/bin/sh
+
+printf "[SUPERVISOR] Starting cron service ...\n"
+exec cron -f

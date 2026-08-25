@@ -1,0 +1,4 @@
+#!/bin/sh
+
+printf "[SUPERVISOR] Starting amuled service ...\n"
+exec setpriv --reuid "${AMULE_UID}" --regid "${AMULE_GID}" --init-groups amuled -c "${AMULE_HOME}" -o
