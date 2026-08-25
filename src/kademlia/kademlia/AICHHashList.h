@@ -64,7 +64,7 @@ class CKadAICHHashList
 public:
 	// The index value meaning "this publisher reported no AICH hash".  It is
 	// the same 0xFFFF sentinel that travels in the on-disk keyword index.
-	static const uint16_t INVALID_INDEX = 0xFFFF;
+	static constexpr uint16_t INVALID_INDEX = 0xFFFF;
 
 	// Kad BSOB tags carry a uint8 length.  eMule holds the encoded
 	// TAG_KADAICHHASHRESULT payload to 250 bytes rather than the full 255,

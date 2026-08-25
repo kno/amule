@@ -1,6 +1,14 @@
 cmake_minimum_required (VERSION 3.10...3.31)
 project (amule)
 
+# The network-parity work (amule-address-widening onward) uses std::optional and
+# other C++17 library features. g++ defaults to gnu++17 so this was latent, but
+# AppleClang defaults to an older standard and the macOS CI build failed on
+# std::optional. Declare the requirement for every target rather than relying on
+# a compiler's default.
+set (CMAKE_CXX_STANDARD 17)
+set (CMAKE_CXX_STANDARD_REQUIRED ON)
+
 set (MIN_BOOST_VERSION 1.70)
 set (MIN_CRYPTOPP_VERSION 8.1)
 set (MIN_GDLIB_VERSION 2.0.0)
