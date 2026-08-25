@@ -119,8 +119,9 @@ TEST(PeerIdentity, DistinctIPv6PeersNeverShareAKey)
 {
 	// Two peers in the same /64 are two peers. The rate-limit scope aggregates
 	// them on purpose (below); the identity index must not.
-	static const char *const addresses[] = { "2001:db8::1", "2001:db8::2",
-		"2001:db8:0:0:1::1", "2001:db8:1::1", "fe80::1", "::1", "::" };
+	static const char *const addresses[] = {
+		"2001:db8::1", "2001:db8::2", "2001:db8:0:0:1::1", "2001:db8:1::1", "fe80::1", "::1", "::"
+	};
 	static const size_t count = sizeof(addresses) / sizeof(addresses[0]);
 
 	std::multimap<CNetworkAddress, int> index;
@@ -147,13 +148,13 @@ TEST(PeerIdentity, IPv4RoundTripThroughIdentityIsExact)
 	// still hand one out. Every IPv4 value must survive the wider storage
 	// unchanged, or an IPv4 peer's identity, its wire encoding and its Kad
 	// conversion all shift together and no interface changes.
-	static const uint32_t values[] = { 0x0100007Fu, 0x010200C0u, 0xFFFFFFFFu, 0x00000001u,
-		0x01000000u, 0x2A2A2A2Au };
+	static const uint32_t values[] = {
+		0x0100007Fu, 0x010200C0u, 0xFFFFFFFFu, 0x00000001u, 0x01000000u, 0x2A2A2A2Au
+	};
 	static const size_t count = sizeof(values) / sizeof(values[0]);
 
 	for (size_t i = 0; i < count; ++i) {
-		const CNetworkAddress address =
-			CNetworkAddress::FromIPv4NetworkOrderOrAbsent(values[i]);
+		const CNetworkAddress address = CNetworkAddress::FromIPv4NetworkOrderOrAbsent(values[i]);
 		ASSERT_TRUE(address.IsPresent());
 		ASSERT_TRUE(IsIndexable(address));
 		ASSERT_EQUALS(values[i], address.ToIPv4NetworkOrderOrZero());
@@ -200,8 +201,8 @@ TEST(PeerIdentity, DatagramRoutingTable)
 
 	// IPv4, and the mapped spelling of IPv4: everything is reachable.
 	ASSERT_TRUE(ClassifyUdpPeer(CNetworkAddress::FromString("192.0.2.1")) == EUdpRoute::Ed2kAndKad);
-	ASSERT_TRUE(ClassifyUdpPeer(CNetworkAddress::FromString("::ffff:192.0.2.1")) ==
-		EUdpRoute::Ed2kAndKad);
+	ASSERT_TRUE(
+		ClassifyUdpPeer(CNetworkAddress::FromString("::ffff:192.0.2.1")) == EUdpRoute::Ed2kAndKad);
 
 	// Native IPv6: the ed2k handlers can identify this peer now, Kad cannot.
 	// Kad's 32-bit interface is a documented boundary, not an oversight, so the
@@ -312,13 +313,17 @@ TEST(PeerIdentity, RateLimitScopeMembersAreContiguousInTheIndexOrder)
 	// it and the ordering lives in another file.
 	std::multimap<CNetworkAddress, int> index;
 
-	static const char *const addresses[] = {
-		// Inside the /64 under test, deliberately out of order.
-		"2001:db8:1:2:ffff:ffff:ffff:ffff", "2001:db8:1:2::", "2001:db8:1:2:8000::1",
+	static const char *const addresses[] = { // Inside the /64 under test, deliberately out of order.
+		"2001:db8:1:2:ffff:ffff:ffff:ffff",
+		"2001:db8:1:2::",
+		"2001:db8:1:2:8000::1",
 		// Immediately outside it, on both sides.
-		"2001:db8:1:1:ffff:ffff:ffff:ffff", "2001:db8:1:3::",
+		"2001:db8:1:1:ffff:ffff:ffff:ffff",
+		"2001:db8:1:3::",
 		// Far away, and in the other family.
-		"2001:db8:9::1", "192.0.2.1", "255.255.255.255"
+		"2001:db8:9::1",
+		"192.0.2.1",
+		"255.255.255.255"
 	};
 	static const size_t count = sizeof(addresses) / sizeof(addresses[0]);
 	for (size_t i = 0; i < count; ++i) {

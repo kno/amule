@@ -182,10 +182,9 @@ TEST(UtpDialPolicy, AttemptAndTransportFailureAreMutuallyExclusive)
 		for (int c = 0; c < 2; ++c) {
 			for (int x = 0; x < 2; ++x) {
 				for (int p = 0; p < 3; ++p) {
-					const SUtpDialDecision decision = DecideUtpDial(
-						flags[a], flags[c], flags[x], peers[p]);
-					ASSERT_FALSE(decision.attemptUtp &&
-						decision.recordTransportFailure);
+					const SUtpDialDecision decision =
+						DecideUtpDial(flags[a], flags[c], flags[x], peers[p]);
+					ASSERT_FALSE(decision.attemptUtp && decision.recordTransportFailure);
 				}
 			}
 		}

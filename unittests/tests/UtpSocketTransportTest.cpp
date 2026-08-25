@@ -74,8 +74,7 @@ public:
 
 	void DestroyContext(void *) override { ++destroyCalls; }
 
-	bool ProcessDatagram(
-		void *, const uint8_t *, size_t, const CNetworkAddress &, uint16_t) override
+	bool ProcessDatagram(void *, const uint8_t *, size_t, const CNetworkAddress &, uint16_t) override
 	{
 		return true;
 	}
@@ -86,9 +85,7 @@ public:
 	}
 
 	void IssueDeferredAcks(void *) override { ++deferredAckCalls; }
-	void CheckTimeouts(void *) override { ++timeoutCalls;
-
-	}
+	void CheckTimeouts(void *) override { ++timeoutCalls; }
 
 	//! The send window. `windowOpen == false` makes utp_write answer zero,
 	//! which is the ordinary case under load and must never read as an error.
@@ -104,8 +101,7 @@ public:
 		return (long)taken;
 	}
 
-	void *CreateOutboundSocket(
-		void *, void *userData, const CNetworkAddress &to, uint16_t port) override
+	void *CreateOutboundSocket(void *, void *userData, const CNetworkAddress &to, uint16_t port) override
 	{
 		++dialCalls;
 		dialledTo = to;
@@ -372,8 +368,7 @@ TEST(UtpSocketTransport, ATimeoutIsATransportFailureAndNotThePeersFault)
 	ASSERT_TRUE(dialled.transport->LastError() != 0);
 
 	// And the disposition the client path reads keeps the source.
-	const SUtpAttemptDisposition disposition =
-		DisposeUtpAttempt(dialled.transport->GetOutcome(), false);
+	const SUtpAttemptDisposition disposition = DisposeUtpAttempt(dialled.transport->GetOutcome(), false);
 	ASSERT_TRUE(disposition.tryTcp);
 	ASSERT_FALSE(disposition.markPeerDead);
 	ASSERT_FALSE(disposition.dropFromSourceList);
@@ -403,8 +398,7 @@ TEST(UtpSocketTransport, ARefusalIsThePeersAnswerAndKeepsThePreUtpRules)
 	ASSERT_TRUE(dialled.transport->GetOutcome() == UTP_ATTEMPT_PEER_REFUSED);
 	ASSERT_FALSE(dialled.transport->HasTransportFailed());
 
-	const SUtpAttemptDisposition disposition =
-		DisposeUtpAttempt(dialled.transport->GetOutcome(), false);
+	const SUtpAttemptDisposition disposition = DisposeUtpAttempt(dialled.transport->GetOutcome(), false);
 	ASSERT_FALSE(disposition.tryTcp);
 	ASSERT_TRUE(disposition.markPeerDead);
 }

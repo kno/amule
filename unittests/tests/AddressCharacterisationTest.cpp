@@ -179,8 +179,15 @@ TEST(AddressCharacterisation, IPFilterCompressedLengthEncoding)
 // address that means "unknown" is still not a group.
 TEST(AddressCharacterisation, ClientListAddressKeyingIsPreserved)
 {
-	static const char *const addresses[] = { "0.0.0.0", "1.0.0.0", "0.0.0.1", "10.0.0.1",
-		"10.0.0.2", "192.0.2.1", "203.0.113.255", "255.255.255.255", "127.0.0.1" };
+	static const char *const addresses[] = { "0.0.0.0",
+		"1.0.0.0",
+		"0.0.0.1",
+		"10.0.0.1",
+		"10.0.0.2",
+		"192.0.2.1",
+		"203.0.113.255",
+		"255.255.255.255",
+		"127.0.0.1" };
 	static const size_t count = sizeof(addresses) / sizeof(addresses[0]);
 
 	std::multimap<uint32_t, int> byUint32;
@@ -281,7 +288,7 @@ TEST(AddressCharacterisation, WireBytesOfAnAddressAreUnchanged)
 		const uint32_t readBack = file.ReadUInt32();
 		ASSERT_EQUALS(ed2kOrder, readBack);
 		ASSERT_TRUE(CNetworkAddress::FromIPv4NetworkOrder(readBack) ==
-			CNetworkAddress::FromString("192.0.2.1"));
+			    CNetworkAddress::FromString("192.0.2.1"));
 		ASSERT_EQUALS((uint16_t)4662, file.ReadUInt16());
 	}
 }

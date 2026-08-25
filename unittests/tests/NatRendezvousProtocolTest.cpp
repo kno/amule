@@ -229,11 +229,8 @@ TEST(NatRendezvousProtocol, RendezvousRequestWithHintEncodesExactBytes)
 	FillHash(hash);
 
 	uint8_t buffer[NATT_RENDEZVOUS_MAX_LENGTH] = { 0 };
-	const size_t written = EncodeRendezvousRequest(hash,
-		CNetworkAddress::FromString("192.0.2.10"),
-		4662,
-		buffer,
-		sizeof(buffer));
+	const size_t written = EncodeRendezvousRequest(
+		hash, CNetworkAddress::FromString("192.0.2.10"), 4662, buffer, sizeof(buffer));
 
 	ASSERT_EQUALS(26u, written);
 	ASSERT_EQUALS(0xA0, static_cast<int>(buffer[0]));
@@ -271,11 +268,8 @@ TEST(NatRendezvousProtocol, RendezvousRequestRoundTrips)
 	FillHash(hash);
 
 	uint8_t buffer[NATT_RENDEZVOUS_MAX_LENGTH] = { 0 };
-	const size_t written = EncodeRendezvousRequest(hash,
-		CNetworkAddress::FromString("192.0.2.10"),
-		4662,
-		buffer,
-		sizeof(buffer));
+	const size_t written = EncodeRendezvousRequest(
+		hash, CNetworkAddress::FromString("192.0.2.10"), 4662, buffer, sizeof(buffer));
 
 	SNattRendezvousRequest request;
 	ASSERT_TRUE(ParseRendezvousRequest(buffer, written, request));
@@ -327,11 +321,8 @@ TEST(NatRendezvousProtocol, TruncatedRendezvousRequestIsRejectedAtEveryBoundary)
 	FillHash(hash);
 
 	uint8_t buffer[NATT_RENDEZVOUS_MAX_LENGTH] = { 0 };
-	const size_t written = EncodeRendezvousRequest(hash,
-		CNetworkAddress::FromString("192.0.2.10"),
-		4662,
-		buffer,
-		sizeof(buffer));
+	const size_t written = EncodeRendezvousRequest(
+		hash, CNetworkAddress::FromString("192.0.2.10"), 4662, buffer, sizeof(buffer));
 
 	for (size_t length = 0; length < written; ++length) {
 		SNattRendezvousRequest request;
@@ -412,7 +403,8 @@ TEST(NatRendezvousProtocol, ControlMessageClassificationSeparatesTheThreeOpcodes
 	ASSERT_EQUALS((int)NATT_CONTROL_HOLEPUNCH, (int)ClassifyNattControlMessage(holepunch, 1));
 	ASSERT_EQUALS((int)NATT_CONTROL_ENDPOINT_HINT, (int)ClassifyNattControlMessage(hint, 1));
 	ASSERT_EQUALS((int)NATT_CONTROL_NOT_A_CONTROL_MESSAGE, (int)ClassifyNattControlMessage(foreign, 1));
-	ASSERT_EQUALS((int)NATT_CONTROL_NOT_A_CONTROL_MESSAGE, (int)ClassifyNattControlMessage(rendezvous, 0));
+	ASSERT_EQUALS(
+		(int)NATT_CONTROL_NOT_A_CONTROL_MESSAGE, (int)ClassifyNattControlMessage(rendezvous, 0));
 	ASSERT_EQUALS((int)NATT_CONTROL_NOT_A_CONTROL_MESSAGE, (int)ClassifyNattControlMessage(NULL, 1));
 }
 
@@ -424,8 +416,8 @@ TEST(NatRendezvousProtocol, EncodersRefuseAnOutputBufferThatIsTooSmall)
 	FillHash(hash);
 
 	uint8_t small[4] = { 0xFF, 0xFF, 0xFF, 0xFF };
-	ASSERT_EQUALS(
-		0u, EncodeEndpointHint(CNetworkAddress::FromString("192.0.2.10"), 4662, small, sizeof(small)));
+	ASSERT_EQUALS(0u,
+		EncodeEndpointHint(CNetworkAddress::FromString("192.0.2.10"), 4662, small, sizeof(small)));
 	ASSERT_EQUALS(0u,
 		EncodeRendezvousRequest(
 			hash, CNetworkAddress::FromString("192.0.2.10"), 4662, small, sizeof(small)));
@@ -458,11 +450,8 @@ TEST(NatRendezvousProtocol, RelayedRendezvousSetsTheRelayedBitAndAnOrdinaryReque
 	FillHash(hash);
 
 	uint8_t relayed[NATT_RENDEZVOUS_MAX_LENGTH] = { 0 };
-	const size_t relayedLength = EncodeRelayedRendezvous(hash,
-		CNetworkAddress::FromString("192.0.2.10"),
-		4662,
-		relayed,
-		sizeof(relayed));
+	const size_t relayedLength = EncodeRelayedRendezvous(
+		hash, CNetworkAddress::FromString("192.0.2.10"), 4662, relayed, sizeof(relayed));
 	ASSERT_EQUALS(26u, relayedLength);
 	// 0x80 traversal, 0x40 relayed, 0x20 a hint follows.
 	ASSERT_EQUALS(0xE0, static_cast<int>(relayed[1]));
@@ -472,11 +461,8 @@ TEST(NatRendezvousProtocol, RelayedRendezvousSetsTheRelayedBitAndAnOrdinaryReque
 	ASSERT_TRUE(parsedRelayed.isRelayed);
 
 	uint8_t request[NATT_RENDEZVOUS_MAX_LENGTH] = { 0 };
-	const size_t requestLength = EncodeRendezvousRequest(hash,
-		CNetworkAddress::FromString("192.0.2.10"),
-		4662,
-		request,
-		sizeof(request));
+	const size_t requestLength = EncodeRendezvousRequest(
+		hash, CNetworkAddress::FromString("192.0.2.10"), 4662, request, sizeof(request));
 	ASSERT_EQUALS(0xA0, static_cast<int>(request[1]));
 
 	SNattRendezvousRequest parsedRequest;

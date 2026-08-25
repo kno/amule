@@ -170,10 +170,8 @@ TEST(PeerCapabilities, AdvertisesNoUnimplementedCapability)
 	// cmake/libutp.cmake), so it is in the ceiling only in such a build --
 	// asserted as a subset rather than a literal, because both builds are
 	// legitimate and this test runs in either.
-	ASSERT_EQUALS((uint32_t)MOD_MISCOPT_IPV6,
-		AdvertisableModMiscOptions() & (uint32_t)MOD_MISCOPT_IPV6);
-	const uint32_t shipped =
-		(uint32_t)MOD_MISCOPT_IPV6 | (uint32_t)MOD_MISCOPT_NAT_TRAVERSAL;
+	ASSERT_EQUALS((uint32_t)MOD_MISCOPT_IPV6, AdvertisableModMiscOptions() & (uint32_t)MOD_MISCOPT_IPV6);
+	const uint32_t shipped = (uint32_t)MOD_MISCOPT_IPV6 | (uint32_t)MOD_MISCOPT_NAT_TRAVERSAL;
 	// Nothing unimplemented is reachable: no extended SX, no buddy pull, no
 	// QUIC, and no reserved bit.
 	ASSERT_EQUALS(0x00000000u, AdvertisableModMiscOptions() & ~shipped);
@@ -199,8 +197,7 @@ TEST(PeerCapabilities, BothGatesComposeIntoOneWord)
 
 	// Both: bit 1 and bit 2 together, and nothing else.
 	ASSERT_EQUALS(0x00000006u, AdvertisedModMiscOptions(true) | ipv6Verified);
-	ASSERT_EQUALS(0x00000000u,
-		(AdvertisedModMiscOptions(true) | ipv6Verified) & ~MOD_MISCOPT_KNOWN_MASK);
+	ASSERT_EQUALS(0x00000000u, (AdvertisedModMiscOptions(true) | ipv6Verified) & ~MOD_MISCOPT_KNOWN_MASK);
 }
 
 // The advertise decision as a function of whether the transport can actually
@@ -238,7 +235,8 @@ TEST(PeerCapabilities, CompiledInButUnableToServeAdvertisesNothing)
 	// Whatever this build's ceiling is, the word it actually sends never
 	// exceeds it, and the ceiling never leaves the five defined bits.
 	ASSERT_EQUALS(0x00000000u, AdvertisableModMiscOptions() & ~MOD_MISCOPT_KNOWN_MASK);
-	ASSERT_EQUALS(AdvertisedModMiscOptions(false), AdvertisedModMiscOptions(false) & AdvertisableModMiscOptions());
+	ASSERT_EQUALS(AdvertisedModMiscOptions(false),
+		AdvertisedModMiscOptions(false) & AdvertisableModMiscOptions());
 }
 
 // Setters exist for the advertise side; they must land on the same bits the

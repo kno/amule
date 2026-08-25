@@ -284,9 +284,8 @@ TEST(NatRendezvousManager, BackoffElapsesAndThenAllowsARestart)
 
 	ASSERT_TRUE(manager.IsBackoffActive(peer, exhausted + kRendezvousBackoffMs - 1));
 	ASSERT_FALSE(manager.IsBackoffActive(peer, exhausted + kRendezvousBackoffMs));
-	ASSERT_TRUE(manager.BeginRendezvous(peer,
-		OneCandidate("192.0.2.10", kPeerPort),
-		exhausted + kRendezvousBackoffMs));
+	ASSERT_TRUE(manager.BeginRendezvous(
+		peer, OneCandidate("192.0.2.10", kPeerPort), exhausted + kRendezvousBackoffMs));
 }
 
 // An inbound punch from a peer nobody punched toward creates nothing. Otherwise
@@ -322,8 +321,8 @@ TEST(NatRendezvousManager, MatchingHolePunchRecordsTheObservedMapping)
 	ASSERT_FALSE(manager.ObservedEndpoint(peer, observed, observedPort));
 
 	// A different port from the one it was punched at: the NAT chose it.
-	ASSERT_TRUE(manager.OnHolePunchReceived(
-		peer, CNetworkAddress::FromString("192.0.2.10"), 51413, 1500));
+	ASSERT_TRUE(
+		manager.OnHolePunchReceived(peer, CNetworkAddress::FromString("192.0.2.10"), 51413, 1500));
 
 	ASSERT_TRUE(manager.ObservedEndpoint(peer, observed, observedPort));
 	ASSERT_TRUE(observed == CNetworkAddress::FromString("192.0.2.10"));
@@ -352,8 +351,7 @@ TEST(NatRendezvousManager, RelayedEndpointIsOneCandidateAfterTheKnownOnes)
 	ASSERT_EQUALS((int)RELAYED_ACCEPT, (int)accepted.acceptance);
 
 	CNatRendezvousManager manager;
-	ASSERT_TRUE(manager.OnRelayedRendezvous(
-		accepted, OneCandidate("203.0.113.99", kPeerPort), 1000));
+	ASSERT_TRUE(manager.OnRelayedRendezvous(accepted, OneCandidate("203.0.113.99", kPeerPort), 1000));
 
 	CRecordingPuncher puncher;
 	manager.Tick(1000, puncher);

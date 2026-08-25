@@ -246,7 +246,8 @@ TEST(NatTraversalPolicy, QuicFrameTypeIsPreferredForFifteenHundredMilliseconds)
 	ASSERT_TRUE(justBefore.waitingForQuic);
 
 	// At the boundary, not after it: 1500 ms is the whole wait.
-	const SNattFrameTypeDecision atBoundary = SelectNattFrameType(true, true, kNattFrameTypeFallbackWaitMs);
+	const SNattFrameTypeDecision atBoundary =
+		SelectNattFrameType(true, true, kNattFrameTypeFallbackWaitMs);
 	ASSERT_EQUALS(0x00, (int)atBoundary.frameType);
 	ASSERT_FALSE(atBoundary.waitingForQuic);
 }
