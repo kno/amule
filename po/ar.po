@@ -9,7 +9,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: aMule\n"
 "Report-Msgid-Bugs-To: https://github.com/amule-org/amule/issues\n"
-"POT-Creation-Date: 2026-08-22 19:49+0200\n"
+"POT-Creation-Date: 2026-08-25 08:51+0200\n"
 "PO-Revision-Date: 2026-08-22 15:09+0000\n"
 "Last-Translator: saleh alhathal <hathalsal@hotmail.com>\n"
 "Language-Team: \n"
@@ -395,6 +395,14 @@ msgid "You requested to run amuleapi on startup, but the amuleapi binary cannot 
 msgstr ""
 
 #: src/amule.cpp
+msgid "Could not bind an IPv6 socket. IPv6 appears to be unavailable on this host; IPv4 operation is unaffected."
+msgstr ""
+
+#: src/amule.cpp
+msgid "Could not bind an IPv4 socket."
+msgstr ""
+
+#: src/amule.cpp
 #, c-format
 msgid "External connection: could not bind to '%s', listening on 127.0.0.1 only."
 msgstr ""
@@ -417,6 +425,11 @@ msgid ""
 "This means that you will be LOWID.\n"
 "\n"
 "Check your network to make sure the port is open for output and input."
+msgstr ""
+
+#: src/amule.cpp
+#, c-format
+msgid "Client UDP socket (extended eMule) listening on %s port %u (IPv6)."
 msgstr ""
 
 #: src/amule.cpp
@@ -2732,7 +2745,7 @@ msgstr "في اﻻنتظار"
 msgid "Uploading"
 msgstr "الرفع"
 
-#: src/GenericClientListCtrl.cpp
+#: src/GenericClientListCtrl.cpp src/PeerCapabilities.h
 #, fuzzy
 msgid "None"
 msgstr "ﻻ احد"
@@ -2857,6 +2870,13 @@ msgstr "فشل في تحميل قائمة الخادمات من %s"
 #: src/IPFilter.cpp
 msgid "Loading IP filters 'ipfilter.dat' and 'ipfilter_static.dat'."
 msgstr ""
+
+#: src/IPFilter.cpp
+#, c-format
+msgid "Loaded %u IPv6 prefix rule."
+msgid_plural "Loaded %u IPv6 prefix rules."
+msgstr[0] ""
+msgstr[1] ""
 
 #: src/IPFilter.cpp
 #, c-format
@@ -3145,11 +3165,18 @@ msgid "Asio thread %d started"
 msgstr ""
 
 #: src/ListenSocket.cpp
-msgid "ListenSocket: Ok."
+#, c-format
+msgid "ListenSocket: listening on %s (IPv6, also accepting IPv4 peers in mapped form)."
 msgstr ""
 
 #: src/ListenSocket.cpp
-msgid "ERROR: Could not listen to TCP port."
+#, c-format
+msgid "ListenSocket: listening on %s (%s)."
+msgstr ""
+
+#: src/ListenSocket.cpp
+#, c-format
+msgid "Inbound IPv6 connection from %s on %s."
 msgstr ""
 
 #: src/Logger.cpp
@@ -3950,6 +3977,10 @@ msgstr ""
 
 #: src/muuli_wdr.cpp
 msgid "Kad:"
+msgstr ""
+
+#: src/muuli_wdr.cpp
+msgid "Vendor capabilities:"
 msgstr ""
 
 #: src/muuli_wdr.cpp
@@ -6945,6 +6976,14 @@ msgstr "اتصال"
 #, fuzzy
 msgid "Connected since:"
 msgstr "متصل"
+
+#: src/ServerWnd.cpp
+msgid "IPv4 reachability:"
+msgstr ""
+
+#: src/ServerWnd.cpp
+msgid "IPv6 reachability:"
+msgstr ""
 
 #: src/ServerWnd.cpp
 msgid "Kademlia Status:"

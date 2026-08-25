@@ -9,7 +9,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: aMule\n"
 "Report-Msgid-Bugs-To: https://github.com/amule-org/amule/issues\n"
-"POT-Creation-Date: 2026-08-22 19:49+0200\n"
+"POT-Creation-Date: 2026-08-25 08:51+0200\n"
 "PO-Revision-Date: 2026-08-22 15:42+0000\n"
 "Last-Translator: Angelescu Constantin <titus0818@yahoo.com>\n"
 "Language-Team: English <kde-i18n-doc@kde.org>\n"
@@ -408,6 +408,14 @@ msgid "You requested to run amuleapi on startup, but the amuleapi binary cannot 
 msgstr "Ați solicitat să ruleze la pornire serverul web, dar fișierul binar amuleweb nu poate fi rulat. Instalați pachetul care conține serverul web aMule, sau compilați aMule utilizând --enable-webserver și apoi rulați make install"
 
 #: src/amule.cpp
+msgid "Could not bind an IPv6 socket. IPv6 appears to be unavailable on this host; IPv4 operation is unaffected."
+msgstr ""
+
+#: src/amule.cpp
+msgid "Could not bind an IPv4 socket."
+msgstr ""
+
+#: src/amule.cpp
 #, c-format
 msgid "External connection: could not bind to '%s', listening on 127.0.0.1 only."
 msgstr ""
@@ -436,6 +444,11 @@ msgstr ""
 "Aceasta înseamnă că veți fi LOWID.\n"
 "\n"
 "Verificați rețeaua pentru a vă asigura că portul este deschis pentru intrare și ieșire."
+
+#: src/amule.cpp
+#, c-format
+msgid "Client UDP socket (extended eMule) listening on %s port %u (IPv6)."
+msgstr ""
 
 #: src/amule.cpp
 msgid "Failed to create OnlineSig File"
@@ -2785,7 +2798,7 @@ msgstr "În coadă: %u"
 msgid "Uploading"
 msgstr "Se încarcă"
 
-#: src/GenericClientListCtrl.cpp
+#: src/GenericClientListCtrl.cpp src/PeerCapabilities.h
 msgid "None"
 msgstr "Niciunul"
 
@@ -2908,6 +2921,14 @@ msgstr "A eșuat descărcarea %s de la %s"
 #: src/IPFilter.cpp
 msgid "Loading IP filters 'ipfilter.dat' and 'ipfilter_static.dat'."
 msgstr "Se încarcă filtrele 'ipfilter.dat' și 'ipfilter_static.dat'."
+
+#: src/IPFilter.cpp
+#, fuzzy, c-format
+msgid "Loaded %u IPv6 prefix rule."
+msgid_plural "Loaded %u IPv6 prefix rules."
+msgstr[0] "S-a încărcat %u interval IP de la '%s'."
+msgstr[1] "S-au încărcat %u intervale IP de la '%s'."
+msgstr[2] "S-au încărcat %u de intervale IP de la '%s'."
 
 #: src/IPFilter.cpp
 #, c-format
@@ -3202,12 +3223,19 @@ msgid "Asio thread %d started"
 msgstr "Procesul Asio %d pornit"
 
 #: src/ListenSocket.cpp
-msgid "ListenSocket: Ok."
-msgstr "Ascultare socket: Ok."
+#, c-format
+msgid "ListenSocket: listening on %s (IPv6, also accepting IPv4 peers in mapped form)."
+msgstr ""
 
 #: src/ListenSocket.cpp
-msgid "ERROR: Could not listen to TCP port."
-msgstr "EROARE: Nu se poate asculta portul TCP."
+#, c-format
+msgid "ListenSocket: listening on %s (%s)."
+msgstr ""
+
+#: src/ListenSocket.cpp
+#, c-format
+msgid "Inbound IPv6 connection from %s on %s."
+msgstr ""
 
 #: src/Logger.cpp
 msgid "ERROR: "
@@ -4019,6 +4047,10 @@ msgstr "Disimulare:"
 #: src/muuli_wdr.cpp
 msgid "Kad:"
 msgstr "Kad:"
+
+#: src/muuli_wdr.cpp
+msgid "Vendor capabilities:"
+msgstr ""
 
 #: src/muuli_wdr.cpp
 msgid "Transfers to client"
@@ -7060,6 +7092,16 @@ msgid "Connected since:"
 msgstr "Conectat"
 
 #: src/ServerWnd.cpp
+#, fuzzy
+msgid "IPv4 reachability:"
+msgstr "Disponibilitate"
+
+#: src/ServerWnd.cpp
+#, fuzzy
+msgid "IPv6 reachability:"
+msgstr "Disponibilitate"
+
+#: src/ServerWnd.cpp
 msgid "Kademlia Status:"
 msgstr "Stare Kademlia:"
 
@@ -9094,6 +9136,12 @@ msgstr ""
 #: packaging/windows/installer_strings.c
 msgid "Removing user data at $APPDATA\\aMule..."
 msgstr ""
+
+#~ msgid "ListenSocket: Ok."
+#~ msgstr "Ascultare socket: Ok."
+
+#~ msgid "ERROR: Could not listen to TCP port."
+#~ msgstr "EROARE: Nu se poate asculta portul TCP."
 
 #, c-format
 #~ msgid "Found %i known shared file, %i unknown"

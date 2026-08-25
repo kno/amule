@@ -9,7 +9,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: aMule\n"
 "Report-Msgid-Bugs-To: https://github.com/amule-org/amule/issues\n"
-"POT-Creation-Date: 2026-08-22 19:49+0200\n"
+"POT-Creation-Date: 2026-08-25 08:51+0200\n"
 "PO-Revision-Date: 2026-08-22 15:48+0000\n"
 "Last-Translator: \n"
 "Language-Team: Turkish <li@li.org>\n"
@@ -405,6 +405,15 @@ msgid "You requested to run amuleapi on startup, but the amuleapi binary cannot 
 msgstr "amuleapi'nın başlangıçta çalışmasını istediniz, fakat amuleapi ikilisi çalıştırılamıyor. Lütfen aMule REST API sunucusunu içeren paketi yükleyin veya aMule' yi -DBUILD_AMULEAPI=YES seçeneği ile derleyin ve kurun."
 
 #: src/amule.cpp
+msgid "Could not bind an IPv6 socket. IPv6 appears to be unavailable on this host; IPv4 operation is unaffected."
+msgstr ""
+
+#: src/amule.cpp
+#, fuzzy
+msgid "Could not bind an IPv4 socket."
+msgstr "%s, bir IPv4 adresine çözümlenemedi."
+
+#: src/amule.cpp
 #, c-format
 msgid "External connection: could not bind to '%s', listening on 127.0.0.1 only."
 msgstr "Harici Bağlantı: '%s' unsuruna bağlanılamadı, sadece 127.0.0.1 üzerinde dinleniliyor."
@@ -433,6 +442,11 @@ msgstr ""
 "Bunun anlamı DÜŞÜKID alacağınızdır.\n"
 "\n"
 "Ağ ayarlarınıza göz atarak portun giriş ve çıkışlar için açık olup olmadığını denetleyiniz."
+
+#: src/amule.cpp
+#, c-format
+msgid "Client UDP socket (extended eMule) listening on %s port %u (IPv6)."
+msgstr ""
 
 #: src/amule.cpp
 msgid "Failed to create OnlineSig File"
@@ -2773,7 +2787,7 @@ msgstr "Sırada: %u"
 msgid "Uploading"
 msgstr "Gönderiliyor"
 
-#: src/GenericClientListCtrl.cpp
+#: src/GenericClientListCtrl.cpp src/PeerCapabilities.h
 msgid "None"
 msgstr "Yok"
 
@@ -2896,6 +2910,13 @@ msgstr "%s, %s kaynağından indirilemedi."
 #: src/IPFilter.cpp
 msgid "Loading IP filters 'ipfilter.dat' and 'ipfilter_static.dat'."
 msgstr "IP süzgeçleri 'ipfilter.dat' ve 'ipfilter_static.dat' yükleniyor."
+
+#: src/IPFilter.cpp
+#, fuzzy, c-format
+msgid "Loaded %u IPv6 prefix rule."
+msgid_plural "Loaded %u IPv6 prefix rules."
+msgstr[0] "%u adet IP-aralığı '%s' unsurundan yüklendi."
+msgstr[1] "%u adet IP-aralığı '%s' unsurundan yüklendi."
 
 #: src/IPFilter.cpp
 #, c-format
@@ -3182,12 +3203,19 @@ msgid "Asio thread %d started"
 msgstr "Asio iş parçacığı %d başladı"
 
 #: src/ListenSocket.cpp
-msgid "ListenSocket: Ok."
-msgstr "DinlemeSoketi: Tamam."
+#, c-format
+msgid "ListenSocket: listening on %s (IPv6, also accepting IPv4 peers in mapped form)."
+msgstr ""
 
 #: src/ListenSocket.cpp
-msgid "ERROR: Could not listen to TCP port."
-msgstr "HATA: TCP portu dinlenemiyor."
+#, c-format
+msgid "ListenSocket: listening on %s (%s)."
+msgstr ""
+
+#: src/ListenSocket.cpp
+#, c-format
+msgid "Inbound IPv6 connection from %s on %s."
+msgstr ""
 
 #: src/Logger.cpp
 msgid "ERROR: "
@@ -3979,6 +4007,10 @@ msgstr "Gizleme:"
 #: src/muuli_wdr.cpp
 msgid "Kad:"
 msgstr "Kademlia:"
+
+#: src/muuli_wdr.cpp
+msgid "Vendor capabilities:"
+msgstr ""
 
 #: src/muuli_wdr.cpp
 msgid "Transfers to client"
@@ -6963,6 +6995,16 @@ msgid "Connected since:"
 msgstr "Bağlantı başlangıç tarihi:"
 
 #: src/ServerWnd.cpp
+#, fuzzy
+msgid "IPv4 reachability:"
+msgstr "Uygunluk"
+
+#: src/ServerWnd.cpp
+#, fuzzy
+msgid "IPv6 reachability:"
+msgstr "Uygunluk"
+
+#: src/ServerWnd.cpp
 msgid "Kademlia Status:"
 msgstr "Kademlia Durumu:"
 
@@ -9005,6 +9047,12 @@ msgstr "aMule çalışmakta gibi görünüyor. Lütfen onu kapatıp kurulum prog
 #: packaging/windows/installer_strings.c
 msgid "Removing user data at $APPDATA\\aMule..."
 msgstr "Kullanıcı verileri $APPDATA\\aMule konumunda kaldırılıyor…"
+
+#~ msgid "ListenSocket: Ok."
+#~ msgstr "DinlemeSoketi: Tamam."
+
+#~ msgid "ERROR: Could not listen to TCP port."
+#~ msgstr "HATA: TCP portu dinlenemiyor."
 
 #, c-format
 #~ msgid "Found %i known shared file, %i unknown"

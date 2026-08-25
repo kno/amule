@@ -11,7 +11,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: aMule\n"
 "Report-Msgid-Bugs-To: https://github.com/amule-org/amule/issues\n"
-"POT-Creation-Date: 2026-08-22 19:49+0200\n"
+"POT-Creation-Date: 2026-08-25 08:51+0200\n"
 "PO-Revision-Date: 2026-08-22 15:45+0000\n"
 "Last-Translator: Jure Repinc <jlp@holodeck1.com>\n"
 "Language-Team: Slovenian\n"
@@ -411,6 +411,14 @@ msgid "You requested to run amuleapi on startup, but the amuleapi binary cannot 
 msgstr "Zahtevali ste zagon spletnega strežnika ob zagonu programa, a programa amuleweb ni moč zagnati. Namestite paket, ki vsebuje spletni strežnik aMule, ali pa prevedite aMule z možnostjo »--enable-webserver« in ga znova namestite z »make install«."
 
 #: src/amule.cpp
+msgid "Could not bind an IPv6 socket. IPv6 appears to be unavailable on this host; IPv4 operation is unaffected."
+msgstr ""
+
+#: src/amule.cpp
+msgid "Could not bind an IPv4 socket."
+msgstr ""
+
+#: src/amule.cpp
 #, c-format
 msgid "External connection: could not bind to '%s', listening on 127.0.0.1 only."
 msgstr ""
@@ -439,6 +447,11 @@ msgstr ""
 "To pomeni, da boste imeli nizek ID.\n"
 "\n"
 "Preverite omrežje in se prepričajte, da so vrata odprta za izhod in vhod."
+
+#: src/amule.cpp
+#, c-format
+msgid "Client UDP socket (extended eMule) listening on %s port %u (IPv6)."
+msgstr ""
 
 #: src/amule.cpp
 msgid "Failed to create OnlineSig File"
@@ -2801,7 +2814,7 @@ msgstr "V vrsti: %u"
 msgid "Uploading"
 msgstr "Pošiljanje"
 
-#: src/GenericClientListCtrl.cpp
+#: src/GenericClientListCtrl.cpp src/PeerCapabilities.h
 msgid "None"
 msgstr "Brez"
 
@@ -2924,6 +2937,15 @@ msgstr "Prejemanje %s od %s ni uspelo"
 #: src/IPFilter.cpp
 msgid "Loading IP filters 'ipfilter.dat' and 'ipfilter_static.dat'."
 msgstr "Nalaganje datotek filtrov IP »ipfilter.dat« in »ipfilter_static.dat«."
+
+#: src/IPFilter.cpp
+#, fuzzy, c-format
+msgid "Loaded %u IPv6 prefix rule."
+msgid_plural "Loaded %u IPv6 prefix rules."
+msgstr[0] "Naloženih %u nizov IP iz »%s«."
+msgstr[1] "Naložen %u niz IP iz '%s'."
+msgstr[2] "Naložena %u niza IP iz '%s'."
+msgstr[3] "Naloženi %u nizi IP iz '%s'."
 
 #: src/IPFilter.cpp
 #, c-format
@@ -3223,12 +3245,19 @@ msgid "Asio thread %d started"
 msgstr "Asinhrona nit %d se je začela"
 
 #: src/ListenSocket.cpp
-msgid "ListenSocket: Ok."
-msgstr "Vtičnica za poslušanje: v redu."
+#, c-format
+msgid "ListenSocket: listening on %s (IPv6, also accepting IPv4 peers in mapped form)."
+msgstr ""
 
 #: src/ListenSocket.cpp
-msgid "ERROR: Could not listen to TCP port."
-msgstr "NAPAKA: ni moč poslušati na vratih TCP."
+#, c-format
+msgid "ListenSocket: listening on %s (%s)."
+msgstr ""
+
+#: src/ListenSocket.cpp
+#, c-format
+msgid "Inbound IPv6 connection from %s on %s."
+msgstr ""
 
 #: src/Logger.cpp
 msgid "ERROR: "
@@ -4042,6 +4071,10 @@ msgstr "Maskiranje:"
 #: src/muuli_wdr.cpp
 msgid "Kad:"
 msgstr "Kad:"
+
+#: src/muuli_wdr.cpp
+msgid "Vendor capabilities:"
+msgstr ""
 
 #: src/muuli_wdr.cpp
 msgid "Transfers to client"
@@ -7102,6 +7135,16 @@ msgid "Connected since:"
 msgstr "Povezano"
 
 #: src/ServerWnd.cpp
+#, fuzzy
+msgid "IPv4 reachability:"
+msgstr "Razpoložljivost"
+
+#: src/ServerWnd.cpp
+#, fuzzy
+msgid "IPv6 reachability:"
+msgstr "Razpoložljivost"
+
+#: src/ServerWnd.cpp
 msgid "Kademlia Status:"
 msgstr "Stanje Kademlia:"
 
@@ -9139,6 +9182,12 @@ msgstr ""
 #: packaging/windows/installer_strings.c
 msgid "Removing user data at $APPDATA\\aMule..."
 msgstr ""
+
+#~ msgid "ListenSocket: Ok."
+#~ msgstr "Vtičnica za poslušanje: v redu."
+
+#~ msgid "ERROR: Could not listen to TCP port."
+#~ msgstr "NAPAKA: ni moč poslušati na vratih TCP."
 
 #, c-format
 #~ msgid "Found %i known shared file, %i unknown"

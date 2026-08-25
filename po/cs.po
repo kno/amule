@@ -9,7 +9,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: aMule\n"
 "Report-Msgid-Bugs-To: https://github.com/amule-org/amule/issues\n"
-"POT-Creation-Date: 2026-08-22 19:49+0200\n"
+"POT-Creation-Date: 2026-08-25 08:51+0200\n"
 "PO-Revision-Date: 2026-08-22 15:58+0000\n"
 "Last-Translator: David Watzke <david@watzke.cz>\n"
 "Language-Team: cs <cs@li.org>\n"
@@ -407,6 +407,14 @@ msgid "You requested to run amuleapi on startup, but the amuleapi binary cannot 
 msgstr "Požádali jste o spuštění amuleapi po startu, avšak binární soubor amuleapi nelze spustit. Nainstalujte balíček obsahující REST API server aMule, nebo sestavte aMule ze zdrojového kódu pomocí přepínače -DBUILD_AMULEAPI=YES a pak jej nainstalujte."
 
 #: src/amule.cpp
+msgid "Could not bind an IPv6 socket. IPv6 appears to be unavailable on this host; IPv4 operation is unaffected."
+msgstr ""
+
+#: src/amule.cpp
+msgid "Could not bind an IPv4 socket."
+msgstr ""
+
+#: src/amule.cpp
 #, c-format
 msgid "External connection: could not bind to '%s', listening on 127.0.0.1 only."
 msgstr "Externí spojení: není možné přidružit k '%s', naslouchání pouze na 127.0.0.1."
@@ -435,6 +443,11 @@ msgstr ""
 "To znamená, že budete mít LowID.\n"
 "\n"
 "Zkontrolujte nastavení vaší sítě a ujistěte se, že je port v obou směrech otevřený."
+
+#: src/amule.cpp
+#, c-format
+msgid "Client UDP socket (extended eMule) listening on %s port %u (IPv6)."
+msgstr ""
 
 #: src/amule.cpp
 msgid "Failed to create OnlineSig File"
@@ -2782,7 +2795,7 @@ msgstr "Ve frontě: %u"
 msgid "Uploading"
 msgstr "Odesílám"
 
-#: src/GenericClientListCtrl.cpp
+#: src/GenericClientListCtrl.cpp src/PeerCapabilities.h
 msgid "None"
 msgstr "Nic"
 
@@ -2905,6 +2918,14 @@ msgstr "Stahování %s z %s selhalo"
 #: src/IPFilter.cpp
 msgid "Loading IP filters 'ipfilter.dat' and 'ipfilter_static.dat'."
 msgstr "Načítání filtrů IP adres 'ipfilter.dat' a 'ipfilter_static.dat'."
+
+#: src/IPFilter.cpp
+#, fuzzy, c-format
+msgid "Loaded %u IPv6 prefix rule."
+msgid_plural "Loaded %u IPv6 prefix rules."
+msgstr[0] "Načten %u rozsah IP adres z '%s'."
+msgstr[1] "Načteny %u rozsahy IP adres z '%s'."
+msgstr[2] "Načteno %u rozsahů IP adres z '%s'."
 
 #: src/IPFilter.cpp
 #, c-format
@@ -3197,12 +3218,19 @@ msgid "Asio thread %d started"
 msgstr "Vlákno asio %d spuštěno"
 
 #: src/ListenSocket.cpp
-msgid "ListenSocket: Ok."
-msgstr "Naslouchací socket: Ok."
+#, c-format
+msgid "ListenSocket: listening on %s (IPv6, also accepting IPv4 peers in mapped form)."
+msgstr ""
 
 #: src/ListenSocket.cpp
-msgid "ERROR: Could not listen to TCP port."
-msgstr "CHYBA: Nemohu naslouchat na TCP portu"
+#, c-format
+msgid "ListenSocket: listening on %s (%s)."
+msgstr ""
+
+#: src/ListenSocket.cpp
+#, c-format
+msgid "Inbound IPv6 connection from %s on %s."
+msgstr ""
 
 #: src/Logger.cpp
 msgid "ERROR: "
@@ -3996,6 +4024,10 @@ msgstr "Zatemnění:"
 #: src/muuli_wdr.cpp
 msgid "Kad:"
 msgstr "Kad:"
+
+#: src/muuli_wdr.cpp
+msgid "Vendor capabilities:"
+msgstr ""
 
 #: src/muuli_wdr.cpp
 msgid "Transfers to client"
@@ -7026,6 +7058,16 @@ msgid "Connected since:"
 msgstr "Připojen"
 
 #: src/ServerWnd.cpp
+#, fuzzy
+msgid "IPv4 reachability:"
+msgstr "Dostupnost"
+
+#: src/ServerWnd.cpp
+#, fuzzy
+msgid "IPv6 reachability:"
+msgstr "Dostupnost"
+
+#: src/ServerWnd.cpp
 msgid "Kademlia Status:"
 msgstr "Stav Kademlia:"
 
@@ -9039,6 +9081,12 @@ msgstr ""
 #: packaging/windows/installer_strings.c
 msgid "Removing user data at $APPDATA\\aMule..."
 msgstr ""
+
+#~ msgid "ListenSocket: Ok."
+#~ msgstr "Naslouchací socket: Ok."
+
+#~ msgid "ERROR: Could not listen to TCP port."
+#~ msgstr "CHYBA: Nemohu naslouchat na TCP portu"
 
 #, fuzzy, c-format
 #~ msgid "Found %i known shared file, %i unknown"

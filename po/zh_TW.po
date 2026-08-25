@@ -14,7 +14,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: aMule\n"
 "Report-Msgid-Bugs-To: https://github.com/amule-org/amule/issues\n"
-"POT-Creation-Date: 2026-08-22 19:49+0200\n"
+"POT-Creation-Date: 2026-08-25 08:51+0200\n"
 "PO-Revision-Date: 2026-08-22 15:51+0000\n"
 "Last-Translator: Wayne Su <mstarmstar@gmail.com>\n"
 "Language-Team: \n"
@@ -412,6 +412,14 @@ msgid "You requested to run amuleapi on startup, but the amuleapi binary cannot 
 msgstr "您要求啟動時執行網站伺服器，但系統無法執行 amuleweb。請安裝含有 aMule 網站伺服器的套件，或於編譯 aMule 程式碼時加入 --enable-webserver 選項"
 
 #: src/amule.cpp
+msgid "Could not bind an IPv6 socket. IPv6 appears to be unavailable on this host; IPv4 operation is unaffected."
+msgstr ""
+
+#: src/amule.cpp
+msgid "Could not bind an IPv4 socket."
+msgstr ""
+
+#: src/amule.cpp
 #, c-format
 msgid "External connection: could not bind to '%s', listening on 127.0.0.1 only."
 msgstr ""
@@ -440,6 +448,11 @@ msgstr ""
 "這表示您會變成 LOWID。\n"
 "\n"
 "請檢查網路設定以確保通訊埠可正常使用。"
+
+#: src/amule.cpp
+#, c-format
+msgid "Client UDP socket (extended eMule) listening on %s port %u (IPv6)."
+msgstr ""
 
 #: src/amule.cpp
 msgid "Failed to create OnlineSig File"
@@ -2777,7 +2790,7 @@ msgstr "QR：%u"
 msgid "Uploading"
 msgstr "正在上傳"
 
-#: src/GenericClientListCtrl.cpp
+#: src/GenericClientListCtrl.cpp src/PeerCapabilities.h
 msgid "None"
 msgstr "無"
 
@@ -2900,6 +2913,12 @@ msgstr "無法下載 %s (從 %s)"
 #: src/IPFilter.cpp
 msgid "Loading IP filters 'ipfilter.dat' and 'ipfilter_static.dat'."
 msgstr "正在載入 IP 過濾檔 ipfilter.dat 與 ipfilter_static.dat 。"
+
+#: src/IPFilter.cpp
+#, fuzzy, c-format
+msgid "Loaded %u IPv6 prefix rule."
+msgid_plural "Loaded %u IPv6 prefix rules."
+msgstr[0] "已載入 %u 個 IP 區段 (從 %s )。"
 
 #: src/IPFilter.cpp
 #, c-format
@@ -3184,12 +3203,19 @@ msgid "Asio thread %d started"
 msgstr "已開始 HTTP 下載執行緒"
 
 #: src/ListenSocket.cpp
-msgid "ListenSocket: Ok."
-msgstr "監聽連接端點：OK。"
+#, c-format
+msgid "ListenSocket: listening on %s (IPv6, also accepting IPv4 peers in mapped form)."
+msgstr ""
 
 #: src/ListenSocket.cpp
-msgid "ERROR: Could not listen to TCP port."
-msgstr "錯誤：無法監聽 TCP 埠。"
+#, c-format
+msgid "ListenSocket: listening on %s (%s)."
+msgstr ""
+
+#: src/ListenSocket.cpp
+#, c-format
+msgid "Inbound IPv6 connection from %s on %s."
+msgstr ""
 
 #: src/Logger.cpp
 msgid "ERROR: "
@@ -3997,6 +4023,10 @@ msgstr "模糊協定："
 #: src/muuli_wdr.cpp
 msgid "Kad:"
 msgstr "Kad："
+
+#: src/muuli_wdr.cpp
+msgid "Vendor capabilities:"
+msgstr ""
 
 #: src/muuli_wdr.cpp
 msgid "Transfers to client"
@@ -7014,6 +7044,16 @@ msgid "Connected since:"
 msgstr "已連線"
 
 #: src/ServerWnd.cpp
+#, fuzzy
+msgid "IPv4 reachability:"
+msgstr "最小來源數"
+
+#: src/ServerWnd.cpp
+#, fuzzy
+msgid "IPv6 reachability:"
+msgstr "最小來源數"
+
+#: src/ServerWnd.cpp
 msgid "Kademlia Status:"
 msgstr "Kad 狀態："
 
@@ -9029,6 +9069,12 @@ msgstr ""
 #: packaging/windows/installer_strings.c
 msgid "Removing user data at $APPDATA\\aMule..."
 msgstr ""
+
+#~ msgid "ListenSocket: Ok."
+#~ msgstr "監聽連接端點：OK。"
+
+#~ msgid "ERROR: Could not listen to TCP port."
+#~ msgstr "錯誤：無法監聽 TCP 埠。"
 
 #, c-format
 #~ msgid "Found %i known shared file, %i unknown"
