@@ -1286,14 +1286,22 @@ private:
 	{
 		m_IPstring = adr.IPAddress();
 		m_IP = m_IPstring.c_str();
-		m_IPint = StringIPtoUint32(m_IPstring);
 		// Kept alongside the 32-bit form rather than replacing it: the ed2k
 		// core still keys clients on m_IPint, but an IPv6 peer has no such
-		// value, and StringIPtoUint32() answers zero for it -- the same zero
-		// it answers for 0.0.0.0 and for an unparsable string. The peer's
-		// actual address has to survive the trip for the accept path to be
-		// able to tell those three apart.
+		// value. The peer's actual address has to survive the trip for the
+		// accept path to be able to tell "no address" from "no 32-bit form".
 		m_peerAddress = adr.GetAddress();
+		// Narrowed from the address, not reparsed from the string. A
+		// wildcard-bound ed2k listener accepts IPv4 peers in IPv4-mapped form
+		// ("::ffff:a.b.c.d"); StringIPtoUint32() cannot parse that and answers
+		// zero, the same zero it uses for "no 32-bit form". Such a peer is an
+		// IPv4 peer and does have a 32-bit value, and the m_IPint consumers
+		// need it -- notably the server-callback throttler bypass in
+		// CClientTCPSocket::IsDownloadThrottled(), whose "m_remoteip != 0"
+		// guard would otherwise never fire, delaying the HighID probe past the
+		// server's verification timer and costing us a LowID. A real IPv6 peer
+		// still narrows to zero, which is its honest answer.
+		m_IPint = m_peerAddress.ToIPv4NetworkOrderOrZero();
 	}
 
 

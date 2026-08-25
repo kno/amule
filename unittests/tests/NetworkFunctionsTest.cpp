@@ -1,5 +1,6 @@
 #include <muleunit/test.h>
 #include <AddressFamilyPolicy.h>
+#include <NetworkAddress.h>
 #include <NetworkFunctions.h>
 #include <amuleIPV4Address.h>
 
@@ -264,3 +265,44 @@ TEST(NetworkFunctions, HostnameFamilySelection)
 	amuleIPV4Address empty;
 	ASSERT_FALSE(empty.Hostname(wxEmptyString));
 }
+
+// A wildcard-bound ed2k listener accepts IPv4 peers in IPv4-mapped form, so the
+// socket layer sees the peer as "::ffff:a.b.c.d". Narrowing that to the 32-bit
+// field the ed2k core keys clients on must yield the same value the plain dotted
+// form yields -- reparsing the string does not, because StringIPtoUint32() only
+// understands "a.b.c.d" and answers zero for anything else. Zero is also the
+// honest answer for a real IPv6 peer, which is exactly why the two must not be
+// conflated: a mapped peer that narrows to zero silently disables every
+// m_IPint consumer, and the server-callback throttler bypass reads as "no
+// address" and never fires, costing a HighID.
+TEST(NetworkFunctions, MappedPeerNarrowsLikeItsDottedForm)
+{
+	const std::string dotted("192.0.2.1");
+	const uint32 fromString = StringIPtoUint32(wxString::FromAscii(dotted.c_str()));
+
+	ASSERT_TRUE(fromString != 0);
+
+	// The plain form: narrowing and parsing agree, so replacing one with the
+	// other cannot move an existing IPv4 peer.
+	const CNetworkAddress plain = CNetworkAddress::FromString(dotted);
+	ASSERT_TRUE(plain.IsIPv4());
+	ASSERT_EQUALS(fromString, plain.ToIPv4NetworkOrderOrZero());
+
+	// The mapped form: the same peer, the same 32-bit value...
+	const CNetworkAddress mapped = CNetworkAddress::FromString("::ffff:" + dotted);
+	// (ToString() below returns std::string, hence the explicit widening.)
+	ASSERT_TRUE(mapped.IsIPv4Mapped());
+	ASSERT_EQUALS(fromString, mapped.ToIPv4NetworkOrderOrZero());
+
+	// ...but its string form is not something StringIPtoUint32() can read, so
+	// reparsing loses the peer entirely. This is the trap.
+	ASSERT_EQUALS(0u, StringIPtoUint32(wxString::FromAscii(mapped.ToString().c_str())));
+
+	// A real IPv6 peer has no 32-bit form. It narrows to zero from either
+	// route, and that zero is correct rather than a lost value.
+	const CNetworkAddress v6 = CNetworkAddress::FromString("2001:db8::1");
+	ASSERT_TRUE(v6.IsIPv6());
+	ASSERT_FALSE(v6.IsIPv4Mapped());
+	ASSERT_EQUALS(0u, v6.ToIPv4NetworkOrderOrZero());
+}
+

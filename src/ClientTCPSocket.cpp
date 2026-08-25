@@ -2045,10 +2045,14 @@ void CClientTCPSocket::OnSend(int nErrorCode)
 void CClientTCPSocket::OnReceive(int nErrorCode)
 {
 	ResetTimeOutTimer();
-	// We might have updated ipfilter
-	wxASSERT(m_remoteip);
-
-	if (theApp->ipfilter->IsFiltered(m_remoteip)) {
+	// We might have updated ipfilter. Re-checked through the family-agnostic
+	// entry point, for the same reason InitNetworkData() uses it: a real IPv6
+	// peer has no 32-bit form, so the narrow m_remoteip is legitimately zero
+	// here. Handing that zero to the uint32 overload asks it about 0.0.0.0 and
+	// exempts the peer from a filter it may well be listed in -- and the
+	// wxASSERT(m_remoteip) that used to guard this line fired on every such
+	// peer, burying the log in backtraces for a state that is not an error.
+	if (theApp->ipfilter->IsFiltered(GetPeerAddress())) {
 		if (m_client) {
 			m_client->Safe_Delete();
 		}
