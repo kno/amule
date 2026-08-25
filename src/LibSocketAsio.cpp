@@ -59,6 +59,13 @@
 #if defined(__clang__)
 #pragma clang diagnostic push
 #pragma clang diagnostic ignored "-Wdeprecated-copy-with-user-provided-dtor"
+// Asio's executor machinery (boost/asio/execution/*.hpp, reached through the
+// socket headers below) also redeclares constexpr static data members out of
+// line, which C++17 made redundant and deprecated. Clang diagnoses it and the
+// -Werror=deprecated gate promotes it, so this include set fails on macOS
+// without this line. Added alongside the dtor suppression rather than as a
+// blanket -Wno-deprecated so aMule's own deprecations still fail the build.
+#pragma clang diagnostic ignored "-Wdeprecated-redundant-constexpr-static-def"
 #endif
 #include <boost/asio.hpp>
 #include <boost/asio/steady_timer.hpp>
@@ -78,11 +85,12 @@
 #endif
 
 #include "LibSocket.h"
-#include "UtpSocketTransport.h"  // Needed for CUtpSocketTransport (uTP substitution)
-#include "AddressFamilyPolicy.h" // Needed for the family decisions this file used to hardcode
-#include <wx/thread.h>           // wxMutex
-#include <wx/intl.h>             // _()
-#include <common/Format.h>       // Needed for CFormat
+#include "UtpSocketTransport.h"      // Needed for CUtpSocketTransport (uTP substitution)
+#include "AddressFamilyPolicyAsio.h" // Needed for the family decisions this file used to hardcode
+#include "NetworkAddressAsio.h"      // Needed for ToAsioAddress/FromAsioAddress
+#include <wx/thread.h>               // wxMutex
+#include <wx/intl.h>                 // _()
+#include <common/Format.h>           // Needed for CFormat
 #include "Logger.h"
 #include "GuiEvents.h"
 #include "amuleIPV4Address.h"
@@ -554,7 +562,7 @@ public:
 				// a connection to the wrong host.
 				const std::optional<ip::tcp> protocol =
 					AddressFamilyPolicy::TcpProtocolForTarget(
-						CNetworkAddress(adr.GetEndpoint().address()));
+						FromAsioAddress(adr.GetEndpoint().address()));
 				if (protocol) {
 					m_socket->open(*protocol, openEc);
 				} else {
@@ -809,7 +817,7 @@ public:
 			// is the local address's own, via AddressFamilyPolicy.h, rather
 			// than a hardcoded v4().
 			const std::optional<ip::tcp> protocol = AddressFamilyPolicy::TcpProtocolForTarget(
-				CNetworkAddress(local.GetEndpoint().address()));
+				FromAsioAddress(local.GetEndpoint().address()));
 			if (protocol) {
 				m_socket->open(*protocol, ec);
 				if (ec) {
@@ -893,7 +901,7 @@ public:
 		if (ec) {
 			return CNetworkAddress::Absent();
 		}
-		return CNetworkAddress(local.address());
+		return FromAsioAddress(local.address());
 	}
 
 	ip::tcp::socket &GetAsioSocket() { return *m_socket; }
@@ -2378,7 +2386,7 @@ bool amuleIPV4Address::Hostname(const wxString &name)
 	// now -- but the family is no longer welded into the parse.
 	const CNetworkAddress parsed = CNetworkAddress::FromString(sname);
 	if (parsed.IsPresent() && AddressFamilyPolicy::Permits(parsed)) {
-		m_endpoint->address(parsed.Get());
+		m_endpoint->address(ToAsioAddress(parsed));
 		return true;
 	}
 	if (parsed.IsPresent()) {
@@ -2429,7 +2437,7 @@ bool amuleIPV4Address::Hostname(const wxString &name)
 	// going through a name.
 	for (int pass = 0; pass < 2; ++pass) {
 		for (const auto &entry : endpoint_iterator) {
-			const CNetworkAddress resolved(entry.endpoint().address());
+			const CNetworkAddress resolved = FromAsioAddress(entry.endpoint().address());
 			if (!AddressFamilyPolicy::Permits(resolved)) {
 				continue;
 			}
@@ -2437,7 +2445,7 @@ bool amuleIPV4Address::Hostname(const wxString &name)
 			if (pass == 0 && !isV4) {
 				continue;
 			}
-			m_endpoint->address(resolved.Get());
+			m_endpoint->address(ToAsioAddress(resolved));
 			AddDebugLogLineN(
 				logAsio, CFormat("Hostname(\"%s\") resolved to %s") % name % IPAddress());
 			return true;
@@ -2490,7 +2498,7 @@ bool amuleIPV4Address::SetAddress(const CNetworkAddress &address)
 	if (address.IsAbsent()) {
 		return false;
 	}
-	m_endpoint->address(address.Get());
+	m_endpoint->address(ToAsioAddress(address));
 	return true;
 }
 
@@ -2498,7 +2506,7 @@ CNetworkAddress amuleIPV4Address::GetAddress() const
 {
 	// Present even for a wildcard: a listener legitimately binds one, and the
 	// family of that wildcard is exactly what the caller is asking about.
-	return CNetworkAddress(m_endpoint->address());
+	return FromAsioAddress(m_endpoint->address());
 }
 
 void amuleIPV4Address::SetV6Only(bool v6Only)

@@ -27,10 +27,7 @@
 
 #include "NetworkAddress.h"
 
-#include <boost/asio/ip/tcp.hpp>
-
 #include <atomic>
-#include <optional>
 
 /**
  * The single place that decides which address families aMule uses.
@@ -120,82 +117,24 @@ inline bool Permits(const CNetworkAddress &target) noexcept
 	return PermitsIPv6();
 }
 
-/**
- * The TCP protocol a socket towards @a target must be opened in.
+/*
+ * The rest of this policy -- the TCP protocol for a target, the resolver
+ * protocol, and the wildcard addresses -- is in AddressFamilyPolicyAsio.h.
  *
- * @return The protocol, or no value when @a target is absent or its family is
- *         not permitted by the configuration. There is no fallback: opening a
- *         v4 socket for a v6 target is how a truncated address turns into a
- *         connection to the wrong host.
- */
-inline std::optional<boost::asio::ip::tcp> TcpProtocolForTarget(const CNetworkAddress &target) noexcept
-{
-	if (!Permits(target)) {
-		return std::nullopt;
-	}
-	if (target.IsIPv4() || target.IsIPv4Mapped()) {
-		return boost::asio::ip::tcp::v4();
-	}
-	return boost::asio::ip::tcp::v6();
-}
-
-/**
- * The protocol to restrict a name lookup to.
+ * Those five functions are the ones whose return type is a Boost.Asio type,
+ * and keeping them here meant this header included <boost/asio/ip/tcp.hpp>.
+ * That include reached 93 translation units, and unlike asio's ip/address.hpp
+ * it drags in asio's executor machinery (the boost/asio/execution headers), which
+ * redeclares constexpr static members out of line -- deprecated in C++17, and
+ * an error under the -Werror=deprecated gate in src/CMakeLists.txt on every
+ * Clang build. So 93 TUs failed on macOS to answer a question that, for all
+ * but the socket backend, is just "which family".
  *
- * getaddrinfo() with an unrestricted family answers with AAAA records on any
- * host, whether or not it has IPv6 connectivity, so the query has to state the
- * family it wants. Under a dual-stack configuration there is nothing to state
- * and the caller should query unrestricted, hence the empty result.
+ * What stayed here needs no library: Configured(), the two Permits predicates
+ * and Families are the decision itself. Include the Asio twin only from a TU
+ * that opens sockets; a caller that only needs the IPv6 wildcard as a value
+ * should use CNetworkAddress::AnyIPv6() instead and stay asio-free.
  */
-inline std::optional<boost::asio::ip::tcp> TcpResolverProtocol() noexcept
-{
-	switch (Configured()) {
-	case Families::IPv4Only:
-		return boost::asio::ip::tcp::v4();
-	case Families::IPv6Only:
-		return boost::asio::ip::tcp::v6();
-	case Families::DualStack:
-		break;
-	}
-	return std::nullopt;
-}
-
-/** The IPv4 wildcard, @c 0.0.0.0. */
-inline boost::asio::ip::address AnyIPv4Address() noexcept
-{
-	return boost::asio::ip::address(boost::asio::ip::address_v4::any());
-}
-
-/**
- * The IPv6 wildcard, @c ::. With @c IPV6_V6ONLY off it also accepts IPv4 peers,
- * which arrive in IPv4-mapped form.
- */
-inline boost::asio::ip::address AnyIPv6Address() noexcept
-{
-	return boost::asio::ip::address(boost::asio::ip::address_v6::any());
-}
-
-/**
- * The wildcard "any address of this machine" for a caller that has not said
- * which family it wants.
- *
- * This stays the IPv4 wildcard whenever IPv4 is permitted, dual stack included,
- * and that is deliberate. The callers are the ones that bind a single socket
- * and are not part of the ed2k dual-stack work: the external-connection
- * listener and the web server. Handing them @c :: because the ed2k listener now
- * wants both families would silently move the daemon's control channel onto
- * another family -- a change to what an EC client must dial, made as a side
- * effect. A caller that genuinely wants both families says so by asking for
- * AnyIPv6Address() and clearing @c IPV6_V6ONLY, which is what the ed2k
- * listeners do; see DualStackListeners.h.
- */
-inline boost::asio::ip::address AnyAddress() noexcept
-{
-	if (PermitsIPv4()) {
-		return AnyIPv4Address();
-	}
-	return AnyIPv6Address();
-}
 
 } // namespace AddressFamilyPolicy
 

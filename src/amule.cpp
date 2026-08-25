@@ -1579,7 +1579,7 @@ bool CamuleApp::ReinitializeNetwork(wxString *msg)
 	for (const DualStack::SBindAttempt &attempt : listenPlan.FirstAttempts()) {
 		amuleIPV4Address listenAddr = myaddr[2];
 		if (attempt.family == DualStack::EFamily::IPv6) {
-			listenAddr.SetAddress(CNetworkAddress(AddressFamilyPolicy::AnyIPv6Address()));
+			listenAddr.SetAddress(CNetworkAddress::AnyIPv6());
 			listenAddr.SetV6Only(attempt.v6Only);
 		}
 		listenAddr.Service(thePrefs::GetPort());
@@ -1600,7 +1600,7 @@ bool CamuleApp::ReinitializeNetwork(wxString *msg)
 		for (const DualStack::SBindAttempt &attempt : listenPlan.FallbackAttempts()) {
 			amuleIPV4Address listenAddr = myaddr[2];
 			if (attempt.family == DualStack::EFamily::IPv6) {
-				listenAddr.SetAddress(CNetworkAddress(AddressFamilyPolicy::AnyIPv6Address()));
+				listenAddr.SetAddress(CNetworkAddress::AnyIPv6());
 				listenAddr.SetV6Only(attempt.v6Only);
 			}
 			listenAddr.Service(thePrefs::GetPort());
@@ -1675,7 +1675,7 @@ bool CamuleApp::ReinitializeNetwork(wxString *msg)
 	// IPv6 one. What the IPv6 socket buys is inbound ed2k UDP over IPv6.
 	if (wildcardBind && AddressFamilyPolicy::PermitsIPv6() && !thePrefs::IsUDPDisabled()) {
 		amuleIPV4Address udpV6Addr;
-		udpV6Addr.SetAddress(CNetworkAddress(AddressFamilyPolicy::AnyIPv6Address()));
+		udpV6Addr.SetAddress(CNetworkAddress::AnyIPv6());
 		udpV6Addr.SetV6Only(true);
 		udpV6Addr.Service(thePrefs::GetUDPPort());
 		clientudpV6 = new CClientUDPSocket(udpV6Addr, thePrefs::GetProxyData());

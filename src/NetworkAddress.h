@@ -25,11 +25,9 @@
 #ifndef NETWORKADDRESS_H
 #define NETWORKADDRESS_H
 
-#include <boost/asio/ip/address.hpp>
-
+#include <array>
 #include <cstddef>
 #include <cstdint>
-#include <optional>
 #include <string>
 
 /**
@@ -51,9 +49,33 @@
  * whose name states the byte order, and absence is a state of the object
  * rather than a magic value.
  *
- * The stored address is a @c boost::asio::ip::address, which the Asio socket
- * backend already uses natively (see LibSocketAsio.cpp). It handles the v4/v6
- * variant and IPv4-mapped forms, so no separate address abstraction is needed.
+ * ## Why this header pulls in no socket library
+ *
+ * The address used to be stored as an @c asio::ip::address, borrowing
+ * asio's v4/v6 variant rather than restating it. That was cheap to write and
+ * expensive to compile: this header is reached by eighteen public headers --
+ * updownclient.h, ClientList.h, IPFilter.h, DownloadQueue.h among them -- so
+ * asio ended up in the include closure of 155 of the 254 translation units in
+ * src/, and it took two whole platforms down with it:
+ *
+ *  - Asio's @c ip/address.hpp pulls @c asio/detail/winsock_init.hpp, whose
+ *    static initialiser references @c WSAStartup / @c WSACleanup. Every one of
+ *    those 155 TUs therefore needed @c ws2_32 at link time, and the targets
+ *    that do not link it failed on mingw-w64 -- for an address type that never
+ *    opens a socket.
+ *  - It is a large closure (about 1200 headers) compiled 155 times over for
+ *    what is, in the end, sixteen bytes and a family tag.
+ *
+ * So the storage is now those sixteen bytes and that family tag, spelled out
+ * here. Only the two operations that genuinely need a library -- parsing a
+ * textual address and formatting one -- still use asio, and they live in
+ * NetworkAddress.cpp where exactly one TU pays for them. Nothing about IPv6
+ * text handling is hand-rolled: RFC 4291 zero compression, the IPv4-mapped
+ * dotted-quad tail and scope-id suffixes are all still asio's job.
+ *
+ * A caller that needs the asio value itself -- the socket backend, and only
+ * it -- gets it from NetworkAddressAsio.h, which is the one bridge and is
+ * included by the TUs that truly open sockets.
  *
  * ## The two 32-bit conventions
  *
@@ -68,10 +90,15 @@
  * aMule's comments call *anti-host order*: the four octets packed with the
  * first octet in the numerically least significant byte. On a little-endian
  * host that is the value obtained by loading four network-order bytes straight
- * into a @c uint32, which is how it arises in practice — an ed2k packet field
+ * into a @c uint32, which is how it arises in practice -- an ed2k packet field
  * read by CFileDataIO. The two conventions are exact byte reversals of each
  * other on every platform, which is why @c wxUINT32_SWAP_ALWAYS converts
  * between them unconditionally.
+ *
+ * Note that neither convention is the storage order. Internally the address is
+ * always its octets in wire order, most significant first, so that the v4 and
+ * v6 cases need no separate code path and the comparison rule below is one
+ * lexicographic compare rather than a family switch.
  *
  * ## Comparison rule
  *
@@ -93,13 +120,26 @@
 class CNetworkAddress
 {
 public:
+	/** The sixteen octets an IPv6 address occupies, in wire order. */
+	using Octets = std::array<std::uint8_t, 16>;
+
+	/**
+	 * Which family a present address belongs to, or that there is none.
+	 *
+	 * Absence is a case of this enum rather than a wrapping std::optional so
+	 * that the object stays trivially copyable and one word smaller, and so
+	 * that the three-way switch the comparison rule needs is a switch on one
+	 * field instead of a nested optional test.
+	 */
+	enum class Family : std::uint8_t
+	{
+		None,
+		IPv4,
+		IPv6
+	};
+
 	/** Constructs an absent address -- @b not @c 0.0.0.0. */
 	CNetworkAddress() = default;
-
-	explicit CNetworkAddress(const boost::asio::ip::address &address)
-	: m_address(address)
-	{
-	}
 
 	/** An explicitly absent address, for call sites where the name reads better. */
 	static CNetworkAddress Absent() { return CNetworkAddress(); }
@@ -110,8 +150,13 @@ public:
 	 */
 	static CNetworkAddress FromIPv4HostOrder(std::uint32_t ip)
 	{
-		return CNetworkAddress(boost::asio::ip::address(boost::asio::ip::address_v4(
-			static_cast<boost::asio::ip::address_v4::uint_type>(ip))));
+		CNetworkAddress result;
+		result.m_family = Family::IPv4;
+		result.m_octets[0] = static_cast<std::uint8_t>((ip >> 24) & 0xFFu);
+		result.m_octets[1] = static_cast<std::uint8_t>((ip >> 16) & 0xFFu);
+		result.m_octets[2] = static_cast<std::uint8_t>((ip >> 8) & 0xFFu);
+		result.m_octets[3] = static_cast<std::uint8_t>(ip & 0xFFu);
+		return result;
 	}
 
 	/**
@@ -147,6 +192,36 @@ public:
 	}
 
 	/**
+	 * Builds an IPv6 address from its octets, with no interpretation of their
+	 * value at all -- the all-zero octets give the unspecified address @c :: ,
+	 * which is a real address here and not absence.
+	 *
+	 * This is the raw widening, for callers that already know they hold an
+	 * address: the asio bridge reconstructing one, and AnyIPv6() below. A
+	 * caller decoding a wire tag wants FromIPv6Bytes() instead, which applies
+	 * that edge's absence rule.
+	 */
+	static CNetworkAddress IPv6FromOctets(const Octets &octets, unsigned long scopeId = 0)
+	{
+		CNetworkAddress result;
+		result.m_family = Family::IPv6;
+		result.m_octets = octets;
+		result.m_scopeId = scopeId;
+		return result;
+	}
+
+	/**
+	 * The IPv6 wildcard, @c :: -- present, IPv6 and unspecified.
+	 *
+	 * Named rather than left to IPv6FromOctets({}) because the call sites that
+	 * want it are binding a listening socket to "every local address", and at
+	 * those sites @c :: is a decision about reachability, not sixteen zero
+	 * bytes. It also keeps them from reaching for the asio-typed wildcard in
+	 * AddressFamilyPolicyAsio.h, which would put asio back in their closure.
+	 */
+	static CNetworkAddress AnyIPv6() { return IPv6FromOctets(Octets{}); }
+
+	/**
 	 * Builds an IPv6 address from sixteen big-endian bytes -- the form the
 	 * @c CT_MOD_IP_V6 hello tag and the Kad @c "ip6" tag carry.
 	 *
@@ -161,7 +236,7 @@ public:
 		if (bytes == nullptr) {
 			return Absent();
 		}
-		boost::asio::ip::address_v6::bytes_type raw;
+		Octets raw;
 		bool allZero = true;
 		for (std::size_t i = 0; i < raw.size(); ++i) {
 			raw[i] = bytes[i];
@@ -172,37 +247,43 @@ public:
 		if (allZero) {
 			return Absent();
 		}
-		return CNetworkAddress(boost::asio::ip::address(boost::asio::ip::address_v6(raw)));
+		return IPv6FromOctets(raw);
 	}
 
 	/**
 	 * Parses a textual address, IPv4 or IPv6.
 	 *
+	 * Defined in NetworkAddress.cpp: this is one of the two operations that
+	 * still go through asio, so that the accepted syntax stays exactly a
+	 * library's idea of an address literal rather than this file's.
+	 *
 	 * @return The address, or an @b absent address if @a text is not a valid
 	 *         literal. Note that this never yields @c 0.0.0.0 on failure, unlike
 	 *         StringIPtoUint32().
 	 */
-	static CNetworkAddress FromString(const std::string &text)
-	{
-		if (text.empty()) {
-			return Absent();
-		}
-		boost::system::error_code ec;
-		const boost::asio::ip::address address = boost::asio::ip::make_address(text, ec);
-		if (ec) {
-			return Absent();
-		}
-		return CNetworkAddress(address);
-	}
+	static CNetworkAddress FromString(const std::string &text);
 
-	bool IsPresent() const noexcept { return m_address.has_value(); }
-	bool IsAbsent() const noexcept { return !m_address.has_value(); }
+	bool IsPresent() const noexcept { return m_family != Family::None; }
+	bool IsAbsent() const noexcept { return m_family == Family::None; }
 
 	/** True for a present address whose every octet is zero (@c 0.0.0.0 or @c ::). */
-	bool IsUnspecified() const noexcept { return IsPresent() && m_address->is_unspecified(); }
+	bool IsUnspecified() const noexcept
+	{
+		if (IsAbsent()) {
+			return false;
+		}
+		// The unused tail of an IPv4 address is always zero (see m_octets), so
+		// one loop over all sixteen answers for both families.
+		for (const std::uint8_t octet : m_octets) {
+			if (octet != 0) {
+				return false;
+			}
+		}
+		return true;
+	}
 
-	bool IsIPv4() const noexcept { return IsPresent() && m_address->is_v4(); }
-	bool IsIPv6() const noexcept { return IsPresent() && m_address->is_v6(); }
+	bool IsIPv4() const noexcept { return m_family == Family::IPv4; }
+	bool IsIPv6() const noexcept { return m_family == Family::IPv6; }
 
 	/** True only for an IPv6 address in the @c ::ffff:a.b.c.d form. */
 	bool IsIPv4Mapped() const noexcept
@@ -210,26 +291,43 @@ public:
 		if (!IsIPv6()) {
 			return false;
 		}
-		// Tested against the octets rather than via address_v6::is_v4_mapped(),
-		// which Boost deprecated after 1.66 and has since removed. The prefix is
-		// RFC 4291 section 2.5.5.2: eighty zero bits, then 0xffff.
-		const boost::asio::ip::address_v6::bytes_type bytes = m_address->to_v6().to_bytes();
+		// The prefix is RFC 4291 section 2.5.5.2: eighty zero bits, then
+		// 0xffff. Tested against the octets rather than via asio's
+		// address_v6::is_v4_mapped(), which asio deprecated after 1.66 and has
+		// since removed -- and which this header no longer has anyway.
 		for (int i = 0; i < 10; ++i) {
-			if (bytes[i] != 0) {
+			if (m_octets[i] != 0) {
 				return false;
 			}
 		}
-		return bytes[10] == 0xff && bytes[11] == 0xff;
+		return m_octets[10] == 0xff && m_octets[11] == 0xff;
 	}
 
 	/**
-	 * The wrapped Asio address.
+	 * The address as its sixteen octets in wire order.
 	 *
-	 * @pre IsPresent(). Absent addresses have no Asio equivalent -- asio's own
-	 *      default-constructed address is @c 0.0.0.0, which is exactly the
-	 *      conflation this type exists to prevent.
+	 * For an IPv6 address these are the address. For IPv4 the four octets sit
+	 * in the first four positions and the rest are zero, which is @b not the
+	 * IPv4-mapped form -- so do not hand these to something expecting sixteen
+	 * IPv6 octets without checking the family first. For an absent address they
+	 * are all zero, which is exactly the conflation this type exists to
+	 * prevent, so check IsPresent() too.
+	 *
+	 * This exists so that callers doing bit arithmetic on an address -- prefix
+	 * matching in IPFilterMatch.h, chiefly -- can do it without a library and
+	 * without this header growing one. Where the caller wants the guardrails,
+	 * ToIPv6Bytes() below states the family requirement in its return value.
 	 */
-	const boost::asio::ip::address &Get() const { return *m_address; }
+	const Octets &GetOctets() const noexcept { return m_octets; }
+
+	/**
+	 * The interface scope of an IPv6 address, or zero when it has none.
+	 *
+	 * Carried because it is part of the address's identity: @c fe80::1%eth0 and
+	 * @c fe80::1%eth1 are two different destinations, so folding them together
+	 * would break the total order this type promises.
+	 */
+	unsigned long GetScopeId() const noexcept { return m_scopeId; }
 
 	/**
 	 * The same address with any IPv4-mapped IPv6 form collapsed to plain IPv4.
@@ -240,7 +338,7 @@ public:
 	CNetworkAddress Unmapped() const
 	{
 		if (IsIPv4Mapped()) {
-			return CNetworkAddress(boost::asio::ip::address(EmbeddedIPv4()));
+			return FromIPv4HostOrder(EmbeddedIPv4HostOrder());
 		}
 		return *this;
 	}
@@ -258,11 +356,11 @@ public:
 	bool ToIPv4HostOrder(std::uint32_t &out) const noexcept
 	{
 		if (IsIPv4()) {
-			out = m_address->to_v4().to_uint();
+			out = PackOctets(m_octets[0], m_octets[1], m_octets[2], m_octets[3]);
 			return true;
 		}
 		if (IsIPv4Mapped()) {
-			out = EmbeddedIPv4().to_uint();
+			out = EmbeddedIPv4HostOrder();
 			return true;
 		}
 		return false;
@@ -312,9 +410,8 @@ public:
 		if (out == nullptr || !IsIPv6()) {
 			return false;
 		}
-		const boost::asio::ip::address_v6::bytes_type bytes = m_address->to_v6().to_bytes();
-		for (std::size_t i = 0; i < bytes.size(); ++i) {
-			out[i] = bytes[i];
+		for (std::size_t i = 0; i < m_octets.size(); ++i) {
+			out[i] = m_octets[i];
 		}
 		return true;
 	}
@@ -333,14 +430,29 @@ public:
 		if (!IsIPv6() || IsIPv4Mapped() || IsUnspecified()) {
 			return false;
 		}
-		const boost::asio::ip::address_v6 v6 = m_address->to_v6();
-		if (v6.is_loopback() || v6.is_link_local() || v6.is_site_local() || v6.is_multicast()) {
+		// The prefixes, all from RFC 4291 except fc00::/7 (RFC 4193). These
+		// were asio's address_v6 predicates until this header dropped asio;
+		// each is one prefix test, so restating them costs less than the
+		// library did and pins them to this file's stated rule.
+		if (IsLoopbackIPv6()) {
 			return false;
 		}
-		// fc00::/7, unique-local. asio's is_site_local() only covers the
-		// deprecated fec0::/10, so this is tested here rather than assumed.
-		const boost::asio::ip::address_v6::bytes_type bytes = v6.to_bytes();
-		return (bytes[0] & 0xFE) != 0xFC;
+		if (m_octets[0] == 0xFF) {
+			return false; // ff00::/8, multicast.
+		}
+		if (m_octets[0] == 0xFE) {
+			const std::uint8_t top = static_cast<std::uint8_t>(m_octets[1] & 0xC0);
+			if (top == 0x80) {
+				return false; // fe80::/10, link-local.
+			}
+			if (top == 0xC0) {
+				return false; // fec0::/10, the deprecated site-local range.
+			}
+		}
+		// fc00::/7, unique-local. asio's is_site_local() only ever covered the
+		// deprecated fec0::/10 above, so this was tested here rather than
+		// assumed even when asio was in use.
+		return (m_octets[0] & 0xFE) != 0xFC;
 	}
 
 	/**
@@ -363,17 +475,11 @@ public:
 		if (IsAbsent()) {
 			return *this;
 		}
-		if (m_address->is_v4()) {
-			if (prefixBits >= 32) {
-				return *this;
-			}
-			const std::uint32_t mask = prefixBits == 0 ? 0u : (0xFFFFFFFFu << (32 - prefixBits));
-			return FromIPv4HostOrder(m_address->to_v4().to_uint() & mask);
-		}
-		if (prefixBits >= 128) {
+		const unsigned width = IsIPv4() ? 32u : 128u;
+		if (prefixBits >= width) {
 			return *this;
 		}
-		boost::asio::ip::address_v6::bytes_type bytes = m_address->to_v6().to_bytes();
+		Octets bytes = m_octets;
 		for (std::size_t i = 0; i < bytes.size(); ++i) {
 			const unsigned bitsBefore = static_cast<unsigned>(i) * 8u;
 			if (prefixBits >= bitsBefore + 8u) {
@@ -386,23 +492,35 @@ public:
 					bytes[i] & (0xFFu << (bitsBefore + 8u - prefixBits)));
 			}
 		}
+		if (IsIPv4()) {
+			return FromIPv4HostOrder(PackOctets(bytes[0], bytes[1], bytes[2], bytes[3]));
+		}
 		// The scope id is deliberately not carried over: a prefix is not
 		// interface-scoped, and keeping it would make the same prefix seen on
 		// two interfaces into two prefixes.
-		return CNetworkAddress(boost::asio::ip::address(boost::asio::ip::address_v6(bytes)));
+		return IPv6FromOctets(bytes);
 	}
 
-	/** Textual form, or @c "<absent>" when there is no address. */
-	std::string ToString() const
-	{
-		if (IsAbsent()) {
-			return "<absent>";
-		}
-		return m_address->to_string();
-	}
+	/**
+	 * Textual form, or @c "<absent>" when there is no address.
+	 *
+	 * Defined in NetworkAddress.cpp for the reason given on FromString(): the
+	 * RFC 4291 canonical form is a library's job, not this header's.
+	 */
+	std::string ToString() const;
 
 	// Comparison. See the class comment for the single rule these implement.
-	bool operator==(const CNetworkAddress &other) const noexcept { return m_address == other.m_address; }
+	//
+	// All four reduce to comparing (family, octets, scope id) in that order,
+	// because the storage was chosen to make them: the octets are already in
+	// most-significant-first order, so std::array's lexicographic compare *is*
+	// rule 3, and an IPv4 address's unused tail is always zero so it needs no
+	// separate case.
+	bool operator==(const CNetworkAddress &other) const noexcept
+	{
+		return m_family == other.m_family && m_octets == other.m_octets &&
+		       m_scopeId == other.m_scopeId;
+	}
 	bool operator!=(const CNetworkAddress &other) const noexcept { return !(*this == other); }
 
 	bool operator<(const CNetworkAddress &other) const noexcept
@@ -411,21 +529,14 @@ public:
 			// Absent sorts first; two absents are equal, so neither is less.
 			return IsAbsent() && other.IsPresent();
 		}
-		if (m_address->is_v4() != other.m_address->is_v4()) {
-			return m_address->is_v4(); // IPv4 before IPv6
+		if (m_family != other.m_family) {
+			return m_family == Family::IPv4; // IPv4 before IPv6
 		}
-		if (m_address->is_v4()) {
-			return m_address->to_v4().to_uint() < other.m_address->to_v4().to_uint();
-		}
-		// Octet-wise, most significant first. Explicit rather than deferring to
-		// asio so the order is pinned by this file and stable across versions.
-		const boost::asio::ip::address_v6::bytes_type lhs = m_address->to_v6().to_bytes();
-		const boost::asio::ip::address_v6::bytes_type rhs = other.m_address->to_v6().to_bytes();
-		if (lhs != rhs) {
-			return lhs < rhs;
+		if (m_octets != other.m_octets) {
+			return m_octets < other.m_octets;
 		}
 		// Same octets: order by scope id so two distinct addresses never tie.
-		return m_address->to_v6().scope_id() < other.m_address->to_v6().scope_id();
+		return m_scopeId < other.m_scopeId;
 	}
 	bool operator>(const CNetworkAddress &other) const noexcept { return other < *this; }
 	bool operator<=(const CNetworkAddress &other) const noexcept { return !(other < *this); }
@@ -445,21 +556,49 @@ public:
 	}
 
 private:
-	/**
-	 * The IPv4 address embedded in an IPv4-mapped IPv6 address.
-	 * @pre IsIPv4Mapped().
-	 */
-	boost::asio::ip::address_v4 EmbeddedIPv4() const noexcept
+	/** Four octets, most significant first, into a host-order 32-bit value. */
+	static std::uint32_t PackOctets(
+		std::uint8_t a, std::uint8_t b, std::uint8_t c, std::uint8_t d) noexcept
 	{
-		const boost::asio::ip::address_v6::bytes_type bytes = m_address->to_v6().to_bytes();
-		boost::asio::ip::address_v4::bytes_type v4Bytes = {
-			{ bytes[12], bytes[13], bytes[14], bytes[15] }
-		};
-		return boost::asio::ip::address_v4(v4Bytes);
+		return (static_cast<std::uint32_t>(a) << 24) | (static_cast<std::uint32_t>(b) << 16) |
+		       (static_cast<std::uint32_t>(c) << 8) | static_cast<std::uint32_t>(d);
 	}
 
-	//! Absent when unset. Never conflated with the all-zero address.
-	std::optional<boost::asio::ip::address> m_address;
+	/**
+	 * The IPv4 address embedded in an IPv4-mapped IPv6 address, in host order.
+	 * @pre IsIPv4Mapped().
+	 */
+	std::uint32_t EmbeddedIPv4HostOrder() const noexcept
+	{
+		return PackOctets(m_octets[12], m_octets[13], m_octets[14], m_octets[15]);
+	}
+
+	/** @c ::1 -- fifteen zero octets then a one. */
+	bool IsLoopbackIPv6() const noexcept
+	{
+		for (int i = 0; i < 15; ++i) {
+			if (m_octets[i] != 0) {
+				return false;
+			}
+		}
+		return m_octets[15] == 1;
+	}
+
+	/**
+	 * The octets, in wire order (most significant first) whatever the family.
+	 *
+	 * An IPv4 address occupies the first four and leaves the rest zero. That
+	 * invariant is what lets the comparison operators, IsUnspecified() and
+	 * TruncatedToPrefix() treat both families with one loop, so every factory
+	 * above must preserve it: never write past index 3 for an IPv4 address.
+	 */
+	Octets m_octets{};
+
+	//! Zero for an IPv4 or absent address; only IPv6 addresses carry a scope.
+	unsigned long m_scopeId = 0;
+
+	//! None when unset. Never conflated with the all-zero address.
+	Family m_family = Family::None;
 };
 
 #endif // NETWORKADDRESS_H

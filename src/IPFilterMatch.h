@@ -107,13 +107,10 @@ inline bool ParseIPv6Prefix(const std::string &text, SIPv6Prefix &out)
 	}
 
 	const CNetworkAddress address = CNetworkAddress::FromString(addressPart);
-	if (!address.IsIPv6()) {
+	// ToIPv6Bytes() states the family requirement in its return value, so the
+	// separate IsIPv6() test this used to need is now the same test.
+	if (!address.ToIPv6Bytes(out.bytes.data())) {
 		return false;
-	}
-
-	const boost::asio::ip::address_v6::bytes_type bytes = address.Get().to_v6().to_bytes();
-	for (std::size_t i = 0; i < 16; ++i) {
-		out.bytes[i] = bytes[i];
 	}
 	out.prefixBits = static_cast<std::uint8_t>(prefixBits);
 	return true;
@@ -128,10 +125,10 @@ inline bool ParseIPv6Prefix(const std::string &text, SIPv6Prefix &out)
  */
 inline bool IPv6PrefixContains(const SIPv6Prefix &prefix, const CNetworkAddress &address) noexcept
 {
-	if (!address.IsIPv6()) {
+	std::uint8_t bytes[16];
+	if (!address.ToIPv6Bytes(bytes)) {
 		return false;
 	}
-	const boost::asio::ip::address_v6::bytes_type bytes = address.Get().to_v6().to_bytes();
 	const unsigned wholeBytes = prefix.prefixBits / 8u;
 	for (unsigned i = 0; i < wholeBytes; ++i) {
 		if (bytes[i] != prefix.bytes[i]) {

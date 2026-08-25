@@ -28,11 +28,12 @@
 //
 // This is the type every uint32 IP in the tree is being migrated onto, so its
 // contract is pinned here rather than left to the applications. None of it needs
-// a running aMule: the type is a value type over boost::asio::ip::address.
+// a running aMule: the type is a value type over sixteen octets and a family tag.
 
 #include <muleunit/test.h>
 
-#include <AddressFamilyPolicy.h>
+#include <AddressFamilyPolicyAsio.h>
+#include <NetworkAddressAsio.h>
 #include <NetworkAddress.h>
 
 #include <map>
@@ -372,6 +373,144 @@ TEST(NetworkAddress, TruncatedToPrefixClearsHostBits)
 	// IPv4 address, and no prefix width turns one family into the other.
 	ASSERT_TRUE(CNetworkAddress::FromString("192.0.2.130").TruncatedToPrefix(24).IsIPv4());
 	ASSERT_TRUE(CNetworkAddress::FromString("2001:db8::1").TruncatedToPrefix(64).IsIPv6());
+}
+
+// CNetworkAddress no longer stores a boost::asio::ip::address, so the three
+// predicates that used to be asio's -- loopback, link-local, unique-local --
+// are now prefix tests in NetworkAddress.h. This pins each range it must
+// reject, because getting one prefix wrong here does not fail a build: it
+// advertises an address no peer can reach, and the only symptom is a wasted
+// connect attempt on the far side.
+TEST(NetworkAddress, GloballyRoutableIPv6RejectsEveryUnreachableRange)
+{
+	// Routable: a documentation prefix (2001:db8::/32) is a global unicast
+	// address as far as the address itself can say.
+	ASSERT_TRUE(CNetworkAddress::FromString("2001:db8::1").IsGloballyRoutableIPv6());
+	ASSERT_TRUE(CNetworkAddress::FromString("2606:4700::1111").IsGloballyRoutableIPv6());
+
+	// Not an IPv6 address at all.
+	ASSERT_FALSE(CNetworkAddress::Absent().IsGloballyRoutableIPv6());
+	ASSERT_FALSE(CNetworkAddress::FromString("192.0.2.1").IsGloballyRoutableIPv6());
+	// A mapped address is reachable over IPv4, so it is not an IPv6 address to
+	// advertise as one.
+	ASSERT_FALSE(CNetworkAddress::FromString("::ffff:192.0.2.1").IsGloballyRoutableIPv6());
+
+	// The unspecified address and loopback.
+	ASSERT_FALSE(CNetworkAddress::AnyIPv6().IsGloballyRoutableIPv6());
+	ASSERT_FALSE(CNetworkAddress::FromString("::").IsGloballyRoutableIPv6());
+	ASSERT_FALSE(CNetworkAddress::FromString("::1").IsGloballyRoutableIPv6());
+
+	// fe80::/10, link-local -- both ends of the range, since the prefix is ten
+	// bits and a byte-wide test would let the upper half through.
+	ASSERT_FALSE(CNetworkAddress::FromString("fe80::1").IsGloballyRoutableIPv6());
+	ASSERT_FALSE(CNetworkAddress::FromString("febf:ffff::1").IsGloballyRoutableIPv6());
+
+	// fec0::/10, the deprecated site-local range.
+	ASSERT_FALSE(CNetworkAddress::FromString("fec0::1").IsGloballyRoutableIPv6());
+	ASSERT_FALSE(CNetworkAddress::FromString("feff:ffff::1").IsGloballyRoutableIPv6());
+
+	// fc00::/7, unique-local. Both halves: fc00::/8 and fd00::/8.
+	ASSERT_FALSE(CNetworkAddress::FromString("fc00::1").IsGloballyRoutableIPv6());
+	ASSERT_FALSE(CNetworkAddress::FromString("fd12:3456::1").IsGloballyRoutableIPv6());
+	ASSERT_FALSE(CNetworkAddress::FromString("fdff:ffff::1").IsGloballyRoutableIPv6());
+
+	// ff00::/8, multicast.
+	ASSERT_FALSE(CNetworkAddress::FromString("ff02::1").IsGloballyRoutableIPv6());
+
+	// And the addresses immediately outside those prefixes stay routable, so
+	// the tests above are pinning a prefix and not a whole leading byte.
+	ASSERT_TRUE(CNetworkAddress::FromString("fbff:ffff::1").IsGloballyRoutableIPv6());
+	ASSERT_TRUE(CNetworkAddress::FromString("fe00::1").IsGloballyRoutableIPv6());
+	ASSERT_TRUE(CNetworkAddress::FromString("fe7f:ffff::1").IsGloballyRoutableIPv6());
+}
+
+// The octets are the storage now, so what GetOctets() hands out is what every
+// bit-arithmetic caller (IPFilterMatch.h above all) works on. Two things are
+// worth pinning: the order is wire order for both families, and an IPv4
+// address leaves the tail zero rather than filling in the mapped prefix --
+// callers relying on the latter would silently match the wrong rule.
+TEST(NetworkAddress, OctetsAreWireOrderAndLeaveTheIPv4TailZero)
+{
+	// 192.0.2.1 reached through either 32-bit convention gives the same octets,
+	// most significant first -- neither convention is the storage order.
+	const CNetworkAddress v4 = CNetworkAddress::FromIPv4NetworkOrder(TEST_IP_ED2K_ORDER);
+	const CNetworkAddress::Octets v4Octets = v4.GetOctets();
+	ASSERT_EQUALS(192, static_cast<int>(v4Octets[0]));
+	ASSERT_EQUALS(0, static_cast<int>(v4Octets[1]));
+	ASSERT_EQUALS(2, static_cast<int>(v4Octets[2]));
+	ASSERT_EQUALS(1, static_cast<int>(v4Octets[3]));
+	for (int i = 4; i < 16; ++i) {
+		ASSERT_EQUALS(0, static_cast<int>(v4Octets[i]));
+	}
+	ASSERT_EQUALS(0ul, v4.GetScopeId());
+
+	// The mapped form of the same address is a different set of octets, which
+	// is the storage-level statement of MappedAndNativeAreDistinct above.
+	const CNetworkAddress::Octets mappedOctets =
+		CNetworkAddress::FromString("::ffff:192.0.2.1").GetOctets();
+	ASSERT_EQUALS(0xff, static_cast<int>(mappedOctets[10]));
+	ASSERT_EQUALS(0xff, static_cast<int>(mappedOctets[11]));
+	ASSERT_EQUALS(192, static_cast<int>(mappedOctets[12]));
+	ASSERT_EQUALS(1, static_cast<int>(mappedOctets[15]));
+	ASSERT_TRUE(v4Octets != mappedOctets);
+
+	// IPv6FromOctets() applies no absence rule, so the all-zero octets are the
+	// unspecified address and not absence -- unlike FromIPv6Bytes(), which is
+	// the wire-tag edge where all-zero does mean "this peer has no IPv6".
+	ASSERT_TRUE(CNetworkAddress::AnyIPv6().IsPresent());
+	ASSERT_TRUE(CNetworkAddress::AnyIPv6().IsIPv6());
+	ASSERT_TRUE(CNetworkAddress::AnyIPv6().IsUnspecified());
+	ASSERT_EQUALS(wxString("::"), wxString(CNetworkAddress::AnyIPv6().ToString()));
+	const std::uint8_t allZero[16] = { 0 };
+	ASSERT_TRUE(CNetworkAddress::FromIPv6Bytes(allZero).IsAbsent());
+	ASSERT_TRUE(CNetworkAddress::AnyIPv6() != CNetworkAddress::Absent());
+}
+
+// The socket backend is the one caller that still needs a real asio address, so
+// NetworkAddressAsio.h is the single bridge. It has to be exactly lossless in
+// both directions: a swapped IPv4 conversion here would connect to the wrong
+// host, and a dropped scope id would fold two distinct link-local destinations
+// into one.
+TEST(NetworkAddress, AsioBridgeRoundTripsWithoutLosingAnything)
+{
+	const CNetworkAddress cases[] = {
+		CNetworkAddress::FromIPv4NetworkOrder(TEST_IP_ED2K_ORDER),
+		CNetworkAddress::FromString("0.0.0.0"),
+		CNetworkAddress::FromString("255.255.255.254"),
+		CNetworkAddress::FromString("2001:db8::1"),
+		CNetworkAddress::FromString("::ffff:192.0.2.1"),
+		CNetworkAddress::AnyIPv6(),
+		CNetworkAddress::FromString("::1"),
+	};
+	for (const CNetworkAddress &address : cases) {
+		const CNetworkAddress roundTripped = FromAsioAddress(ToAsioAddress(address));
+		ASSERT_TRUE(roundTripped == address);
+		// Not just equal -- the same text, so a family or octet swap that
+		// happened to compare equal would still be caught.
+		ASSERT_EQUALS(wxString(address.ToString()), wxString(roundTripped.ToString()));
+	}
+
+	// The 32-bit conventions survive the crossing: asio's to_uint() is host
+	// order, which is the convention FromIPv4HostOrder() names.
+	ASSERT_EQUALS(wxString("192.0.2.1"),
+		wxString(FromAsioAddress(boost::asio::ip::make_address("192.0.2.1")).ToString()));
+	std::uint32_t hostOrder = 0;
+	ASSERT_TRUE(FromAsioAddress(boost::asio::ip::make_address("192.0.2.1")).ToIPv4HostOrder(hostOrder));
+	ASSERT_EQUALS(TEST_IP_HOST_ORDER, hostOrder);
+
+	// A scope id is part of the address's identity, so it crosses too. Without
+	// it fe80::1%7 and fe80::1%9 would be one key in every container that uses
+	// this type.
+	const CNetworkAddress scoped = FromAsioAddress(boost::asio::ip::make_address("fe80::1%7"));
+	ASSERT_EQUALS(7ul, scoped.GetScopeId());
+	ASSERT_TRUE(scoped == FromAsioAddress(ToAsioAddress(scoped)));
+	ASSERT_TRUE(scoped != CNetworkAddress::FromString("fe80::1"));
+	ASSERT_TRUE(CNetworkAddress::FromString("fe80::1").GetScopeId() == 0ul);
+
+	// An asio address is always a present address: nothing it can hold means
+	// absence, 0.0.0.0 included. That overload belongs to the wire edges.
+	ASSERT_TRUE(FromAsioAddress(boost::asio::ip::make_address("0.0.0.0")).IsPresent());
+	ASSERT_TRUE(FromAsioAddress(boost::asio::ip::make_address("0.0.0.0")).IsUnspecified());
 }
 
 // File_checked_for_headers

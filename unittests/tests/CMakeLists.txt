@@ -5,6 +5,12 @@ add_executable (CTagTest
 	${CMAKE_SOURCE_DIR}/src/Tag.cpp
 	${CMAKE_SOURCE_DIR}/src/libs/common/Format.cpp
 	${CMAKE_SOURCE_DIR}/src/libs/common/strerror_r.c
+	# CNetworkAddress::FromString/ToString live in NetworkAddress.cpp: they are
+	# the only part of the type that still compiles Boost.Asio, and keeping them
+	# out of the header is what stops asio reaching most of src/. Every target
+	# whose include closure touches NetworkAddress.h therefore has to link this
+	# TU -- the type is no longer header-only.
+	${CMAKE_SOURCE_DIR}/src/NetworkAddress.cpp
 )
 
 add_test (NAME CTagTest
@@ -15,10 +21,14 @@ target_include_directories (CTagTest
 	PRIVATE ${CMAKE_BINARY_DIR}
 	PRIVATE ${CMAKE_SOURCE_DIR}/src
 	PRIVATE ${CMAKE_SOURCE_DIR}/src/include
+	# NetworkAddress.cpp, linked above, is the one TU that still compiles
+	# Boost.Asio for its address parsing and formatting.
+	PRIVATE ${Boost_INCLUDE_DIR}
 )
 
 target_link_libraries (CTagTest
 	muleunit
+	${Boost_LIBRARIES}
 )
 
 # CValueMap is the incremental-update filter behind every EC tag that carries a
@@ -214,6 +224,12 @@ add_executable (FileDataIOTest
 	${CMAKE_SOURCE_DIR}/src/libs/common/Path.cpp
 	${CMAKE_SOURCE_DIR}/src/libs/common/Format.cpp
 	${CMAKE_SOURCE_DIR}/src/libs/common/strerror_r.c
+	# CNetworkAddress::FromString/ToString live in NetworkAddress.cpp: they are
+	# the only part of the type that still compiles Boost.Asio, and keeping them
+	# out of the header is what stops asio reaching most of src/. Every target
+	# whose include closure touches NetworkAddress.h therefore has to link this
+	# TU -- the type is no longer header-only.
+	${CMAKE_SOURCE_DIR}/src/NetworkAddress.cpp
 )
 
 add_test (NAME FileDataIOTest
@@ -224,10 +240,14 @@ target_include_directories (FileDataIOTest
 	PRIVATE ${CMAKE_BINARY_DIR}
 	PRIVATE ${CMAKE_SOURCE_DIR}/src
 	PRIVATE ${CMAKE_SOURCE_DIR}/src/include
+	# NetworkAddress.cpp, linked above, is the one TU that still compiles
+	# Boost.Asio for its address parsing and formatting.
+	PRIVATE ${Boost_INCLUDE_DIR}
 )
 
 target_link_libraries (FileDataIOTest
 	muleunit
+	${Boost_LIBRARIES}
 )
 
 add_executable (CloneFileTest
@@ -240,6 +260,12 @@ add_executable (CloneFileTest
 	${CMAKE_SOURCE_DIR}/src/libs/common/Path.cpp
 	${CMAKE_SOURCE_DIR}/src/libs/common/Format.cpp
 	${CMAKE_SOURCE_DIR}/src/libs/common/strerror_r.c
+	# CNetworkAddress::FromString/ToString live in NetworkAddress.cpp: they are
+	# the only part of the type that still compiles Boost.Asio, and keeping them
+	# out of the header is what stops asio reaching most of src/. Every target
+	# whose include closure touches NetworkAddress.h therefore has to link this
+	# TU -- the type is no longer header-only.
+	${CMAKE_SOURCE_DIR}/src/NetworkAddress.cpp
 )
 
 add_test (NAME CloneFileTest
@@ -250,10 +276,14 @@ target_include_directories (CloneFileTest
 	PRIVATE ${CMAKE_BINARY_DIR}
 	PRIVATE ${CMAKE_SOURCE_DIR}/src
 	PRIVATE ${CMAKE_SOURCE_DIR}/src/include
+	# NetworkAddress.cpp, linked above, is the one TU that still compiles
+	# Boost.Asio for its address parsing and formatting.
+	PRIVATE ${Boost_INCLUDE_DIR}
 )
 
 target_link_libraries (CloneFileTest
 	muleunit
+	${Boost_LIBRARIES}
 )
 
 add_executable (FormatTest
@@ -280,6 +310,12 @@ add_executable (NetworkFunctionsTest
 	${CMAKE_SOURCE_DIR}/src/LibSocket.cpp
 	${CMAKE_SOURCE_DIR}/src/libs/common/Format.cpp
 	${CMAKE_SOURCE_DIR}/src/libs/common/strerror_r.c
+	# CNetworkAddress::FromString/ToString live in NetworkAddress.cpp: they are
+	# the only part of the type that still compiles Boost.Asio, and keeping them
+	# out of the header is what stops asio reaching most of src/. Every target
+	# that touches an address therefore has to link this TU -- the type is no
+	# longer header-only.
+	${CMAKE_SOURCE_DIR}/src/NetworkAddress.cpp
 )
 
 add_test (NAME NetworkFunctionsTest
@@ -478,6 +514,12 @@ target_link_libraries (TextFileTest
 add_executable (OtherFunctionsTest
 	OtherFunctionsTest.cpp
 	${CMAKE_SOURCE_DIR}/src/OtherFunctions.cpp
+	# CNetworkAddress::FromString/ToString live in NetworkAddress.cpp: they are
+	# the only part of the type that still compiles Boost.Asio, and keeping them
+	# out of the header is what stops asio reaching most of src/. Every target
+	# whose include closure touches NetworkAddress.h therefore has to link this
+	# TU -- the type is no longer header-only.
+	${CMAKE_SOURCE_DIR}/src/NetworkAddress.cpp
 )
 
 add_test (NAME OtherFunctionsTest
@@ -488,12 +530,16 @@ target_include_directories (OtherFunctionsTest
 	PRIVATE ${CMAKE_BINARY_DIR}
 	PRIVATE ${CMAKE_SOURCE_DIR}/src
 	PRIVATE ${CMAKE_SOURCE_DIR}/src/include
+	# NetworkAddress.cpp, linked above, is the one TU that still compiles
+	# Boost.Asio for its address parsing and formatting.
+	PRIVATE ${Boost_INCLUDE_DIR}
 )
 
 target_link_libraries (OtherFunctionsTest
 	muleunit
 	mulecommon
 	CRYPTOPP::CRYPTOPP
+	${Boost_LIBRARIES}
 )
 
 
@@ -561,16 +607,26 @@ target_link_libraries (SharedFilesReloadLatchTest
 add_executable (ChatSessionStoreTest
 	ChatSessionStoreTest.cpp
 	${CMAKE_SOURCE_DIR}/src/ChatSessionStore.cpp
+	# CNetworkAddress::FromString/ToString live in NetworkAddress.cpp: they are
+	# the only part of the type that still compiles Boost.Asio, and keeping them
+	# out of the header is what stops asio reaching most of src/. Every target
+	# whose include closure touches NetworkAddress.h therefore has to link this
+	# TU -- the type is no longer header-only.
+	${CMAKE_SOURCE_DIR}/src/NetworkAddress.cpp
 )
 add_test (NAME ChatSessionStoreTest COMMAND ChatSessionStoreTest)
 target_include_directories (ChatSessionStoreTest
 	PRIVATE ${CMAKE_BINARY_DIR}
 	PRIVATE ${CMAKE_SOURCE_DIR}/src
 	PRIVATE ${CMAKE_SOURCE_DIR}/src/include
+	# NetworkAddress.cpp, linked above, is the one TU that still compiles
+	# Boost.Asio for its address parsing and formatting.
+	PRIVATE ${Boost_INCLUDE_DIR}
 )
 target_link_libraries (ChatSessionStoreTest
 	muleunit
 	mulecommon
+	${Boost_LIBRARIES}
 )
 
 add_executable (JsonWriterTest
@@ -772,6 +828,12 @@ add_executable (RefresherTest
 	# Debug builds link them in. Mirror amuleapi's own webapi/
 	# CMakeLists.txt, which already pulls this TU in.
 	${CMAKE_SOURCE_DIR}/src/LoggerConsole.cpp
+	# CNetworkAddress::FromString/ToString live in NetworkAddress.cpp: they are
+	# the only part of the type that still compiles Boost.Asio, and keeping them
+	# out of the header is what stops asio reaching most of src/. Every target
+	# whose include closure touches NetworkAddress.h therefore has to link this
+	# TU -- the type is no longer header-only.
+	${CMAKE_SOURCE_DIR}/src/NetworkAddress.cpp
 )
 add_test (NAME RefresherTest COMMAND RefresherTest)
 target_include_directories (RefresherTest
@@ -779,6 +841,9 @@ target_include_directories (RefresherTest
 	PRIVATE ${CMAKE_SOURCE_DIR}/src
 	PRIVATE ${CMAKE_SOURCE_DIR}/src/include
 	PRIVATE ${CMAKE_BINARY_DIR}
+	# NetworkAddress.cpp, linked above, is the one TU that still compiles
+	# Boost.Asio for its address parsing and formatting.
+	PRIVATE ${Boost_INCLUDE_DIR}
 )
 target_link_libraries (RefresherTest
 	muleunit
@@ -787,6 +852,7 @@ target_link_libraries (RefresherTest
 	mulesocket
 	webcommon
 	wxWidgets::NET
+	${Boost_LIBRARIES}
 )
 
 # CompleteSourcesNeedRecompute decides whether the complete-sources throttle
@@ -856,6 +922,12 @@ add_executable (PeerCapabilitiesTest
 	${CMAKE_SOURCE_DIR}/src/Tag.cpp
 	${CMAKE_SOURCE_DIR}/src/libs/common/Format.cpp
 	${CMAKE_SOURCE_DIR}/src/libs/common/strerror_r.c
+	# CNetworkAddress::FromString/ToString live in NetworkAddress.cpp: they are
+	# the only part of the type that still compiles Boost.Asio, and keeping them
+	# out of the header is what stops asio reaching most of src/. Every target
+	# whose include closure touches NetworkAddress.h therefore has to link this
+	# TU -- the type is no longer header-only.
+	${CMAKE_SOURCE_DIR}/src/NetworkAddress.cpp
 )
 
 add_test (NAME PeerCapabilitiesTest
@@ -866,10 +938,14 @@ target_include_directories (PeerCapabilitiesTest
 	PRIVATE ${CMAKE_BINARY_DIR}
 	PRIVATE ${CMAKE_SOURCE_DIR}/src
 	PRIVATE ${CMAKE_SOURCE_DIR}/src/include
+	# NetworkAddress.cpp, linked above, is the one TU that still compiles
+	# Boost.Asio for its address parsing and formatting.
+	PRIVATE ${Boost_INCLUDE_DIR}
 )
 
 target_link_libraries (PeerCapabilitiesTest
 	muleunit
+	${Boost_LIBRARIES}
 )
 
 # OP_UDPRESERVEDPROT2 frame demultiplexing: the type byte, the payload window
@@ -928,6 +1004,12 @@ target_link_libraries (UtpDatagramRoutingTest
 
 add_executable (UtpContextTest
 	UtpContextTest.cpp
+	# CNetworkAddress::FromString/ToString live in NetworkAddress.cpp: they are
+	# the only part of the type that still compiles Boost.Asio, and keeping them
+	# out of the header is what stops asio reaching most of src/. Every target
+	# that touches an address therefore has to link this TU -- the type is no
+	# longer header-only.
+	${CMAKE_SOURCE_DIR}/src/NetworkAddress.cpp
 )
 
 add_test (NAME UtpContextTest
@@ -972,6 +1054,12 @@ target_link_libraries (UtpWriteBufferPolicyTest
 
 add_executable (UtpStreamTest
 	UtpStreamTest.cpp
+	# CNetworkAddress::FromString/ToString live in NetworkAddress.cpp: they are
+	# the only part of the type that still compiles Boost.Asio, and keeping them
+	# out of the header is what stops asio reaching most of src/. Every target
+	# whose include closure touches NetworkAddress.h therefore has to link this
+	# TU -- the type is no longer header-only.
+	${CMAKE_SOURCE_DIR}/src/NetworkAddress.cpp
 )
 
 add_test (NAME UtpStreamTest
@@ -1021,6 +1109,12 @@ target_link_libraries (UtpTransportFailureTest
 # in any given real build, and the wrong one produces no symptom.
 add_executable (UtpDialPolicyTest
 	UtpDialPolicyTest.cpp
+	# CNetworkAddress::FromString/ToString live in NetworkAddress.cpp: they are
+	# the only part of the type that still compiles Boost.Asio, and keeping them
+	# out of the header is what stops asio reaching most of src/. Every target
+	# that touches an address therefore has to link this TU -- the type is no
+	# longer header-only.
+	${CMAKE_SOURCE_DIR}/src/NetworkAddress.cpp
 )
 
 add_test (NAME UtpDialPolicyTest
@@ -1043,6 +1137,12 @@ target_link_libraries (UtpDialPolicyTest
 
 add_executable (UtpSocketTransportTest
 	UtpSocketTransportTest.cpp
+	# CNetworkAddress::FromString/ToString live in NetworkAddress.cpp: they are
+	# the only part of the type that still compiles Boost.Asio, and keeping them
+	# out of the header is what stops asio reaching most of src/. Every target
+	# that touches an address therefore has to link this TU -- the type is no
+	# longer header-only.
+	${CMAKE_SOURCE_DIR}/src/NetworkAddress.cpp
 )
 
 add_test (NAME UtpSocketTransportTest
@@ -1064,6 +1164,12 @@ target_link_libraries (UtpSocketTransportTest
 
 add_executable (UtpInboundAcceptTest
 	UtpInboundAcceptTest.cpp
+	# CNetworkAddress::FromString/ToString live in NetworkAddress.cpp: they are
+	# the only part of the type that still compiles Boost.Asio, and keeping them
+	# out of the header is what stops asio reaching most of src/. Every target
+	# that touches an address therefore has to link this TU -- the type is no
+	# longer header-only.
+	${CMAKE_SOURCE_DIR}/src/NetworkAddress.cpp
 )
 
 add_test (NAME UtpInboundAcceptTest
@@ -1121,6 +1227,12 @@ add_executable (NetworkAddressTest
 	NetworkAddressTest.cpp
 	${CMAKE_SOURCE_DIR}/src/libs/common/Format.cpp
 	${CMAKE_SOURCE_DIR}/src/libs/common/strerror_r.c
+	# CNetworkAddress::FromString/ToString live in NetworkAddress.cpp: they are
+	# the only part of the type that still compiles Boost.Asio, and keeping them
+	# out of the header is what stops asio reaching most of src/. Every target
+	# that touches an address therefore has to link this TU -- the type is no
+	# longer header-only.
+	${CMAKE_SOURCE_DIR}/src/NetworkAddress.cpp
 )
 
 add_test (NAME NetworkAddressTest
@@ -1151,6 +1263,12 @@ add_executable (AddressCharacterisationTest
 	${CMAKE_SOURCE_DIR}/src/Tag.cpp
 	${CMAKE_SOURCE_DIR}/src/libs/common/Format.cpp
 	${CMAKE_SOURCE_DIR}/src/libs/common/strerror_r.c
+	# CNetworkAddress::FromString/ToString live in NetworkAddress.cpp: they are
+	# the only part of the type that still compiles Boost.Asio, and keeping them
+	# out of the header is what stops asio reaching most of src/. Every target
+	# that touches an address therefore has to link this TU -- the type is no
+	# longer header-only.
+	${CMAKE_SOURCE_DIR}/src/NetworkAddress.cpp
 )
 
 add_test (NAME AddressCharacterisationTest
@@ -1178,6 +1296,12 @@ add_executable (DualStackListenerTest
 	DualStackListenerTest.cpp
 	${CMAKE_SOURCE_DIR}/src/libs/common/Format.cpp
 	${CMAKE_SOURCE_DIR}/src/libs/common/strerror_r.c
+	# CNetworkAddress::FromString/ToString live in NetworkAddress.cpp: they are
+	# the only part of the type that still compiles Boost.Asio, and keeping them
+	# out of the header is what stops asio reaching most of src/. Every target
+	# whose include closure touches NetworkAddress.h therefore has to link this
+	# TU -- the type is no longer header-only.
+	${CMAKE_SOURCE_DIR}/src/NetworkAddress.cpp
 )
 
 add_test (NAME DualStackListenerTest
@@ -1203,6 +1327,12 @@ add_executable (OutboundFamilyFallbackTest
 	OutboundFamilyFallbackTest.cpp
 	${CMAKE_SOURCE_DIR}/src/libs/common/Format.cpp
 	${CMAKE_SOURCE_DIR}/src/libs/common/strerror_r.c
+	# CNetworkAddress::FromString/ToString live in NetworkAddress.cpp: they are
+	# the only part of the type that still compiles Boost.Asio, and keeping them
+	# out of the header is what stops asio reaching most of src/. Every target
+	# that touches an address therefore has to link this TU -- the type is no
+	# longer header-only.
+	${CMAKE_SOURCE_DIR}/src/NetworkAddress.cpp
 )
 
 add_test (NAME OutboundFamilyFallbackTest
@@ -1230,6 +1360,12 @@ add_executable (IPFilterIPv6Test
 	IPFilterIPv6Test.cpp
 	${CMAKE_SOURCE_DIR}/src/libs/common/Format.cpp
 	${CMAKE_SOURCE_DIR}/src/libs/common/strerror_r.c
+	# CNetworkAddress::FromString/ToString live in NetworkAddress.cpp: they are
+	# the only part of the type that still compiles Boost.Asio, and keeping them
+	# out of the header is what stops asio reaching most of src/. Every target
+	# that touches an address therefore has to link this TU -- the type is no
+	# longer header-only.
+	${CMAKE_SOURCE_DIR}/src/NetworkAddress.cpp
 )
 
 add_test (NAME IPFilterIPv6Test
@@ -1256,6 +1392,12 @@ add_executable (IPv6ReachabilityTest
 	IPv6ReachabilityTest.cpp
 	${CMAKE_SOURCE_DIR}/src/libs/common/Format.cpp
 	${CMAKE_SOURCE_DIR}/src/libs/common/strerror_r.c
+	# CNetworkAddress::FromString/ToString live in NetworkAddress.cpp: they are
+	# the only part of the type that still compiles Boost.Asio, and keeping them
+	# out of the header is what stops asio reaching most of src/. Every target
+	# whose include closure touches NetworkAddress.h therefore has to link this
+	# TU -- the type is no longer header-only.
+	${CMAKE_SOURCE_DIR}/src/NetworkAddress.cpp
 )
 
 add_test (NAME IPv6ReachabilityTest
@@ -1283,6 +1425,12 @@ add_executable (PeerIdentityTest
 	PeerIdentityTest.cpp
 	${CMAKE_SOURCE_DIR}/src/libs/common/Format.cpp
 	${CMAKE_SOURCE_DIR}/src/libs/common/strerror_r.c
+	# CNetworkAddress::FromString/ToString live in NetworkAddress.cpp: they are
+	# the only part of the type that still compiles Boost.Asio, and keeping them
+	# out of the header is what stops asio reaching most of src/. Every target
+	# whose include closure touches NetworkAddress.h therefore has to link this
+	# TU -- the type is no longer header-only.
+	${CMAKE_SOURCE_DIR}/src/NetworkAddress.cpp
 )
 
 add_test (NAME PeerIdentityTest
@@ -1321,6 +1469,12 @@ target_link_libraries (PeerIdentityTest
 # wrong one produces no symptom.
 add_executable (NatRendezvousProtocolTest
 	NatRendezvousProtocolTest.cpp
+	# CNetworkAddress::FromString/ToString live in NetworkAddress.cpp: they are
+	# the only part of the type that still compiles Boost.Asio, and keeping them
+	# out of the header is what stops asio reaching most of src/. Every target
+	# that touches an address therefore has to link this TU -- the type is no
+	# longer header-only.
+	${CMAKE_SOURCE_DIR}/src/NetworkAddress.cpp
 )
 
 add_test (NAME NatRendezvousProtocolTest
@@ -1345,6 +1499,12 @@ target_link_libraries (NatRendezvousProtocolTest
 
 add_executable (NatRendezvousRelayTest
 	NatRendezvousRelayTest.cpp
+	# CNetworkAddress::FromString/ToString live in NetworkAddress.cpp: they are
+	# the only part of the type that still compiles Boost.Asio, and keeping them
+	# out of the header is what stops asio reaching most of src/. Every target
+	# that touches an address therefore has to link this TU -- the type is no
+	# longer header-only.
+	${CMAKE_SOURCE_DIR}/src/NetworkAddress.cpp
 )
 
 add_test (NAME NatRendezvousRelayTest
@@ -1366,6 +1526,12 @@ target_link_libraries (NatRendezvousRelayTest
 
 add_executable (NatHolePunchScheduleTest
 	NatHolePunchScheduleTest.cpp
+	# CNetworkAddress::FromString/ToString live in NetworkAddress.cpp: they are
+	# the only part of the type that still compiles Boost.Asio, and keeping them
+	# out of the header is what stops asio reaching most of src/. Every target
+	# whose include closure touches NetworkAddress.h therefore has to link this
+	# TU -- the type is no longer header-only.
+	${CMAKE_SOURCE_DIR}/src/NetworkAddress.cpp
 )
 
 add_test (NAME NatHolePunchScheduleTest
@@ -1387,6 +1553,12 @@ target_link_libraries (NatHolePunchScheduleTest
 
 add_executable (NatTraversalPolicyTest
 	NatTraversalPolicyTest.cpp
+	# CNetworkAddress::FromString/ToString live in NetworkAddress.cpp: they are
+	# the only part of the type that still compiles Boost.Asio, and keeping them
+	# out of the header is what stops asio reaching most of src/. Every target
+	# that touches an address therefore has to link this TU -- the type is no
+	# longer header-only.
+	${CMAKE_SOURCE_DIR}/src/NetworkAddress.cpp
 )
 
 add_test (NAME NatTraversalPolicyTest
@@ -1413,6 +1585,12 @@ target_link_libraries (NatTraversalPolicyTest
 # can grow.
 add_executable (NatRendezvousManagerTest
 	NatRendezvousManagerTest.cpp
+	# CNetworkAddress::FromString/ToString live in NetworkAddress.cpp: they are
+	# the only part of the type that still compiles Boost.Asio, and keeping them
+	# out of the header is what stops asio reaching most of src/. Every target
+	# that touches an address therefore has to link this TU -- the type is no
+	# longer header-only.
+	${CMAKE_SOURCE_DIR}/src/NetworkAddress.cpp
 )
 
 add_test (NAME NatRendezvousManagerTest
