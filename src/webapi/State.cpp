@@ -24,6 +24,9 @@
 
 #include "State.h"
 
+#include <cstdlib>  // std::abort
+#include <iostream> // std::cerr
+
 #include <cstdio>
 #include <ctime>
 
@@ -135,6 +138,16 @@ std::vector<std::string> CState::AmuleLog() const
 	return m_amule_log_lines;
 }
 
+std::vector<std::string> CState::AmuleLogFrom(std::size_t first, std::size_t &total) const
+{
+	std::shared_lock<std::shared_timed_mutex> lock(m_mu);
+	total = m_amule_log_lines.size();
+	if (first >= total)
+		return {};
+	return std::vector<std::string>(
+		m_amule_log_lines.begin() + static_cast<std::ptrdiff_t>(first), m_amule_log_lines.end());
+}
+
 ServerInfoLog CState::ServerInfo() const
 {
 	std::shared_lock<std::shared_timed_mutex> lock(m_mu);
@@ -166,9 +179,30 @@ std::vector<SearchResult> CState::Search(std::uint32_t search_id) const
 	return out;
 }
 
+// See CState::ReentryGuard in State.h for why this aborts rather than
+// returning, and why it runs before the lock rather than after it.
+thread_local const CState *CState::t_in_callback = nullptr;
+
+CState::ReentryGuard::ReentryGuard(const CState *self)
+: m_prev(t_in_callback)
+{
+	if (t_in_callback == self) {
+		std::cerr << "amuleapi: FATAL CState callback re-entered the same CState; "
+			     "this would deadlock on a non-recursive lock\n";
+		std::abort();
+	}
+	t_in_callback = self;
+}
+
+CState::ReentryGuard::~ReentryGuard()
+{
+	t_in_callback = m_prev;
+}
+
 void CState::MutateSearch(
 	std::uint32_t search_id, const std::function<void(std::map<std::uint32_t, SearchResult> &)> &fn)
 {
+	const ReentryGuard guard(this);
 	std::unique_lock<std::shared_timed_mutex> lock(m_mu);
 	auto it = m_searches.find(search_id);
 	if (it != m_searches.end())
@@ -432,6 +466,7 @@ void CState::WriteCategories(std::vector<CategorySnapshot> c)
 
 void CState::MutateServers(const std::function<void(std::map<std::uint32_t, ServerSnapshot> &)> &fn)
 {
+	const ReentryGuard guard(this);
 	std::unique_lock<std::shared_timed_mutex> lock(m_mu);
 	fn(m_servers);
 }
@@ -446,6 +481,7 @@ std::vector<FriendSnapshot> CState::Friends() const
 }
 void CState::MutateFriends(const std::function<void(std::map<std::uint32_t, FriendSnapshot> &)> &fn)
 {
+	const ReentryGuard guard(this);
 	std::unique_lock<std::shared_timed_mutex> lock(m_mu);
 	fn(m_friends);
 }
@@ -461,6 +497,39 @@ std::string IPv4ToDotted(std::uint32_t ip_lsb_first)
 		static_cast<unsigned>((ip_lsb_first >> 16) & 0xFFu),
 		static_cast<unsigned>((ip_lsb_first >> 24) & 0xFFu));
 	return std::string(buf);
+}
+
+// See State.h. Matches on the path; the query string selects a page, not a
+// different resource.
+bool MemoizableTarget(const std::string &target)
+{
+	const std::string path = target.substr(0, target.find('?'));
+	// OPT-IN, and deliberately so. This was an exclusion list, and an
+	// exclusion list has to be right about every route that exists now and
+	// every route anyone adds later -- it was wrong four separate times,
+	// each for a different reason. Inverting it makes the failure mode
+	// "we hash a body we did not have to", which costs microseconds,
+	// instead of "we serve a 304 for content that changed".
+	//
+	// Only the two collections the memo was built for are listed. They are
+	// the multi-MB bodies where skipping an MD5 is worth anything; every
+	// other target hashes per request and is immune by construction.
+	// Before adding one, it must be BOTH governed by the refresher
+	// snapshot AND identical for every caller -- see State.h.
+	return path == "/api/v0/downloads" || path == "/api/v0/shared";
+}
+
+// See State.h. Ordered cheap-test-first: the revision comparison is two
+// integer loads, the target match copies and scans a string.
+bool MemoUsable(const std::string &target, std::uint64_t rev_before, std::uint64_t rev_after)
+{
+	return rev_before == rev_after && MemoizableTarget(target);
+}
+
+// See State.h.
+bool ShouldStampEtag(bool is_safe_method, bool handler_set_etag, unsigned status, bool body_empty)
+{
+	return is_safe_method && !handler_set_etag && status == 200 && !body_empty;
 }
 
 std::string ChatPeerKeyFromGuiId(std::uint64_t gui_id)
@@ -484,42 +553,9 @@ std::uint32_t CState::ChatCursor() const
 
 void CState::MutateChats(const std::function<void(std::vector<ChatSessionSnapshot> &, std::uint32_t &)> &fn)
 {
+	const ReentryGuard guard(this);
 	std::unique_lock<std::shared_timed_mutex> lock(m_mu);
 	fn(m_chats, m_chat_cursor);
-}
-
-std::vector<FileSnapshot> CState::Downloads() const
-{
-	std::shared_lock<std::shared_timed_mutex> lock(m_mu);
-	std::vector<FileSnapshot> out;
-	out.reserve(m_files.size());
-	for (const auto &kv : m_files) {
-		if (kv.second.is_downloading)
-			out.push_back(kv.second);
-	}
-	return out;
-}
-
-std::vector<FileSnapshot> CState::Shared() const
-{
-	std::shared_lock<std::shared_timed_mutex> lock(m_mu);
-	std::vector<FileSnapshot> out;
-	out.reserve(m_files.size());
-	for (const auto &kv : m_files) {
-		if (kv.second.is_shared)
-			out.push_back(kv.second);
-	}
-	return out;
-}
-
-std::vector<FileSnapshot> CState::Files() const
-{
-	std::shared_lock<std::shared_timed_mutex> lock(m_mu);
-	std::vector<FileSnapshot> out;
-	out.reserve(m_files.size());
-	for (const auto &kv : m_files)
-		out.push_back(kv.second);
-	return out;
 }
 
 std::vector<ClientSnapshot> CState::Clients() const
@@ -715,25 +751,50 @@ bool CState::FindSharedByEcid(std::uint32_t ecid, FileSnapshot &out) const
 // at the end of the mutate window.
 void CState::MutateDownloads(const std::function<void(FileMap &)> &fn)
 {
+	const ReentryGuard guard(this);
 	std::unique_lock<std::shared_timed_mutex> lock(m_mu);
 	fn(m_files);
+	// Bumped by the writer, not by its callers. The ETag memo keys on this,
+	// and every previous attempt to advance it from the outside missed a
+	// path: first the inline refreshes that mutating handlers run, then a
+	// tick that failed partway after already writing. A writer cannot
+	// forget to say that it wrote.
+	++m_snapshot_rev;
 }
 
 void CState::MutateShared(const std::function<void(FileMap &)> &fn)
 {
+	const ReentryGuard guard(this);
 	std::unique_lock<std::shared_timed_mutex> lock(m_mu);
 	fn(m_files);
+	// See MutateDownloads: the memo key is advanced by the writer.
+	++m_snapshot_rev;
 }
 
 void CState::MutateClients(const std::function<void(std::map<std::uint32_t, ClientSnapshot> &)> &fn)
 {
+	// Forwards rather than repeating the guard-plus-lock body: the two differ
+	// only in what they hand the callback. Still exactly one acquisition, so
+	// a caller that does not need the files pays nothing for the convenience.
+	MutateClientsWithFiles(
+		[&fn](std::map<std::uint32_t, ClientSnapshot> &clients, const FileMap &) { fn(clients); });
+}
+
+void CState::MutateClientsWithFiles(
+	const std::function<void(std::map<std::uint32_t, ClientSnapshot> &, const FileMap &)> &fn)
+{
+	const ReentryGuard guard(this);
 	std::unique_lock<std::shared_timed_mutex> lock(m_mu);
-	fn(m_clients);
+	fn(m_clients, m_files);
 }
 
 void CState::ResetLists()
 {
 	std::unique_lock<std::shared_timed_mutex> lock(m_mu);
+	// A wholesale wipe on EC reconnect is as much a body change as any
+	// mutation, and it runs on the failure path -- exactly where the key
+	// used to freeze while the bodies moved underneath it.
+	++m_snapshot_rev;
 	m_files.clear();
 	m_clients.clear();
 	m_servers.clear();
@@ -754,6 +815,18 @@ void CState::ResetLists()
 	// operator can see "EC disconnected at HH:MM" alongside earlier
 	// graph traffic; stats_tree's counters are amuled-uptime not
 	// amuleapi-tick scoped.
+}
+
+void CState::BumpSnapshotRevision()
+{
+	std::unique_lock<std::shared_timed_mutex> lock(m_mu);
+	++m_snapshot_rev;
+}
+
+std::uint64_t CState::SnapshotRevision() const
+{
+	std::shared_lock<std::shared_timed_mutex> lock(m_mu);
+	return m_snapshot_rev;
 }
 
 void CState::MarkTickSuccess()

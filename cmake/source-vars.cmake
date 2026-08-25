@@ -12,6 +12,9 @@ if (BUILD_MONOLITHIC OR BUILD_DAEMON)
 		kademlia/routing/RoutingZone.cpp
 		amule.cpp
 		BaseClient.cpp
+		BrowseLifecycle.cpp
+		BrowseManager.cpp
+		BrowseStore.cpp
 		ChatSessionStore.cpp
 		ClientCreditsList.cpp
 		ClientList.cpp
@@ -140,6 +143,7 @@ if (BUILD_MONOLITHIC OR BUILD_DAEMON OR BUILD_REMOTEGUI)
 		ProtocolHandlerManager.cpp
 		$<$<BOOL:${APPLE}>:ProtocolHandlerManager_mac.mm>
 		ClientRef.cpp
+		ClientVersionString.cpp
 		ECSpecialMuleTags.cpp
 		GetTickCount.cpp
 		GuiEvents.cpp

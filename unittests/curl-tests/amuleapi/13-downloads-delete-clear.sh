@@ -4,7 +4,7 @@
 #
 # Endpoints:
 #   DELETE /api/v0/downloads/{hash}             — drop a single entry
-#   POST   /api/v0/downloads/clear_completed    — drop all completed
+#   POST   /api/v0/downloads_clear_completed    — drop all completed
 #
 # Routing by current state:
 #   * status == "completed" → EC_OP_CLEAR_COMPLETED (by ECID; targets
@@ -33,13 +33,17 @@ TEST_HASH="0031c9cba65c50dd2015c184b2ca2c88"
 
 FAIL_COUNT=0
 TEST_COUNT=0
+# Skips are counted apart from TEST_COUNT, never folded into it: a skipped
+# check is coverage that did not happen, and adding it to the passed tally
+# would report the absence of a check as a check that succeeded.
+SKIP_COUNT=0
 
 CURL_BODY_FILE=$(mktemp -t amuleapi_13_downloads_delete_clear_body.XXXXXX)
 trap 'rm -f "$CURL_BODY_FILE"' EXIT
 
 _die()  { echo "FATAL: $*" >&2; exit 2; }
 _pass() { TEST_COUNT=$((TEST_COUNT+1)); echo "  PASS  $1"; }
-_skip() { TEST_COUNT=$((TEST_COUNT+1)); echo "  SKIP  $1"; }
+_skip() { SKIP_COUNT=$((SKIP_COUNT+1)); echo "  SKIP  $1"; }
 _fail() {
 	TEST_COUNT=$((TEST_COUNT+1)); FAIL_COUNT=$((FAIL_COUNT+1))
 	echo "  FAIL  $1"
@@ -99,7 +103,7 @@ sleep 4
 _curl -X DELETE "$HOST/api/v0/downloads/$TEST_HASH"
 _assert_status 401 "DELETE /downloads/{hash} (no token) → 401"
 
-_curl -X POST "$HOST/api/v0/downloads/clear_completed"
+_curl -X POST "$HOST/api/v0/downloads_clear_completed"
 _assert_status 401 "POST /downloads/clear_completed (no token) → 401"
 
 if [ "$HAVE_GUEST" = "1" ]; then
@@ -107,7 +111,7 @@ if [ "$HAVE_GUEST" = "1" ]; then
 		"$HOST/api/v0/downloads/$TEST_HASH"
 	_assert_status 403 "DELETE /downloads/{hash} (guest) → 403"
 	_curl -X POST -H "Authorization: Bearer $GUEST_TOKEN" \
-		"$HOST/api/v0/downloads/clear_completed"
+		"$HOST/api/v0/downloads_clear_completed"
 	_assert_status 403 "POST /downloads/clear_completed (guest) → 403"
 else
 	echo "    info: no guest pass; admin-gate skipped"
@@ -125,15 +129,19 @@ _assert_status 404 "DELETE /downloads/{nonexistent} → 404"
 # may have left a completed entry behind, or it may not have. We
 # call clear once to baseline, then move on.)
 _curl -X POST -H "Authorization: Bearer $ADMIN_TOKEN" \
-	"$HOST/api/v0/downloads/clear_completed"
+	"$HOST/api/v0/downloads_clear_completed"
 _assert_status 200 "POST /downloads/clear_completed (baseline) → 200"
-_assert_json_eq '.ok' true 'clear_completed baseline response.ok==true'
+# The shared results envelope has no top-level `ok`: per-item success lives on
+# each entry, so a partial outcome cannot be reported as a single boolean.
+_assert_json_eq '.results | type' array 'clear_completed returns a results array'
 
 # Second call: now nothing is completed. cleared must be 0.
 _curl -X POST -H "Authorization: Bearer $ADMIN_TOKEN" \
-	"$HOST/api/v0/downloads/clear_completed"
+	"$HOST/api/v0/downloads_clear_completed"
 _assert_status 200 "POST /downloads/clear_completed (idempotent no-op) → 200"
-_assert_json_eq '.cleared' 0 'clear_completed second call cleared 0 entries'
+# An empty `results` array is the no-op. It was `cleared: 0`, a shape only this
+# endpoint used.
+_assert_json_eq '.results | length' 0 'clear_completed second call cleared 0 entries'
 
 # --- 4. DELETE on an active partfile (happy path + no-stale GET). --
 #
@@ -193,7 +201,7 @@ _assert_status 404 "DELETE the same hash twice → 404 second time"
 _curl -X POST -H "Authorization: Bearer $ADMIN_TOKEN" \
 	-H "Content-Type: application/json" \
 	-d '{"hash":"baadbaadbaadbaadbaadbaadbaadbaad"}' \
-	"$HOST/api/v0/downloads/clear_completed"
+	"$HOST/api/v0/downloads_clear_completed"
 _assert_status 404 "POST clear_completed {hash:unknown} → 404"
 _assert_json_eq '.error.code' not_found 'clear_completed {hash:unknown}.error.code'
 
@@ -201,13 +209,13 @@ _assert_json_eq '.error.code' not_found 'clear_completed {hash:unknown}.error.co
 _curl -X POST -H "Authorization: Bearer $ADMIN_TOKEN" \
 	-H "Content-Type: application/json" \
 	-d 'not json at all' \
-	"$HOST/api/v0/downloads/clear_completed"
+	"$HOST/api/v0/downloads_clear_completed"
 _assert_status 400 "POST clear_completed (malformed body) → 400"
 
 _curl -X POST -H "Authorization: Bearer $ADMIN_TOKEN" \
 	-H "Content-Type: application/json" \
 	-d '{"hash": 12345}' \
-	"$HOST/api/v0/downloads/clear_completed"
+	"$HOST/api/v0/downloads_clear_completed"
 _assert_status 400 "POST clear_completed {hash: non-string} → 400"
 
 # --- 8. POST clear_completed {hash:active-partfile} → 409. --------
@@ -238,7 +246,7 @@ done
 _curl -X POST -H "Authorization: Bearer $ADMIN_TOKEN" \
 	-H "Content-Type: application/json" \
 	-d "{\"hash\":\"$TEST_HASH\"}" \
-	"$HOST/api/v0/downloads/clear_completed"
+	"$HOST/api/v0/downloads_clear_completed"
 _assert_status 409 "POST clear_completed {hash:active-partfile} → 409"
 _assert_json_eq '.error.code' not_completed \
 	'clear_completed active hash .error.code == not_completed'
@@ -267,17 +275,18 @@ if [ -n "$COMPLETED_HASH" ]; then
 	_curl -X POST -H "Authorization: Bearer $ADMIN_TOKEN" \
 		-H "Content-Type: application/json" \
 		-d "{\"hash\":\"$COMPLETED_HASH\"}" \
-		"$HOST/api/v0/downloads/clear_completed"
+		"$HOST/api/v0/downloads_clear_completed"
 	_assert_status 200 "POST clear_completed {hash:completed} → 200"
-	_assert_json_eq '.cleared' 1 'per-hash clear_completed cleared exactly 1'
-	_assert_json_eq ".cleared_hashes[0]" "$COMPLETED_HASH" \
-		'cleared_hashes echoes the input hash'
+	_assert_json_eq '.results | length' 1 'per-hash clear_completed cleared exactly 1'
+	_assert_json_eq '.results[0].id' "$COMPLETED_HASH" \
+		'results[0].id echoes the input hash'
+	_assert_json_eq '.results[0].ok' true 'results[0] reports success'
 
 	# Second call → 404 (entry is gone).
 	_curl -X POST -H "Authorization: Bearer $ADMIN_TOKEN" \
 		-H "Content-Type: application/json" \
 		-d "{\"hash\":\"$COMPLETED_HASH\"}" \
-		"$HOST/api/v0/downloads/clear_completed"
+		"$HOST/api/v0/downloads_clear_completed"
 	_assert_status 404 "POST clear_completed {hash:already-cleared} → 404"
 else
 	_skip "DELETE on completed → 409 (no completed entry in test daemon)"
@@ -286,8 +295,10 @@ fi
 
 # --- Summary. -----------------------------------------------------
 echo
+SKIP_NOTE=""
+[ "$SKIP_COUNT" -gt 0 ] && SKIP_NOTE=" ($SKIP_COUNT check(s) skipped)"
 if [ "$FAIL_COUNT" -eq 0 ]; then
-	echo "OK: $TEST_COUNT/$TEST_COUNT passed"
+	echo "OK: $TEST_COUNT/$TEST_COUNT passed$SKIP_NOTE"
 	exit 0
 fi
 echo "FAIL: $FAIL_COUNT/$TEST_COUNT failed"

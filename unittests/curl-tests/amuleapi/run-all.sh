@@ -36,13 +36,50 @@ SCRIPT_DIR=$(cd "$(dirname "$0")" && pwd)
 # follows the script's own location so anyone who checks the repo out
 # elsewhere works without editing this file.
 ROOT="${AMULEAPI_ROOT:-$(cd "$SCRIPT_DIR/../../.." && pwd)}"
-BIN="${AMULEAPI_BIN:-$ROOT/build-macos/src/webapi/amuleapi}"
+# Locate the amuleapi binary the sub-instances need. Deliberately NOT falling
+# back to PATH: an installed package would silently be tested in place of the
+# working tree, which is worse than not finding anything. Set AMULEAPI_BIN to
+# point somewhere else on purpose.
+#
+# Any build*/ directory counts, not a fixed list of three: per-branch and
+# per-arch trees are normal, and a name this function has never heard of used
+# to mean a silent skip. Where several exist the NEWEST wins -- picking the
+# first match let a stale build/ supply the binary while the tree under test
+# was built somewhere else, which is the one failure mode that produces a
+# confident wrong answer rather than a missing one. Unmatched globs stay
+# literal and fail the -x test, so no nullglob is needed.
+_find_amuleapi_bin() {
+	local root=$1 c best=
+	for c in "$root"/src/webapi/amuleapi \
+		"$root"/build*/src/webapi/amuleapi \
+		"$root"/_build/src/webapi/amuleapi \
+		"$root"/cmake-build-*/src/webapi/amuleapi; do
+		[ -x "$c" ] || continue
+		if [ -z "$best" ] || [ "$c" -nt "$best" ]; then
+			best=$c
+		fi
+	done
+	[ -n "$best" ] || return 1
+	echo "$best"
+}
+
+BIN="${AMULEAPI_BIN:-$(_find_amuleapi_bin "$ROOT")}"
+
+# The daemon every phase talks to. Overridable so the whole suite can be
+# pointed at a daemon that is not on the stock EC port.
+EC_HOST=${EC_HOST:-127.0.0.1}
+EC_PORT=${EC_PORT:-4712}
+EC_PASSWORD=${EC_PASSWORD:-amule}
 
 if [ ! -x "$BIN" ]; then
-	echo "FATAL: amuleapi binary not found at $BIN" >&2
-	echo "       set AMULEAPI_BIN env var to point at it." >&2
+	echo "FATAL: no usable amuleapi binary under $ROOT." >&2
+	echo "       set AMULEAPI_BIN to point at one." >&2
 	exit 2
 fi
+# Print what was resolved, not what was requested: with several build
+# trees around, which one this run actually exercised is the first thing
+# to check when a result looks wrong.
+echo "bin=$BIN"
 
 # One stable 256-bit JWT secret (64 hex chars) reused by every phase's
 # daemon. See run_phase: a fixed secret makes a brief instance overlap
@@ -102,7 +139,7 @@ run_phase() {
 	# amuleapi has no --password: it takes the EC credential from the
 	# ephemeral token the core writes when it spawns amuleapi, or from
 	# amuleapi.conf. Nothing spawns it here, so seed the config file.
-	sed -i'.bak' "s|^Password=.*|Password=amule|" /tmp/amuleapi-regtest/amuleapi.conf
+	sed -i'.bak' "s|^Password=.*|Password=$EC_PASSWORD|" /tmp/amuleapi-regtest/amuleapi.conf
 	rm -f /tmp/amuleapi-regtest/amuleapi.conf.bak
 	# 27-static-frontend exercises the static-frontend serve path. It
 	# plants symlinks + an oversized file into StaticRoot during the
@@ -125,7 +162,7 @@ run_phase() {
 		rm -f /tmp/amuleapi-regtest/amuleapi.conf.bak
 	fi
 	"$BIN" --config-dir=/tmp/amuleapi-regtest \
-		--host=127.0.0.1 --port=4712 \
+		--host="$EC_HOST" --port="$EC_PORT" \
 		> /tmp/amuleapi.log 2>&1 &
 	# Poll /version until the daemon is ready instead of guessing the
 	# cold-start time. The first EC GET_UPDATE roundtrip can take a
@@ -147,6 +184,7 @@ run_phase() {
 	# so the smoke doesn't depend on the operator's library already
 	# holding a shared file. Unset is fine unless a phase needs it.
 	AMULEAPI_BIN="$BIN" \
+	EC_HOST="$EC_HOST" EC_PORT="$EC_PORT" EC_PASSWORD="$EC_PASSWORD" \
 	AMULEAPI_CONFIG_DIR=/tmp/amuleapi-regtest \
 	AMULEAPI_LOG=/tmp/amuleapi.log \
 	AMULE_SHARED_DIR="${AMULE_SHARED_DIR:-}" \
@@ -218,6 +256,8 @@ PHASES=(
 	36-shared-reload.sh
 	37-shared-availability-parts.sh
 	38-chat.sh
+	39-shared-media-refresh.sh
+	40-http-conformance.sh
 )
 
 # Override list from the command line if given.

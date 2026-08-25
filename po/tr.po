@@ -9,8 +9,8 @@ msgid ""
 msgstr ""
 "Project-Id-Version: aMule\n"
 "Report-Msgid-Bugs-To: https://github.com/amule-org/amule/issues\n"
-"POT-Creation-Date: 2026-08-25 08:51+0200\n"
-"PO-Revision-Date: 2026-08-22 15:48+0000\n"
+"POT-Creation-Date: 2026-08-25 21:00+0200\n"
+"PO-Revision-Date: 2026-08-25 10:19+0000\n"
 "Last-Translator: \n"
 "Language-Team: Turkish <li@li.org>\n"
 "Language: tr\n"
@@ -500,6 +500,11 @@ msgstr ""
 #: src/amule.cpp
 msgid "Server hostname notified"
 msgstr "Sunucu makine adı uyarıldı"
+
+#: src/amule.cpp
+#, c-format
+msgid "Media metadata: probed file is no longer known, result discarded (%s)"
+msgstr "Ortam üst verileri: incelenen dosya artık bilinmiyor, sonuç görmezden gelindi (%s)"
 
 #: src/amule.cpp
 #, c-format
@@ -1058,11 +1063,6 @@ msgstr "1.x (eMule s.0.%u üzerine kurulu)"
 
 #: src/BaseClient.cpp
 #, c-format
-msgid "Failed to retrieve shared files from user '%s'"
-msgstr "'%s' kullanıcısının paylaşılmış dosyalarını alma başarısız"
-
-#: src/BaseClient.cpp
-#, c-format
 msgid "NickName: %s ID: %u"
 msgstr "Rumuz: %s ID: %u"
 
@@ -1103,6 +1103,11 @@ msgstr "'%s' kullanıcısından yeni ileti geldi (IP: %s)"
 #, c-format
 msgid "User %s (%u) requested sharedfiles-list for not existing directory '%s' -> Ignored"
 msgstr "Kullanıcı %s (%u), var olmayan '%s' dizini için paylaşılmış dosya listenizi istedi. -> Görmezden gelindi."
+
+#: src/BrowseManager.cpp
+#, c-format
+msgid "Failed to retrieve shared files from user '%s'"
+msgstr "'%s' kullanıcısının paylaşılmış dosyalarını alma başarısız"
 
 #: src/CanceledFileList.cpp src/KnownFileList.cpp src/SearchList.cpp
 #, c-format
@@ -2189,23 +2194,28 @@ msgid "Could not save the amuleapi password: %s"
 msgstr "amuleapi parolası kaydedilemedi: %s"
 
 #: src/ExternalConn.cpp
-#, fuzzy
 msgid "Missing chat session id"
-msgstr "Yeni sohbet oturumu başladı"
+msgstr "Eksik sohbet oturum kimliği"
 
 #: src/ExternalConn.cpp
-#, fuzzy
 msgid "No such chat session"
-msgstr "Bu sohbet oturumunu kapatır."
+msgstr "Böyle bir sohbet oturumu yok"
+
+#: src/ExternalConn.cpp
+msgid "Media metadata extraction is disabled in preferences"
+msgstr "Ortam üst verileri çıkarılması ayarlarda devre dışı bırakılmış"
+
+#: src/ExternalConn.cpp
+msgid "File is not eligible for media metadata extraction (not an audio/video file, or an incomplete download)"
+msgstr "Dosya, ortam üst verileri çıkarılmasına uygun değil (bir ses/video dosyası değil, veya kısmi bir indirme)"
 
 #: src/ExternalConn.cpp
 msgid "Empty chat message"
-msgstr ""
+msgstr "Boş sohbet mesajı"
 
 #: src/ExternalConn.cpp
-#, fuzzy
 msgid "Unknown chat target"
-msgstr "(Bilinmeyen ad)"
+msgstr "Bilinmeyen sohbet hedefi"
 
 #: src/ExternalConn.cpp
 msgid "Kad is disabled in preferences."
@@ -2857,6 +2867,11 @@ msgid "Migrated existing GeoLite2-Country.mmdb to %s"
 msgstr "Mevcut GeoLite2-Country.mmdb dosyası %s unsuruna taşındı"
 
 #: src/IP2Country.cpp
+#, c-format
+msgid "%s is not a readable MaxMindDB file - discarding it. A fresh copy will be downloaded on the next start, or now via Preferences -> IP2Country -> 'Update now'."
+msgstr "%s okunabilir bir MaxMindDB dosyası değil - görmezden geliniyor. Yeni bir kopya gelecek başlatılma esnasında indirilecektir, veya şimdi Ayarlar -> IP2Country -> 'Şimdi güncelle' yoluyla."
+
+#: src/IP2Country.cpp
 msgid "IP2Country: MaxMind selected as the GeoIP source but no License Key configured. Open Preferences -> IP2Country, paste your free MaxMind License Key and click 'Update now'."
 msgstr "IP2Country: MaxMind, GeoIP kaynağı olarak seçilmiştir fakat hiçbir Lisans Anahtarı yapılandırılmamıştır. Ayarlar -> IP2Country menülerine gidin, ücretsiz MaxMind Lisans Anahtarınızı yapıştırın ve 'Şimdi güncelle' düğmesine tıklayın."
 
@@ -3231,32 +3246,66 @@ msgstr "Ortam üst verileri: hiçbir ffprobe ikilisi bulunamadı. ffmpeg'i kurun
 
 #: src/MediaProbe.cpp
 #, c-format
+msgid "Media metadata: %s is gone, nothing to extract"
+msgstr "Ortam üst verileri: %s artık mevcut değil, çıkarılacak hiçbir şey yok"
+
+#: src/MediaProbe.cpp
+#, c-format
 msgid "Extracting media metadata with ffprobe: %s"
-msgstr ""
+msgstr "ffprobe ile ortam üst verileri çıkarılıyor: %s"
 
 #: src/MediaProbe.cpp
 #, c-format
 msgid "Media metadata: ffprobe timed out or was cancelled for %s"
-msgstr ""
+msgstr "Ortam üst verileri: ffprobe %s için zaman aşımına uğradı veya iptal edildi"
+
+#: src/MediaProbe.cpp
+#, c-format
+msgid "Media metadata: ignoring implausibly large ffprobe output for %s"
+msgstr "Ortam üst verileri: %s için inanılmaz derecede büyük ffprobe çıktısı görmezden geliniyor"
+
+#: src/MediaProbe.cpp
+#, c-format
+msgid "Media metadata: could not run ffprobe (%s) -- check the media metadata settings"
+msgstr "Ortam üst verileri: ffprobe çalıştırılamadı (%s) -- ortam üst verileri ayarlarını kontrol edin"
 
 #: src/MediaProbe.cpp
 #, c-format
 msgid "Media metadata: ffprobe failed (code %d) for %s"
-msgstr ""
+msgstr "Ortam üst verileri: ffprobe başarısız oldu (kod %d), %s dosyası için"
+
+#: src/MediaProbe.cpp
+#, c-format
+msgid "Media metadata: ffprobe found nothing usable in %s"
+msgstr "Ortam üst verileri: ffprobe, %s dahilinde kullanılabilir hiçbir şey bulamadı"
 
 #: src/MediaProbeThread.cpp
 #, c-format
-msgid "Extracted media metadata from %u file (%u failed)"
-msgid_plural "Extracted media metadata from %u files (%u failed)"
-msgstr[0] ""
-msgstr[1] ""
+msgid "Finished extracting media metadata from %u shared file (%u failed)"
+msgid_plural "Finished extracting media metadata from %u shared files (%u failed)"
+msgstr[0] "%u paylaşılan dosyadan ortam üst verilerinin çıkarılması tamamlandı (%u başarısız)"
+msgstr[1] "%u paylaşılan dosyadan ortam üst verilerinin çıkarılması tamamlandı (%u başarısız)"
 
 #: src/MediaProbeThread.cpp
 #, c-format
-msgid "Extracted media metadata from %u file"
-msgid_plural "Extracted media metadata from %u files"
-msgstr[0] ""
-msgstr[1] ""
+msgid "Finished extracting media metadata from %u shared file"
+msgid_plural "Finished extracting media metadata from %u shared files"
+msgstr[0] "%u paylaşılan dosyadan ortam üst verilerinin çıkarılması tamamlandı"
+msgstr[1] "%u paylaşılan dosyadan ortam üst verilerinin çıkarılması tamamlandı"
+
+#: src/MediaProbeThread.cpp
+#, c-format
+msgid "%u further file failed media metadata extraction (not listed individually)"
+msgid_plural "%u further files failed media metadata extraction (not listed individually)"
+msgstr[0] "%u başka dosyadan ortam verilerinin çıkarılması başarısız oldu (tek tek listelenmemiş)"
+msgstr[1] "%u başka dosyadan ortam verilerinin çıkarılması başarısız oldu (tek tek listelenmemiş)"
+
+#: src/MediaProbeThread.cpp
+#, c-format
+msgid "%u further shared file is gone (not listed individually)"
+msgid_plural "%u further shared files are gone (not listed individually)"
+msgstr[0] "%u başka paylaşılan dosya artık mevcut değil (tek tek listelenmemiş)"
+msgstr[1] "%u başka paylaşılan dosya artık mevcut değil (tek tek listelenmemiş)"
 
 #: src/MuleNotebook.cpp src/muuli_wdr.cpp
 msgid "Close"
@@ -6452,11 +6501,15 @@ msgid ""
 "\n"
 "Start the new search anyway?"
 msgstr ""
+"Bir eD2k araması zaten işlemekte. Yeni bir arama başlatmak onu sonlandıracaktır çünkü eD2k protokolü aynı anda sadece bir aramaya izin verir.\n"
+"\n"
+"Halihazırda bulunan sonuçlar muhafaza edilir; sadece yenilerinin gelişi duracaktır.\n"
+"\n"
+"Yine de yeni arama başlatılsın mı?"
 
 #: src/SearchDlg.cpp
-#, fuzzy
 msgid "Search in progress"
-msgstr "Arama süreci: %u %% \n"
+msgstr "Arama devam ediyor"
 
 #: src/SearchDlg.cpp
 msgid "Min size must be smaller than max size. Max size ignored."
@@ -6495,6 +6548,10 @@ msgstr "Kad araması için anahtar kelime yok - iptal ediliyor"
 #: src/SearchList.cpp
 msgid "Unexpected error while attempting Kad search: "
 msgstr "Kad araması sırasında beklenilmeyen hata oluştu. "
+
+#: src/SearchList.cpp
+msgid "Search timed out: the server did not answer."
+msgstr "Arama zaman aşımına uğradı: sunucu cevap vermedi."
 
 #: src/SearchList.cpp
 msgid "Kad search: requested wider results from one more peer."
@@ -6561,6 +6618,45 @@ msgstr "İptal edildi"
 #: src/SearchListCtrl.cpp
 msgid "New"
 msgstr "Yeni"
+
+#: src/SearchProgressReport.cpp
+msgid "running"
+msgstr "çalışıyor"
+
+#: src/SearchProgressReport.cpp
+msgid "finished"
+msgstr "tamamlanmış"
+
+#: src/SearchProgressReport.cpp
+msgid "idle"
+msgstr "boşta"
+
+#: src/SearchProgressReport.cpp
+#, c-format
+msgid "Search %u: %s, %u %% (%u results)\n"
+msgstr "Arama %u: %s, %% %u (%u sonuç)\n"
+
+#: src/SearchProgressReport.cpp
+#, c-format
+msgid "Search %u \"%s\": %s, %u %% (%u results)\n"
+msgstr "Arama %u \"%s\": %s, %% %u (%u sonuç)\n"
+
+#: src/SearchProgressReport.cpp src/TextClient.cpp
+msgid "Search expired or unknown ID. Start a new search.\n"
+msgstr "Arama süresi dolmuş veya bilinmeyen kimlik. Yeni bir arama başlatın.\n"
+
+#: src/SearchProgressReport.cpp
+#, c-format
+msgid "Search progress: %u %% \n"
+msgstr "Arama süreci: %u %% \n"
+
+#: src/SearchProgressReport.cpp
+msgid "Search progress not available"
+msgstr "Arama süreci görüntülenemiyor"
+
+#: src/SearchProgressReport.cpp
+msgid "No search to report on.\n"
+msgstr "Rapor edilecek hiçbir arama yok.\n"
 
 #: src/ServerConnect.cpp
 msgid "Failed to connect to all obfuscated static servers listed. Making another pass without obfuscation."
@@ -7104,8 +7200,8 @@ msgstr "Paylaşılan dizin izleyici: arka uç taşması/hatası (%s); tam yenide
 #, c-format
 msgid "Shared-dir watcher: %u new subdirectory found since last run, rescanning shares"
 msgid_plural "Shared-dir watcher: %u new subdirectories found since last run, rescanning shares"
-msgstr[0] ""
-msgstr[1] ""
+msgstr[0] "Paylaşılan dizin izleyici: son çalıştırılmadan beri %u yeni alt dizin bulundu, paylaşımlar tekrar taranıyor"
+msgstr[1] "Paylaşılan dizin izleyici: son çalıştırılmadan beri %u yeni alt dizin bulundu, paylaşımlar tekrar taranıyor"
 
 #: src/SharedDirWatcher.cpp
 msgid "Shared-dir watcher: events dropped by backend, forcing a full shared-files reload to resync"
@@ -7146,35 +7242,46 @@ msgid "No shareable files found in directory: %s"
 msgstr "Dizinde paylaşılabilir dosya bulunamadı: %s"
 
 #: src/SharedFileList.cpp
-#, fuzzy, c-format
+msgid "Media metadata extraction is disabled in preferences, so there is nothing to re-extract."
+msgstr "Ortam üst verileri çıkarımı ayarlada devre dışı bırakılmış, yani yeniden çıkarılacak hiçbir şey yok."
+
+#: src/SharedFileList.cpp
+#, c-format
+msgid "Re-extracting media metadata for %u shared file"
+msgid_plural "Re-extracting media metadata for %u shared files"
+msgstr[0] "Ortam üst verileri %u paylaşılan dosya için tekrar çıkarılıyor"
+msgstr[1] "Ortam üst verileri %u paylaşılan dosya için tekrar çıkarılıyor"
+
+#: src/SharedFileList.cpp
+#, c-format
 msgid "Now sharing file: %s"
-msgstr "%s dosyası kaydedilirken hata: %s"
+msgstr "Artık paylaşılan dosya: %s"
 
 #: src/SharedFileList.cpp
-#, fuzzy, c-format
+#, c-format
 msgid "Stopped sharing removed file: %s"
-msgstr "Server.met dosyası yükleniyor: %s"
+msgstr "Kaldırılan dosyanın paylaşılması durduruldu: %s"
 
 #: src/SharedFileList.cpp
-#, fuzzy, c-format
+#, c-format
 msgid "Stopped sharing %u file under removed directory: %s"
 msgid_plural "Stopped sharing %u files under removed directory: %s"
-msgstr[0] "Dizinde paylaşılabilir dosya bulunamadı: %s"
-msgstr[1] "Dizinde paylaşılabilir dosya bulunamadı: %s"
+msgstr[0] "Kaldırılan dizindeki %u dosyanın paylaşılması durduruldu: %s"
+msgstr[1] "Kaldırılan dizindeki %u dosyanın paylaşılması durduruldu: %s"
 
 #: src/SharedFileList.cpp
-#, fuzzy, c-format
+#, c-format
 msgid "Now sharing %u file found in a new shared directory"
 msgid_plural "Now sharing %u files found in new shared directories"
-msgstr[0] "Dizinde paylaşılabilir dosya bulunamadı: %s"
-msgstr[1] "Dizinde paylaşılabilir dosya bulunamadı: %s"
+msgstr[0] "Yeni paylaşılan dizindeki %u dosya artık paylaşılıyor"
+msgstr[1] "Yeni paylaşılan dizinlerdeki %u dosya artık paylaşılıyor"
 
 #: src/SharedFileList.cpp
-#, fuzzy, c-format
+#, c-format
 msgid "Discovered %u new shared file"
 msgid_plural "Discovered %u new shared files"
-msgstr[0] "Bilinen %i adet paylaşılmış dosya bulundu"
-msgstr[1] "Bilinen %i adet paylaşılmış dosya bulundu"
+msgstr[0] "Yeni paylaşılan %u dosya bulundu"
+msgstr[1] "Yeni paylaşılan %u dosya bulundu"
 
 #: src/SharedFilePeersListCtrl.cpp src/SourceListCtrl.cpp
 msgid "User Name"
@@ -7229,6 +7336,10 @@ msgid "Verify Local Data"
 msgstr "Yerel Verileri Kontrol Et"
 
 #: src/SharedFilesCtrl.cpp
+msgid "Re-extract &media metadata"
+msgstr "&Ortam üst verilerini tekrar çıkar"
+
+#: src/SharedFilesCtrl.cpp
 msgid "Add files in collection to transfer list"
 msgstr "Koleksiyondaki dosyaları aktarım listesine ekle"
 
@@ -7268,6 +7379,49 @@ msgstr "Seçili dosyaları bir emulecollection dosyasına aktar"
 #, c-format
 msgid "Verify Local Data on PartFile is currently not supported: %s"
 msgstr "PartFile üzerinde Yerel Veri Kontrolü güncel olarak desteklenmemektedir: %s"
+
+#: src/SharedFilesCtrl.cpp
+#, c-format
+msgid "Media metadata: skipping %u incomplete download"
+msgid_plural "Media metadata: skipping %u incomplete downloads"
+msgstr[0] "Ortam üst verileri: %u tamamlanmamış indirme görmezden geliniyor"
+msgstr[1] "Ortam üst verileri: %u tamamlanmamış indirme görmezden geliniyor"
+
+#: src/SharedFilesCtrl.cpp
+#, c-format
+msgid "Media metadata: skipping %u file that is not audio or video"
+msgid_plural "Media metadata: skipping %u files that are not audio or video"
+msgstr[0] "Ortam üst verileri: ses veya video olmayan %u dosya görmezden geliniyor"
+msgstr[1] "Ortam üst verileri: ses veya video olmayan %u dosya görmezden geliniyor"
+
+#: src/SharedFilesCtrl.cpp
+#, c-format
+msgid "Re-extract media metadata for %u file?"
+msgid_plural "Re-extract media metadata for %u files?"
+msgstr[0] "%u dosya için ortam üst verileri tekrar çıkarılsın mı?"
+msgstr[1] "%u dosya için ortam üst verileri tekrar çıkarılsın mı?"
+
+#: src/SharedFilesCtrl.cpp
+#, c-format
+msgid "%u incomplete download will be skipped."
+msgid_plural "%u incomplete downloads will be skipped."
+msgstr[0] "%u kısmi indirme atlanacaktır."
+msgstr[1] "%u kısmi indirme atlanacaktır."
+
+#: src/SharedFilesCtrl.cpp
+#, c-format
+msgid "%u file is not audio or video and will be skipped."
+msgid_plural "%u files are not audio or video and will be skipped."
+msgstr[0] "%u dosya ses veya video değildir ve atlanacaktır."
+msgstr[1] "%u dosya ses veya video değildir ve atlanacaktır."
+
+#: src/SharedFilesCtrl.cpp
+msgid "This runs in the background. Progress is reported in the log."
+msgstr "Bu, arka planda çalışır. İlerleyiş kütükte raporlanır."
+
+#: src/SharedFilesCtrl.cpp
+msgid "Re-extract media metadata"
+msgstr "Ortam üst verilerini tekrar çıkar"
 
 #: src/SharedFilesCtrl.cpp
 msgid "You need a HighID to create a valid sourcelink"
@@ -7583,6 +7737,10 @@ msgid "Execute <str> and exit."
 msgstr "<str> çalıştır ve çık."
 
 #: src/TextClient.cpp
+msgid "Separate list fields with spaces, as before, instead of tabs."
+msgstr "Liste alanlarını eskisi gibi, sekmeler yerine boşluklar ile ayırın."
+
+#: src/TextClient.cpp
 msgid "Invalid IP format. Use xxx.xxx.xxx.xxx:xxxx\n"
 msgstr "Geçersiz IP biçimi. xxx.xxx.xxx.xxx:xxxx kullanınız.\n"
 
@@ -7754,22 +7912,9 @@ msgid "[PartFile]"
 msgstr "[Parça Dosyası]"
 
 #: src/TextClient.cpp
-msgid "Search expired or unknown ID. Start a new search.\n"
-msgstr "Arama süresi dolmuş veya bilinmeyen kimlik. Yeni bir arama başlatın.\n"
-
-#: src/TextClient.cpp
 #, c-format
 msgid "Number of search results: %i\n"
 msgstr "Arama sonuçları sayısı:%i\n"
-
-#: src/TextClient.cpp
-#, c-format
-msgid "Search progress: %u %% \n"
-msgstr "Arama süreci: %u %% \n"
-
-#: src/TextClient.cpp
-msgid "Search progress not available"
-msgstr "Arama süreci görüntülenemiyor"
 
 #: src/TextClient.cpp
 #, c-format
@@ -8187,19 +8332,19 @@ msgid "aMule text client"
 msgstr "aMule metin aracı"
 
 #: src/ThreadTasks.cpp
-#, fuzzy, c-format
+#, c-format
 msgid "Hashing downloaded file: %s"
-msgstr "Dosya siliniyor: %s"
+msgstr "İndirilen dosyanın karma değeri hesaplanıyor: %s"
 
 #: src/ThreadTasks.cpp
-#, fuzzy, c-format
+#, c-format
 msgid "Hashing file: %s"
-msgstr "Dosya siliniyor: %s"
+msgstr "Dosyanın karma değeri hesaplanıyor: %s"
 
 #: src/ThreadTasks.cpp
-#, fuzzy, c-format
+#, c-format
 msgid "Rebuilding AICH hashset for file: %s"
-msgstr "Şu dosya için gönderimler sürdürülüyor: %s"
+msgstr "AICH karma değer grubu dosya için yeniden derleniyor: %s"
 
 #: src/ThreadTasks.cpp
 #, c-format

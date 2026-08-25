@@ -30,7 +30,8 @@
 #include "Refresher.h"
 
 #include "MD4Hash.h"
-#include "config.h" // VERSION
+#include "PathPatterns.h" // StripTrailingSlash
+#include "config.h"       // VERSION
 
 #include <ec/cpp/RemoteConnect.h> // SetEcConnectionLostHandler
 #include <wx/filename.h>          // wxFileName::FileExists
@@ -48,6 +49,14 @@
 #include <cstdlib>
 #include <iostream>
 #include <thread>
+
+// mallopt. Guarded because macOS has no <malloc.h>; M_ARENA_MAX below then
+// gates the call on the libc actually providing it.
+#if defined(__has_include)
+#if __has_include(<malloc.h>)
+#include <malloc.h>
+#endif
+#endif
 
 IMPLEMENT_APP(CamuleapiApp)
 
@@ -86,6 +95,53 @@ void HandleEcConnectionLost()
 {
 	g_ecConnectionLost.store(true, std::memory_order_release);
 	g_shutdownRequested.store(true, std::memory_order_release);
+}
+
+// Bound glibc's per-thread malloc arenas: it hands out up to 8 x ncores (the
+// *host's* cores, which a container quota does not lower) and a non-main arena
+// never returns its high-water mark, so one handler's peak becomes permanent
+// RSS once per pool thread.
+//
+// 2 reserves nothing for the refresher -- reuse_arena() rotates main_arena in
+// too -- it buys a second lock domain and half the churn in an mmap'd arena
+// madvise can reclaim. An explicit MALLOC_ARENA_MAX or glibc.malloc.arena_max
+// wins; a zero or empty one does not, since glibc rejects it (minval 1) and
+// falls back to its own default.
+void CapMallocArenas()
+{
+#if defined(M_ARENA_MAX)
+	// Base 0, not 10: glibc's tunable parser takes hex and octal, so a base-10
+	// read of MALLOC_ARENA_MAX=0x8 gives 0 and we would cap over an operator
+	// who set 8. A value glibc itself rejects still parses as 0 here, which is
+	// what makes the cap apply to it.
+	const char *env = std::getenv("MALLOC_ARENA_MAX");
+	if (env && std::strtol(env, nullptr, 0) > 0) {
+		return;
+	}
+	const char *tunables = std::getenv("GLIBC_TUNABLES");
+	if (tunables) {
+		static const char key[] = "glibc.malloc.arena_max=";
+		const char *hit = std::strstr(tunables, key);
+		if (hit && std::strtol(hit + sizeof(key) - 1, nullptr, 0) > 0) {
+			return;
+		}
+	}
+	// M_ARENA_MAX does not set no_dyn_threshold, unlike M_MMAP_THRESHOLD.
+	mallopt(M_ARENA_MAX, 2);
+#endif
+}
+
+// glibc shrinks an arena's top on free (systrim / heap_trim) but never the
+// free space fragmented below it, which is what a tick decoding the whole
+// daemon state leaves. malloc_trim walks every arena's free chunks instead.
+//
+// M_TRIM_THRESHOLD, not __GLIBC__ alone: the macro comes from <malloc.h>,
+// included conditionally above, so it is what says the declaration is in scope.
+void TrimMallocArenas()
+{
+#if defined(__GLIBC__) && defined(M_TRIM_THRESHOLD)
+	malloc_trim(0);
+#endif
 }
 
 } // namespace
@@ -170,6 +226,10 @@ bool CamuleapiApp::OnCmdLineParsed(wxCmdLineParser &parser)
 
 bool CamuleapiApp::OnInit()
 {
+	// Before any secondary thread exists: an arena is assigned on a thread's
+	// first malloc and cached in its TLS, so a later cap cannot move it.
+	CapMallocArenas();
+
 	if (!CaMuleExternalConnector::OnInit()) {
 		return false;
 	}
@@ -477,11 +537,13 @@ void CamuleapiApp::TextShell(const wxString & /*prompt*/)
 	auto streaming_resolver = [](const CHttpServer::Request &req) {
 		if (req.method != "GET" && req.method != "HEAD")
 			return false;
-		// Tolerate optional ?query / trailing slashes.
+		// Tolerate optional ?query / trailing slash. Both are handled
+		// the same way the dispatcher handles them, so a request that
+		// streams here is exactly the set that would route there.
 		const std::string &t = req.target;
 		const std::size_t q = t.find('?');
-		std::string path = (q == std::string::npos) ? t : t.substr(0, q);
-		return path == "/api/v0/events";
+		const std::string path = (q == std::string::npos) ? t : t.substr(0, q);
+		return web_api_path::StripTrailingSlash(path) == "/api/v0/events";
 	};
 	auto streaming_handler = [dispatcher](const CHttpServer::Request &req,
 					 CHttpServer::Writer &writer,
@@ -506,7 +568,19 @@ void CamuleapiApp::TextShell(const wxString & /*prompt*/)
 	m_ec_service.Start([this](const CECPacket *r) { return SendRecvMsg_v2(r); });
 
 	m_http = std::unique_ptr<CHttpServer>(new CHttpServer());
-	if (!m_http->Start(bind, port, handler, streaming_resolver, streaming_handler, streaming_preflight)) {
+	// Lets the transport stamp CORS on the replies it builds itself (408 /
+	// 413 / 431), which never reach the dispatcher's CORS pass.
+	auto cors_stamper = [dispatcher](std::map<std::string, std::string> &headers,
+				    const std::string &origin_header) {
+		dispatcher->StampCorsForTransport(headers, origin_header);
+	};
+	if (!m_http->Start(bind,
+		    port,
+		    handler,
+		    streaming_resolver,
+		    streaming_handler,
+		    streaming_preflight,
+		    cors_stamper)) {
 		Show(CFormat("amuleapi: HTTP server failed to start: %s\n") %
 			wxString::FromUTF8(m_http->LastError().c_str()));
 		return;
@@ -547,6 +621,18 @@ void CamuleapiApp::TextShell(const wxString & /*prompt*/)
 	constexpr unsigned kEcFailExitAfter = 300;
 	unsigned ec_consecutive_failures = 0;
 	bool ec_warn_logged = false;
+	// Diffing stops only after a few consecutive ticks with nothing
+	// subscribed. A client that drops and comes straight back -- a page
+	// reload, a proxy hiccup -- must not suspend anything: resuming costs it
+	// the `resync` below, and re-seeding every collection is the most
+	// expensive thing this daemon can be asked to do. Ticks inside the grace
+	// keep publishing, so the returning client replays them instead.
+	constexpr unsigned kIdleTicksBeforeSuspend = 5;
+	unsigned idle_ticks = 0;
+	// Off the per-tick path: the call takes every arena's lock. Lands ~61 s
+	// apart, further if a tick overruns its second.
+	constexpr unsigned kTrimEveryTicks = 60;
+	unsigned trim_countdown = 0;
 	while (!g_shutdownRequested.load(std::memory_order_acquire)) {
 		const auto cycle_start = std::chrono::steady_clock::now();
 		if (was_failed) {
@@ -562,7 +648,27 @@ void CamuleapiApp::TextShell(const wxString & /*prompt*/)
 			// here, NOT inside RefresherTick — so mutation handlers
 			// calling RefresherTick inline from the HTTP thread
 			// don't race with this loop's diff walk.
-			webapi::EmitDiffsForEventBus(*this, m_state);
+			//
+			// Skipped once nothing has been subscribed for a while --
+			// see CEventBus's subscriber accounting. The first tick
+			// back re-baselines silently and then announces, instead
+			// of emitting one event per record.
+			if (m_event_bus->SubscriberCount() == 0) {
+				if (idle_ticks < kIdleTicksBeforeSuspend) {
+					++idle_ticks;
+					webapi::EmitDiffsForEventBus(*this, m_state);
+				} else {
+					m_event_bus->MarkSuspended();
+				}
+			} else {
+				idle_ticks = 0;
+				if (m_event_bus->TakeSuspended()) {
+					webapi::PrimeDiffBaseline(*this, m_state);
+					m_event_bus->Publish("resync", "{\"reason\":\"idle\"}");
+				} else {
+					webapi::EmitDiffsForEventBus(*this, m_state);
+				}
+			}
 		} else {
 			m_state.MarkTickFailure();
 			was_failed = true;
@@ -600,6 +706,16 @@ void CamuleapiApp::TextShell(const wxString & /*prompt*/)
 				<< std::chrono::duration_cast<std::chrono::milliseconds>(kOverrunWarn).count()
 				<< " ms budget) — likely EC-mutex contention or a "
 				   "stalled SendRecvSerialized.\n";
+		}
+
+		// Deliberately not gated on "nobody subscribed": that gets it wrong
+		// both ways -- never firing while a browser tab holds the stream, and
+		// firing mid-load for a client that only polls REST.
+		if (trim_countdown > 0) {
+			--trim_countdown;
+		} else {
+			TrimMallocArenas();
+			trim_countdown = kTrimEveryTicks;
 		}
 		// Sleep the REMAINDER of the target cycle in small slices so
 		// shutdown latency stays bounded. A tick that already

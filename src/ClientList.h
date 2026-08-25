@@ -381,13 +381,6 @@ public:
 	{
 		m_currentDirectCallbacks.remove(CCLIENTREF(toRemove, ""));
 	}
-	// Pending browses. A browse that never hears anything back has no other
-	// way to end: see CUpDownClient::RefreshBrowseDeadline.
-	void AddPendingBrowse(CUpDownClient *toAdd);
-	void RemovePendingBrowse(CUpDownClient *toRemove)
-	{
-		m_pendingBrowses.remove(CCLIENTREF(toRemove, ""));
-	}
 	/**
 	 * The callback-request throttle. Counted against the peer's rate-limit
 	 * scope, not its exact address: see PeerIdentity::RateLimitScope(), which
@@ -404,8 +397,6 @@ protected:
 	void CleanUpClientList();
 
 	void ProcessDirectCallbackList();
-
-	void ProcessPendingBrowseList();
 
 private:
 	/**
@@ -499,10 +490,6 @@ private:
 
 	typedef CClientRefList DirectCallbackList;
 	DirectCallbackList m_currentDirectCallbacks;
-	//! Clients with a browse in flight, walked every tick to expire the silent
-	//! ones. Same shape as m_currentDirectCallbacks, and kept small the same
-	//! way: entries leave on the browse's terminal mark, not on a sweep.
-	CClientRefList m_pendingBrowses;
 	ScopeAndTicksList m_directCallbackRequests;
 };
 

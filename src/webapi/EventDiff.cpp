@@ -128,13 +128,22 @@ std::string ToJsonDownloadEvent(const FileSnapshot &f)
 	return o.str();
 }
 
-// comments_updated event payload — the file's full comment/rating list, matching
-// the GET /downloads/{hash}/comments body. Covers both retrieved Kad notes and
-// comments reported by connected ed2k sources (they share source_comments).
+// comments_updated event payload — the GET /downloads/{hash}/comments body
+// plus `hash`. Covers both retrieved Kad notes and comments reported by
+// connected ed2k sources (they share source_comments).
+//
+// A strict superset of the endpoint, deliberately: the event needs `hash`
+// because nothing else in the frame identifies the file, and it needs
+// `kad_comment_search_running` because that flag is exactly what a client
+// wants while a POST /downloads/{hash}/comments lookup is in flight. It used
+// to carry the first and not the second, so a client that followed the docs
+// and fed the event into the view it built from the endpoint silently lost
+// the in-flight indicator.
 std::string ToJsonCommentsEvent(const FileSnapshot &f)
 {
 	std::ostringstream o;
 	o << "{\"hash\":\"" << EscJson(f.hash) << "\""
+	  << ",\"kad_comment_search_running\":" << (f.download.kad_comment_searching ? "true" : "false")
 	  << ",\"count\":" << f.download.source_comments.size() << ",\"comments\":[";
 	bool first = true;
 	for (const auto &c : f.download.source_comments) {
@@ -169,7 +178,19 @@ std::string ToJsonSharedEvent(const FileSnapshot &f)
 	  << ",\"upload_speed_bps\":" << f.shared.upload_speed_bps
 	  << ",\"uploading\":" << f.shared.uploading_count << ",\"last_upload\":" << f.shared.last_upload
 	  << ",\"shared_since\":" << f.shared.shared_since
-	  << ",\"hashing_progress\":" << SharedHashingProgress(f) << "}";
+	  << ",\"hashing_progress\":" << SharedHashingProgress(f);
+	// Media metadata rides the event because a metadata re-extraction is
+	// otherwise invisible to a subscriber: the refresh endpoints answer 202
+	// with no result, so this is how a client learns a probe landed. Six
+	// small scalars, unlike the per-part arrays the list endpoints omit.
+	if (f.has_media) {
+		o << ",\"media\":{\"length_s\":" << f.media.length_s << ",\"bitrate\":" << f.media.bitrate
+		  << ",\"codec\":\"" << EscJson(f.media.codec) << "\""
+		  << ",\"artist\":\"" << EscJson(f.media.artist) << "\""
+		  << ",\"album\":\"" << EscJson(f.media.album) << "\""
+		  << ",\"title\":\"" << EscJson(f.media.title) << "\"}";
+	}
+	o << "}";
 	return o.str();
 }
 
@@ -341,6 +362,13 @@ bool EqualDownload(const FileSnapshot &a, const FileSnapshot &b)
 // change drives the separate comments_updated event, not download_updated).
 bool EqualComments(const FileSnapshot &a, const FileSnapshot &b)
 {
+	// The in-flight flag is part of the payload, so it has to be part of
+	// the comparison: without it the true->false edge at the end of a Kad
+	// lookup fires no event at all, and a `?channels=comments` subscriber
+	// is left with its spinner stuck on. Every field the event emits must
+	// be compared here or the event cannot announce it changing.
+	if (a.download.kad_comment_searching != b.download.kad_comment_searching)
+		return false;
 	const auto &ca = a.download.source_comments;
 	const auto &cb = b.download.source_comments;
 	if (ca.size() != cb.size())
@@ -367,6 +395,16 @@ bool EqualShared(const FileSnapshot &a, const FileSnapshot &b)
 	       a.shared.uploading_count == b.shared.uploading_count &&
 	       a.shared.last_upload == b.shared.last_upload &&
 	       a.shared.shared_since == b.shared.shared_since &&
+	       // Media metadata, so a re-extraction emits shared_updated at all.
+	       // Without these a file whose metadata just changed compares EQUAL
+	       // and the refresh is invisible to every subscriber -- which is the
+	       // only progress signal the 202-returning refresh endpoints have.
+	       // These change once per probe, not per tick, so they cost nothing
+	       // in event volume.
+	       a.has_media == b.has_media && a.media.length_s == b.media.length_s &&
+	       a.media.bitrate == b.media.bitrate && a.media.codec == b.media.codec &&
+	       a.media.artist == b.media.artist && a.media.album == b.media.album &&
+	       a.media.title == b.media.title &&
 	       // Through the accessor, not the raw field: a shared download's
 	       // progress lives on the download side, and comparing the raw
 	       // field would hold every tick of it back from shared_updated.
@@ -476,9 +514,9 @@ void DiffMap(CEventBus &bus,
 // For hash-keyed file events emit removed payloads as
 // `{"hash":"..."}` so consumers can drop the cache entry without
 // needing the old object.
-std::string RemovedHashPayload(const FileSnapshot &f)
+std::string RemovedHashPayload(const std::string &hash)
 {
-	return "{\"hash\":\"" + EscJson(f.hash) + "\"}";
+	return "{\"hash\":\"" + EscJson(hash) + "\"}";
 }
 
 // Every ECID-keyed collection identifies a removed entry the same way, now
@@ -543,6 +581,21 @@ void EnforceSinglePublisher()
 	std::abort();
 }
 
+// Every file event resolves its payload through `prev.files` after the locked
+// walk, which holds only because nothing erases from that map in between: the
+// `gone` sweep runs after the batch is built, and `gone` is disjoint from
+// everything the walk recorded. Unreachable today -- but a dropped event is
+// invisible, and a lost `shared_removed` leaves a ghost row on every client
+// until something else happens to touch that file. Hard-abort for the same
+// reason EnforceSinglePublisher does: the check has to survive -DNDEBUG,
+// because that is where the ordering will actually get broken.
+[[noreturn]] void AbortOnMissingBaseline(const char *event_name, std::uint32_t ecid)
+{
+	std::cerr << "amuleapi: file diff lost the baseline entry for ECID " << ecid << " while building "
+		  << event_name << "; the prev.files erase has moved ahead of the batch build.\n";
+	std::abort();
+}
+
 } // namespace
 
 // One chat message as the `message` object both the SSE payload and
@@ -587,14 +640,12 @@ void PublishChatEvents(CEventBus &bus,
 void EmitDiffsAndUpdate(CEventBus &bus, LastSeenState &prev, const CState &state)
 {
 	EnforceSinglePublisher();
-	// Snapshot the current state under its read locks. Each accessor
-	// takes the shared_timed_mutex shared, copies, and returns. For
-	// files we use the unfiltered view (Files() — not the role-filtered
-	// Downloads/Shared) so the diff below sees role-flag transitions:
-	// a file that flipped is_shared false→true on an existing ECID
-	// must fire `shared_added` even though it's been in the unified
-	// map all along.
-	auto new_files = ByEcid(state.Files());
+	// Snapshot the current state under its read locks. Each accessor takes the
+	// shared_timed_mutex shared, copies, and returns. Files are the exception,
+	// walked in place further down: the diff needs the unified map, not a
+	// role-filtered view of it, so it can see a file that flipped is_shared
+	// false→true on an existing ECID and fire `shared_added` for it even though
+	// the entry was there all along.
 	auto new_servers = ByEcid(state.Servers());
 	auto new_friends = ByEcid(state.Friends());
 	auto new_clients = ByEcid(state.Clients());
@@ -620,67 +671,153 @@ void EmitDiffsAndUpdate(CEventBus &bus, LastSeenState &prev, const CState &state
 	const KadSnapshot &new_kad = new_dashboard.kad;
 	const bool new_ec = new_dashboard.ec_connected;
 
-	// Files: role-flag-aware diff. download_* fires on is_downloading
-	// transitions; shared_* on is_shared transitions. A single tick
-	// can fire both for the same file (e.g. partfile becoming shared
-	// + receiving a stat update on the download side).
+	// Files: role-flag-aware diff, run against the live map rather than a copy
+	// of it. download_* fires on is_downloading transitions, shared_* on
+	// is_shared transitions, and a single tick can fire both for the same file
+	// (a partfile becoming shared while its download side also moved).
+	//
+	// prev.files is a comparison baseline, not a mirror: an entry is rewritten
+	// exactly when a predicate below reports a difference, so the fields those
+	// predicates read stay fresh and others may lag. A new predicate has to go
+	// into the write-back condition too, not only the emit condition.
 	{
-		std::vector<std::pair<std::string, std::string>> batch;
-		batch.reserve(new_files.size());
-		const auto push = [&](const char *name, const std::string &payload) {
-			batch.emplace_back(name, payload);
+		// Decided under the read lock, serialised after it. The payloads are
+		// the full snapshot shape, so a cold-start tick or a shared-files
+		// reload builds one per file; doing that inside the lock would queue
+		// the refresher's own writer and every reader behind it, which is the
+		// cost this change exists to remove. What the walk records instead is
+		// the event and its subject: a hash for a removal, an ECID for
+		// everything else, resolved against `prev.files` once the lock is
+		// released -- the write-back below leaves that entry equal to the live
+		// one, so it is the same object the payload would have been built from.
+		// Removals name their subject by ECID for the same reason: copying the
+		// hash out would put one string allocation per removed file back under
+		// the lock, and `prev.files` still holds the entry -- the `gone` erase
+		// is deferred until the batch is built.
+		enum class Change
+		{
+			DownloadAdded,
+			DownloadUpdated,
+			SharedAdded,
+			SharedUpdated,
+			CommentsUpdated,
 		};
-		// _removed first — clients can tear down their cache slot
-		// before the _added/_updated for the same ECID lands.
-		for (const auto &kv : prev.files) {
-			const auto it = new_files.find(kv.first);
-			if (it == new_files.end()) {
-				if (kv.second.is_downloading) {
-					push("download_removed", RemovedHashPayload(kv.second));
+		std::vector<std::pair<const char *, std::uint32_t>> removed;
+		std::vector<std::pair<Change, std::uint32_t>> changed;
+		// ECIDs to drop from the baseline once the batch is built -- erasing
+		// during the walk would invalidate the iterator, and erasing before
+		// the batch would take the removal payloads' hashes with it.
+		std::vector<std::uint32_t> gone;
+		state.WithFiles([&](const FileMap &files) {
+			// _removed first — clients can tear down their cache slot
+			// before the _added/_updated for the same ECID lands.
+			for (const auto &kv : prev.files) {
+				const auto it = files.find(kv.first);
+				const bool absent = (it == files.end());
+				if (kv.second.is_downloading && (absent || !it->second.is_downloading)) {
+					removed.emplace_back("download_removed", kv.first);
 				}
-				if (kv.second.is_shared) {
-					push("shared_removed", RemovedHashPayload(kv.second));
+				if (kv.second.is_shared && (absent || !it->second.is_shared)) {
+					removed.emplace_back("shared_removed", kv.first);
 				}
-			} else {
-				if (kv.second.is_downloading && !it->second.is_downloading) {
-					push("download_removed", RemovedHashPayload(kv.second));
+				if (absent)
+					gone.push_back(kv.first);
+			}
+			// _added / _updated — gated by the role-flag transition against
+			// the previous tick's is_downloading / is_shared value.
+			for (const auto &entry : files) {
+				const FileSnapshot &now = entry.second;
+				const auto it = prev.files.find(entry.first);
+				const bool known = (it != prev.files.end());
+				const bool was_downloading = known && it->second.is_downloading;
+				const bool was_shared = known && it->second.is_shared;
+				bool moved = !known || was_downloading != now.is_downloading ||
+					     was_shared != now.is_shared;
+				if (now.is_downloading) {
+					if (!was_downloading) {
+						changed.emplace_back(Change::DownloadAdded, entry.first);
+						// The flag counts as comment state, exactly as
+						// it does in EqualComments. Gating on the list
+						// alone means a download first seen with a Kad
+						// lookup already in flight never announces the
+						// lookup at all -- the mirror of the edge where
+						// a finished lookup never announced its end,
+						// leaving the same indicator wrong in the
+						// opposite direction.
+						if (!now.download.source_comments.empty() ||
+							now.download.kad_comment_searching) {
+							changed.emplace_back(
+								Change::CommentsUpdated, entry.first);
+						}
+					} else {
+						if (!EqualDownload(it->second, now)) {
+							changed.emplace_back(
+								Change::DownloadUpdated, entry.first);
+							moved = true;
+						}
+						// Independent of download_updated: fires for Kad notes AND
+						// comments reported by connected sources (issue #434 / #419).
+						if (!EqualComments(it->second, now)) {
+							changed.emplace_back(
+								Change::CommentsUpdated, entry.first);
+							moved = true;
+						}
+					}
 				}
-				if (kv.second.is_shared && !it->second.is_shared) {
-					push("shared_removed", RemovedHashPayload(kv.second));
+				if (now.is_shared) {
+					if (!was_shared) {
+						changed.emplace_back(Change::SharedAdded, entry.first);
+					} else if (!EqualShared(it->second, now)) {
+						changed.emplace_back(Change::SharedUpdated, entry.first);
+						moved = true;
+					}
 				}
+				if (!moved)
+					continue;
+				if (known)
+					it->second = now;
+				else
+					prev.files.emplace(entry.first, now);
+			}
+		});
+		std::vector<std::pair<std::string, std::string>> batch;
+		batch.reserve(removed.size() + changed.size());
+		for (const auto &r : removed) {
+			// Still in the baseline: `gone` is erased below, once every
+			// payload that reads through it has been built.
+			const auto it = prev.files.find(r.second);
+			if (it == prev.files.end())
+				AbortOnMissingBaseline(r.first, r.second);
+			batch.emplace_back(r.first, RemovedHashPayload(it->second.hash));
+		}
+		for (const auto &c : changed) {
+			// Every recorded change set `moved`, so its entry was written
+			// back; `gone` holds only ECIDs absent from the live map, which
+			// these are not.
+			const auto it = prev.files.find(c.second);
+			if (it == prev.files.end())
+				AbortOnMissingBaseline("a file event", c.second);
+			const FileSnapshot &f = it->second;
+			switch (c.first) {
+			case Change::DownloadAdded:
+				batch.emplace_back("download_added", ToJsonDownloadEvent(f));
+				break;
+			case Change::DownloadUpdated:
+				batch.emplace_back("download_updated", ToJsonDownloadEvent(f));
+				break;
+			case Change::SharedAdded:
+				batch.emplace_back("shared_added", ToJsonSharedEvent(f));
+				break;
+			case Change::SharedUpdated:
+				batch.emplace_back("shared_updated", ToJsonSharedEvent(f));
+				break;
+			case Change::CommentsUpdated:
+				batch.emplace_back("comments_updated", ToJsonCommentsEvent(f));
+				break;
 			}
 		}
-		// _added / _updated — gate by role flag transition vs the
-		// previous tick's is_downloading / is_shared value.
-		for (const auto &kv : new_files) {
-			const auto it = prev.files.find(kv.first);
-			const bool was_downloading = (it != prev.files.end() && it->second.is_downloading);
-			const bool was_shared = (it != prev.files.end() && it->second.is_shared);
-			if (kv.second.is_downloading) {
-				if (!was_downloading) {
-					push("download_added", ToJsonDownloadEvent(kv.second));
-					if (!kv.second.download.source_comments.empty()) {
-						push("comments_updated", ToJsonCommentsEvent(kv.second));
-					}
-				} else {
-					if (!EqualDownload(it->second, kv.second)) {
-						push("download_updated", ToJsonDownloadEvent(kv.second));
-					}
-					// Independent of download_updated: fires for Kad notes AND
-					// comments reported by connected sources (issue #434 / #419).
-					if (!EqualComments(it->second, kv.second)) {
-						push("comments_updated", ToJsonCommentsEvent(kv.second));
-					}
-				}
-			}
-			if (kv.second.is_shared) {
-				if (!was_shared) {
-					push("shared_added", ToJsonSharedEvent(kv.second));
-				} else if (!EqualShared(it->second, kv.second)) {
-					push("shared_updated", ToJsonSharedEvent(kv.second));
-				}
-			}
-		}
+		for (const std::uint32_t ecid : gone)
+			prev.files.erase(ecid);
 		bus.PublishBatch(batch);
 	}
 	DiffMap(bus, "server", prev.servers, new_servers, [](const ServerSnapshot &s) {
@@ -711,7 +848,6 @@ void EmitDiffsAndUpdate(CEventBus &bus, LastSeenState &prev, const CState &state
 	}
 
 	// Snapshot the new state for next tick's diff baseline.
-	prev.files = std::move(new_files);
 	prev.servers = std::move(new_servers);
 	prev.clients = std::move(new_clients);
 	prev.friends = std::move(new_friends);
@@ -767,9 +903,7 @@ void EmitDiffsAndUpdate(CEventBus &bus, LastSeenState &prev, const CState &state
 					w.ValueInt(static_cast<int64_t>(sid));
 					WriteSearchResultFields(w, kv.second);
 					w.EndObject();
-					const wxScopedCharBuffer utf8 = w.GetBuffer().utf8_str();
-					bus.Publish("search_result_added",
-						std::string(utf8.data(), utf8.length()));
+					bus.Publish("search_result_added", w.TakeBuffer());
 				}
 			}
 			// search_progress: a percent change while running, the
@@ -820,34 +954,43 @@ void EmitDiffsAndUpdate(CEventBus &bus, LastSeenState &prev, const CState &state
 		}
 	}
 
-	// log_appended. CState::AmuleLog() is append-only
-	// (CState.cpp:142-151) so a strictly-increasing size means the
-	// refresher just appended the tail. First tick records the
-	// size baseline silently — clients GET /api/v0/logs/amule for
-	// the historical buffer; the event channel is for live tail
-	// only. A truncation (size decreased) silently resyncs the
-	// counter; the only path that truncates today is a future
-	// `DELETE /logs/amule` mutation, and clients refetch on that
-	// regardless.
-	const auto amule_log = state.AmuleLog();
+	// log_appended. The refresher only ever appends, so a size that grew means
+	// the tail is new. First tick records the baseline silently — clients GET
+	// /api/v0/logs/amule for the history; this channel is the live tail only.
+	//
+	// A size that shrank means `DELETE /logs/amule` cleared the buffer, and the
+	// only thing this does about it is re-point the counter. Lines appended
+	// between that DELETE and this tick are NOT published, and if the counter
+	// was below the new size the append branch publishes a mid-buffer slice as
+	// though it were a tail. Only the client that issued the DELETE knows to
+	// refetch; other subscribers are not told. Pre-existing, and fixable by
+	// publishing `resync` on the reset edge -- which needs the bus-published
+	// resync to bypass the `?channels=` filter, so it is not this change.
+	//
+	// Size and tail in one read: the history is uncapped, so asking AmuleLog()
+	// for a `.size()` that is unchanged on almost every tick copies all of it
+	// -- and splitting the two would let that DELETE land in between, pairing
+	// a pre-truncation size with an empty tail.
+	std::size_t log_size = 0;
+	const auto tail = state.AmuleLogFrom(prev.amule_log_count, log_size);
 	if (!prev.amule_log_initialised) {
-		prev.amule_log_count = amule_log.size();
+		prev.amule_log_count = log_size;
 		prev.amule_log_initialised = true;
-	} else if (amule_log.size() < prev.amule_log_count) {
-		prev.amule_log_count = amule_log.size();
-	} else if (amule_log.size() > prev.amule_log_count) {
+	} else if (log_size < prev.amule_log_count) {
+		prev.amule_log_count = log_size;
+	} else if (!tail.empty()) {
 		std::ostringstream payload;
 		payload << "{\"lines\":[";
 		bool first = true;
-		for (std::size_t i = prev.amule_log_count; i < amule_log.size(); ++i) {
+		for (const std::string &line : tail) {
 			if (!first)
 				payload << ",";
 			first = false;
-			payload << "\"" << EscJson(amule_log[i]) << "\"";
+			payload << "\"" << EscJson(line) << "\"";
 		}
 		payload << "]}";
 		bus.Publish("log_appended", payload.str());
-		prev.amule_log_count = amule_log.size();
+		prev.amule_log_count = prev.amule_log_count + tail.size();
 	}
 }
 

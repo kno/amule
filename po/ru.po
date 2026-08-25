@@ -14,8 +14,8 @@ msgid ""
 msgstr ""
 "Project-Id-Version: aMule\n"
 "Report-Msgid-Bugs-To: https://github.com/amule-org/amule/issues\n"
-"POT-Creation-Date: 2026-08-25 08:51+0200\n"
-"PO-Revision-Date: 2026-08-22 15:44+0000\n"
+"POT-Creation-Date: 2026-08-25 21:00+0200\n"
+"PO-Revision-Date: 2026-08-25 10:17+0000\n"
 "Last-Translator: Radist Morse <radist.morse@gmail.com>\n"
 "Language-Team: Russian <kde-russian@lists.kde.ru>\n"
 "Language: ru\n"
@@ -508,6 +508,11 @@ msgstr ""
 #: src/amule.cpp
 msgid "Server hostname notified"
 msgstr "Имя сервера подтверждено"
+
+#: src/amule.cpp
+#, c-format
+msgid "Media metadata: probed file is no longer known, result discarded (%s)"
+msgstr ""
 
 #: src/amule.cpp
 #, c-format
@@ -1070,11 +1075,6 @@ msgstr "1.x (на основе eMule v0.%u)"
 
 #: src/BaseClient.cpp
 #, c-format
-msgid "Failed to retrieve shared files from user '%s'"
-msgstr "Не удалось получить список доступных файлов от '%s'"
-
-#: src/BaseClient.cpp
-#, c-format
 msgid "NickName: %s ID: %u"
 msgstr "Псевдоним: %s ID: %u"
 
@@ -1117,6 +1117,11 @@ msgstr "Новое сообщение от '%s' (IP:%s)"
 #, c-format
 msgid "User %s (%u) requested sharedfiles-list for not existing directory '%s' -> Ignored"
 msgstr "Пользователь %s (%u) запросил список публикуемых файлов из несуществующего каталога «%s» -> Проигнорировано"
+
+#: src/BrowseManager.cpp
+#, c-format
+msgid "Failed to retrieve shared files from user '%s'"
+msgstr "Не удалось получить список доступных файлов от '%s'"
 
 #: src/CanceledFileList.cpp src/KnownFileList.cpp src/SearchList.cpp
 #, c-format
@@ -2213,23 +2218,29 @@ msgid "Could not save the amuleapi password: %s"
 msgstr "Не удалось сохранить пароль amuleapi: %s"
 
 #: src/ExternalConn.cpp
-#, fuzzy
 msgid "Missing chat session id"
-msgstr "Начата новая беседа"
+msgstr "Отсутствует идентификатор сеанса беседы"
+
+#: src/ExternalConn.cpp
+msgid "No such chat session"
+msgstr "Такой беседы нет"
 
 #: src/ExternalConn.cpp
 #, fuzzy
-msgid "No such chat session"
-msgstr "Закрыть данный чат."
+msgid "Media metadata extraction is disabled in preferences"
+msgstr "Kad выключена в настройках."
 
 #: src/ExternalConn.cpp
-msgid "Empty chat message"
+msgid "File is not eligible for media metadata extraction (not an audio/video file, or an incomplete download)"
 msgstr ""
 
 #: src/ExternalConn.cpp
-#, fuzzy
+msgid "Empty chat message"
+msgstr "Пустое сообщение беседы"
+
+#: src/ExternalConn.cpp
 msgid "Unknown chat target"
-msgstr "(Неизвестное имя)"
+msgstr "Неизвестный получатель беседы"
 
 #: src/ExternalConn.cpp
 msgid "Kad is disabled in preferences."
@@ -2881,6 +2892,11 @@ msgid "Migrated existing GeoLite2-Country.mmdb to %s"
 msgstr "Существующий файл GeoLite2-Country.mmdb перенесён в %s"
 
 #: src/IP2Country.cpp
+#, c-format
+msgid "%s is not a readable MaxMindDB file - discarding it. A fresh copy will be downloaded on the next start, or now via Preferences -> IP2Country -> 'Update now'."
+msgstr ""
+
+#: src/IP2Country.cpp
 msgid "IP2Country: MaxMind selected as the GeoIP source but no License Key configured. Open Preferences -> IP2Country, paste your free MaxMind License Key and click 'Update now'."
 msgstr "Страна по IP: в качестве источника GeoIP выбран MaxMind, но лицензионный ключ не настроен. Откройте «Настройки» → «Страна по IP», вставьте бесплатный ключ лицензии MaxMind и нажмите «Обновить сейчас»."
 
@@ -3261,32 +3277,68 @@ msgid "Media metadata: no ffprobe binary found. Install ffmpeg, or set the ffpro
 msgstr "Метаданные медиа: двоичный файл ffprobe не найден. Установите ffmpeg или укажите путь к ffprobe в настройках; длительность, битрейт и кодек не будут извлечены."
 
 #: src/MediaProbe.cpp
+#, fuzzy, c-format
+msgid "Media metadata: %s is gone, nothing to extract"
+msgstr "Извлечение метаданных медиафайлов"
+
+#: src/MediaProbe.cpp
 #, c-format
 msgid "Extracting media metadata with ffprobe: %s"
-msgstr ""
+msgstr "Извлечение метаданных медиафайла через ffprobe: %s"
 
 #: src/MediaProbe.cpp
 #, c-format
 msgid "Media metadata: ffprobe timed out or was cancelled for %s"
+msgstr "Метаданные медиафайла: ffprobe превысил время ожидания или был отменён для %s"
+
+#: src/MediaProbe.cpp
+#, c-format
+msgid "Media metadata: ignoring implausibly large ffprobe output for %s"
+msgstr ""
+
+#: src/MediaProbe.cpp
+#, c-format
+msgid "Media metadata: could not run ffprobe (%s) -- check the media metadata settings"
 msgstr ""
 
 #: src/MediaProbe.cpp
 #, c-format
 msgid "Media metadata: ffprobe failed (code %d) for %s"
+msgstr "Метаданные медиафайла: ffprobe завершился с ошибкой (код %d) для %s"
+
+#: src/MediaProbe.cpp
+#, c-format
+msgid "Media metadata: ffprobe found nothing usable in %s"
 msgstr ""
 
 #: src/MediaProbeThread.cpp
 #, c-format
-msgid "Extracted media metadata from %u file (%u failed)"
-msgid_plural "Extracted media metadata from %u files (%u failed)"
+msgid "Finished extracting media metadata from %u shared file (%u failed)"
+msgid_plural "Finished extracting media metadata from %u shared files (%u failed)"
 msgstr[0] ""
 msgstr[1] ""
 msgstr[2] ""
 
 #: src/MediaProbeThread.cpp
 #, c-format
-msgid "Extracted media metadata from %u file"
-msgid_plural "Extracted media metadata from %u files"
+msgid "Finished extracting media metadata from %u shared file"
+msgid_plural "Finished extracting media metadata from %u shared files"
+msgstr[0] ""
+msgstr[1] ""
+msgstr[2] ""
+
+#: src/MediaProbeThread.cpp
+#, c-format
+msgid "%u further file failed media metadata extraction (not listed individually)"
+msgid_plural "%u further files failed media metadata extraction (not listed individually)"
+msgstr[0] ""
+msgstr[1] ""
+msgstr[2] ""
+
+#: src/MediaProbeThread.cpp
+#, c-format
+msgid "%u further shared file is gone (not listed individually)"
+msgid_plural "%u further shared files are gone (not listed individually)"
 msgstr[0] ""
 msgstr[1] ""
 msgstr[2] ""
@@ -6511,11 +6563,15 @@ msgid ""
 "\n"
 "Start the new search anyway?"
 msgstr ""
+"Поиск по eD2k ещё выполняется. Запуск нового остановит текущий, так как протокол eD2k допускает только один поиск за раз.\n"
+"\n"
+"Уже найденные результаты сохранятся; перестанут приходить только новые.\n"
+"\n"
+"Всё равно начать новый поиск?"
 
 #: src/SearchDlg.cpp
-#, fuzzy
 msgid "Search in progress"
-msgstr "Состояние поиска: %u %% \n"
+msgstr "Поиск выполняется"
 
 #: src/SearchDlg.cpp
 msgid "Min size must be smaller than max size. Max size ignored."
@@ -6555,6 +6611,10 @@ msgstr "Нет ключевого слова для поиска Kad — отм�
 #: src/SearchList.cpp
 msgid "Unexpected error while attempting Kad search: "
 msgstr "Ошибка при поиске через Kad: "
+
+#: src/SearchList.cpp
+msgid "Search timed out: the server did not answer."
+msgstr ""
 
 #: src/SearchList.cpp
 msgid "Kad search: requested wider results from one more peer."
@@ -6621,6 +6681,48 @@ msgstr "Отменено"
 #: src/SearchListCtrl.cpp
 msgid "New"
 msgstr "Новый"
+
+#: src/SearchProgressReport.cpp
+#, fuzzy
+msgid "running"
+msgstr "Выполняется"
+
+#: src/SearchProgressReport.cpp
+#, fuzzy
+msgid "finished"
+msgstr "Финский"
+
+#: src/SearchProgressReport.cpp
+msgid "idle"
+msgstr ""
+
+#: src/SearchProgressReport.cpp
+#, c-format
+msgid "Search %u: %s, %u %% (%u results)\n"
+msgstr ""
+
+#: src/SearchProgressReport.cpp
+#, c-format
+msgid "Search %u \"%s\": %s, %u %% (%u results)\n"
+msgstr ""
+
+#: src/SearchProgressReport.cpp src/TextClient.cpp
+msgid "Search expired or unknown ID. Start a new search.\n"
+msgstr "Поиск истёк или идентификатор неизвестен. Начните новый поиск.\n"
+
+#: src/SearchProgressReport.cpp
+#, c-format
+msgid "Search progress: %u %% \n"
+msgstr "Состояние поиска: %u %% \n"
+
+#: src/SearchProgressReport.cpp
+msgid "Search progress not available"
+msgstr "Прогресс поиска недоступен"
+
+#: src/SearchProgressReport.cpp
+#, fuzzy
+msgid "No search to report on.\n"
+msgstr "Не выбрано ни одного файла для экспорта."
 
 #: src/ServerConnect.cpp
 msgid "Failed to connect to all obfuscated static servers listed. Making another pass without obfuscation."
@@ -7169,9 +7271,9 @@ msgstr "Наблюдатель общих папок: переполнение �
 #, c-format
 msgid "Shared-dir watcher: %u new subdirectory found since last run, rescanning shares"
 msgid_plural "Shared-dir watcher: %u new subdirectories found since last run, rescanning shares"
-msgstr[0] ""
-msgstr[1] ""
-msgstr[2] ""
+msgstr[0] "Наблюдатель общих папок: найдена %u новая подпапка с момента последнего запуска, повторное сканирование"
+msgstr[1] "Наблюдатель общих папок: найдены %u новые подпапки с момента последнего запуска, повторное сканирование"
+msgstr[2] "Наблюдатель общих папок: найдено %u новых подпапок с момента последнего запуска, повторное сканирование"
 
 #: src/SharedDirWatcher.cpp
 msgid "Shared-dir watcher: events dropped by backend, forcing a full shared-files reload to resync"
@@ -7215,38 +7317,51 @@ msgid "No shareable files found in directory: %s"
 msgstr "Нет публикуемых файлов в директории: %s"
 
 #: src/SharedFileList.cpp
-#, fuzzy, c-format
+#, fuzzy
+msgid "Media metadata extraction is disabled in preferences, so there is nothing to re-extract."
+msgstr "Извлечение метаданных медиафайлов"
+
+#: src/SharedFileList.cpp
+#, c-format
+msgid "Re-extracting media metadata for %u shared file"
+msgid_plural "Re-extracting media metadata for %u shared files"
+msgstr[0] ""
+msgstr[1] ""
+msgstr[2] ""
+
+#: src/SharedFileList.cpp
+#, c-format
 msgid "Now sharing file: %s"
-msgstr "Ошибка при сохранении файла %s: %s"
+msgstr "Теперь публикуется файл: %s"
 
 #: src/SharedFileList.cpp
-#, fuzzy, c-format
+#, c-format
 msgid "Stopped sharing removed file: %s"
-msgstr "Подгрузка файла server.met: %s"
+msgstr "Прекращена публикация удалённого файла: %s"
 
 #: src/SharedFileList.cpp
-#, fuzzy, c-format
+#, c-format
 msgid "Stopped sharing %u file under removed directory: %s"
 msgid_plural "Stopped sharing %u files under removed directory: %s"
-msgstr[0] "Нет публикуемых файлов в директории: %s"
-msgstr[1] "Нет публикуемых файлов в директории: %s"
-msgstr[2] "Нет публикуемых файлов в директории: %s"
+msgstr[0] "Прекращена публикация %u файла в удалённом каталоге: %s"
+msgstr[1] "Прекращена публикация %u файлов в удалённом каталоге: %s"
+msgstr[2] "Прекращена публикация %u файлов в удалённом каталоге: %s"
 
 #: src/SharedFileList.cpp
-#, fuzzy, c-format
+#, c-format
 msgid "Now sharing %u file found in a new shared directory"
 msgid_plural "Now sharing %u files found in new shared directories"
-msgstr[0] "Нет публикуемых файлов в директории: %s"
-msgstr[1] "Нет публикуемых файлов в директории: %s"
-msgstr[2] "Нет публикуемых файлов в директории: %s"
+msgstr[0] "Теперь публикуется %u файл, найденный в новом общем каталоге"
+msgstr[1] "Теперь публикуется %u файла, найденных в новых общих каталогах"
+msgstr[2] "Теперь публикуется %u файлов, найденных в новых общих каталогах"
 
 #: src/SharedFileList.cpp
-#, fuzzy, c-format
+#, c-format
 msgid "Discovered %u new shared file"
 msgid_plural "Discovered %u new shared files"
-msgstr[0] "Найден %i известный публикуемый файл"
-msgstr[1] "Найдено %i известных публикуемых файла"
-msgstr[2] "Найдено %i известных публикуемых файлов"
+msgstr[0] "Обнаружен %u новый публикуемый файл"
+msgstr[1] "Обнаружены %u новых публикуемых файла"
+msgstr[2] "Обнаружено %u новых публикуемых файлов"
 
 #: src/SharedFilePeersListCtrl.cpp src/SourceListCtrl.cpp
 msgid "User Name"
@@ -7303,6 +7418,10 @@ msgid "Verify Local Data"
 msgstr "Проверить локальные данные"
 
 #: src/SharedFilesCtrl.cpp
+msgid "Re-extract &media metadata"
+msgstr ""
+
+#: src/SharedFilesCtrl.cpp
 msgid "Add files in collection to transfer list"
 msgstr "Добавить файлы из коллекции в список передач"
 
@@ -7342,6 +7461,54 @@ msgstr "Экспорт выбранных файлов в коллекцию emu
 #, c-format
 msgid "Verify Local Data on PartFile is currently not supported: %s"
 msgstr "Проверка локальных данных для part-файла в настоящее время не поддерживается: %s"
+
+#: src/SharedFilesCtrl.cpp
+#, c-format
+msgid "Media metadata: skipping %u incomplete download"
+msgid_plural "Media metadata: skipping %u incomplete downloads"
+msgstr[0] ""
+msgstr[1] ""
+msgstr[2] ""
+
+#: src/SharedFilesCtrl.cpp
+#, c-format
+msgid "Media metadata: skipping %u file that is not audio or video"
+msgid_plural "Media metadata: skipping %u files that are not audio or video"
+msgstr[0] ""
+msgstr[1] ""
+msgstr[2] ""
+
+#: src/SharedFilesCtrl.cpp
+#, c-format
+msgid "Re-extract media metadata for %u file?"
+msgid_plural "Re-extract media metadata for %u files?"
+msgstr[0] ""
+msgstr[1] ""
+msgstr[2] ""
+
+#: src/SharedFilesCtrl.cpp
+#, c-format
+msgid "%u incomplete download will be skipped."
+msgid_plural "%u incomplete downloads will be skipped."
+msgstr[0] ""
+msgstr[1] ""
+msgstr[2] ""
+
+#: src/SharedFilesCtrl.cpp
+#, c-format
+msgid "%u file is not audio or video and will be skipped."
+msgid_plural "%u files are not audio or video and will be skipped."
+msgstr[0] ""
+msgstr[1] ""
+msgstr[2] ""
+
+#: src/SharedFilesCtrl.cpp
+msgid "This runs in the background. Progress is reported in the log."
+msgstr ""
+
+#: src/SharedFilesCtrl.cpp
+msgid "Re-extract media metadata"
+msgstr ""
 
 #: src/SharedFilesCtrl.cpp
 msgid "You need a HighID to create a valid sourcelink"
@@ -7660,6 +7827,10 @@ msgid "Execute <str> and exit."
 msgstr "Выполнить <str> и выйти."
 
 #: src/TextClient.cpp
+msgid "Separate list fields with spaces, as before, instead of tabs."
+msgstr ""
+
+#: src/TextClient.cpp
 msgid "Invalid IP format. Use xxx.xxx.xxx.xxx:xxxx\n"
 msgstr "Неверный формат IP-адреса. Пример: xxx.xxx.xxx.xxx:xxxx\n"
 
@@ -7832,22 +8003,9 @@ msgid "[PartFile]"
 msgstr "[частично]"
 
 #: src/TextClient.cpp
-msgid "Search expired or unknown ID. Start a new search.\n"
-msgstr "Поиск истёк или идентификатор неизвестен. Начните новый поиск.\n"
-
-#: src/TextClient.cpp
 #, c-format
 msgid "Number of search results: %i\n"
 msgstr "Число результатов поиска: %i\n"
-
-#: src/TextClient.cpp
-#, c-format
-msgid "Search progress: %u %% \n"
-msgstr "Состояние поиска: %u %% \n"
-
-#: src/TextClient.cpp
-msgid "Search progress not available"
-msgstr "Прогресс поиска недоступен"
 
 #: src/TextClient.cpp
 #, c-format
@@ -8265,19 +8423,19 @@ msgid "aMule text client"
 msgstr "Текстовый клиент aMule"
 
 #: src/ThreadTasks.cpp
-#, fuzzy, c-format
+#, c-format
 msgid "Hashing downloaded file: %s"
-msgstr "Удаление файла: %s"
+msgstr "Вычисление хеша загруженного файла: %s"
 
 #: src/ThreadTasks.cpp
-#, fuzzy, c-format
+#, c-format
 msgid "Hashing file: %s"
-msgstr "Удаление файла: %s"
+msgstr "Вычисление хеша файла: %s"
 
 #: src/ThreadTasks.cpp
-#, fuzzy, c-format
+#, c-format
 msgid "Rebuilding AICH hashset for file: %s"
-msgstr "Возобновление отдачи файла: %s"
+msgstr "Перестроение набора хешей AICH для файла: %s"
 
 #: src/ThreadTasks.cpp
 #, c-format

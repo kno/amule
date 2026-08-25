@@ -31,11 +31,39 @@
 #include <chrono>
 #include <cstdint>
 #include <map>
+#include <stdexcept>
 #include <thread>
 #include <vector>
 
 using namespace muleunit;
 using namespace webapi;
+
+namespace
+{
+// Stand-ins for the role-filtered accessors CState no longer exposes; the
+// assertions below just want a countable, indexable list.
+std::vector<FileSnapshot> RoleView(const CState &s, bool FileSnapshot::*role)
+{
+	std::vector<FileSnapshot> out;
+	s.WithFiles([&](const FileMap &files) {
+		for (const auto &entry : files) {
+			if (entry.second.*role)
+				out.push_back(entry.second);
+		}
+	});
+	return out;
+}
+
+std::vector<FileSnapshot> Downloads(const CState &s)
+{
+	return RoleView(s, &FileSnapshot::is_downloading);
+}
+
+std::vector<FileSnapshot> Shared(const CState &s)
+{
+	return RoleView(s, &FileSnapshot::is_shared);
+}
+} // namespace
 
 DECLARE_SIMPLE(State)
 
@@ -122,6 +150,32 @@ TEST(State, WriteStatusRoundtrip)
 	ASSERT_EQUALS(static_cast<std::uint32_t>(17), out.total_src_count);
 }
 
+TEST(State, FileMapEmplaceFilesTheSnapshotUnderItsKey)
+{
+	// The clients walker resolves an amuled ECID with find() and then reads
+	// the snapshot it gets back, so the key and FileSnapshot::ecid have to
+	// agree. emplace() makes them agree instead of trusting the caller: a
+	// snapshot carrying the wrong id would otherwise break /clients silently.
+	CState s;
+	s.MutateDownloads([](FileMap &cache) {
+		FileSnapshot f;
+		f.ecid = 999; // stale / wrong -- the key is what readers look up by
+		f.hash = "cccc2222cccc2222cccc2222cccc2222";
+		f.is_downloading = true;
+		cache.emplace(42, std::move(f));
+	});
+	s.WithFiles([](const FileMap &files) {
+		const auto it = files.find(42);
+		ASSERT_TRUE(it != files.end());
+		ASSERT_EQUALS(static_cast<std::uint32_t>(42), it->second.ecid);
+		ASSERT_TRUE(files.find(999) == files.end());
+		// The hash index is keyed off the same insert, so it agrees too.
+		std::uint32_t by_hash = 0;
+		ASSERT_TRUE(files.FindEcidByHash("cccc2222cccc2222cccc2222cccc2222", by_hash));
+		ASSERT_EQUALS(static_cast<std::uint32_t>(42), by_hash);
+	});
+}
+
 TEST(State, MutateDownloadsRoundtripAndFind)
 {
 	CState s;
@@ -149,7 +203,7 @@ TEST(State, MutateDownloadsRoundtripAndFind)
 	// Both entries should be present in the vector view. Order is
 	// unordered_map-bucket-defined (FileMap drops std::map's ECID
 	// ordering), so look entries up by ECID instead of position.
-	const auto out = s.Downloads();
+	const auto out = Downloads(s);
 	ASSERT_EQUALS(static_cast<size_t>(2), out.size());
 	std::string foo_name, bar_name;
 	for (const auto &f : out) {
@@ -197,7 +251,7 @@ TEST(State, MutateDownloadsDecodedRleFieldsRoundtrip)
 		cache.emplace(a.ecid, a);
 	});
 
-	const auto out = s.Downloads();
+	const auto out = Downloads(s);
 	ASSERT_EQUALS(static_cast<size_t>(1), out.size());
 	ASSERT_EQUALS(static_cast<size_t>(4), out[0].download.decoded_gaps.size());
 	ASSERT_EQUALS(static_cast<std::uint64_t>(100), out[0].download.decoded_gaps[0]);
@@ -332,8 +386,8 @@ TEST(State, MutateClientsAndSharedRoundtrip)
 		x.shared.priority = "normal";
 		cache.emplace(x.ecid, x);
 	});
-	ASSERT_EQUALS(static_cast<size_t>(1), s.Shared().size());
-	ASSERT_EQUALS(std::string("shared.iso"), s.Shared()[0].name);
+	ASSERT_EQUALS(static_cast<size_t>(1), Shared(s).size());
+	ASSERT_EQUALS(std::string("shared.iso"), Shared(s)[0].name);
 }
 
 TEST(State, WriteKadAndPreferencesRoundtrip)
@@ -417,6 +471,74 @@ TEST(State, WriteServersRoundtripAndOrder)
 	ASSERT_EQUALS(static_cast<size_t>(2), out.size());
 	ASSERT_EQUALS(std::string("first-by-ecid"), out[0].name);
 	ASSERT_EQUALS(std::string("second-by-ecid"), out[1].name);
+}
+
+TEST(State, AmuleLogFromReportsTotalAndSlicesTheTail)
+{
+	// The per-tick log diff reads the size and the tail in one lock, so both
+	// halves of that are contract: `total` is always the current line count,
+	// and the returned slice starts at `first`.
+	CState s;
+	std::size_t total = 0;
+
+	// Empty: no lines, and a total of zero rather than an unset out-param.
+	ASSERT_EQUALS(static_cast<size_t>(0), s.AmuleLogFrom(0, total).size());
+	ASSERT_EQUALS(static_cast<size_t>(0), total);
+
+	s.AppendAmuleLog({ "a", "b", "c" });
+
+	// first == 0: the whole buffer.
+	total = 0;
+	const auto all = s.AmuleLogFrom(0, total);
+	ASSERT_EQUALS(static_cast<size_t>(3), all.size());
+	ASSERT_EQUALS(static_cast<size_t>(3), total);
+	ASSERT_EQUALS(std::string("a"), all[0]);
+	ASSERT_EQUALS(std::string("c"), all[2]);
+
+	// Mid-buffer: the tail from there on.
+	total = 0;
+	const auto tail = s.AmuleLogFrom(2, total);
+	ASSERT_EQUALS(static_cast<size_t>(1), tail.size());
+	ASSERT_EQUALS(std::string("c"), tail[0]);
+	ASSERT_EQUALS(static_cast<size_t>(3), total);
+
+	// first == total: caught up, nothing to publish, total still reported.
+	total = 0;
+	ASSERT_EQUALS(static_cast<size_t>(0), s.AmuleLogFrom(3, total).size());
+	ASSERT_EQUALS(static_cast<size_t>(3), total);
+
+	// first > total: past the end truncates to empty rather than reading out
+	// of range. This is the shape the caller sees after a reset shrank the
+	// buffer below the counter it was holding.
+	total = 0;
+	ASSERT_EQUALS(static_cast<size_t>(0), s.AmuleLogFrom(99, total).size());
+	ASSERT_EQUALS(static_cast<size_t>(3), total);
+}
+
+TEST(State, AmuleLogFromAfterAResetReportsTheShrunkTotal)
+{
+	// ClearAmuleLog is the one path that shrinks the buffer. A caller still
+	// holding the pre-reset count must get an empty slice and the new, smaller
+	// total -- that pairing is what tells the log diff a truncation happened
+	// rather than an append.
+	CState s;
+	s.AppendAmuleLog({ "one", "two", "three", "four" });
+	std::size_t total = 0;
+	s.AmuleLogFrom(0, total);
+	ASSERT_EQUALS(static_cast<size_t>(4), total);
+
+	s.ClearAmuleLog();
+	total = 99;
+	ASSERT_EQUALS(static_cast<size_t>(0), s.AmuleLogFrom(4, total).size());
+	ASSERT_EQUALS(static_cast<size_t>(0), total);
+
+	// And it appends from scratch afterwards.
+	s.AppendAmuleLog({ "fresh" });
+	total = 0;
+	const auto after = s.AmuleLogFrom(0, total);
+	ASSERT_EQUALS(static_cast<size_t>(1), after.size());
+	ASSERT_EQUALS(std::string("fresh"), after[0]);
+	ASSERT_EQUALS(static_cast<size_t>(1), total);
 }
 
 TEST(State, AppendAmuleLogUncappedHistory)
@@ -869,14 +991,66 @@ TEST(State, ResetListsClearsAll)
 			it->second.is_shared = true;
 		}
 	});
-	ASSERT_EQUALS(static_cast<size_t>(1), s.Downloads().size());
+	ASSERT_EQUALS(static_cast<size_t>(1), Downloads(s).size());
 	ASSERT_EQUALS(static_cast<size_t>(1), s.Clients().size());
-	ASSERT_EQUALS(static_cast<size_t>(1), s.Shared().size());
+	ASSERT_EQUALS(static_cast<size_t>(1), Shared(s).size());
 
 	s.ResetLists();
-	ASSERT_EQUALS(static_cast<size_t>(0), s.Downloads().size());
+	ASSERT_EQUALS(static_cast<size_t>(0), Downloads(s).size());
 	ASSERT_EQUALS(static_cast<size_t>(0), s.Clients().size());
-	ASSERT_EQUALS(static_cast<size_t>(0), s.Shared().size());
+	ASSERT_EQUALS(static_cast<size_t>(0), Shared(s).size());
+}
+
+// The callback accessors run caller code while holding m_mu, which is not
+// recursive. These pin the two halves of that contract that can be checked
+// without deadlocking the test: a nested call on a DIFFERENT instance is a
+// different mutex and must stay legal, and the guard must unwind so a second
+// sequential call still works. Re-entering the SAME instance aborts by
+// design, so it is not exercised here -- see CState::ReentryGuard.
+TEST(State, CallbackOnADifferentStateInstanceIsAllowed)
+{
+	CState a;
+	CState b;
+	a.MutateDownloads([](FileMap &files) {
+		FileSnapshot f;
+		f.ecid = 1;
+		f.is_downloading = true;
+		files.emplace(f.ecid, f);
+	});
+
+	// b's callback reads a: a different CState, so a different mutex, and
+	// nothing to deadlock on. The guard must not confuse the two.
+	std::size_t seen = 0;
+	b.MutateClients([&a, &seen](std::map<std::uint32_t, ClientSnapshot> &) {
+		a.WithFiles([&seen](const FileMap &files) { seen = files.size(); });
+	});
+	ASSERT_EQUALS(static_cast<size_t>(1), seen);
+}
+
+TEST(State, CallbackGuardUnwindsSoLaterCallsStillWork)
+{
+	CState s;
+	s.MutateDownloads([](FileMap &files) {
+		FileSnapshot f;
+		f.ecid = 7;
+		f.is_downloading = true;
+		files.emplace(f.ecid, f);
+	});
+	std::size_t first = 0, second = 0;
+	s.WithFiles([&first](const FileMap &files) { first = files.size(); });
+	s.WithFiles([&second](const FileMap &files) { second = files.size(); });
+	ASSERT_EQUALS(static_cast<size_t>(1), first);
+	ASSERT_EQUALS(static_cast<size_t>(1), second);
+
+	// And an exception escaping a callback must not leave the guard set.
+	try {
+		s.WithFiles([](const FileMap &) { throw std::runtime_error("boom"); });
+	} catch (const std::runtime_error &) {
+		// expected
+	}
+	std::size_t after = 0;
+	s.WithFiles([&after](const FileMap &files) { after = files.size(); });
+	ASSERT_EQUALS(static_cast<size_t>(1), after);
 }
 
 TEST(State, ConcurrentReadersDontTearSnapshot)
@@ -942,4 +1116,207 @@ TEST(State, ConcurrentReadersDontTearSnapshot)
 	ASSERT_TRUE(observed.load() > 1000);
 	// And no read saw a torn snapshot.
 	ASSERT_EQUALS(0, torn.load());
+}
+
+// --- MemoizableTarget -----------------------------------------------
+//
+// The response-ETag memo is keyed on (target, snapshot revision). Eligibility
+// is opt-in: this used to be an exclusion list and it was wrong four separate
+// times -- a bare collection the prefixes never matched, a live EC roundtrip
+// nobody listed, a per-principal document, and a key that froze while bodies
+// moved. Inverting it makes an oversight cost a wasted hash instead of a 304
+// for changed content.
+
+// The two collections the memo exists for: the multi-MB bodies where skipping
+// an MD5 is worth anything.
+// --- MemoUsable / ShouldStampEtag -----------------------------------
+//
+// Both guard something a sequential test cannot observe: MemoUsable's second
+// condition guards a write landing while a handler serializes, and
+// ShouldStampEtag's `handler_set_etag` guards the dispatcher stamping over a
+// validator a handler already owns. Deleting either used to leave the whole
+// suite green, which is the same as having no guard at all -- these tests
+// exist to go red when that happens.
+
+// The revision moving across the handler is what disqualifies the response:
+// the body belongs to rev_before while the key would claim rev_after.
+TEST(State, MemoUsableRejectsAMovedRevision)
+{
+	ASSERT_TRUE(MemoUsable("/api/v0/downloads", 7, 7));
+	ASSERT_TRUE(!MemoUsable("/api/v0/downloads", 7, 8));
+	// Direction does not matter -- any inequality means the body cannot be
+	// attributed to a revision.
+	ASSERT_TRUE(!MemoUsable("/api/v0/downloads", 8, 7));
+	ASSERT_TRUE(MemoUsable("/api/v0/shared?limit=10", 3, 3));
+	ASSERT_TRUE(!MemoUsable("/api/v0/shared?limit=10", 3, 4));
+}
+
+// Both conditions are required, so an ineligible target stays ineligible even
+// with a perfectly stable revision, and vice versa.
+TEST(State, MemoUsableNeedsBothConditions)
+{
+	ASSERT_TRUE(!MemoUsable("/api/v0/auth/session", 5, 5));
+	ASSERT_TRUE(!MemoUsable("/api/v0/status", 5, 5));
+	ASSERT_TRUE(!MemoUsable("/api/v0/auth/session", 5, 6));
+	// Revision 0 is the pre-first-tick value; eligibility does not depend
+	// on the number, only on it holding still. The caller separately
+	// refuses to serve a memo entry stamped 0.
+	ASSERT_TRUE(MemoUsable("/api/v0/downloads", 0, 0));
+}
+
+// A handler that computed its own ETag owns it. Stamping over the top is what
+// gave the static path two validators for one resource, since it clears the
+// body for HEAD and only the GET reached the hashing branch.
+TEST(State, ShouldStampEtagLeavesAHandlerValidatorAlone)
+{
+	ASSERT_TRUE(ShouldStampEtag(true, false, 200, false));
+	ASSERT_TRUE(!ShouldStampEtag(true, true, 200, false));
+}
+
+// The other three terms: unsafe methods carry post-mutation state the client
+// always wants delivered, non-200s are not worth a validator, and an empty
+// body has nothing to hash.
+TEST(State, ShouldStampEtagOnlyForSafe200sWithABody)
+{
+	ASSERT_TRUE(!ShouldStampEtag(false, false, 200, false));
+	ASSERT_TRUE(!ShouldStampEtag(true, false, 404, false));
+	ASSERT_TRUE(!ShouldStampEtag(true, false, 304, true));
+	ASSERT_TRUE(!ShouldStampEtag(true, false, 200, true));
+}
+
+TEST(State, MemoizableTargetCoversTheTwoBigCollections)
+{
+	ASSERT_TRUE(MemoizableTarget("/api/v0/downloads"));
+	ASSERT_TRUE(MemoizableTarget("/api/v0/shared"));
+	// A query string picks a page, not a different resource.
+	ASSERT_TRUE(MemoizableTarget("/api/v0/downloads?limit=10&offset=20"));
+	ASSERT_TRUE(MemoizableTarget("/api/v0/shared?sort=name&order=desc"));
+}
+
+// Everything else hashes per request. Each of these was a live bug at some
+// point in this PR's history, and under an opt-in rule none of them can
+// recur: the self-refreshing ones, the live-EC ones, and the per-principal
+// one are all simply absent from the eligible set.
+TEST(State, MemoizableTargetExcludesEverythingElse)
+{
+	// own TTL caches / append-only mirror / refresh-on-read
+	ASSERT_TRUE(!MemoizableTarget("/api/v0/stats/tree"));
+	ASSERT_TRUE(!MemoizableTarget("/api/v0/stats/graphs/download_speed?width=3"));
+	ASSERT_TRUE(!MemoizableTarget("/api/v0/logs/amule"));
+	ASSERT_TRUE(!MemoizableTarget("/api/v0/logs/serverinfo"));
+	ASSERT_TRUE(!MemoizableTarget("/api/v0/search/7/results"));
+	// live EC roundtrip per read, and the bare collection a trailing-slash
+	// prefix could never match
+	ASSERT_TRUE(!MemoizableTarget("/api/v0/search"));
+	ASSERT_TRUE(!MemoizableTarget("/api/v0/share_directories"));
+	// per-principal: one key cannot describe two callers' documents
+	ASSERT_TRUE(!MemoizableTarget("/api/v0/auth/session"));
+	// snapshot-backed, but not worth a memo -- and absent by default
+	ASSERT_TRUE(!MemoizableTarget("/api/v0/status"));
+	ASSERT_TRUE(!MemoizableTarget("/api/v0/clients"));
+	ASSERT_TRUE(!MemoizableTarget("/api/v0/servers"));
+}
+
+// A sub-resource of an eligible collection is NOT itself eligible: it is a
+// different body, and /shared/directories in particular is a live EC read
+// that an "everything under /shared" rule would have swept back in.
+TEST(State, MemoizableTargetDoesNotExtendToSubResources)
+{
+	ASSERT_TRUE(!MemoizableTarget("/api/v0/downloads/8b54a3c2"));
+	ASSERT_TRUE(!MemoizableTarget("/api/v0/downloads/8b54a3c2/clients"));
+	ASSERT_TRUE(!MemoizableTarget("/api/v0/shared/8b54a3c2"));
+	ASSERT_TRUE(!MemoizableTarget("/api/v0/share_directories"));
+	// and no prefix bleed onto a neighbour that merely starts the same
+	ASSERT_TRUE(!MemoizableTarget("/api/v0/downloads_archive"));
+	ASSERT_TRUE(!MemoizableTarget("/api/v0/sharedfiles"));
+}
+
+// --- Snapshot revision ----------------------------------------------
+//
+// The ETag memo is keyed on this, not on snapshot_at. snapshot_at cannot
+// serve: it counts whole seconds, so two refreshes inside one second are
+// indistinguishable, and it is stamped only by the background loop, so the
+// inline refreshes that mutating handlers run never moved it. A mutation
+// therefore changed a body while the key stood still, and the next
+// conditional GET was answered 304 for content that had just changed.
+TEST(State, SnapshotRevisionAdvancesOnEveryBump)
+{
+	CState state;
+	const std::uint64_t r0 = state.SnapshotRevision();
+	state.BumpSnapshotRevision();
+	const std::uint64_t r1 = state.SnapshotRevision();
+	ASSERT_TRUE(r1 != r0);
+	state.BumpSnapshotRevision();
+	ASSERT_TRUE(state.SnapshotRevision() != r1);
+}
+
+// Two bumps inside the same wall-clock second must still be distinguishable
+// -- the precise case a time_t key collapses.
+TEST(State, SnapshotRevisionSeparatesTwoBumpsInOneSecond)
+{
+	CState state;
+	std::vector<std::uint64_t> seen;
+	for (int i = 0; i < 5; ++i) {
+		state.BumpSnapshotRevision();
+		seen.push_back(state.SnapshotRevision());
+	}
+	for (std::size_t i = 1; i < seen.size(); ++i) {
+		ASSERT_TRUE(seen[i] != seen[i - 1]);
+	}
+}
+
+// Every writer of a memoized body advances the key, and it is the WRITER
+// that does it rather than its callers. That is the whole point: the key was
+// advanced from the outside three times and missed a path each time -- the
+// inline refreshes mutating handlers run, and then a tick that failed partway
+// after it had already written. A writer cannot forget that it wrote.
+TEST(State, MutatingDownloadsAdvancesTheRevision)
+{
+	CState state;
+	const std::uint64_t before = state.SnapshotRevision();
+	state.MutateDownloads([](FileMap &files) {
+		FileSnapshot f;
+		f.ecid = 1;
+		f.hash = "1111111111111111111111111111aaaa";
+		f.is_downloading = true;
+		files.emplace(f.ecid, f);
+	});
+	ASSERT_TRUE(state.SnapshotRevision() != before);
+}
+
+TEST(State, MutatingSharedAdvancesTheRevision)
+{
+	CState state;
+	const std::uint64_t before = state.SnapshotRevision();
+	state.MutateShared([](FileMap &) {});
+	ASSERT_TRUE(state.SnapshotRevision() != before);
+}
+
+// The failure path specifically. A tick that dies partway still calls
+// ResetLists on the way back, and that wipe is as much a body change as any
+// mutation -- it is where the key used to freeze while the bodies moved, so
+// a whole EC outage was served 304 against the pre-failure validator.
+TEST(State, ResetListsAdvancesTheRevision)
+{
+	CState state;
+	state.MutateDownloads([](FileMap &files) {
+		FileSnapshot f;
+		f.ecid = 2;
+		f.hash = "2222222222222222222222222222bbbb";
+		files.emplace(f.ecid, f);
+	});
+	const std::uint64_t before = state.SnapshotRevision();
+	state.ResetLists();
+	ASSERT_TRUE(state.SnapshotRevision() != before);
+}
+
+// MarkTickSuccess stamps the timestamp; it deliberately does NOT advance the
+// revision, because RefresherTick owns that and the background loop calls
+// both. Pinning it so a future edit does not quietly double-count.
+TEST(State, MarkTickSuccessDoesNotAdvanceTheRevision)
+{
+	CState state;
+	const std::uint64_t before = state.SnapshotRevision();
+	state.MarkTickSuccess();
+	ASSERT_EQUALS(before, state.SnapshotRevision());
 }

@@ -219,7 +219,15 @@ void ParseStatusFromPacket(const CECPacket *resp, StatusSnapshot &out)
 				if (name) {
 					out.server_name = std::string(name->GetStringData().utf8_str());
 				}
-				out.server_ip = std::string(server->GetIPv4Data().StringIP().utf8_str());
+				// Not StringIP(): every overload of it appends ":port"
+				// and wraps the result in brackets, so `server_ip` used
+				// to read "[77.42.68.79:4232]" -- contradicting both its
+				// name and its declared "dotted-quad" contract, and
+				// giving a client that joins it with `server_port` the
+				// nonsense "[77.42.68.79:4232]:4232". Format from the
+				// raw address the way every other IP on this surface is
+				// formatted; the port stays in `server_port`.
+				out.server_ip = FormatClientIpv4(server->GetIPv4Data().IP());
 				out.server_port = server->GetIPv4Data().m_port;
 			}
 			uint32 ed2kSince = 0;
@@ -450,29 +458,30 @@ void MergeKnownFileDetail(const CECTag *t, FileSnapshot &f)
 		std::uint32_t v = 0;
 		if (t->AssignIfExist(EC_TAG_KNOWNFILE_MEDIA_LENGTH, v)) {
 			f.media.length_s = v;
-			f.has_media = true;
 		}
 		if (t->AssignIfExist(EC_TAG_KNOWNFILE_MEDIA_BITRATE, v)) {
 			f.media.bitrate = v;
-			f.has_media = true;
 		}
 	}
 	if (const CECTag *x = t->GetTagByName(EC_TAG_KNOWNFILE_MEDIA_CODEC)) {
 		f.media.codec = std::string(x->GetStringData().utf8_str());
-		f.has_media = true;
 	}
 	if (const CECTag *x = t->GetTagByName(EC_TAG_KNOWNFILE_MEDIA_ARTIST)) {
 		f.media.artist = std::string(x->GetStringData().utf8_str());
-		f.has_media = true;
 	}
 	if (const CECTag *x = t->GetTagByName(EC_TAG_KNOWNFILE_MEDIA_ALBUM)) {
 		f.media.album = std::string(x->GetStringData().utf8_str());
-		f.has_media = true;
 	}
 	if (const CECTag *x = t->GetTagByName(EC_TAG_KNOWNFILE_MEDIA_TITLE)) {
 		f.media.title = std::string(x->GetStringData().utf8_str());
-		f.has_media = true;
 	}
+	// Derived from what the snapshot now holds rather than latched true by
+	// whichever tag happened to arrive. A zero / empty value is the daemon
+	// clearing that field, so latching would report has_media on a file whose
+	// every field has since been cleared -- and assigning the empty value
+	// above is what makes a clear propagate at all.
+	f.has_media = f.media.length_s != 0 || f.media.bitrate != 0 || !f.media.codec.empty() ||
+		      !f.media.artist.empty() || !f.media.album.empty() || !f.media.title.empty();
 }
 
 void MergePartFileTag(const CEC_PartFile_Tag *pf, FileSnapshot &f, bool is_new)
@@ -802,10 +811,7 @@ void DecodePartStatusTag(const CECTag *client_tag,
 // On a cache-miss the caller pre-populates ecid + hashes; on a hit
 // the AssignIfExist pattern leaves cached values intact when the
 // tag is CValueMap-suppressed by amuled.
-void MergeClientTag(const CEC_UpDownClient_Tag *c,
-	ClientSnapshot &cs,
-	bool is_new,
-	const std::map<std::uint32_t, std::string> &file_hash_by_ecid)
+void MergeClientTag(const CEC_UpDownClient_Tag *c, ClientSnapshot &cs, bool is_new, const FileMap &files)
 {
 	if (const CECTag *t = c->GetTagByName(EC_TAG_CLIENT_NAME)) {
 		cs.client_name = std::string(t->GetStringData().utf8_str());
@@ -888,10 +894,10 @@ void MergeClientTag(const CEC_UpDownClient_Tag *c,
 		cs.download_file_name = std::string(fn.utf8_str());
 	}
 	// UPLOAD_FILE / REQUEST_FILE carry amuled-side ECIDs (the unified
-	// m_FileEncoder map's IDs). Resolve to MD4 hashes via the
-	// file_hash_by_ecid snapshot the caller built from m_files this
-	// tick. Empty hash if the ECID isn't in the map — file may have
-	// been removed between the file walkers and this client walker.
+	// m_FileEncoder map's IDs), which is what `files` is keyed by, so
+	// resolve to MD4 hashes with a lookup per transferring peer. Empty
+	// hash if the ECID isn't there — file may have been removed between
+	// the file walkers and this client walker.
 	//
 	// A zero ECID is the core saying "no file", not "unchanged":
 	// ECSpecialCoreTags.cpp:438-443 emits `file->ECID()` or a literal 0 for
@@ -912,8 +918,9 @@ void MergeClientTag(const CEC_UpDownClient_Tag *c,
 		if (c->AssignIfExist(EC_TAG_CLIENT_UPLOAD_FILE, v)) {
 			std::string next;
 			if (v != 0) {
-				const auto it = file_hash_by_ecid.find(v);
-				next = (it != file_hash_by_ecid.end()) ? it->second : std::string();
+				const auto it = files.find(v);
+				if (it != files.end())
+					next = it->second.hash;
 			}
 			if (next != cs.upload_file_hash) {
 				cs.upload_file_hash = std::move(next);
@@ -928,8 +935,9 @@ void MergeClientTag(const CEC_UpDownClient_Tag *c,
 		if (c->AssignIfExist(EC_TAG_CLIENT_REQUEST_FILE, v)) {
 			std::string next;
 			if (v != 0) {
-				const auto it = file_hash_by_ecid.find(v);
-				next = (it != file_hash_by_ecid.end()) ? it->second : std::string();
+				const auto it = files.find(v);
+				if (it != files.end())
+					next = it->second.hash;
 			}
 			if (next != cs.download_file_hash) {
 				cs.download_file_hash = std::move(next);
@@ -1436,9 +1444,8 @@ void ApplyGetUpdateToShared(
 // --- Clients (rides on the EC_TAG_CLIENT container inside the
 // consolidated GET_UPDATE response).
 
-void ApplyGetUpdateToClients(const CECPacket *resp,
-	std::map<std::uint32_t, ClientSnapshot> &cache,
-	const std::map<std::uint32_t, std::string> &file_hash_by_ecid)
+void ApplyGetUpdateToClients(
+	const CECPacket *resp, std::map<std::uint32_t, ClientSnapshot> &cache, const FileMap &files)
 {
 	if (!resp)
 		return;
@@ -1466,10 +1473,10 @@ void ApplyGetUpdateToClients(const CECPacket *resp,
 		if (map_it == cache.end()) {
 			ClientSnapshot fresh;
 			fresh.ecid = ecid;
-			MergeClientTag(cli, fresh, /*is_new=*/true, file_hash_by_ecid);
+			MergeClientTag(cli, fresh, /*is_new=*/true, files);
 			cache.emplace(ecid, std::move(fresh));
 		} else {
-			MergeClientTag(cli, map_it->second, /*is_new=*/false, file_hash_by_ecid);
+			MergeClientTag(cli, map_it->second, /*is_new=*/false, files);
 		}
 	}
 
@@ -2425,36 +2432,43 @@ void ApplySearchFull(const CECPacket *resp, std::map<std::uint32_t, SearchResult
 		if (const CECTag *x = sf->GetTagByName(EC_TAG_SEARCHFILE_DIRECTORY)) {
 			r.directory = std::string(x->GetStringData().utf8_str());
 		}
-		// Media metadata (issue #430): present only when the hit carried
-		// FT_MEDIA_* tags (known/probed locally). Any present tag marks
+		// Media metadata (issue #430): present when the hit carried
+		// FT_MEDIA_* tags. On a locally known/probed file those are our
+		// own probe's values; on a remote hit they are whatever the
+		// responding server advertised, which is not validated anywhere
+		// and can contradict the file (a .pdf with a runtime and an xvid
+		// codec is a real observed result). Passed through as sent -- the
+		// API documents the search-result `media` as unverified rather
+		// than second-guessing the server. Any present tag marks
 		// has_media so the API emits the `media` object.
 		{
 			std::uint32_t v = 0;
 			if (sf->AssignIfExist(EC_TAG_KNOWNFILE_MEDIA_LENGTH, v)) {
 				r.media.length_s = v;
-				r.has_media = true;
 			}
 			if (sf->AssignIfExist(EC_TAG_KNOWNFILE_MEDIA_BITRATE, v)) {
 				r.media.bitrate = v;
-				r.has_media = true;
 			}
 		}
 		if (const CECTag *x = sf->GetTagByName(EC_TAG_KNOWNFILE_MEDIA_CODEC)) {
 			r.media.codec = std::string(x->GetStringData().utf8_str());
-			r.has_media = true;
 		}
 		if (const CECTag *x = sf->GetTagByName(EC_TAG_KNOWNFILE_MEDIA_ARTIST)) {
 			r.media.artist = std::string(x->GetStringData().utf8_str());
-			r.has_media = true;
 		}
 		if (const CECTag *x = sf->GetTagByName(EC_TAG_KNOWNFILE_MEDIA_ALBUM)) {
 			r.media.album = std::string(x->GetStringData().utf8_str());
-			r.has_media = true;
 		}
 		if (const CECTag *x = sf->GetTagByName(EC_TAG_KNOWNFILE_MEDIA_TITLE)) {
 			r.media.title = std::string(x->GetStringData().utf8_str());
-			r.has_media = true;
 		}
+		// Derived from the fields, exactly as MergeKnownFileDetail does for a
+		// shared file. Both paths share AddMediaTagsPresent on the daemon
+		// side, so either can be sent a zero / empty "this field is gone" tag
+		// -- latching on any tag being present would mark a result as having
+		// media with every field blank.
+		r.has_media = r.media.length_s != 0 || r.media.bitrate != 0 || !r.media.codec.empty() ||
+			      !r.media.artist.empty() || !r.media.album.empty() || !r.media.title.empty();
 		// On-demand Kad community ratings/comments (issue #434). Same
 		// 4-children-per-entry positional container the download side uses
 		// (username, filename, rating, comment); a search hit's comments are

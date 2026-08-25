@@ -178,7 +178,15 @@ _curl -H "Authorization: Bearer $ADMIN_TOKEN" \
 _assert_status 304 "GET /version + If-None-Match (list, hit in 2nd entry) → 304"
 
 # --- 8. HEAD honors If-None-Match too. ---------------------------
-_curl -X HEAD -H "Authorization: Bearer $ADMIN_TOKEN" "$HOST/api/v0/version"
+#
+# `--head`, not `-X HEAD`: `-X` only swaps the method string, so curl still
+# waits for Content-Length bytes that a HEAD response correctly never sends
+# and reports error 18 when the connection closes instead. That is curl's
+# documented behaviour; it only passed here while the server was answering
+# HEAD with a wrong `Content-Length: 0`. The wire-level "no content on any
+# status" guarantee is asserted in 40-http-conformance, which reads the
+# socket directly rather than through curl.
+_curl --head -H "Authorization: Bearer $ADMIN_TOKEN" "$HOST/api/v0/version"
 _assert_status 200 "HEAD /version → 200"
 HEAD_ETAG=$(_get_etag)
 if [ "$HEAD_ETAG" = "$ETAG" ]; then
@@ -187,14 +195,7 @@ else
 	_fail "HEAD ETag parity" \
 		"GET ETag=$ETAG, HEAD ETag=$HEAD_ETAG"
 fi
-# HEAD body always empty.
-if [ -z "$CURL_BODY" ]; then
-	_pass "HEAD /version carries no body"
-else
-	_fail "HEAD body" "expected empty, got $(echo "$CURL_BODY" | head -c 80)"
-fi
-
-_curl -X HEAD -H "Authorization: Bearer $ADMIN_TOKEN" \
+_curl --head -H "Authorization: Bearer $ADMIN_TOKEN" \
 	-H "If-None-Match: $ETAG" "$HOST/api/v0/version"
 _assert_status 304 "HEAD /version + If-None-Match → 304"
 
@@ -278,7 +279,7 @@ fi
 
 # --- 12. ETag is stable across ticks when data IS stable. --------
 #
-# Phase 7.1 retired snapshot_at from the envelope — list endpoints
+# The envelope carries no snapshot_at — list endpoints
 # now only churn their ETag when actual data churns. /preferences is
 # the most reliable "stable" surface for this check (no per-tick
 # refresh — it changes only when an operator runs PATCH).

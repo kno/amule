@@ -26,6 +26,34 @@ target_link_libraries (CTagTest
 # just stops updating in the GUI -- so the contract is pinned here rather than
 # left to a clean daemon run. Needs no app, no daemon and no database: the EC
 # tag types and their generated codes are the whole dependency.
+# How a peer's version is spelled. Each client project writes its own
+# differently -- eMule letters the update (0.70b), eMule Plus omits zero
+# components, lPhant counts its major one higher -- and the rendering used to
+# exist twice: once in the handshake, once in the client-history rows, which
+# re-derived it from the stored numeric and dropped every convention. The same
+# peer could appear in one window under two versions depending only on whether
+# it was online. Needs no app and no daemon.
+add_executable (ClientVersionStringTest
+	ClientVersionStringTest.cpp
+	${CMAKE_SOURCE_DIR}/src/ClientVersionString.cpp
+)
+
+add_test (NAME ClientVersionStringTest
+	COMMAND ClientVersionStringTest
+)
+
+target_include_directories (ClientVersionStringTest
+	PRIVATE ${CMAKE_BINARY_DIR}
+	PRIVATE ${CMAKE_SOURCE_DIR}/src
+	PRIVATE ${CMAKE_SOURCE_DIR}/src/include
+	PRIVATE ${CMAKE_SOURCE_DIR}/src/libs
+)
+
+target_link_libraries (ClientVersionStringTest
+	muleunit
+	mulecommon
+)
+
 add_executable (ECIdDiffTest
 	ECIdDiffTest.cpp
 	# See the note on CValueMapTest below: libec.a references DoECLogLine /
@@ -48,6 +76,39 @@ target_include_directories (ECIdDiffTest
 )
 
 target_link_libraries (ECIdDiffTest
+	muleunit
+	ec
+	mulecommon
+)
+
+# amulecmd's `progress` output. The daemon answers EC_OP_SEARCH_PROGRESS in
+# three shapes and the client does not choose which: advertising the union
+# capability alongside multi-search is what decides it. Reading one shape as
+# another is invisible -- a top-level tag that is not there reads as zero, so
+# `progress` reported 0 % for every search whatever it was doing (#1126).
+# Needs no app and no daemon: the EC tag types are the whole dependency.
+add_executable (SearchProgressReportTest
+	SearchProgressReportTest.cpp
+	${CMAKE_SOURCE_DIR}/src/SearchProgressReport.cpp
+	# As for ECIdDiffTest: libec.a references DoECLogLine / theLogger
+	# unconditionally in Debug, so the no-op definitions have to be linked in.
+	${CMAKE_SOURCE_DIR}/src/LoggerConsole.cpp
+)
+
+add_test (NAME SearchProgressReportTest
+	COMMAND SearchProgressReportTest
+)
+
+target_include_directories (SearchProgressReportTest
+	PRIVATE ${CMAKE_BINARY_DIR}
+	PRIVATE ${CMAKE_SOURCE_DIR}/src
+	PRIVATE ${CMAKE_SOURCE_DIR}/src/include
+	PRIVATE ${CMAKE_SOURCE_DIR}/src/libs
+	PRIVATE ${CMAKE_BINARY_DIR}/src/libs
+	PRIVATE ${CMAKE_BINARY_DIR}/src/libs/ec/cpp
+)
+
+target_link_libraries (SearchProgressReportTest
 	muleunit
 	ec
 	mulecommon
@@ -573,6 +634,21 @@ target_link_libraries (ChatSessionStoreTest
 	mulecommon
 )
 
+add_executable (MediaProbeParseTest
+	MediaProbeParseTest.cpp
+	${CMAKE_SOURCE_DIR}/src/MediaProbe.cpp
+)
+add_test (NAME MediaProbeParseTest COMMAND MediaProbeParseTest)
+target_include_directories (MediaProbeParseTest
+	PRIVATE ${CMAKE_BINARY_DIR}
+	PRIVATE ${CMAKE_SOURCE_DIR}/src
+	PRIVATE ${CMAKE_SOURCE_DIR}/src/include
+)
+target_link_libraries (MediaProbeParseTest
+	muleunit
+	mulecommon
+)
+
 add_executable (JsonWriterTest
 	JsonWriterTest.cpp
 )
@@ -629,6 +705,13 @@ target_link_libraries (EventBusTest
 	mulecommon
 )
 
+# CEventBus's std::atomic<uint64_t> event counter needs libatomic on
+# 32-bit targets without a hardware 8-byte CAS (PPC32, ARMv5/v6,
+# MIPS32); same reason amuleapi links it. Empty on 64-bit.
+if (LIBATOMIC)
+	target_link_libraries (EventBusTest ${LIBATOMIC})
+endif()
+
 # amuleapi log-file tee: exercises CRotatingLog's append + two-file size cap.
 # LogTee.cpp is plain POSIX/std (no wx), so only muleunit + mulecommon are
 # needed for the harness.
@@ -672,6 +755,11 @@ target_link_libraries (EventDiffTest
 	webcommon
 	wxWidgets::BASE
 )
+
+# Pulls EventBus.cpp, so it needs libatomic on 32-bit targets too.
+if (LIBATOMIC)
+	target_link_libraries (EventDiffTest ${LIBATOMIC})
+endif()
 
 # amuleapi-specific: tests CAmuleApiConfig's file-IO + mode-bit
 # enforcement. AmuleApiConfig.cpp is statically linked into the test
@@ -794,6 +882,28 @@ target_link_libraries (RefresherTest
 # but guarded it on the scalar alone, leaving Hi stale (#1065), so the
 # predicate now lives in a header of its own: CKnownFile reaches theApp and
 # cannot be linked into a test.
+add_executable (JsonDepthScanTest
+	JsonDepthScanTest.cpp
+)
+
+add_test (NAME JsonDepthScanTest
+	COMMAND JsonDepthScanTest
+)
+
+target_include_directories (JsonDepthScanTest
+	PRIVATE ${CMAKE_BINARY_DIR}
+	PRIVATE ${CMAKE_SOURCE_DIR}/src
+	PRIVATE ${CMAKE_SOURCE_DIR}/src/include
+	PRIVATE ${CMAKE_SOURCE_DIR}/src/webapi
+)
+
+# mulecommon even though the header is inline-only: macOS links without it,
+# GNU ld and mingw do not.
+target_link_libraries (JsonDepthScanTest
+	muleunit
+	mulecommon
+)
+
 add_executable (CompleteSourcesThrottleTest
 	CompleteSourcesThrottleTest.cpp
 )
@@ -811,6 +921,59 @@ target_include_directories (CompleteSourcesThrottleTest
 # mulecommon even though the header is inline-only: macOS links without it,
 # GNU ld and mingw do not.
 target_link_libraries (CompleteSourcesThrottleTest
+	muleunit
+	mulecommon
+)
+
+# The browse ("View Files") state machine. Five separate defects have been the
+# same machine going wrong in a place only a peer of the right kind could reach
+# -- a flat browse that completes without ever being marked finished, a peer we
+# decline to contact, a terminal browse still on the pending list (#1071 and
+# its follow-ups). None were reachable from a test while the logic sat on
+# CUpDownClient, so it lives in a pair of its own that touches no theApp.
+add_executable (BrowseLifecycleTest
+	BrowseLifecycleTest.cpp
+	${CMAKE_SOURCE_DIR}/src/BrowseLifecycle.cpp
+)
+
+add_test (NAME BrowseLifecycleTest
+	COMMAND BrowseLifecycleTest
+)
+
+target_include_directories (BrowseLifecycleTest
+	PRIVATE ${CMAKE_BINARY_DIR}
+	PRIVATE ${CMAKE_SOURCE_DIR}/src
+	PRIVATE ${CMAKE_SOURCE_DIR}/src/include
+)
+
+target_link_libraries (BrowseLifecycleTest
+	muleunit
+	mulecommon
+)
+
+# The rules about browses -- one per peer, a terminal record outliving its
+# client, a disconnect after success not being a failure. They used to live on
+# CBrowseManager next to the notify and the log line, which put them out of a
+# test's reach; the two defects found after the lifecycle was extracted were
+# both here rather than in the state machine. The store identifies peers by an
+# opaque key and touches no theApp, so all of it is drivable.
+add_executable (BrowseStoreTest
+	BrowseStoreTest.cpp
+	${CMAKE_SOURCE_DIR}/src/BrowseStore.cpp
+	${CMAKE_SOURCE_DIR}/src/BrowseLifecycle.cpp
+)
+
+add_test (NAME BrowseStoreTest
+	COMMAND BrowseStoreTest
+)
+
+target_include_directories (BrowseStoreTest
+	PRIVATE ${CMAKE_BINARY_DIR}
+	PRIVATE ${CMAKE_SOURCE_DIR}/src
+	PRIVATE ${CMAKE_SOURCE_DIR}/src/include
+)
+
+target_link_libraries (BrowseStoreTest
 	muleunit
 	mulecommon
 )

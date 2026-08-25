@@ -29,12 +29,17 @@ ADMIN_PASS=${ADMIN_PASS:-adminpass}
 
 FAIL_COUNT=0
 TEST_COUNT=0
+# Skips are counted apart from TEST_COUNT, never folded into it: a skipped
+# check is coverage that did not happen, and adding it to the passed tally
+# would report the absence of a check as a check that succeeded.
+SKIP_COUNT=0
 
 CURL_BODY_FILE=$(mktemp -t amuleapi_04_read_downloads_shared_body.XXXXXX)
 trap 'rm -f "$CURL_BODY_FILE"' EXIT
 
 _die()  { echo "FATAL: $*" >&2; exit 2; }
 _pass() { TEST_COUNT=$((TEST_COUNT+1)); echo "  PASS  $1"; }
+_skip() { SKIP_COUNT=$((SKIP_COUNT+1)); echo "  SKIP  $1"; }
 _fail() {
 	TEST_COUNT=$((TEST_COUNT+1)); FAIL_COUNT=$((FAIL_COUNT+1))
 	echo "  FAIL  $1"
@@ -151,8 +156,10 @@ if [ "$COUNT" -gt 0 ]; then
 	# Part-A detail fields (issue #417) — detail-only, type-tolerant.
 	_assert_json_eq '.part_count | type' number \
 		'/downloads/{hash} carries part_count'
-	_assert_json_eq '.remaining_time | type' number \
-		'/downloads/{hash} carries remaining_time'
+	# null when stalled/paused: nothing to compute an ETA from. It was -1,
+	# which a client had to know meant "unknown".
+	_assert_json_eq '(.remaining_time == null or (.remaining_time | type) == "number")' true \
+		'/downloads/{hash} remaining_time is a number or null'
 	_assert_json_eq '.aich_hash | type' string \
 		'/downloads/{hash} carries aich_hash'
 	_assert_json_eq '.met_file | type' string \
@@ -201,10 +208,9 @@ if [ "$COUNT" -gt 0 ]; then
 	_assert_json_eq '.media | type' null \
 		'/downloads/{hash} omits media when unprobed'
 
-	# The A4AF read sub-resource (issue #421) was retired in favour of the
-	# per-file client rows below (issue #984), which carry the whole peer
-	# object per A4AF source rather than a bare ECID. `a4af_auto` lives on the
-	# download detail object, asserted above. The POST half is unaffected.
+	# A4AF sources are the per-file client rows below, which carry the whole
+	# peer object per source rather than a bare ECID, and `a4af_auto` lives on
+	# the download detail object, asserted above. The a4af path is POST-only.
 
 	# Unknown action → 400 (mutation validation; admin token).
 	_curl -X POST -H "Authorization: Bearer $TOKEN" \
@@ -222,18 +228,32 @@ if [ "$COUNT" -gt 0 ]; then
 	done
 
 	# Every row carries its relation to this file, and no row carries a parts
-	# bitmap unless it was asked for.
-	_assert_json_eq '[.clients[] | select(.role as $r | ($r == null) or ((["source","peer","both","none"] | index($r)) == null))] | length' \
-		0 "every row has a valid role"
-	_assert_json_eq '[.clients[] | select(.a4af == null)] | length' 0 "every row has an a4af flag"
-	_assert_json_eq '[.clients[] | select(has("parts"))] | length' 0 "no parts bitmap without include_parts"
+	# bitmap unless it was asked for. These are `[...] | length == 0` shapes,
+	# which pass over an empty array whether or not the feature works, so
+	# they are guarded on -- and the run prints -- the row count: a green run
+	# must not claim coverage it did not get.
+	DLROWS=$(printf '%s' "$CURL_BODY" | jq '.clients | length')
+	echo "  --- /downloads/{hash}/clients returned $DLROWS row(s) ---"
+	if [ "$DLROWS" -gt 0 ]; then
+		_assert_json_eq '[.clients[] | select(.role as $r | ($r == null) or ((["source","peer","both","none"] | index($r)) == null))] | length' \
+			0 "every row has a valid role"
+		_assert_json_eq '[.clients[] | select(.a4af == null)] | length' 0 "every row has an a4af flag"
+		_assert_json_eq '[.clients[] | select(has("parts"))] | length' 0 "no parts bitmap without include_parts"
+	else
+		_skip "row-shape checks: no peer is connected to the download"
+	fi
 
 	# Opt-in bitmaps are exactly part_count long for a row that has one.
 	PARTCOUNT=$(curl -s -H "Authorization: Bearer $TOKEN" "$HOST/api/v0/downloads/$HASH" | jq -r '.progress.parts | length')
 	_curl -H "Authorization: Bearer $TOKEN" "$HOST/api/v0/downloads/$HASH/clients?include_parts=true"
 	_assert_status 200 "GET /downloads/{hash}/clients?include_parts=true → 200"
-	_assert_json_eq "[.clients[] | select(has(\"parts\")) | select((.parts | length) != $PARTCOUNT)] | length" \
-		0 "every parts bitmap is exactly part_count entries"
+	DLBITMAPS=$(printf '%s' "$CURL_BODY" | jq '[.clients[] | select(has("parts"))] | length')
+	if [ "$DLBITMAPS" -gt 0 ]; then
+		_assert_json_eq "[.clients[] | select(has(\"parts\")) | select((.parts | length) != $PARTCOUNT)] | length" \
+			0 "every parts bitmap ($DLBITMAPS of them) is exactly part_count entries"
+	else
+		_skip "parts-length check: no row carries a bitmap"
+	fi
 
 	_curl -H "Authorization: Bearer $TOKEN" "$HOST/api/v0/downloads/$HASH/clients?include_parts=maybe"
 	_assert_status 400 "include_parts must be true/false"
@@ -256,10 +276,10 @@ if [ "$COUNT" -gt 0 ]; then
 		done
 	fi
 
-	# The A4AF read route is retired in favour of the rows above; its POST
-	# stays, so the path must answer 405 rather than 404.
+	# The a4af path exists for POST only, so a GET is 405 rather than 404:
+	# the resource is there, the method is not.
 	_curl -H "Authorization: Bearer $TOKEN" "$HOST/api/v0/downloads/$HASH/a4af"
-	_assert_status 405 "GET /downloads/{hash}/a4af is retired → 405"
+	_assert_status 405 "GET /downloads/{hash}/a4af → 405 (POST-only route)"
 
 	# Per-source swap (issue #983): `client_ecid` narrows swap_this to one
 	# source. Validation is asserted here rather than the swap itself — a
@@ -349,10 +369,11 @@ if [ "$SHCOUNT" -gt 0 ]; then
 		'/shared[0].upload_speed_bps is numeric (#466)'
 	_assert_json_eq '.shared[0].uploading | type' number \
 		'/shared[0].uploading is numeric (#466)'
-	_assert_json_eq '.shared[0].last_upload | type' number \
-		'/shared[0].last_upload is numeric (#466)'
-	_assert_json_eq '.shared[0].shared_since | type' number \
-		'/shared[0].shared_since is numeric (#466)'
+	# null when never uploaded, or on a known.met entry predating the field.
+	_assert_json_eq '(.shared[0].last_upload == null or (.shared[0].last_upload | type) == "number")' true \
+		'/shared[0].last_upload is a number or null (#466)'
+	_assert_json_eq '(.shared[0].shared_since == null or (.shared[0].shared_since | type) == "number")' true \
+		'/shared[0].shared_since is a number or null (#466)'
 	# Hashing progress on the shared row (issue #1054). Parts hashed so far
 	# by a Verify Local Data / AICH rebuild, 0 when idle. Only the type is
 	# asserted: a smoke run has no hash in flight, and racing one would make
@@ -386,12 +407,98 @@ if [ "$SHCOUNT" -gt 0 ]; then
 		'/shared/{hash} carries comment'
 	_assert_json_eq '.rating | type' number \
 		'/shared/{hash} carries rating'
+	SHPARTCOUNT=$(printf '%s' "$CURL_BODY" | jq -r '.part_count')
+
+	# --- 6c. GET /shared/{hash}/clients: the upload-side half of the
+	# per-file client rows (issue #984). Same handler and same row shape as
+	# the download side asserted above; what differs is which collection the
+	# hash must belong to, which is what the 404 below pins down.
+	_curl -H "Authorization: Bearer $TOKEN" "$HOST/api/v0/shared/$SHASH/clients"
+	_assert_status 200 "GET /shared/{hash}/clients → 200"
+	_assert_json_eq '.clients | type' array '/shared/{hash}/clients returns a clients array'
+	for k in total offset limit; do
+		_assert_json_eq "has(\"$k\")" true "/shared/{hash}/clients envelope has $k"
+	done
+	# Guarded and counted like the download side above: a shared file has
+	# rows only while a peer is downloading it from us.
+	SHROWS=$(printf '%s' "$CURL_BODY" | jq '.clients | length')
+	echo "  --- /shared/{hash}/clients returned $SHROWS row(s) ---"
+	if [ "$SHROWS" -gt 0 ]; then
+		_assert_json_eq '[.clients[] | select(.role as $r | ($r == null) or ((["source","peer","both","none"] | index($r)) == null))] | length' \
+			0 "every shared-side row has a valid role"
+		_assert_json_eq '[.clients[] | select(.a4af == null)] | length' 0 \
+			"every shared-side row has an a4af flag"
+		_assert_json_eq '[.clients[] | select(has("parts"))] | length' 0 \
+			"no parts bitmap on the shared route without include_parts"
+	else
+		_skip "shared-side row-shape checks: no peer is downloading the shared file"
+	fi
+
+	_curl -H "Authorization: Bearer $TOKEN" "$HOST/api/v0/shared/$SHASH/clients?include_parts=true"
+	_assert_status 200 "GET /shared/{hash}/clients?include_parts=true → 200"
+	SHBITMAPS=$(printf '%s' "$CURL_BODY" | jq '[.clients[] | select(has("parts"))] | length')
+	if [ "$SHBITMAPS" -gt 0 ]; then
+		_assert_json_eq "[.clients[] | select(has(\"parts\")) | select((.parts | length) != $SHPARTCOUNT)] | length" \
+			0 "every shared-side parts bitmap ($SHBITMAPS of them) is exactly part_count entries"
+	else
+		_skip "shared-side parts-length check: no row carries a bitmap"
+	fi
+
+	_curl -H "Authorization: Bearer $TOKEN" "$HOST/api/v0/shared/$SHASH/clients?include_parts=maybe"
+	_assert_status 400 "include_parts must be true/false on the shared route"
+	_curl -H "Authorization: Bearer $TOKEN" "$HOST/api/v0/shared/$SHASH/clients?sort=nonsuch"
+	_assert_status 400 "unknown sort key on /shared/{hash}/clients → 400"
+	_curl -H "Authorization: Bearer $TOKEN" "$HOST/api/v0/shared/$SHASH/clients?sort=name&order=desc&limit=1"
+	_assert_status 200 "the /clients list params work on /shared/{hash}/clients"
+	_curl -X POST -H "Authorization: Bearer $TOKEN" "$HOST/api/v0/shared/$SHASH/clients"
+	_assert_status 405 "POST /shared/{hash}/clients → 405"
+
+	# A hash that is downloading AND shared answers the same on both routes:
+	# one handler, one row set, the direction carried per row. Speeds move
+	# between two snapshots, so compare the row set and each row's relation
+	# to the file rather than the whole body.
+	DL_HASHES=$(curl -s --max-time 10 -H "Authorization: Bearer $TOKEN" \
+		"$HOST/api/v0/downloads" | jq -c '[.downloads[].hash]')
+	SHARED_HASHES=$(curl -s --max-time 10 -H "Authorization: Bearer $TOKEN" \
+		"$HOST/api/v0/shared" | jq -c '[.shared[].hash]')
+	BOTH_HASH=$(printf '%s' "$SHARED_HASHES" | jq -r --argjson dl "$DL_HASHES" \
+		'first(.[] | select(IN($dl[]))) // empty')
+	SHARED_ONLY_HASH=$(printf '%s' "$SHARED_HASHES" | jq -r --argjson dl "$DL_HASHES" \
+		'first(.[] | select(IN($dl[]) | not)) // empty')
+
+	if [ -n "$BOTH_HASH" ]; then
+		_curl -H "Authorization: Bearer $TOKEN" "$HOST/api/v0/downloads/$BOTH_HASH/clients"
+		_assert_status 200 "a downloading+shared hash is served by /downloads/{hash}/clients"
+		DL_ROWS=$(printf '%s' "$CURL_BODY" | jq -c '[.clients[] | {ecid, role, a4af}] | sort')
+		_curl -H "Authorization: Bearer $TOKEN" "$HOST/api/v0/shared/$BOTH_HASH/clients"
+		_assert_status 200 "the same hash is served by /shared/{hash}/clients"
+		_assert_json_eq '[.clients[] | {ecid, role, a4af}] | sort | tojson' "$DL_ROWS" \
+			"both routes return the same rows for a downloading+shared hash"
+	else
+		_skip "same-rows check: no hash is both downloading and shared"
+	fi
+
+	# The 404 pair is the only difference between the two routes: each hash
+	# must belong to that route's collection.
+	if [ -n "$SHARED_ONLY_HASH" ]; then
+		_curl -H "Authorization: Bearer $TOKEN" \
+			"$HOST/api/v0/downloads/$SHARED_ONLY_HASH/clients"
+		_assert_status 404 "a shared-only hash is a 404 on /downloads/{hash}/clients"
+	else
+		_skip "shared-only 404 check: every shared file is also downloading"
+	fi
 fi
 
-# --- 6c. /shared/{hash} missing-hash 404. -------------------------
+# --- 6d. Missing-hash 404s on the shared routes. -------------------
+# Both use a hash that exists nowhere, so neither needs a shared file and
+# both belong outside the "has entries" gate above: on a daemon sharing
+# nothing these are still the checks that pin the routes down.
 _curl -H "Authorization: Bearer $TOKEN" \
 	"$HOST/api/v0/shared/baadbaadbaadbaadbaadbaadbaadbaad"
 _assert_status 404 "GET /shared/{nonexistent-hash} → 404"
+_curl -H "Authorization: Bearer $TOKEN" \
+	"$HOST/api/v0/shared/baadbaadbaadbaadbaadbaadbaadbaad/clients"
+_assert_status 404 "unknown hash on /shared/{hash}/clients → 404"
 
 # --- 7. Method gate. DELETE is method-gated on the /shared collection
 # (no bulk-unshare endpoint); the /downloads collection now accepts a bulk
@@ -402,8 +509,10 @@ _assert_status 405 "DELETE /api/v0/shared → 405"
 
 # --- Summary. -----------------------------------------------------
 echo
+SKIP_NOTE=""
+[ "$SKIP_COUNT" -gt 0 ] && SKIP_NOTE=" ($SKIP_COUNT check(s) skipped)"
 if [ "$FAIL_COUNT" -eq 0 ]; then
-	echo "OK: $TEST_COUNT/$TEST_COUNT passed"
+	echo "OK: $TEST_COUNT/$TEST_COUNT passed$SKIP_NOTE"
 	exit 0
 fi
 echo "FAIL: $FAIL_COUNT/$TEST_COUNT failed"

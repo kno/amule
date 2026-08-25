@@ -28,7 +28,8 @@
 #define TASKS_H
 
 #include "ThreadScheduler.h"
-#include "MD4Hash.h" // Needed for CMD4Hash on CMediaProbeTask + CMediaProbeEvent
+#include "MediaProbe.h" // Needed for MediaInfo
+#include "MD4Hash.h"    // Needed for CMD4Hash on CMediaProbeTask + CMediaProbeEvent
 #include <common/Path.h>
 
 class CKnownFile;
@@ -268,30 +269,48 @@ private:
 };
 
 /**
- * This event is sent when a CMediaProbeTask successfully extracted
- * media metadata. The main-thread handler resolves the hash back to
- * a CKnownFile* (via CKnownFileList::FindKnownFileByID) and attaches
- * the FT_MEDIA_* tags there — doing that from the worker thread would
- * race with the publish paths that read m_taglist.
+ * This event is sent when a probe finished, whether or not it extracted
+ * anything. The main-thread handler resolves the hash back to a CKnownFile*
+ * (via CKnownFileList::FindKnownFileByID) and attaches the FT_MEDIA_* tags
+ * there — doing that from the worker thread would race with the publish paths
+ * that read m_taglist.
+ *
+ * A FAILED probe is reported too (issue #1116): the handler records that the
+ * file was tried and produced nothing, so the "already probed" gate stops
+ * re-queueing it on every reload and every restart. Without that round trip a
+ * file ffprobe cannot read is indistinguishable from one never probed.
  */
 class CMediaProbeEvent : public wxEvent
 {
 public:
-	CMediaProbeEvent(
-		const CMD4Hash &hash, uint32 lengthSeconds, uint32 bitrateKbps, const wxString &codec);
+	// Carries the MediaInfo whole rather than one accessor per field: the
+	// struct already IS the set of extracted fields, and mirroring them here
+	// meant every new field touched the event, its ctor, its Clone and the
+	// handler. Strings are deep-copied on construction for the thread hop --
+	// see the ctor.
+	// succeeded == false carries no MediaInfo worth reading: the handler
+	// records the failure and leaves whatever tags the file already had.
+	// markUnprobeable is meaningful only when succeeded is false: it says the
+	// probe reached a verdict about the FILE (ffprobe ran and found nothing
+	// usable) rather than failing on the environment (no binary, a timeout, a
+	// file that vanished). Only the former may be recorded against the file.
+	CMediaProbeEvent(const CMD4Hash &hash,
+		const MediaInfo &info,
+		bool succeeded = true,
+		bool markUnprobeable = false);
 
 	virtual wxEvent *Clone() const;
 
 	const CMD4Hash &GetHash() const { return m_hash; }
-	uint32 GetLengthSeconds() const { return m_lengthSeconds; }
-	uint32 GetBitrateKbps() const { return m_bitrateKbps; }
-	const wxString &GetCodec() const { return m_codec; }
+	const MediaInfo &GetInfo() const { return m_info; }
+	bool Succeeded() const { return m_succeeded; }
+	bool MarkUnprobeable() const { return m_markUnprobeable; }
 
 private:
 	CMD4Hash m_hash;
-	uint32 m_lengthSeconds;
-	uint32 m_bitrateKbps;
-	wxString m_codec;
+	MediaInfo m_info;
+	bool m_succeeded;
+	bool m_markUnprobeable;
 };
 
 /**

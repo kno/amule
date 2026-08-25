@@ -644,6 +644,17 @@ public:
 		SetTcpKeepalive(m_socket->native_handle(), idleSec, probeIntervalSec, probeCount);
 	}
 
+	// Turn Nagle off. Same timing contract as EnableTcpKeepalive: the
+	// caller invokes this once the fd is live (after connect / accept).
+	void EnableTcpNoDelay()
+	{
+		if (!m_socket || !m_socket->is_open()) {
+			return;
+		}
+		error_code ec;
+		m_socket->set_option(ip::tcp::no_delay(true), ec);
+	}
+
 	bool IsDestroying() const { return m_destroying.load(std::memory_order_acquire); }
 
 	// Returns the actual error code
@@ -1446,6 +1457,11 @@ bool CLibSocket::IsOk() const
 void CLibSocket::EnableTcpKeepalive(int idleSec, int probeIntervalSec, int probeCount)
 {
 	m_aSocket->EnableTcpKeepalive(idleSec, probeIntervalSec, probeCount);
+}
+
+void CLibSocket::EnableTcpNoDelay()
+{
+	m_aSocket->EnableTcpNoDelay();
 }
 
 void CLibSocket::SetConnectTimeout(int ms)
