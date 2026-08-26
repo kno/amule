@@ -28,6 +28,7 @@
 #include <array>
 #include <cstddef>
 #include <cstdint>
+#include <cstring>
 #include <string>
 
 /**
@@ -120,8 +121,11 @@
 class CNetworkAddress
 {
 public:
+	/** How many octets an address of either family occupies. */
+	static constexpr std::size_t OCTET_COUNT = 16;
+
 	/** The sixteen octets an IPv6 address occupies, in wire order. */
-	using Octets = std::array<std::uint8_t, 16>;
+	using Octets = std::array<std::uint8_t, OCTET_COUNT>;
 
 	/**
 	 * Which family a present address belongs to, or that there is none.
@@ -410,9 +414,16 @@ public:
 		if (out == nullptr || !IsIPv6()) {
 			return false;
 		}
-		for (std::size_t i = 0; i < m_octets.size(); ++i) {
-			out[i] = m_octets[i];
-		}
+		// One copy of a constant length, not a loop bounded by m_octets.size().
+		// The two are the same sixteen bytes, but only the constant states the
+		// postcondition above in a form a reader -- or a static analyser -- can
+		// check without first proving what size() returns. The Clang Static
+		// Analyzer could not: it explored the zero-iteration path through the
+		// old loop and concluded this function returns true having written
+		// nothing, which surfaced as garbage-value reports in all four callers
+		// that read the buffer back (IPFilterMatch.h, NatRendezvousProtocol.h
+		// and, through CMD4Hash, ArchSpecific.h).
+		std::memcpy(out, m_octets.data(), OCTET_COUNT);
 		return true;
 	}
 

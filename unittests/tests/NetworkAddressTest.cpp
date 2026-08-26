@@ -36,6 +36,7 @@
 #include <NetworkAddressAsio.h>
 #include <NetworkAddress.h>
 
+#include <algorithm>
 #include <map>
 #include <set>
 
@@ -464,6 +465,51 @@ TEST(NetworkAddress, OctetsAreWireOrderAndLeaveTheIPv4TailZero)
 	const std::uint8_t allZero[16] = { 0 };
 	ASSERT_TRUE(CNetworkAddress::FromIPv6Bytes(allZero).IsAbsent());
 	ASSERT_TRUE(CNetworkAddress::AnyIPv6() != CNetworkAddress::Absent());
+}
+
+// ToIPv6Bytes() is the wire-side writer: the CT_MOD_IP_V6 handshake tag, Kad's
+// "ip6" tag and the NAT endpoint hint each hand it a bare sixteen-byte buffer
+// and then read all sixteen back. Nothing pinned that it fills all sixteen, so
+// the postcondition lived only in the doc comment -- and a short write there is
+// not a cosmetic bug: the bytes it left alone become part of an address a peer
+// is told to punch at.
+TEST(NetworkAddress, ToIPv6BytesFillsAllSixteenOrWritesNothing)
+{
+	// Sentinel fill rather than zero fill: a byte still holding 0xCD afterwards
+	// is a byte the writer skipped, which a zero-filled buffer would hide behind
+	// a plausible-looking 0.
+	std::uint8_t bytes[16];
+	std::fill(std::begin(bytes), std::end(bytes), 0xCD);
+
+	const CNetworkAddress v6 = CNetworkAddress::FromString("2001:db8::1");
+	ASSERT_TRUE(v6.ToIPv6Bytes(bytes));
+	const CNetworkAddress::Octets &expected = v6.GetOctets();
+	for (std::size_t i = 0; i < expected.size(); ++i) {
+		ASSERT_EQUALS(static_cast<int>(expected[i]), static_cast<int>(bytes[i]));
+	}
+	// Stated separately for the trailing octet, because the tail is what a copy
+	// that stops early loses first. It is 1 rather than 0 here, so "skipped" and
+	// "correctly written" cannot coincide.
+	ASSERT_EQUALS(1, static_cast<int>(bytes[15]));
+
+	// A mapped IPv4 address is an IPv6 address for this writer's purposes, and it
+	// goes out as the mapped form -- all sixteen octets again, not four.
+	std::fill(std::begin(bytes), std::end(bytes), 0xCD);
+	ASSERT_TRUE(CNetworkAddress::FromString("::ffff:192.0.2.1").ToIPv6Bytes(bytes));
+	ASSERT_EQUALS(0xff, static_cast<int>(bytes[10]));
+	ASSERT_EQUALS(0xff, static_cast<int>(bytes[11]));
+	ASSERT_EQUALS(192, static_cast<int>(bytes[12]));
+	ASSERT_EQUALS(1, static_cast<int>(bytes[15]));
+
+	// The failure paths write nothing at all, so a caller that ignores the result
+	// cannot mistake a stale buffer for an address it never received.
+	std::fill(std::begin(bytes), std::end(bytes), 0xCD);
+	ASSERT_FALSE(CNetworkAddress::FromIPv4HostOrder(TEST_IP_HOST_ORDER).ToIPv6Bytes(bytes));
+	ASSERT_FALSE(CNetworkAddress::Absent().ToIPv6Bytes(bytes));
+	ASSERT_FALSE(v6.ToIPv6Bytes(nullptr));
+	for (std::size_t i = 0; i < 16; ++i) {
+		ASSERT_EQUALS(0xCD, static_cast<int>(bytes[i]));
+	}
 }
 
 // The socket backend is the one caller that still needs a real asio address, so
