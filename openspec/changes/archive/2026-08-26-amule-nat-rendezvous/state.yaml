@@ -15,5 +15,5 @@ phases:
   design: complete
   tasks: complete
   apply: complete
-  verify: pending
-  archive: pending
+  verify: complete
+  archive: complete
