@@ -11,11 +11,16 @@
 # Two variants ship from one run, out of the same Dockerfile and the same
 # checkout, so they can never be built from different source:
 #
-#   :latest (and :v*, :sha-*)          ENABLE_QUIC unset -- the conservative
-#                                      image. QUIC is compiled out.
-#   :test   (and :v*-quic, :sha-*-quic) ENABLE_QUIC=YES -- the QUIC NAT-T
-#                                      transport compiled in and UNVALIDATED on
-#                                      the wire; see packaging/linux/docker/README.md.
+#   :latest, :test (and :v*, :sha-*)   ENABLE_QUIC=YES -- the default image
+#                                      since 2026-08-26. The QUIC NAT-T
+#                                      transport is compiled in, and it has
+#                                      still never completed a handshake with
+#                                      another implementation: see the warning
+#                                      in packaging/linux/docker/README.md.
+#                                      `test` is kept as an alias so anything
+#                                      already pulling it keeps working.
+#   :noquic (and :v*-noquic, ...)       ENABLE_QUIC unset -- the conservative
+#                                      image, QUIC compiled out. The way back.
 #
 # The QEMU/Buildx/login setup is shared by both builds; only the metadata and
 # build steps are duplicated.
@@ -61,7 +66,7 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Image metadata (default, no QUIC)
+      - name: Image metadata (noquic variant)
         id: meta
         uses: docker/metadata-action@v5
         with:
@@ -69,12 +74,12 @@ jobs:
           # latest on master, semver on tags, and always a commit-sha tag so
           # a published binary maps back to its exact GPL source revision.
           tags: |
-            type=raw,value=latest,enable={{is_default_branch}}
-            type=ref,event=tag
-            type=semver,pattern={{version}}
-            type=sha,format=long
+            type=raw,value=noquic,enable={{is_default_branch}}
+            type=ref,event=tag,suffix=-noquic
+            type=semver,pattern={{version}},suffix=-noquic
+            type=sha,format=long,suffix=-noquic
 
-      - name: Build and push (default, no QUIC)
+      - name: Build and push (noquic variant)
         uses: docker/build-push-action@v6
         with:
           context: .
@@ -86,7 +91,7 @@ jobs:
           cache-from: type=gha,scope=amule-runtime
           cache-to: type=gha,scope=amule-runtime,mode=max
 
-      - name: Image metadata (QUIC)
+      - name: Image metadata (default, QUIC)
         id: meta-quic
         uses: docker/metadata-action@v5
         with:
@@ -96,12 +101,13 @@ jobs:
           # every immutable tag distinct from the default variant's, so a pulled
           # QUIC image still maps back to its exact source commit.
           tags: |
+            type=raw,value=latest,enable={{is_default_branch}}
             type=raw,value=test,enable={{is_default_branch}}
-            type=ref,event=tag,suffix=-quic
-            type=semver,pattern={{version}},suffix=-quic
-            type=sha,format=long,suffix=-quic
+            type=ref,event=tag
+            type=semver,pattern={{version}}
+            type=sha,format=long
 
-      - name: Build and push (QUIC)
+      - name: Build and push (default, QUIC)
         uses: docker/build-push-action@v6
         with:
           context: .

@@ -6,7 +6,7 @@ the eMuleAI network-parity work that upstream and the stock image do not:
 peer-capability recognition, Kad protocol `0x0a`, IPv6 dual-stack ed2k, and the
 uTP transport (`ENABLE_UTP=YES`, bundled libutp).
 
-Two tags are published: `latest`, without the QUIC NAT-T transport, and `test`,
+Two tags are published: `latest`, without the QUIC NAT-T transport, and `latest`,
 with it — and the QUIC path is **unvalidated on the wire**. See
 [The two published variants](#the-two-published-variants-latest-and-test).
 
@@ -43,7 +43,7 @@ docker buildx build -f packaging/linux/docker/Dockerfile \
 CI publishes to `ghcr.io/<owner>/amule-emuleai` on pushes to `master` and on
 `v*` tags — see `.github/workflows/docker-runtime.yml`.
 
-## The two published variants: `latest` and `test`
+## The two published variants: `latest` and `latest`
 
 One Dockerfile builds both, selected by the `ENABLE_QUIC` build arg. They come
 out of the same run and the same checkout, so they are always the same source.
@@ -51,10 +51,10 @@ out of the same run and the same checkout, so they are always the same source.
 | Tag | QUIC NAT-T | Immutable tags |
 | --- | --- | --- |
 | `latest` | **compiled out** | `v<version>`, `sha-<commit>` |
-| `test` | compiled in (`-DENABLE_QUIC=YES`) | `v<version>-quic`, `sha-<commit>-quic` |
+| `latest` | compiled in (`-DENABLE_QUIC=YES`) | `v<version>-quic`, `sha-<commit>-quic` |
 
 `latest` is deliberately conservative: no ngtcp2, no GnuTLS, no QUIC code in the
-binary. Nothing about it changed when `test` was added — the QUIC build-deps and
+binary. Nothing about it changed when `latest` was added — the QUIC build-deps and
 the QUIC runtime libraries are installed only when the arg is on, and with it off
 the `cmake` line does not carry `-DENABLE_QUIC` at all.
 
@@ -71,9 +71,9 @@ per-architecture exception. The GnuTLS binding rather than the OpenSSL one,
 because trixie packages no `libngtcp2-crypto-ossl-dev`; see
 `openspec/changes/amule-quic-transport/design.md`.
 
-### `test` is unvalidated code — read this before pulling it
+### `latest` carries QUIC, and that path is still unvalidated
 
-The QUIC transport in `test` **has never been observed working against another
+The QUIC transport in `latest` **has never been observed working against another
 implementation.** Task 4.4 of the `amule-quic-transport` change is still open,
 and it is open on the QUIC half specifically:
 
@@ -91,9 +91,9 @@ and it is open on the QUIC half specifically:
   endpoint answers a datagram. If the guess is wrong, proof validation fails
   against eMuleAI and the code has to change.
 
-So `test` exists to make that experiment cheap to run — two instances built with
+So `latest` exists to make that experiment cheap to run — two instances built with
 QUIC on, on opposite sides of a NAT — not because the transport is known to
-work. Anyone pulling `test` is pulling unvalidated code. Use `latest` for
+work. Anyone pulling `latest` is pulling that code. Use `noquic` for
 anything you care about.
 
 ## Run
@@ -158,3 +158,14 @@ For globally-routable inbound IPv6 (so peers can reach you without a HighID),
 the host itself needs native IPv6 and the Docker daemon must be configured for
 it (`"ipv6": true` plus an `ip6tables`/prefix setup in `/etc/docker/daemon.json`).
 Without that, IPv6 works only between containers on the v6 network.
+
+## Tags
+
+| tag | QUIC | notes |
+| --- | --- | --- |
+| `latest`, `test` | compiled in | the default since 2026-08-26. `test` is an alias kept so anything already pulling it keeps working. |
+| `noquic` | compiled out | the conservative build, and the way back if QUIC ever misbehaves. Same tree, same commit, one build flag apart. |
+
+Switching between them is one line in a compose file: the two images are built
+from the same checkout in the same workflow run, so they can never be built from
+different source.
