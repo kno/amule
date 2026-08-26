@@ -34,6 +34,7 @@
 #include "QuicLibraryAdapter.h"     // Needed for CQuicLibraryAdapter
 #include "ReservedProtocolFrames.h" // Needed for CUnknownFrameLogThrottle
 #include "UtpContext.h"             // Needed for CUtpContext / IUtpDatagramSink
+#include "QuicInboundAcceptor.h"    // Needed for CQuicInboundAcceptor
 #include "UtpInboundAcceptor.h"     // Needed for CUtpInboundAcceptor
 #include "UtpLibraryAdapter.h"      // Needed for CUtpLibraryAdapter
 
@@ -92,6 +93,18 @@ public:
 	 * on either side.
 	 */
 	bool CanServeQuicConnections() { return m_quicContext.CanServeConnections(); }
+
+	/**
+	 * The QUIC context, for the connect path.
+	 *
+	 * CUpDownClient needs it to register what an inbound QUIC connection from a
+	 * peer must prove, because the two values that expectation is built from
+	 * arrive in that peer's ed2k hello and this socket never sees one. Handed
+	 * out rather than wrapped, on the same reasoning as GetUtpContext() and
+	 * GetNatRendezvousManager(): there is one per client instance and the
+	 * decision belongs to the client, not to the socket that carries bytes.
+	 */
+	CQuicContext *GetQuicContext() { return &m_quicContext; }
 
 	/**
 	 * Drive the hole-punch schedules. Also called from
@@ -288,6 +301,13 @@ private:
 	//! the shared port behaves exactly as it did before QUIC existed.
 	CQuicContext m_quicContext;
 	CQuicLibraryAdapter m_quicLibrary{ &m_quicContext };
+
+	//! Where a validated inbound QUIC connection becomes a CClientTCPSocket.
+	//! Its presence is what lets a connection whose peer proof passed reach the
+	//! ed2k layer at all: without it the adapter closes every authenticated
+	//! connection, because a validated stream nothing reads would accumulate
+	//! bytes for a consumer that never arrives.
+	CQuicInboundAcceptor m_quicAcceptor;
 
 	//! The rendezvous exchanges in flight. Empty in every ordinary session:
 	//! an entry exists only for a firewalled peer that advertised traversal

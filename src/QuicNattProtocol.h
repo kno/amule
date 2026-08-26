@@ -144,8 +144,8 @@ inline std::size_t QuicFramePayloadLength(std::size_t length)
 // --- Peer proof -------------------------------------------------------------
 
 /**
- * The 37-byte proof: magic, then the peer's ed2k user hash, then the nonce the
- * rendezvous agreed on.
+ * The 37-byte proof: magic, then the sender's ed2k user hash, then the sender's
+ * 16-byte identity value.
  *
  * TLS authenticates the *connection*; it says nothing about which ed2k client
  * is on the other end, because neither side has a certificate the other can
@@ -154,17 +154,30 @@ inline std::size_t QuicFramePayloadLength(std::size_t length)
  * could complete the QUIC handshake in the peer's place and be handed the
  * connection.
  *
- * The nonce is what makes it worth more than the user hash alone: a user hash
- * is public and never changes, so a proof carrying only that would replay
- * against every future connection to the same peer. Binding it to one
- * rendezvous confines a captured proof to a connection that has already
- * happened.
+ * The second field is what makes the record worth more than the user hash
+ * alone. A user hash is on the wire in every hello and every source exchange,
+ * so a proof carrying only that could be assembled by anyone who has ever heard
+ * of the peer. The identity value cannot: it reaches this end only through the
+ * peer's ed2k hello over TCP (tag CT_MOD_QUIC_IDENT), while the attack this
+ * proof exists to stop -- hijacking a punched UDP mapping -- gives an attacker
+ * the UDP half and not the TCP one.
+ *
+ * This field was read as a per-exchange nonce until a real eMuleAI v1.6.0 was
+ * measured on 2026-08-26 and sent a byte-identical value across three separate
+ * sessions. It is a stable per-install identity, not a nonce, and the
+ * difference matters twice: it is what gives the field a wire source at all,
+ * and it is what bounds how much the proof proves. A stable value is not a
+ * challenge, so a captured proof does replay -- against an attacker who already
+ * had the peer's hello. See QuicProofValue.h, which owns the value and the
+ * question of which end's belongs here.
  */
 constexpr char QUIC_NATT_PROOF_MAGIC[] = "EAQN1";
 constexpr std::size_t QUIC_NATT_PROOF_MAGIC_LENGTH = sizeof(QUIC_NATT_PROOF_MAGIC) - 1;
 
 //! Both proof fields are 16 bytes: an ed2k user hash is an MD4 digest, and the
-//! rendezvous nonce is sized to match it.
+//! identity value is sized to match it -- which is how the CT_MOD_QUIC_IDENT tag
+//! was recognised as this field's source, since eMuleAI sends it as a 16-byte
+//! hash-typed tag.
 constexpr std::size_t QUIC_NATT_PROOF_VALUE_LENGTH = 16;
 
 //! 5 + 16 + 16. A fixed-length record, not a prefix of a longer one.
@@ -173,7 +186,7 @@ constexpr std::size_t QUIC_NATT_PROOF_LENGTH =
 
 //! Byte offsets of the two values inside the record.
 constexpr std::size_t QUIC_NATT_PROOF_IDENTITY_OFFSET = QUIC_NATT_PROOF_MAGIC_LENGTH;
-constexpr std::size_t QUIC_NATT_PROOF_NONCE_OFFSET =
+constexpr std::size_t QUIC_NATT_PROOF_VALUE_OFFSET =
 	QUIC_NATT_PROOF_IDENTITY_OFFSET + QUIC_NATT_PROOF_VALUE_LENGTH;
 
 /**
@@ -198,26 +211,36 @@ enum EQuicProofResult
 	QUIC_PROOF_OVERSIZED,
 	//! The right length, but not this protocol's magic.
 	QUIC_PROOF_BAD_MAGIC,
-	//! Well-formed, but for a different ed2k identity or a different
-	//! rendezvous. This is the one that means somebody tried.
+	//! Well-formed, but for a different ed2k identity, or carrying an identity
+	//! value this end never learned from that peer. This is the one that means
+	//! somebody tried.
 	QUIC_PROOF_WRONG_IDENTITY
 };
 
 /**
  * Build the proof this end sends.
  *
- * @param userHash  16 bytes: this client's ed2k user hash.
- * @param nonce     16 bytes: the nonce from the rendezvous that produced this
- *                  connection.
- * @param out       receives QUIC_NATT_PROOF_LENGTH bytes. Untouched unless
- *                  true is returned.
- * @return false when any argument is NULL. Those arrive from a connection
- *         whose peer state may not be established yet, so refusing is the
- *         answer rather than dereferencing.
+ * Both fields describe the *sender*, which is what lets the record be read as
+ * one sentence: "I am this ed2k identity, and this is the identity value that
+ * identity published." A record whose two fields described different ends would
+ * be one neither end could describe at all. See kQuicProofValueDirection in
+ * QuicProofValue.h, which is where that decision is recorded and where it would
+ * be reversed.
+ *
+ * @param userHash    16 bytes: this client's ed2k user hash.
+ * @param proofValue  16 bytes: the identity value the direction selects, from
+ *                    SelectQuicProofValue().
+ * @param out         receives QUIC_NATT_PROOF_LENGTH bytes. Untouched unless
+ *                    true is returned.
+ * @return false when any argument is NULL. A NULL is the ordinary answer for a
+ *         value that was never learned, and it must produce no proof at all
+ *         rather than a proof with an empty field -- so refusing here is the
+ *         fail-closed path, not defensive coding against a caller bug.
  */
-inline bool BuildQuicNattProof(const std::uint8_t *userHash, const std::uint8_t *nonce, std::uint8_t *out)
+inline bool BuildQuicNattProof(
+	const std::uint8_t *userHash, const std::uint8_t *proofValue, std::uint8_t *out)
 {
-	if (userHash == nullptr || nonce == nullptr || out == nullptr) {
+	if (userHash == nullptr || proofValue == nullptr || out == nullptr) {
 		return false;
 	}
 
@@ -226,7 +249,7 @@ inline bool BuildQuicNattProof(const std::uint8_t *userHash, const std::uint8_t 
 	}
 	for (std::size_t i = 0; i < QUIC_NATT_PROOF_VALUE_LENGTH; ++i) {
 		out[QUIC_NATT_PROOF_IDENTITY_OFFSET + i] = userHash[i];
-		out[QUIC_NATT_PROOF_NONCE_OFFSET + i] = nonce[i];
+		out[QUIC_NATT_PROOF_VALUE_OFFSET + i] = proofValue[i];
 	}
 
 	return true;
@@ -235,11 +258,12 @@ inline bool BuildQuicNattProof(const std::uint8_t *userHash, const std::uint8_t 
 /**
  * Compare two 16-byte values without an early exit.
  *
- * The nonce is a secret for the lifetime of one rendezvous, and a comparison
- * that returned at the first differing byte would leak how many leading bytes
- * a guess got right. That is a slow oracle over a network, but it is an
- * oracle, and the whole record is 32 bytes -- there is no cost to reading all
- * of it.
+ * A comparison that returned at the first differing byte would leak how many
+ * leading bytes a guess got right. The identity value is stable rather than
+ * per-exchange, which makes that leak worse rather than better: an attacker gets
+ * as many attempts as it likes against a target that never rotates, so an oracle
+ * it can query is an oracle it can finish. The whole record is 32 bytes -- there
+ * is no cost to reading all of it.
  */
 inline bool QuicNattValuesEqual(const std::uint8_t *a, const std::uint8_t *b)
 {
@@ -259,19 +283,26 @@ inline bool QuicNattValuesEqual(const std::uint8_t *a, const std::uint8_t *b)
  * not as an impostor, which keeps the one refusal that means somebody tried
  * distinguishable in the log.
  *
+ * Both expectations must have come from the peer's ed2k hello and neither may
+ * come from the connection being validated. That is not enforceable from inside
+ * this function -- it is a property of the caller -- so it is stated at the one
+ * place a caller reads: see SQuicPeerExpectation in QuicContext.h, which is the
+ * only thing in the tree that fills these two arguments in.
+ *
  * @param proof   what the peer sent. May be NULL when length is 0.
  * @param length  its length in bytes.
- * @param expectedUserHash  16 bytes: the user hash of the ed2k identity that
- *        negotiated this rendezvous. NULL means this end has no expectation
- *        yet, which refuses -- an unestablished expectation must never wave a
- *        connection through.
- * @param expectedNonce  16 bytes: the nonce of that same rendezvous. NULL
- *        refuses, for the same reason.
+ * @param expectedUserHash  16 bytes: the user hash of the ed2k identity this
+ *        connection is supposed to belong to. NULL means this end has no
+ *        expectation, which refuses -- an unestablished expectation must never
+ *        wave a connection through.
+ * @param expectedValue  16 bytes: the identity value that peer advertised in its
+ *        hello. NULL refuses, for the same reason, and it is the ordinary
+ *        answer for a peer that advertised none.
  */
 inline EQuicProofResult ValidateQuicNattProof(const std::uint8_t *proof,
 	std::size_t length,
 	const std::uint8_t *expectedUserHash,
-	const std::uint8_t *expectedNonce)
+	const std::uint8_t *expectedValue)
 {
 	if (proof == nullptr || length == 0) {
 		return QUIC_PROOF_ABSENT;
@@ -289,7 +320,7 @@ inline EQuicProofResult ValidateQuicNattProof(const std::uint8_t *proof,
 		}
 	}
 
-	if (expectedUserHash == nullptr || expectedNonce == nullptr) {
+	if (expectedUserHash == nullptr || expectedValue == nullptr) {
 		return QUIC_PROOF_WRONG_IDENTITY;
 	}
 
@@ -298,9 +329,9 @@ inline EQuicProofResult ValidateQuicNattProof(const std::uint8_t *proof,
 	// reintroduce the early exit QuicNattValuesEqual() exists to avoid.
 	const bool identityMatches =
 		QuicNattValuesEqual(proof + QUIC_NATT_PROOF_IDENTITY_OFFSET, expectedUserHash);
-	const bool nonceMatches = QuicNattValuesEqual(proof + QUIC_NATT_PROOF_NONCE_OFFSET, expectedNonce);
+	const bool valueMatches = QuicNattValuesEqual(proof + QUIC_NATT_PROOF_VALUE_OFFSET, expectedValue);
 
-	return (identityMatches && nonceMatches) ? QUIC_PROOF_VALID : QUIC_PROOF_WRONG_IDENTITY;
+	return (identityMatches && valueMatches) ? QUIC_PROOF_VALID : QUIC_PROOF_WRONG_IDENTITY;
 }
 
 /**

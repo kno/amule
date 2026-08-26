@@ -85,7 +85,7 @@ CClientUDPSocket::CClientUDPSocket(const amuleIPV4Address &address, const CProxy
 	// port behaves exactly as it did before QUIC -- which is what every
 	// default build does, because ENABLE_QUIC is off by default, and what
 	// every macOS build does, because the dependency is not packageable there.
-	m_quicContext.Configure(&m_quicLibrary, this, this);
+	m_quicContext.Configure(&m_quicLibrary, this, this, &m_quicAcceptor);
 #endif
 }
 

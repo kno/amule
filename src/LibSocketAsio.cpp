@@ -85,6 +85,7 @@
 #endif
 
 #include "LibSocket.h"
+#include "QuicSocketTransport.h"     // Needed for CQuicSocketTransport (QUIC substitution)
 #include "UtpSocketTransport.h"      // Needed for CUtpSocketTransport (uTP substitution)
 #include "AddressFamilyPolicyAsio.h" // Needed for the family decisions this file used to hardcode
 #include "NetworkAddressAsio.h"      // Needed for ToAsioAddress/FromAsioAddress
@@ -1353,31 +1354,37 @@ private:
 };
 
 /**
- * How a uTP connection reaches the socket above it.
+ * How a substituted transport reaches the socket above it.
  *
  * The same four CoreNotify_LibSocket* events the asio reactor posts, so
- * CClientTCPSocket cannot tell a uTP connection from a TCP one: OnConnect()
- * still sends the hello, OnReceive() still reads packets, OnSend() still
- * drains the send queue, OnLost() still tears the connection down.
+ * CClientTCPSocket cannot tell a uTP or QUIC connection from a TCP one:
+ * OnConnect() still sends the hello, OnReceive() still reads packets, OnSend()
+ * still drains the send queue, OnLost() still tears the connection down.
  *
- * Deferred rather than direct, deliberately. libutp's callbacks fire from
- * inside utp_process_udp() (on the ed2k UDP receive path) and
- * utp_check_timeouts() (on the core timer), so a direct call would re-enter the
- * client code from inside libutp -- and the client code closes sockets, which
- * would destroy the utp_socket libutp is standing on.
+ * Deferred rather than direct, deliberately, and the reason is the same for both
+ * transports. libutp's callbacks fire from inside utp_process_udp() (on the ed2k
+ * UDP receive path) and utp_check_timeouts() (on the core timer); ngtcp2's fire
+ * from inside ngtcp2_conn_read_pkt() on that same receive path. A direct call
+ * would re-enter the client code from inside the library -- and the client code
+ * closes sockets, which would destroy the very object the library is standing
+ * on.
+ *
+ * One notifier for both transports because both post exactly these four events.
+ * A second class saying the same thing would be a second place for the mapping
+ * to drift.
  */
-class CUtpSocketNotifier : public IUtpSocketEvents
+class CStreamTransportNotifier : public IStreamTransportEvents
 {
 public:
-	explicit CUtpSocketNotifier(CLibSocket *wrapper)
+	explicit CStreamTransportNotifier(CLibSocket *wrapper)
 	: m_wrapper(wrapper)
 	{
 	}
 
-	void OnUtpSocketConnected() override { CoreNotify_LibSocketConnect(m_wrapper, 0); }
-	void OnUtpSocketReadable() override { CoreNotify_LibSocketReceive(m_wrapper, 0); }
-	void OnUtpSocketWritable() override { CoreNotify_LibSocketSend(m_wrapper, 0); }
-	void OnUtpSocketLost() override { CoreNotify_LibSocketLost(m_wrapper); }
+	void OnStreamTransportConnected() override { CoreNotify_LibSocketConnect(m_wrapper, 0); }
+	void OnStreamTransportReadable() override { CoreNotify_LibSocketReceive(m_wrapper, 0); }
+	void OnStreamTransportWritable() override { CoreNotify_LibSocketSend(m_wrapper, 0); }
+	void OnStreamTransportLost() override { CoreNotify_LibSocketLost(m_wrapper); }
 
 private:
 	CLibSocket *m_wrapper;
@@ -1407,29 +1414,52 @@ CLibSocket::~CLibSocket()
 		m_aSocket->OnWrapperGone();
 	}
 
-	// Before the notifier it points at goes away with this object: the
-	// transport's destructor clears the utp_socket's user data and closes it,
-	// so libutp cannot call back into a wrapper that no longer exists.
-	m_utpTransport.reset();
+	// Before the notifier it points at goes away with this object. Each
+	// transport's destructor severs its own link to its library first -- the uTP
+	// one clears the utp_socket's user data and closes it, the QUIC one detaches
+	// itself from the connection -- so neither library can call back into a
+	// wrapper that no longer exists.
+	m_streamTransport.reset();
+	m_utpTransport = nullptr;
 	m_utpNotifier.reset();
 }
 
 void CLibSocket::AttachUtpTransport(std::unique_ptr<CUtpSocketTransport> transport)
 {
-	m_utpTransport = std::move(transport);
-	if (m_utpTransport) {
-		m_utpNotifier.reset(new CUtpSocketNotifier(this));
-		m_utpTransport->SetEventSink(m_utpNotifier.get());
+	// The raw pointer is taken before ownership moves, and both are assigned
+	// here and nowhere else: HasUtpTransport() answering yes for a transport
+	// m_streamTransport no longer holds would be a use-after-free with a
+	// plausible-looking call site.
+	CUtpSocketTransport *utp = transport.get();
+	m_streamTransport = std::move(transport);
+	m_utpTransport = utp;
+	if (m_streamTransport) {
+		m_utpNotifier.reset(new CStreamTransportNotifier(this));
+		utp->SetEventSink(m_utpNotifier.get());
+	}
+}
+
+void CLibSocket::AttachQuicTransport(std::unique_ptr<CQuicSocketTransport> transport)
+{
+	// m_utpTransport stays NULL: this is a QUIC connection, and the one caller
+	// of HasUtpTransport() is asking whether a uTP dial is already in flight.
+	CQuicSocketTransport *quic = transport.get();
+	m_streamTransport = std::move(transport);
+	if (m_streamTransport) {
+		m_utpNotifier.reset(new CStreamTransportNotifier(this));
+		quic->SetEventSink(m_utpNotifier.get());
 	}
 }
 
 bool CLibSocket::Connect(const amuleIPV4Address &adr, bool wait)
 {
-	if (m_utpTransport) {
-		// The uTP dial already went out when the transport was created --
-		// utp_connect() is synchronous in the sense that it puts the SYN on
-		// the wire -- so there is nothing to start here. False mirrors the
-		// asio path's answer for a connect that has not completed yet.
+	if (m_streamTransport) {
+		// Nothing to start, for either transport and for different reasons: a
+		// uTP dial already went out when the transport was created
+		// (utp_connect() is synchronous in the sense that it puts the SYN on
+		// the wire), and a QUIC transport only ever exists for a connection
+		// that is already established and authenticated. False mirrors the asio
+		// path's answer for a connect that has not completed yet.
 		return false;
 	}
 	return m_aSocket->Connect(adr, wait);
@@ -1437,16 +1467,16 @@ bool CLibSocket::Connect(const amuleIPV4Address &adr, bool wait)
 
 bool CLibSocket::IsConnected() const
 {
-	if (m_utpTransport) {
-		return m_utpTransport->IsConnected();
+	if (m_streamTransport) {
+		return m_streamTransport->IsConnected();
 	}
 	return m_aSocket->IsConnected();
 }
 
 bool CLibSocket::IsOk() const
 {
-	if (m_utpTransport) {
-		return m_utpTransport->IsOk();
+	if (m_streamTransport) {
+		return m_streamTransport->IsOk();
 	}
 	return m_aSocket->IsOk();
 }
@@ -1463,26 +1493,26 @@ void CLibSocket::SetConnectTimeout(int ms)
 
 wxString CLibSocket::GetPeer()
 {
-	if (m_utpTransport) {
-		return wxString(m_utpTransport->GetPeerAddress().ToString());
+	if (m_streamTransport) {
+		return wxString(m_streamTransport->GetPeerAddress().ToString());
 	}
 	return m_aSocket->GetPeer();
 }
 
 uint32 CLibSocket::GetPeerInt()
 {
-	if (m_utpTransport) {
+	if (m_streamTransport) {
 		// Network order, matching the asio path: CClientTCPSocket stores this
 		// straight into m_remoteip.
-		return m_utpTransport->GetPeerAddress().ToIPv4NetworkOrderOrZero();
+		return m_streamTransport->GetPeerAddress().ToIPv4NetworkOrderOrZero();
 	}
 	return m_aSocket->GetPeerInt();
 }
 
 const CNetworkAddress &CLibSocket::GetPeerAddress() const
 {
-	if (m_utpTransport) {
-		return m_utpTransport->GetPeerAddress();
+	if (m_streamTransport) {
+		return m_streamTransport->GetPeerAddress();
 	}
 	return m_aSocket->GetPeerAddress();
 }
@@ -1494,12 +1524,12 @@ CNetworkAddress CLibSocket::GetLocalAddress() const
 
 void CLibSocket::Destroy()
 {
-	if (m_utpTransport) {
-		// Close the uTP connection, then hand over to the asio impl, which is
-		// what actually posts CoreNotify_LibSocketDestroy and deletes this
-		// wrapper. Its socket was never opened, and Destroy() does not need it
-		// to have been.
-		m_utpTransport->Close();
+	if (m_streamTransport) {
+		// Close the substituted connection, then hand over to the asio impl,
+		// which is what actually posts CoreNotify_LibSocketDestroy and deletes
+		// this wrapper. Its socket was never opened, and Destroy() does not need
+		// it to have been.
+		m_streamTransport->Close();
 	}
 	m_aSocket->Destroy();
 }
@@ -1525,24 +1555,24 @@ void CLibSocket::Notify(bool notify)
 
 uint32 CLibSocket::Read(void *buffer, uint32 nbytes)
 {
-	if (m_utpTransport) {
-		return m_utpTransport->Read(buffer, nbytes);
+	if (m_streamTransport) {
+		return m_streamTransport->Read(buffer, nbytes);
 	}
 	return m_aSocket->Read((char *)buffer, nbytes);
 }
 
 uint32 CLibSocket::Write(const void *buffer, uint32 nbytes)
 {
-	if (m_utpTransport) {
-		return m_utpTransport->Write(buffer, nbytes);
+	if (m_streamTransport) {
+		return m_streamTransport->Write(buffer, nbytes);
 	}
 	return m_aSocket->Write(buffer, nbytes);
 }
 
 void CLibSocket::Close()
 {
-	if (m_utpTransport) {
-		m_utpTransport->Close();
+	if (m_streamTransport) {
+		m_streamTransport->Close();
 		return;
 	}
 	m_aSocket->Close();
@@ -1550,8 +1580,8 @@ void CLibSocket::Close()
 
 int CLibSocket::LastError() const
 {
-	if (m_utpTransport) {
-		return m_utpTransport->LastError();
+	if (m_streamTransport) {
+		return m_streamTransport->LastError();
 	}
 	return m_aSocket->LastError();
 }
@@ -1565,26 +1595,26 @@ void CLibSocket::SetLocal(const amuleIPV4Address &local)
 
 bool CLibSocket::BlocksRead() const
 {
-	if (m_utpTransport) {
-		return m_utpTransport->BlocksRead();
+	if (m_streamTransport) {
+		return m_streamTransport->BlocksRead();
 	}
 	return m_aSocket->BlocksRead();
 }
 
 bool CLibSocket::BlocksWrite() const
 {
-	if (m_utpTransport) {
-		return m_utpTransport->BlocksWrite();
+	if (m_streamTransport) {
+		return m_streamTransport->BlocksWrite();
 	}
 	return m_aSocket->BlocksWrite();
 }
 
 void CLibSocket::EventProcessed()
 {
-	if (m_utpTransport) {
+	if (m_streamTransport) {
 		// The asio path uses this to release its one-event-at-a-time latch on
-		// the background read. uTP has no such latch: libutp delivers on its
-		// own callback and the transport buffers it.
+		// the background read. Neither substituted transport has such a latch:
+		// both deliver on their library's own callback and buffer what arrived.
 		return;
 	}
 	m_aSocket->EventProcessed();

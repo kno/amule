@@ -437,3 +437,174 @@ TEST(QuicContext, ObserverIsOptionalAndHandedThrough)
 	ASSERT_EQUALS((int)QUIC_PROOF_WRONG_IDENTITY, (int)observer.lastProofResult);
 	ASSERT_EQUALS(4662, (int)observer.lastPort);
 }
+
+// --- The expectation table --------------------------------------------------
+//
+// What an inbound QUIC connection is required to prove, learned from the peer's
+// ed2k hello over TCP and held here per peer. This is the source
+// CQuicEndpoint::FindExpectation() used not to have, and every test below is
+// about the same property from a different side: the expectation must come from
+// the hello and from nowhere else, and its absence must refuse rather than wave
+// a connection through.
+
+namespace
+{
+
+const std::uint8_t kPeerHash[QUIC_NATT_PROOF_VALUE_LENGTH] = {
+	0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08, 0x09, 0x0A, 0x0B, 0x0C, 0x0D, 0x0E, 0x0F, 0x10
+};
+
+const std::uint8_t kPeerValue[QUIC_NATT_PROOF_VALUE_LENGTH] = {
+	0xF1, 0xE2, 0xD3, 0xC4, 0xB5, 0xA6, 0x97, 0x88, 0x79, 0x6A, 0x5B, 0x4C, 0x3D, 0x2E, 0x1F, 0x00
+};
+
+} // namespace
+
+// A context nobody told anything has no expectations, so the validator is
+// handed NULL and refuses. This is the state the whole change had to preserve
+// for peers that advertise nothing, and it is asserted first because it is the
+// one that must never regress.
+TEST(QuicContext, WithNothingLearnedThereIsNoExpectation)
+{
+	CQuicContext context;
+
+	ASSERT_TRUE(context.FindExpectation(CNetworkAddress::FromString("192.0.2.10"), 4672) == nullptr);
+}
+
+TEST(QuicContext, AnExpectationIsFoundForTheExactEndpointItWasRegisteredFor)
+{
+	CQuicContext context;
+	const CNetworkAddress peer = CNetworkAddress::FromString("192.0.2.10");
+
+	ASSERT_TRUE(context.RegisterExpectation(peer, 4672, kPeerHash, kPeerValue));
+
+	const SQuicPeerExpectation *found = context.FindExpectation(peer, 4672);
+	ASSERT_TRUE(found != nullptr);
+	ASSERT_EQUALS(0, memcmp(found->userHash, kPeerHash, QUIC_NATT_PROOF_VALUE_LENGTH));
+	ASSERT_EQUALS(0, memcmp(found->proofValue, kPeerValue, QUIC_NATT_PROOF_VALUE_LENGTH));
+}
+
+// A different port is a different endpoint. Behind a NAT one address is many
+// peers, so answering for any port would hand one peer's expectation to
+// another's connection -- which is the impersonation this proof exists to stop,
+// arriving through the lookup instead of through the wire.
+TEST(QuicContext, ADifferentPortIsADifferentEndpoint)
+{
+	CQuicContext context;
+	const CNetworkAddress peer = CNetworkAddress::FromString("192.0.2.10");
+
+	ASSERT_TRUE(context.RegisterExpectation(peer, 4672, kPeerHash, kPeerValue));
+
+	ASSERT_TRUE(context.FindExpectation(peer, 4673) == nullptr);
+	ASSERT_TRUE(context.FindExpectation(CNetworkAddress::FromString("192.0.2.11"), 4672) == nullptr);
+}
+
+// IPv4-mapped and plain IPv4 are one peer, matching PeerIdentity::IndexKey().
+// The hello arrives over a TCP socket that may report either form and the
+// datagram arrives over a UDP socket that may report the other, so two
+// identities here would mean an expectation registered from the hello could
+// never be found by the connection it was for.
+TEST(QuicContext, MappedAndPlainIPv4AreTheSameEndpoint)
+{
+	CQuicContext context;
+
+	ASSERT_TRUE(context.RegisterExpectation(
+		CNetworkAddress::FromString("::ffff:192.0.2.10"), 4672, kPeerHash, kPeerValue));
+
+	ASSERT_TRUE(context.FindExpectation(CNetworkAddress::FromString("192.0.2.10"), 4672) != nullptr);
+}
+
+// Every incomplete registration is refused, and refused without storing
+// anything. A half-registered expectation is worse than none: it would be found
+// by a lookup and then compared against uninitialised bytes.
+TEST(QuicContext, AnIncompleteRegistrationStoresNothing)
+{
+	CQuicContext context;
+	const CNetworkAddress peer = CNetworkAddress::FromString("192.0.2.10");
+
+	ASSERT_FALSE(context.RegisterExpectation(peer, 4672, nullptr, kPeerValue));
+	ASSERT_FALSE(context.RegisterExpectation(peer, 4672, kPeerHash, nullptr));
+	// Port zero is "unknown", not a port -- see
+	// PeerIdentity::MatchesUdpSourcePort(). An expectation under it would be
+	// found by any datagram whose source port could not be read.
+	ASSERT_FALSE(context.RegisterExpectation(peer, 0, kPeerHash, kPeerValue));
+	ASSERT_FALSE(context.RegisterExpectation(CNetworkAddress::Absent(), 4672, kPeerHash, kPeerValue));
+
+	ASSERT_TRUE(context.FindExpectation(peer, 4672) == nullptr);
+	ASSERT_TRUE(context.FindExpectation(peer, 0) == nullptr);
+}
+
+// Re-registering the same endpoint replaces rather than accumulates: a peer
+// that reconnects with a new key must be reachable under the new value, and a
+// table that grew one entry per handshake would be a table a peer could grow
+// without bound.
+TEST(QuicContext, ReregisteringOneEndpointReplacesItsExpectation)
+{
+	CQuicContext context;
+	const CNetworkAddress peer = CNetworkAddress::FromString("192.0.2.10");
+
+	ASSERT_TRUE(context.RegisterExpectation(peer, 4672, kPeerHash, kPeerValue));
+	ASSERT_TRUE(context.RegisterExpectation(peer, 4672, kPeerValue, kPeerHash));
+
+	const SQuicPeerExpectation *found = context.FindExpectation(peer, 4672);
+	ASSERT_TRUE(found != nullptr);
+	ASSERT_EQUALS(0, memcmp(found->userHash, kPeerValue, QUIC_NATT_PROOF_VALUE_LENGTH));
+	ASSERT_EQUALS(1u, (unsigned)context.CountExpectations());
+}
+
+TEST(QuicContext, ForgettingAnExpectationRefusesTheNextConnection)
+{
+	CQuicContext context;
+	const CNetworkAddress peer = CNetworkAddress::FromString("192.0.2.10");
+
+	ASSERT_TRUE(context.RegisterExpectation(peer, 4672, kPeerHash, kPeerValue));
+	context.ForgetExpectation(peer, 4672);
+
+	ASSERT_TRUE(context.FindExpectation(peer, 4672) == nullptr);
+	ASSERT_EQUALS(0u, (unsigned)context.CountExpectations());
+}
+
+// The table is bounded. Expectations are registered from inbound handshakes, so
+// an unbounded one is memory a stranger controls -- and the bound has to evict
+// rather than refuse, or a flood of strangers would lock out every real peer
+// registered after it.
+TEST(QuicContext, TheTableIsBoundedAndEvictsTheOldestEntry)
+{
+	CQuicContext context;
+
+	for (unsigned i = 0; i < kMaxQuicExpectations + 8; ++i) {
+		// Distinct endpoints, one per port, so nothing here replaces anything.
+		ASSERT_TRUE(context.RegisterExpectation(CNetworkAddress::FromString("192.0.2.10"),
+			(std::uint16_t)(1024 + i),
+			kPeerHash,
+			kPeerValue));
+	}
+
+	ASSERT_EQUALS((unsigned)kMaxQuicExpectations, (unsigned)context.CountExpectations());
+	// The first registrations are gone and the last are present: eviction is by
+	// age, so the peers that most recently negotiated are the ones still able
+	// to authenticate.
+	ASSERT_TRUE(context.FindExpectation(CNetworkAddress::FromString("192.0.2.10"), 1024) == nullptr);
+	ASSERT_TRUE(context.FindExpectation(CNetworkAddress::FromString("192.0.2.10"),
+			    (std::uint16_t)(1024 + kMaxQuicExpectations + 7)) != nullptr);
+}
+
+// Reset() drops the endpoint but must not drop what the ed2k side learned. The
+// two have different lifetimes: the endpoint is torn down when the UDP socket
+// reopens, while an expectation belongs to a peer whose hello is still valid,
+// and clearing it there would refuse the next connection from every peer that
+// had already negotiated.
+TEST(QuicContext, ResettingTheEndpointKeepsWhatTheHelloTaught)
+{
+	CFakeQuicLibrary library;
+	CQuicContext context;
+	context.Configure(&library, nullptr);
+
+	const CNetworkAddress peer = CNetworkAddress::FromString("192.0.2.10");
+	ASSERT_TRUE(context.RegisterExpectation(peer, 4672, kPeerHash, kPeerValue));
+	ASSERT_TRUE(context.CanServeConnections());
+
+	context.Reset();
+
+	ASSERT_TRUE(context.FindExpectation(peer, 4672) != nullptr);
+}

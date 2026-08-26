@@ -156,13 +156,13 @@ public:
 
 //! Stands in for the socket wrapper above: counts the four events the asio
 //! reactor posts, which is exactly what the production sink turns them into.
-class CFakeSocketEvents : public IUtpSocketEvents
+class CFakeSocketEvents : public IStreamTransportEvents
 {
 public:
-	void OnUtpSocketConnected() override { ++connected; }
-	void OnUtpSocketReadable() override { ++readable; }
-	void OnUtpSocketWritable() override { ++writable; }
-	void OnUtpSocketLost() override { ++lost; }
+	void OnStreamTransportConnected() override { ++connected; }
+	void OnStreamTransportReadable() override { ++readable; }
+	void OnStreamTransportWritable() override { ++writable; }
+	void OnStreamTransportLost() override { ++lost; }
 
 	unsigned connected = 0;
 	unsigned readable = 0;

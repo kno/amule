@@ -34,6 +34,7 @@
 #include <mutex>
 
 #include "NetworkAddress.h"      // Needed for CNetworkAddress
+#include "StreamTransport.h"     // Needed for IStreamTransport / IStreamTransportEvents
 #include "UtpContext.h"          // Needed for CUtpContext / IUtpTickable
 #include "UtpStream.h"           // Needed for CUtpStream
 #include "UtpTransportFailure.h" // Needed for EUtpAttemptOutcome
@@ -67,32 +68,13 @@
  * state with no reliable symptom.
  */
 
-/**
- * How a uTP connection reports itself upwards.
- *
- * Deliberately not CLibSocket: this header is free of wxWidgets, of theApp and
- * of the notification machinery, which is what lets the transport be unit
- * tested. LibSocketAsio.cpp implements this by posting the same
- * CoreNotify_LibSocket* events the asio reactor posts, so the socket above sees
- * no difference between a uTP connection and a TCP one.
- */
-class IUtpSocketEvents
-{
-public:
-	virtual ~IUtpSocketEvents() = default;
+// How a uTP connection reports itself upwards is IStreamTransportEvents
+// (StreamTransport.h), shared with the QUIC transport. It used to be a uTP-named
+// interface here; it moved when the second transport arrived, because both post
+// exactly the same four CoreNotify_LibSocket* events and two interfaces would
+// have meant two notifiers in LibSocketAsio.cpp saying the same thing.
 
-	//! The handshake completed. The socket above sends its hello from here.
-	virtual void OnUtpSocketConnected() = 0;
-	//! Bytes arrived and Read() will return them.
-	virtual void OnUtpSocketReadable() = 0;
-	//! The send window opened; a previously blocked Write() will now take
-	//! bytes.
-	virtual void OnUtpSocketWritable() = 0;
-	//! The connection is gone, for any reason. GetOutcome() says which.
-	virtual void OnUtpSocketLost() = 0;
-};
-
-class CUtpSocketTransport : public IUtpTickable
+class CUtpSocketTransport : public IUtpTickable, public IStreamTransport
 {
 public:
 	CUtpSocketTransport(CUtpContext &context, const CNetworkAddress &peer, std::uint16_t port)
@@ -137,7 +119,7 @@ public:
 	//! Who receives connect/readable/writable/lost. NULL until the socket
 	//! wrapper attaches itself, which is safe: nothing is delivered before the
 	//! first callback from libutp.
-	void SetEventSink(IUtpSocketEvents *sink) { m_sink = sink; }
+	void SetEventSink(IStreamTransportEvents *sink) { m_sink = sink; }
 
 	bool IsAttached() const
 	{
@@ -147,7 +129,7 @@ public:
 
 	//! Mirrors CAsioSocketImpl::IsConnected(): true only once the handshake
 	//! completed.
-	bool IsConnected() const
+	bool IsConnected() const override
 	{
 		std::lock_guard<std::mutex> lock(m_mutex);
 		return m_stream.IsConnected() && !m_closed;
@@ -161,7 +143,7 @@ public:
 	 * A second dial while a uTP attempt is pending is prevented by the attempt
 	 * itself, not by this -- see CUpDownClient::ConnectOverUtp().
 	 */
-	bool IsOk() const { return IsConnected(); }
+	bool IsOk() const override { return IsConnected(); }
 
 	/**
 	 * Read what the peer sent.
@@ -169,7 +151,7 @@ public:
 	 * @return bytes copied. Zero with BlocksRead() true is "nothing right
 	 *         now", which is what CEMSocket expects; LastError() stays zero.
 	 */
-	std::uint32_t Read(void *buffer, std::uint32_t nbytes)
+	std::uint32_t Read(void *buffer, std::uint32_t nbytes) override
 	{
 		std::lock_guard<std::mutex> lock(m_mutex);
 		if (buffer == nullptr || nbytes == 0) {
@@ -197,7 +179,7 @@ public:
 	 * @return bytes accepted. Zero with BlocksWrite() true means the buffer is
 	 *         full and the caller must retry, which is the TCP convention.
 	 */
-	std::uint32_t Write(const void *buffer, std::uint32_t nbytes)
+	std::uint32_t Write(const void *buffer, std::uint32_t nbytes) override
 	{
 		std::lock_guard<std::mutex> lock(m_mutex);
 		if (buffer == nullptr || nbytes == 0) {
@@ -220,7 +202,7 @@ public:
 	//! Ordinary close. Does not set a transport failure: a closed connection
 	//! and a failed one are different answers, and only the second must keep
 	//! the peer blameless.
-	void Close()
+	void Close() override
 	{
 		std::lock_guard<std::mutex> lock(m_mutex);
 		if (m_closed) {
@@ -232,13 +214,13 @@ public:
 		m_socket = nullptr;
 	}
 
-	bool BlocksRead() const
+	bool BlocksRead() const override
 	{
 		std::lock_guard<std::mutex> lock(m_mutex);
 		return m_blocksRead;
 	}
 
-	bool BlocksWrite() const
+	bool BlocksWrite() const override
 	{
 		std::lock_guard<std::mutex> lock(m_mutex);
 		return m_blocksWrite;
@@ -254,14 +236,14 @@ public:
 	 * failure *means* is GetOutcome(), which is the question that decides
 	 * whether the peer may be blamed.
 	 */
-	int LastError() const
+	int LastError() const override
 	{
 		std::lock_guard<std::mutex> lock(m_mutex);
 		return m_failed ? UTP_TRANSPORT_LAST_ERROR : 0;
 	}
 
-	const CNetworkAddress &GetPeerAddress() const { return m_peer; }
-	std::uint16_t GetPeerPort() const { return m_port; }
+	const CNetworkAddress &GetPeerAddress() const override { return m_peer; }
+	std::uint16_t GetPeerPort() const override { return m_port; }
 
 	//
 	// Driven by libutp, through CUtpLibraryAdapter. All on the core thread.
@@ -269,7 +251,7 @@ public:
 
 	void OnUtpStateChange(EUtpSocketState state)
 	{
-		IUtpSocketEvents *sink = nullptr;
+		IStreamTransportEvents *sink = nullptr;
 		bool connected = false;
 		bool writable = false;
 		bool lost = false;
@@ -327,13 +309,13 @@ public:
 			return;
 		}
 		if (connected) {
-			sink->OnUtpSocketConnected();
+			sink->OnStreamTransportConnected();
 		}
 		if (writable) {
-			sink->OnUtpSocketWritable();
+			sink->OnStreamTransportWritable();
 		}
 		if (lost) {
-			sink->OnUtpSocketLost();
+			sink->OnStreamTransportLost();
 		}
 	}
 
@@ -347,7 +329,7 @@ public:
 	 */
 	void OnUtpError(EUtpSocketError error)
 	{
-		IUtpSocketEvents *sink = nullptr;
+		IStreamTransportEvents *sink = nullptr;
 
 		{
 			std::lock_guard<std::mutex> lock(m_mutex);
@@ -369,14 +351,14 @@ public:
 		}
 
 		if (sink != nullptr) {
-			sink->OnUtpSocketLost();
+			sink->OnStreamTransportLost();
 		}
 	}
 
 	//! libutp delivered bytes. Wakes the socket above so it reads them.
 	void OnUtpDataReceived(const std::uint8_t *data, std::size_t length)
 	{
-		IUtpSocketEvents *sink = nullptr;
+		IStreamTransportEvents *sink = nullptr;
 
 		{
 			std::lock_guard<std::mutex> lock(m_mutex);
@@ -389,7 +371,7 @@ public:
 		}
 
 		if (sink != nullptr) {
-			sink->OnUtpSocketReadable();
+			sink->OnStreamTransportReadable();
 		}
 	}
 
@@ -421,7 +403,7 @@ public:
 	 */
 	void OnUtpTick(std::uint64_t nowMs) override
 	{
-		IUtpSocketEvents *sink = nullptr;
+		IStreamTransportEvents *sink = nullptr;
 		bool writable = false;
 
 		{
@@ -441,7 +423,7 @@ public:
 		}
 
 		if (writable && sink != nullptr) {
-			sink->OnUtpSocketWritable();
+			sink->OnStreamTransportWritable();
 		}
 	}
 
@@ -473,7 +455,7 @@ private:
 
 	CUtpStream m_stream;
 	void *m_socket = nullptr;
-	IUtpSocketEvents *m_sink = nullptr;
+	IStreamTransportEvents *m_sink = nullptr;
 
 	bool m_blocksRead = false;
 	bool m_blocksWrite = false;

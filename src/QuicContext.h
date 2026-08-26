@@ -27,6 +27,8 @@
 
 #include <cstddef>
 #include <cstdint>
+#include <cstring>
+#include <vector>
 
 #include "NetworkAddress.h"   // Needed for CNetworkAddress
 #include "QuicNattProtocol.h" // Needed for EQuicProofResult
@@ -176,6 +178,84 @@ public:
 		std::uint16_t port) = 0;
 };
 
+class CQuicSocketTransport;
+
+/**
+ * How a byte-stream transport writes into a validated QUIC connection.
+ *
+ * The seam that task 2.1 needed and that 3.1 was blocking. ngtcp2 lives in one
+ * translation unit and the transport has to stay free of it, so the connection
+ * implements this and the transport holds nothing but the interface.
+ *
+ * Both directions detach, and both are needed. The two objects point at each
+ * other and either may die first: the transport is owned by a CClientTCPSocket
+ * that the ordinary teardown paths delete, while the connection is owned by the
+ * endpoint and dies when ngtcp2 closes it. Whichever goes first clears the
+ * other's pointer; one direction alone leaves a dangling pointer on the path
+ * that was not taken.
+ */
+class IQuicStreamWriter
+{
+public:
+	virtual ~IQuicStreamWriter() = default;
+
+	/**
+	 * Hand queued bytes to ngtcp2.
+	 *
+	 * Called only from the core thread, on the tick -- see the threading rule
+	 * in CQuicSocketTransport. A partial acceptance is ordinary rather than an
+	 * error: the stream's flow-control window is finite and the remainder goes
+	 * on the next tick.
+	 *
+	 * @return how many bytes were taken. Zero means the window is closed.
+	 */
+	virtual std::size_t WriteQuicStream(const std::uint8_t *data, std::size_t length) = 0;
+
+	//! Close the connection. Idempotent: the transport's destructor and its
+	//! Close() may both reach here, and on different paths.
+	virtual void CloseQuicStream() = 0;
+
+	//! Forget the transport. Called from the transport's destructor, so nothing
+	//! in the connection may call back into it afterwards.
+	virtual void DetachStreamTransport() = 0;
+};
+
+/**
+ * Where a validated QUIC connection becomes an ed2k client connection.
+ *
+ * The QUIC counterpart of IUtpConnectionAcceptor, and it exists for the same
+ * reason: the translation unit that owns the library cannot include Logger.h,
+ * theApp or CClientTCPSocket, so the connection has to travel out to one that
+ * can. See CQuicInboundAcceptor.
+ *
+ * Optional. A build with no QUIC never has one, and a context without one
+ * refuses to hand any connection upwards -- which is the same fail-closed shape
+ * every other seam in this transport has.
+ */
+class IQuicConnectionAcceptor
+{
+public:
+	virtual ~IQuicConnectionAcceptor() = default;
+
+	/**
+	 * Take a QUIC connection whose peer proof has validated.
+	 *
+	 * **Only ever called after validation.** The 37-byte proof is consumed by
+	 * the connection before this is reached, so the first byte the returned
+	 * transport ever delivers upwards is the first byte of the ed2k hello --
+	 * and an unauthenticated peer never reaches this function at all.
+	 *
+	 * @param writer  the connection, for the transport to write through. The
+	 *        caller retains ownership of it.
+	 * @return the transport now bound to the connection, or NULL when the
+	 *         connection was refused -- by the IP filter, a ban, or the socket
+	 *         limit, on exactly the terms an inbound TCP connection is refused.
+	 *         NULL means the caller must close the connection.
+	 */
+	virtual CQuicSocketTransport *AcceptQuicConnection(
+		IQuicStreamWriter *writer, const CNetworkAddress &from, std::uint16_t port) = 0;
+};
+
 /**
  * The subset of ngtcp2 and GnuTLS this shim uses.
  *
@@ -238,6 +318,54 @@ public:
 };
 
 /**
+ * What a QUIC connection from one peer is required to prove.
+ *
+ * Both fields are learned from that peer's ed2k hello, over TCP, and neither
+ * comes from the QUIC connection being validated. That sentence is the entire
+ * security argument of the QUIC path and it is the reason this struct sits in
+ * the context rather than in the adapter: an expectation exists before its
+ * connection does -- the punch goes out first -- and the code that learns it
+ * (CUpDownClient, from the hello tags) has no ngtcp2 in scope.
+ *
+ *   - @c userHash is the peer's ed2k user hash, which the hello carries in its
+ *     fixed header.
+ *   - @c proofValue is the 16-byte identity value from the peer's CT_MOD_QUIC_IDENT
+ *     tag. See QuicProofValue.h for what it is, what it is not, and which end's
+ *     value belongs in the proof.
+ *
+ * A cross-channel check is what makes this authentication rather than theatre:
+ * the values travelled over TCP and the peer has to reproduce them over UDP, so
+ * a third party that hijacks the punched hole -- the attack this proof exists to
+ * stop -- has seen only the half that does not carry them.
+ */
+struct SQuicPeerExpectation
+{
+	CNetworkAddress peer;
+	std::uint16_t port = 0;
+	std::uint8_t userHash[QUIC_NATT_PROOF_VALUE_LENGTH] = {};
+	std::uint8_t proofValue[QUIC_NATT_PROOF_VALUE_LENGTH] = {};
+};
+
+/**
+ * How many expectations are kept at once.
+ *
+ * A bound is not optional. Expectations are registered while NAT traversal is
+ * being negotiated, which a stranger can start, so an unbounded table is memory
+ * an unauthenticated peer controls. The bound evicts the oldest rather than
+ * refusing the newest, because refusing would let a flood of strangers lock out
+ * every peer that negotiated after them -- turning a memory bound into a denial
+ * of the transport it protects.
+ *
+ * 256 is chosen against the traffic rather than the memory: at 40 bytes an
+ * entry the whole table is under 11 kB, so the number is really "more
+ * simultaneous NAT-T negotiations than a client has", and a client with more
+ * than 256 in flight has a connection limit problem before it has this one. An
+ * evicted expectation is not a lost connection either -- it is one QUIC
+ * handshake that falls back to uTP, automatically and silently.
+ */
+constexpr std::size_t kMaxQuicExpectations = 256;
+
+/**
  * One QUIC context per client instance.
  *
  * Free of ngtcp2, GnuTLS, wxWidgets and theApp, so it is includable and
@@ -261,13 +389,16 @@ public:
 	 *                 every path through it is inert -- the receive path and
 	 *                 the core timer both run in that build too.
 	 */
-	void Configure(
-		IQuicLibrary *library, IQuicDatagramSink *sink, IQuicConnectionObserver *observer = nullptr)
+	void Configure(IQuicLibrary *library,
+		IQuicDatagramSink *sink,
+		IQuicConnectionObserver *observer = nullptr,
+		IQuicConnectionAcceptor *acceptor = nullptr)
 	{
 		Reset();
 		m_library = library;
 		m_sink = sink;
 		m_observer = observer;
+		m_acceptor = acceptor;
 	}
 
 	//! Whether there is a library to talk to at all. False in every build
@@ -281,6 +412,18 @@ public:
 	//! here rather than being handed it separately, so there is one owner of
 	//! the pointer and no way for the two to disagree.
 	IQuicConnectionObserver *GetObserver() const { return m_observer; }
+
+	/**
+	 * Where a validated connection becomes an ed2k client connection, or NULL.
+	 *
+	 * NULL is what a build with no accept path looks like, and it refuses:
+	 * without an acceptor a validated connection has nowhere to deliver bytes,
+	 * so the adapter closes it rather than accumulating a stream nothing reads.
+	 * That is the same shape the uTP context uses -- libutp registers
+	 * UTP_ON_ACCEPT only when there is an acceptor -- and it is what keeps the
+	 * advertised capability bit honest for QUIC too.
+	 */
+	IQuicConnectionAcceptor *GetAcceptor() const { return m_acceptor; }
 
 	/**
 	 * Whether this end can serve a QUIC connection: an endpoint exists, and an
@@ -364,6 +507,116 @@ public:
 	}
 
 	/**
+	 * Record what a connection from this peer will have to prove.
+	 *
+	 * Called from the ed2k side once a peer's hello has supplied both values.
+	 * Nothing in this function reads the QUIC connection, and that is the
+	 * point: an expectation derived from the thing it validates is a validator
+	 * that passes everything while looking like authentication, which is worse
+	 * than having no QUIC at all.
+	 *
+	 * @param peer  the peer's address. Absent refuses.
+	 * @param port  the UDP port the connection will arrive from. Zero refuses:
+	 *        zero is "unknown" rather than a port (see
+	 *        PeerIdentity::MatchesUdpSourcePort()), and an expectation stored
+	 *        under it would be found by any datagram whose source port could
+	 *        not be read.
+	 * @param userHash   16 bytes, the peer's ed2k user hash. NULL refuses.
+	 * @param proofValue 16 bytes, the peer's advertised identity value. NULL
+	 *        refuses -- a peer that advertised none must produce no
+	 *        expectation, because an expectation of sixteen zeroes is one any
+	 *        third party can satisfy.
+	 * @return false when nothing was stored.
+	 */
+	bool RegisterExpectation(const CNetworkAddress &peer,
+		std::uint16_t port,
+		const std::uint8_t *userHash,
+		const std::uint8_t *proofValue)
+	{
+		if (userHash == nullptr || proofValue == nullptr || port == 0 || !peer.IsPresent()) {
+			return false;
+		}
+
+		// Replace in place when this endpoint is already known. A peer that
+		// re-handshakes must end up with one entry carrying its current
+		// values, not two entries of which a lookup would find the stale one.
+		const CNetworkAddress key = peer.Unmapped();
+		for (SQuicPeerExpectation &existing : m_expectations) {
+			if (existing.port == port && existing.peer == key) {
+				std::memcpy(existing.userHash, userHash, QUIC_NATT_PROOF_VALUE_LENGTH);
+				std::memcpy(existing.proofValue, proofValue, QUIC_NATT_PROOF_VALUE_LENGTH);
+				return true;
+			}
+		}
+
+		if (m_expectations.size() >= kMaxQuicExpectations) {
+			// Oldest first. A vector erase at the front is O(n) over at most
+			// 256 entries and happens once per registration past the bound,
+			// which is cheaper than the intrusive list that would avoid it and
+			// is far easier to read.
+			m_expectations.erase(m_expectations.begin());
+		}
+
+		SQuicPeerExpectation fresh;
+		fresh.peer = key;
+		fresh.port = port;
+		std::memcpy(fresh.userHash, userHash, QUIC_NATT_PROOF_VALUE_LENGTH);
+		std::memcpy(fresh.proofValue, proofValue, QUIC_NATT_PROOF_VALUE_LENGTH);
+		m_expectations.push_back(fresh);
+		return true;
+	}
+
+	/**
+	 * What a connection from this peer must prove, or NULL when nothing is
+	 * expected from it.
+	 *
+	 * NULL is the fail-closed answer and it is required, not a convenience:
+	 * ValidateQuicNattProof() refuses a NULL expectation, so a peer this end
+	 * learned nothing about reaches the proof stage and is closed as an
+	 * authentication failure -- after which it falls back to uTP, which the
+	 * design requires to be automatic and silent.
+	 *
+	 * Matching is on the unmapped address, so a hello that arrived over an
+	 * IPv4-mapped TCP socket and a datagram that arrived as plain IPv4 are one
+	 * peer. Two identities here would mean an expectation registered from the
+	 * hello could never be found by the connection it was registered for --
+	 * which fails closed, but fails closed *always*, and would look exactly
+	 * like a peer that is offline.
+	 */
+	const SQuicPeerExpectation *FindExpectation(const CNetworkAddress &peer, std::uint16_t port) const
+	{
+		if (port == 0 || !peer.IsPresent()) {
+			return nullptr;
+		}
+
+		const CNetworkAddress key = peer.Unmapped();
+		for (const SQuicPeerExpectation &existing : m_expectations) {
+			if (existing.port == port && existing.peer == key) {
+				return &existing;
+			}
+		}
+
+		return nullptr;
+	}
+
+	//! Drop one expectation. Used when a peer is gone, so its slot does not
+	//! hold a value for whoever inherits its NAT mapping next.
+	void ForgetExpectation(const CNetworkAddress &peer, std::uint16_t port)
+	{
+		const CNetworkAddress key = peer.Unmapped();
+		for (std::size_t i = 0; i < m_expectations.size(); ++i) {
+			if (m_expectations[i].port == port && m_expectations[i].peer == key) {
+				m_expectations.erase(m_expectations.begin() + (long)i);
+				return;
+			}
+		}
+	}
+
+	//! How many expectations are held. For the bound's test; nothing in the
+	//! transport branches on it.
+	std::size_t CountExpectations() const { return m_expectations.size(); }
+
+	/**
 	 * Whether this transport carries a peer at this address.
 	 *
 	 * IPv4 only, matching CUtpContext::IsUsableEndpoint() and for the same
@@ -404,9 +657,23 @@ private:
 		return m_endpoint;
 	}
 
+	/**
+	 * What each peer's connection must prove.
+	 *
+	 * Deliberately NOT cleared by Reset(). Reset() drops the ngtcp2 endpoint,
+	 * which happens when the UDP socket reopens; an expectation belongs to a
+	 * peer whose ed2k hello is still valid, and clearing it there would refuse
+	 * the next connection from every peer that had already negotiated -- with
+	 * nothing logged, because a refused QUIC connection falls back to uTP in
+	 * silence. The two have different lifetimes and only one of them is the
+	 * endpoint's.
+	 */
+	std::vector<SQuicPeerExpectation> m_expectations;
+
 	IQuicLibrary *m_library = nullptr;
 	IQuicDatagramSink *m_sink = nullptr;
 	IQuicConnectionObserver *m_observer = nullptr;
+	IQuicConnectionAcceptor *m_acceptor = nullptr;
 	void *m_endpoint = nullptr;
 	bool m_endpointCreationFailed = false;
 };
