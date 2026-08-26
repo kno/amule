@@ -473,7 +473,11 @@ void CClientUDPSocket::ProcessNattControlFrame(
 			// A relay forwarded a rendezvous to us. Acted on only from a
 			// peer already in the client list, and only within the same
 			// per-peer budget a requester spends from.
-			const bool relayIsKnown = theApp->clientlist->FindClientByIP(peer, port) != NULL;
+			// By the datagram's source port, which is the only port we hold
+			// for this sender: the relay is known here as a UDP peer, not as
+			// something we could dial back on its ed2k TCP port.
+			const bool relayIsKnown =
+				theApp->clientlist->FindClientByUDPEndpoint(peer, port) != NULL;
 			const CNetworkAddress ownEndpoint =
 				CNetworkAddress::FromIPv4NetworkOrderOrAbsent(theApp->GetPublicIP(false));
 
@@ -521,7 +525,7 @@ void CClientUDPSocket::ProcessNattControlFrame(
 		// The requester's identity comes from our own client list, never from
 		// the datagram: it is the value the forwarded message carries, so a
 		// datagram that could set it would make this relay vouch for anyone.
-		const CUpDownClient *requester = theApp->clientlist->FindClientByIP(peer, port);
+		const CUpDownClient *requester = theApp->clientlist->FindClientByUDPEndpoint(peer, port);
 		const uint8_t *requesterHash = requester != NULL && requester->HasValidHash()
 						       ? requester->GetUserHash().GetHash()
 						       : NULL;

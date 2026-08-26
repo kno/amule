@@ -378,4 +378,32 @@ TEST(PeerIdentity, Ed2kWireFormIsWhatMayBePublished)
 	ASSERT_EQUALS(wire, mappedWire);
 }
 
+// ---------------------------------------------------------------------------
+// UDP source ports
+// ---------------------------------------------------------------------------
+
+TEST(PeerIdentity, UnknownUDPPortIdentifiesNobody)
+{
+	// A client we know by address has a UDP port only if it advertised one, and
+	// zero is how "it never did" is spelled. Comparing that zero for equality
+	// would make every such client a candidate for a datagram whose source port
+	// is also zero -- and behind a carrier NAT one address is many peers, so
+	// the match would name an arbitrary one of them. The rendezvous relay
+	// vouches for whoever this lookup returns, so the unknown side has to lose.
+	ASSERT_FALSE(MatchesUdpSourcePort(0, 0));
+	ASSERT_FALSE(MatchesUdpSourcePort(0, 4672));
+	ASSERT_FALSE(MatchesUdpSourcePort(4672, 0));
+}
+
+TEST(PeerIdentity, AdvertisedUDPPortMatchesOnlyItself)
+{
+	// The ordinary case, and the reason this predicate exists at all: the port
+	// a peer advertised for UDP is not the ed2k TCP port it also advertised,
+	// so a lookup that compares the wrong one of the two answers "unknown peer"
+	// for every real peer while looking like it works.
+	ASSERT_TRUE(MatchesUdpSourcePort(4672, 4672));
+	ASSERT_FALSE(MatchesUdpSourcePort(4672, 4662));
+	ASSERT_TRUE(MatchesUdpSourcePort(65535, 65535));
+}
+
 // File_checked_for_headers

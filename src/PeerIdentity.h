@@ -164,6 +164,35 @@ inline EUdpRoute ClassifyUdpPeer(const CNetworkAddress &address) noexcept
 }
 
 /**
+ * Whether a client's advertised UDP port names it as the sender of a datagram
+ * that arrived from @p sourcePort.
+ *
+ * A peer advertises two ports and they are not the same number: the ed2k TCP
+ * port it accepts connections on, and the UDP port it accepts datagrams on. A
+ * lookup that identifies the sender of a datagram by the first of those matches
+ * nothing at all in the field, and does so silently -- it looks exactly like
+ * "we do not know this peer", which is also the honest answer for a stranger.
+ * Naming the port dimension in one predicate is what keeps the two apart at the
+ * call sites.
+ *
+ * Zero on either side is @b unknown, not a port, and never matches. A client we
+ * know by address carries a zero UDP port when it never advertised one, and
+ * treating that as a value to compare would make every such client a candidate
+ * for a datagram whose source port is also zero. Behind a carrier NAT one
+ * address is many peers, so that match would name an arbitrary one of them --
+ * and the rendezvous relay vouches for whoever this lookup returns. It fails
+ * closed instead, which costs nothing: a peer that advertised no UDP port could
+ * not have been matched by an exact comparison either.
+ */
+inline bool MatchesUdpSourcePort(std::uint16_t advertisedPort, std::uint16_t sourcePort) noexcept
+{
+	if (advertisedPort == 0 || sourcePort == 0) {
+		return false;
+	}
+	return advertisedPort == sourcePort;
+}
+
+/**
  * How much of an IPv6 address a rate limit is counted against.
  *
  * A /64 is the smallest prefix an IPv6 subscriber is normally delegated, so it

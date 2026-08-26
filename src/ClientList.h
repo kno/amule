@@ -183,6 +183,23 @@ public:
 	CUpDownClient *FindClientByIP(uint32 clientip);
 
 	/**
+	 * Finds a client with the specified address and *UDP* port.
+	 *
+	 * The port dimension is in the name because it is the whole difference
+	 * from FindClientByIP(): that one compares the ed2k TCP port, and a
+	 * caller holding a datagram's source port has the other number. Two
+	 * lookups with the same signature meaning different ports is how the
+	 * rendezvous handlers came to identify no peer at all.
+	 *
+	 * @param address The address the datagram arrived from. An absent one
+	 *                finds nothing: no client is recorded under absence.
+	 * @param udpPort The datagram's source port. Zero is unknown rather
+	 *                than a port and matches nobody -- see
+	 *                PeerIdentity::MatchesUdpSourcePort().
+	 */
+	CUpDownClient *FindClientByUDPEndpoint(const CNetworkAddress &address, uint16 udpPort);
+
+	/**
 	 * Finds a client with the specified ECID.
 	 *
 	 * @param clientip The IP of the client to find.

@@ -455,6 +455,29 @@ CUpDownClient *CClientList::FindClientByIP(const CNetworkAddress &address, uint1
 	return NULL;
 }
 
+CUpDownClient *CClientList::FindClientByUDPEndpoint(const CNetworkAddress &address, uint16 udpPort)
+{
+	if (!PeerIdentity::IsIndexable(address)) {
+		return NULL;
+	}
+
+	// Find all items with the specified address
+	std::pair<AddressMap::iterator, AddressMap::iterator> range =
+		m_ipList.equal_range(PeerIdentity::IndexKey(address));
+
+	for (; range.first != range.second; ++range.first) {
+		CUpDownClient *cur_client = range.first->second.GetClient();
+		// Same walk as FindClientByIP(), and deliberately the only difference:
+		// the client's UDP port is compared, not the ed2k TCP port it also
+		// advertised. Sharing an address is not enough to be the sender.
+		if (PeerIdentity::MatchesUdpSourcePort(cur_client->GetUDPPort(), udpPort)) {
+			return cur_client;
+		}
+	}
+
+	return NULL;
+}
+
 CUpDownClient *CClientList::FindClientByIP(const CNetworkAddress &address)
 {
 	if (!PeerIdentity::IsIndexable(address)) {
