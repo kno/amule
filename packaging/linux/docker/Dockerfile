@@ -13,6 +13,25 @@
 # Multi-arch:
 #   docker buildx build -f packaging/linux/docker/Dockerfile \
 #     --platform linux/amd64,linux/arm64/v8 -t <registry>/amule-emuleai:test .
+#
+# One file builds both published variants, selected by the ENABLE_QUIC build arg:
+#
+#   ENABLE_QUIC=NO   (default)  the conservative image, published as :latest.
+#                               No ngtcp2/GnuTLS anywhere, no -DENABLE_QUIC, so
+#                               the QUIC NAT-T transport is compiled out.
+#   ENABLE_QUIC=YES             the same tree with -DENABLE_QUIC=YES, published
+#                               as :test. See packaging/linux/docker/README.md --
+#                               that transport has never been validated on the
+#                               wire against another implementation.
+#
+#   docker build -f packaging/linux/docker/Dockerfile \
+#     --build-arg ENABLE_QUIC=YES -t amule-emuleai:test-quic .
+#
+# It is deliberately ONE Dockerfile and not two: a forked copy would drift, and
+# the whole point of the default variant is that it stays exactly what it is
+# today. Every QUIC-only step is therefore guarded by the arg and reduces to a
+# no-op when it is off -- the default build installs no extra package and passes
+# no extra CMake flag.
 
 FROM debian:trixie-slim AS builder
 
@@ -61,6 +80,22 @@ RUN git init -q ffmpeg-src && \
     strip /usr/bin/ffprobe && \
     rm -rf /tmp/*
 
+# QUIC build dependencies -- installed only for the QUIC variant, so the default
+# image keeps exactly the dependency set it has today. Declared here, after the
+# ffprobe build, so flipping the arg does not invalidate that cached layer.
+#
+# ngtcp2 is used through its GnuTLS binding rather than OpenSSL because Debian
+# trixie -- this image's base -- packages libngtcp2-crypto-gnutls-dev but not
+# libngtcp2-crypto-ossl-dev; see openspec/changes/amule-quic-transport/design.md.
+# trixie carries libngtcp2 1.11.0 and gnutls 3.8.9 for linux/amd64 and
+# linux/arm64 alike, so the multi-arch build needs no per-architecture exception.
+ARG ENABLE_QUIC=NO
+RUN if [ "$ENABLE_QUIC" = "YES" ]; then \
+        apt-get update && apt-get install -y --no-install-recommends \
+            libngtcp2-dev libngtcp2-crypto-gnutls-dev libgnutls28-dev \
+        && rm -rf /var/lib/apt/lists/* ; \
+    fi
+
 # Build aMule from THIS tree (the eMuleAI network-parity fork).
 #
 # Unlike the upstream image, the source is the build context rather than a git
@@ -71,6 +106,9 @@ COPY . /tmp/amule-src
 RUN \
     # libatomic1 only ships libatomic.so.1; find_library(atomic) needs the unversioned symlink
     so="$(find /usr/lib -name 'libatomic.so.1' -print -quit)" && [ -n "$so" ] && ln -sf "$(basename "$so")" "${so%.1}" ; \
+    # Off means the flag is not passed at all, not passed as NO, so the default
+    # build's configure line is byte-for-byte the one it has always used.
+    quic_flag="" ; [ "$ENABLE_QUIC" = "YES" ] && quic_flag="-DENABLE_QUIC=YES" ; \
     cmake -B /tmp/amule-build /tmp/amule-src \
         -DCMAKE_INSTALL_PREFIX=/usr \
         -DCMAKE_BUILD_TYPE=Release \
@@ -83,6 +121,7 @@ RUN \
         -DBUILD_ALCC=YES \
         -DENABLE_UTP=YES \
         -DUSE_SYSTEM_LIBUTP=NO \
+        ${quic_flag} \
         -DENABLE_IP2COUNTRY=YES \
         -DENABLE_UPNP=YES \
         -DENABLE_NLS=NO && \
@@ -102,10 +141,22 @@ LABEL org.opencontainers.image.title="aMule (eMuleAI network-parity)" \
 COPY --from=builder /usr/bin/alcc /usr/bin/amuleapi /usr/bin/amulecmd /usr/bin/amuled /usr/bin/amuleweb /usr/bin/ed2k /usr/bin/ffprobe /usr/bin/
 COPY --from=builder /usr/share/amule /usr/share/amule
 
-# Install runtime dependencies and remove unnecessary locale files
+# Install runtime dependencies and remove unnecessary locale files.
+#
+# The QUIC variant additionally needs the shared libraries the transport links
+# against -- the ngtcp2 runtime, its GnuTLS binding, and GnuTLS itself. They are
+# installed in a separate, guarded step so the default image's package list is
+# untouched: with the arg off nothing extra is fetched and the image keeps its
+# current size profile. The ldd gate below runs either way, so a QUIC build that
+# forgot one of these libraries still fails here rather than at first start.
+ARG ENABLE_QUIC=NO
 RUN apt-get update && apt-get install -y --no-install-recommends \
         libcrypto++8t64 libreadline8t64 libgcc-s1 libstdc++6 libpng16-16t64 libwxbase3.2-1t64 libglib2.0-0t64 libupnp17t64 libmaxminddb0 \
         libatomic1 libbinutils ca-certificates curl tzdata procps pwgen s6 cron systemd-standalone-sysusers \
+    && if [ "$ENABLE_QUIC" = "YES" ]; then \
+        apt-get install -y --no-install-recommends \
+            libngtcp2-16 libngtcp2-crypto-gnutls8 libgnutls30t64 ; \
+    fi \
     && rm -rf /var/lib/apt/lists/* /usr/share/locale /usr/share/doc/* /usr/share/doc-base /usr/share/lintian && \
     # Check binaries are OK (fail the build if any shared library is missing)
     for bin in alcc amuleapi amulecmd amuled amuleweb ed2k ffprobe; do \
