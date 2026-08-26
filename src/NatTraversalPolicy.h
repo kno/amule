@@ -190,30 +190,99 @@ inline SRendezvousDecision DecideRendezvousInitiation(const SRendezvousInputs &i
 	return decision;
 }
 
+//! Everything the frame-type decision depends on, gathered so the call site
+//! reads as a list of facts rather than four positional values. Omitting one of
+//! them is exactly the mistake this struct exists to make impossible: the
+//! capability frame and the elapsed time answer different halves of the same
+//! question, and a call site that passed only the clock would drop a confirmed
+//! QUIC exchange back to uTP at the boundary.
+struct SNattFrameTypeInputs
+{
+	//! The peer's MOD_MISCOPT_NAT_TRAVERSAL_QUIC bit.
+	bool peerAdvertisesQuic = false;
+	//! Whether this end can actually serve a QUIC NAT-T exchange -- compiled
+	//! in *and* able to carry a connection. See LocalCanServeQuicNatTraversal().
+	bool localCanServeQuic = false;
+	//! Whether the peer's QUIC capability frame has arrived for this exchange.
+	//! Until it has, QUIC is an expectation rather than a fact.
+	bool quicCapabilityFrameSeen = false;
+	//! How long the exchange has been running.
+	uint64_t msSinceRendezvousStarted = 0;
+};
+
+//! Why the frame type went the way it did, so a log line can name the reason
+//! rather than saying "QUIC unavailable" for four different situations.
+enum ENattFrameTypeReason
+{
+	//! The peer's capability frame arrived. QUIC is a fact, not a hope.
+	NATT_FRAME_QUIC_CONFIRMED,
+	//! Inside the 1500 ms window, still hoping.
+	NATT_FRAME_QUIC_AWAITING_CAPABILITY,
+	//! The peer never claimed QUIC. No wait applies.
+	NATT_FRAME_UTP_PEER_HAS_NO_QUIC,
+	//! This build has no QUIC transport, or it cannot serve one right now.
+	NATT_FRAME_UTP_LOCAL_HAS_NO_QUIC,
+	//! The window closed with no capability frame. This is the spec delta's
+	//! "capability frame lost".
+	NATT_FRAME_UTP_CAPABILITY_TIMED_OUT
+};
+
 //! Which OP_UDPRESERVEDPROT2 frame type carries the exchange right now.
 struct SNattFrameTypeDecision
 {
 	//! OP_NATT_FRAME_QUIC (0x01) or OP_NATT_FRAME_UTP (0x00).
 	uint8_t frameType = OP_NATT_FRAME_UTP;
-	//! True while the QUIC frame type is still being given its chance. The
-	//! caller should re-ask after the wait rather than treating silence as a
-	//! failure.
+	//! True only while the QUIC frame type is still being given its chance,
+	//! i.e. inside the window with no capability frame yet. The caller should
+	//! re-ask after the wait rather than treating silence as a failure. A
+	//! confirmed QUIC exchange is not "waiting" -- there is nothing left to
+	//! wait for.
 	bool waitingForQuic = false;
+	ENattFrameTypeReason reason = NATT_FRAME_UTP_PEER_HAS_NO_QUIC;
+	/**
+	 * Always false, and present so that adding a reason forces whoever adds it
+	 * to decide the question rather than inheriting a default.
+	 *
+	 * The spec delta states it plainly: when the capability frame is lost the
+	 * user-visible state must show a connected peer, not a failure. Falling
+	 * back is the ordinary outcome of a negotiation with a peer that turned
+	 * out not to speak QUIC -- the connection still happens, over uTP. A user
+	 * who saw "QUIC failed" would be reading a diagnosis of nothing.
+	 */
+	bool surfacesFailure = false;
 };
 
 /**
  * Whether this build can serve a QUIC NAT-T exchange.
  *
- * False, and it is a function rather than a constant so the one place that has
- * to change when `amule-quic-transport` lands is here. There is no QUIC
- * transport in this tree: no context, no library, nothing behind
- * OP_NATT_FRAME_QUIC. Advertising or acting on a transport that is not there is
- * the failure mode PeerCapabilities.h describes -- the peer opens an exchange
- * that cannot complete and neither side logs a reason.
+ * Two independent conditions, and the difference between them is the failure
+ * mode PeerCapabilities.h describes. Compiled in (AMULE_QUIC_TRANSPORT, i.e.
+ * -DENABLE_QUIC=YES against ngtcp2 and its GnuTLS binding) is necessary and not
+ * sufficient: a build with a QUIC context that has no usable TLS credentials
+ * would answer an exchange it cannot finish, and neither side would log a
+ * reason.
+ *
+ * The runtime half therefore travels as an argument rather than being read from
+ * a macro here, for the same reason AdvertisedModMiscOptions() takes
+ * utpTransportCanServe: both branches have to be reachable in the one build a
+ * test binary is, and only one of them exists in any real build. The caller
+ * passes CQuicContext::CanServeConnections().
+ *
+ * On a platform where QUIC is not built -- macOS, where Homebrew's libngtcp2
+ * links OpenSSL and no GnuTLS-bound build is packaged; see design.md -- this is
+ * false whatever the runtime answer, and every exchange rides the uTP frame
+ * type with no wait at all.
  */
-inline bool LocalCanServeQuicNatTraversal()
+inline bool LocalCanServeQuicNatTraversal(bool quicTransportCanServe)
 {
+#ifdef AMULE_QUIC_TRANSPORT
+	return quicTransportCanServe;
+#else
+	// Unused in this configuration; named rather than dropped so the two
+	// branches keep the same signature.
+	(void)quicTransportCanServe;
 	return false;
+#endif
 }
 
 /**
@@ -221,9 +290,9 @@ inline bool LocalCanServeQuicNatTraversal()
  * given peer.
  *
  * False, and a function rather than a constant for the same reason
- * LocalCanServeQuicNatTraversal() is: it is the one place that has to change
- * when relay discovery exists, and until then every call site reads as a fact
- * about this build rather than as a guess.
+ * LocalCanServeQuicNatTraversal() takes an argument: it is the one place that
+ * has to change when relay discovery exists, and until then every call site
+ * reads as a fact about this build rather than as a guess.
  *
  * The gap is specific and is not an oversight. A usable relay R must satisfy
  * two conditions: this client can reach R, and R can reach the firewalled peer
@@ -254,35 +323,51 @@ inline bool LocalCanDiscoverRendezvousRelay()
 /**
  * Pick the frame type, applying the documented 1500 ms wait.
  *
- * The QUIC frame type is preferred while the peer advertised QUIC NAT-T *and*
- * this build can serve it, for the first kNattFrameTypeFallbackWaitMs of the
- * exchange. After that the legacy uTP frame type carries it.
+ * Three outcomes, in this order, and the order is the decision:
  *
- * `localCanServeQuic` is an argument rather than a call to
- * LocalCanServeQuicNatTraversal() inside this function for the same reason
- * AdvertisedModMiscOptions() takes utpTransportCanServe: both branches have to
- * be reachable in the one build a test binary is, and only one of them exists
- * in any real build. In this tree that argument is false at every call site, so
- * the exchange rides 0x00 with no wait at all -- waiting 1500 ms for a transport
- * this build does not have would delay every traversal with an eMuleAI peer by
- * a second and a half and gain nothing.
- *
- * @param msSinceRendezvousStarted how long the exchange has been running.
+ *   1. Either side lacking QUIC ends it immediately, on the uTP frame type,
+ *      with no wait. A capability frame cannot conjure a transport that is not
+ *      there, which is why the two capability tests come before it -- otherwise
+ *      a peer could talk this end onto a frame type it has no context for.
+ *   2. The peer's capability frame having arrived ends the wait the other way:
+ *      QUIC carries the exchange for as long as it runs. Without this the
+ *      1500 ms would be a lifetime rather than a wait, and a confirmed QUIC
+ *      exchange would drop back to uTP mid-flight at the boundary -- the one
+ *      outcome neither side can diagnose.
+ *   3. Otherwise the window decides: QUIC optimistically while it is open,
+ *      uTP once it has closed. This is the spec delta's "capability frame
+ *      lost", and falling back is not a failure -- see
+ *      SNattFrameTypeDecision::surfacesFailure.
  */
-inline SNattFrameTypeDecision SelectNattFrameType(
-	bool peerAdvertisesQuic, bool localCanServeQuic, uint64_t msSinceRendezvousStarted)
+inline SNattFrameTypeDecision SelectNattFrameType(const SNattFrameTypeInputs &inputs)
 {
 	SNattFrameTypeDecision decision;
 
-	if (peerAdvertisesQuic && localCanServeQuic &&
-		msSinceRendezvousStarted < kNattFrameTypeFallbackWaitMs) {
-		decision.frameType = OP_NATT_FRAME_QUIC;
-		decision.waitingForQuic = true;
+	if (!inputs.peerAdvertisesQuic) {
+		decision.reason = NATT_FRAME_UTP_PEER_HAS_NO_QUIC;
 		return decision;
 	}
 
-	decision.frameType = OP_NATT_FRAME_UTP;
-	decision.waitingForQuic = false;
+	if (!inputs.localCanServeQuic) {
+		decision.reason = NATT_FRAME_UTP_LOCAL_HAS_NO_QUIC;
+		return decision;
+	}
+
+	if (inputs.quicCapabilityFrameSeen) {
+		decision.frameType = OP_NATT_FRAME_QUIC;
+		decision.waitingForQuic = false;
+		decision.reason = NATT_FRAME_QUIC_CONFIRMED;
+		return decision;
+	}
+
+	if (inputs.msSinceRendezvousStarted < kNattFrameTypeFallbackWaitMs) {
+		decision.frameType = OP_NATT_FRAME_QUIC;
+		decision.waitingForQuic = true;
+		decision.reason = NATT_FRAME_QUIC_AWAITING_CAPABILITY;
+		return decision;
+	}
+
+	decision.reason = NATT_FRAME_UTP_CAPABILITY_TIMED_OUT;
 	return decision;
 }
 

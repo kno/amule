@@ -191,8 +191,11 @@ TEST(UtpInboundAccept, WithoutAnAcceptorNothingIsServedAndNothingIsAdvertised)
 	// refusal libutp's own behaviour rather than a decision taken later.
 	ASSERT_FALSE(library.acceptCallbackRegistered);
 
-	// The composed answer: this is the word that reaches the wire.
-	ASSERT_EQUALS(0u, (unsigned)AdvertisedModMiscOptions(context.CanServeConnections()));
+	// The composed answer: this is the word that reaches the wire. The QUIC
+	// half is false throughout this suite -- what is under test here is the
+	// uTP gate, and QUIC has a gate of its own that must not be able to set
+	// this bit. PeerCapabilitiesTest pins the composition of the two.
+	ASSERT_EQUALS(0u, (unsigned)AdvertisedModMiscOptions(context.CanServeConnections(), false));
 }
 
 // The state after this change: an acceptor exists, so the callback is
@@ -211,7 +214,7 @@ TEST(UtpInboundAccept, WithAnAcceptorTheCapabilityBitIsAdvertised)
 	ASSERT_TRUE(library.acceptCallbackRegistered);
 
 	ASSERT_EQUALS((unsigned)MOD_MISCOPT_NAT_TRAVERSAL,
-		(unsigned)AdvertisedModMiscOptions(context.CanServeConnections()));
+		(unsigned)AdvertisedModMiscOptions(context.CanServeConnections(), false));
 	ASSERT_EQUALS(0x00000002u, (unsigned)MOD_MISCOPT_NAT_TRAVERSAL);
 }
 
@@ -227,7 +230,7 @@ TEST(UtpInboundAccept, WithoutALibraryTheAcceptorChangesNothing)
 	context.Configure(nullptr, &sink, &acceptor);
 
 	ASSERT_FALSE(context.CanServeConnections());
-	ASSERT_EQUALS(0u, (unsigned)AdvertisedModMiscOptions(context.CanServeConnections()));
+	ASSERT_EQUALS(0u, (unsigned)AdvertisedModMiscOptions(context.CanServeConnections(), false));
 }
 
 // An inbound connection reaches the acceptor with the peer intact, and the

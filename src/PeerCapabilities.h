@@ -175,44 +175,72 @@ private:
  *     DualStack::CLocalReachability::AdvertisedModMiscOptions() -- see
  *     src/IPv6Reachability.h -- because the reachability state lives there.
  *
- * The two gates are independent and compose by OR at the one place a handshake
- * is written, CUpDownClient::SendHelloTypePacket(). This function owns the uTP
- * half only; it is not the whole word on the wire.
+ *   - MOD_MISCOPT_NAT_TRAVERSAL_QUIC (bit 4) follows whether this end can serve
+ *     a QUIC NAT-T exchange, which is a strictly narrower question than whether
+ *     ngtcp2 was linked: a build whose TLS credentials failed to come up
+ *     answers no handshake at all. The gate is
+ *     CQuicContext::CanServeConnections(), and it arrives here as the
+ *     quicTransportCanServe argument. Getting this one wrong costs the peer
+ *     more than the uTP equivalent does, because a peer that reads the bit
+ *     waits out the whole 1500 ms capability window before falling back --
+ *     see SelectNattFrameType() in NatTraversalPolicy.h.
  *
- * The uTP answer travels as an argument rather than being read from a macro
- * here, so both branches are testable in the one build a test binary is.
+ * The gates are independent and compose by OR at the one place a handshake is
+ * written, CUpDownClient::SendHelloTypePacket(). This function owns the two
+ * transport halves only; it is not the whole word on the wire.
  *
- * The three remaining bits stay off; each turns on in the change that ships its
- * transport. When the composed word is zero, no CT_MOD_MISCOPTIONS tag is
+ * Both transport answers travel as arguments rather than being read from a
+ * macro here, so every branch is testable in the one build a test binary is.
+ * They are separate arguments because the two transports fail independently: a
+ * client can serve QUIC and not uTP, or the reverse, and one argument for both
+ * would make a client advertise a transport it cannot serve.
+ *
+ * The two remaining bits stay off; each turns on in the change that ships its
+ * feature. When the composed word is zero, no CT_MOD_MISCOPTIONS tag is
  * emitted at all: an absent tag and an all-zero one mean the same thing to
  * eMuleAI, and the absent one costs no bytes.
  *
  * @param utpTransportCanServe  whether this end can serve a uTP connection,
  *        i.e. a utp_context exists and an inbound uTP attempt on it would be
  *        handled rather than dropped. See CUtpContext::CanServeConnections().
+ * @param quicTransportCanServe  the same question for QUIC. See
+ *        CQuicContext::CanServeConnections().
  */
-constexpr uint32_t AdvertisedModMiscOptions(bool utpTransportCanServe)
+constexpr uint32_t AdvertisedModMiscOptions(bool utpTransportCanServe, bool quicTransportCanServe)
 {
-	return utpTransportCanServe ? static_cast<uint32_t>(MOD_MISCOPT_NAT_TRAVERSAL) : 0u;
+	uint32_t bits = 0;
+	if (utpTransportCanServe) {
+		bits |= static_cast<uint32_t>(MOD_MISCOPT_NAT_TRAVERSAL);
+	}
+	if (quicTransportCanServe) {
+		bits |= static_cast<uint32_t>(MOD_MISCOPT_NAT_TRAVERSAL_QUIC);
+	}
+
+	return bits;
 }
 
 /**
  * The most this build could ever advertise: the ceiling, not the word.
  *
- * Two bits can appear here. MOD_MISCOPT_IPV6 always does: the dual-stack code
+ * Three bits can appear here. MOD_MISCOPT_IPV6 always does: the dual-stack code
  * is compiled unconditionally, so a build can always *reach* the point of
  * claiming IPv6 -- whether it does is a runtime question answered by
  * DualStack::CLocalReachability. MOD_MISCOPT_NAT_TRAVERSAL appears only with
  * -DENABLE_UTP=YES, because uTP needs libutp and is off by default (see
- * cmake/libutp.cmake). The three remaining features do not exist in this tree,
- * so they can never appear. A bit that appears here without a transport
- * compiled behind it is a defect, which is what PeerCapabilitiesTest pins and
- * what the static_assert in CUpDownClient::SendHelloTypePacket() bounds the
- * emitted word against.
+ * cmake/libutp.cmake). MOD_MISCOPT_NAT_TRAVERSAL_QUIC appears only with
+ * -DENABLE_QUIC=YES, which needs ngtcp2 and its GnuTLS binding and is off by
+ * default for a stronger reason still -- the dependency is not packageable on
+ * every platform aMule ships on, so a macOS build can never reach this bit at
+ * all (see cmake/ngtcp2.cmake and the platform table in the change's
+ * design.md). The two remaining features do not exist in this tree, so they can
+ * never appear. A bit that appears here without a transport compiled behind it
+ * is a defect, which is what PeerCapabilitiesTest pins and what the
+ * static_assert in CUpDownClient::SendHelloTypePacket() bounds the emitted word
+ * against.
  *
  * This is deliberately NOT what goes on the wire. A non-zero ceiling only makes
- * a bit possible; whether it is set is decided per handshake by the two runtime
- * gates -- AdvertisedModMiscOptions() for uTP and
+ * a bit possible; whether it is set is decided per handshake by the runtime
+ * gates -- AdvertisedModMiscOptions() for the two transports and
  * DualStack::CLocalReachability::AdvertisedModMiscOptions() for IPv6 -- which
  * compose by OR in SendHelloTypePacket(). When the resulting word is zero, no
  * CT_MOD_MISCOPTIONS tag is emitted at all: an absent tag and an all-zero one
@@ -221,10 +249,18 @@ constexpr uint32_t AdvertisedModMiscOptions(bool utpTransportCanServe)
 constexpr uint32_t AdvertisableModMiscOptions()
 {
 #ifdef AMULE_UTP_TRANSPORT
-	return AdvertisedModMiscOptions(true) | static_cast<uint32_t>(MOD_MISCOPT_IPV6);
+	constexpr bool utpCompiledIn = true;
 #else
-	return AdvertisedModMiscOptions(false) | static_cast<uint32_t>(MOD_MISCOPT_IPV6);
+	constexpr bool utpCompiledIn = false;
 #endif
+#ifdef AMULE_QUIC_TRANSPORT
+	constexpr bool quicCompiledIn = true;
+#else
+	constexpr bool quicCompiledIn = false;
+#endif
+
+	return AdvertisedModMiscOptions(utpCompiledIn, quicCompiledIn) |
+	       static_cast<uint32_t>(MOD_MISCOPT_IPV6);
 }
 
 /**

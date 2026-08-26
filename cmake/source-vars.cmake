@@ -61,6 +61,13 @@ if (BUILD_MONOLITHIC OR BUILD_DAEMON)
 		# it compiles in a build with ENABLE_UTP off, where nothing ever
 		# constructs a context for it to serve.
 		UtpInboundAcceptor.cpp
+		# The only translation unit that includes ngtcp2's or GnuTLS's
+		# headers. Compiled in every core build; without AMULE_QUIC_TRANSPORT
+		# its methods are inert and it pulls in neither library, which is what
+		# makes -DENABLE_QUIC=NO -- the default, and the only configuration
+		# macOS gets -- a build with no QUIC rather than a build that does not
+		# compile.
+		QuicLibraryAdapter.cpp
 	)
 endif()
 

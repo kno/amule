@@ -2109,6 +2109,13 @@ void CamuleApp::OnCoreTimer(CTimerEvent &WXUNUSED(evt))
 		const uint64_t nowMs = ::GetTickCount64();
 		clientudp->ServiceUtp(nowMs);
 
+		// QUIC's timers, from the same tick and for the same reason: loss
+		// detection and the idle timer live in that pass, so an endpoint
+		// driven only from the receive path cannot recover a lost packet on
+		// an idle connection. A no-op in a build without ngtcp2, which is the
+		// default build and every macOS build.
+		clientudp->ServiceQuic(nowMs);
+
 		// The hole-punch schedules, polled from the same tick. They hold no
 		// timer of their own precisely so that 120 seconds and a 60 second
 		// backoff are functions of a tick a test can supply -- neither bound is
