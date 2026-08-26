@@ -35,11 +35,37 @@ only a slower path.
 
 ## TLS stack selection
 
-Open question, and a maintainer decision rather than an engineering one. GnuTLS
-matches eMuleAI and is therefore the lowest-risk choice for interoperability
-testing. OpenSSL is more widely packaged but its QUIC API history is more
-complicated. This must be settled before implementation, because ngtcp2's crypto
-binding differs per backend.
+Settled: **ngtcp2 with the GnuTLS crypto backend**. Decided 2026-08-26; this
+section previously carried it as an open maintainer question.
+
+GnuTLS matches eMuleAI, which builds the same pairing as `CNgTcp2GnuTlsBridge`,
+so interoperability is tested against the implementation this change exists to
+interoperate with rather than against a second guess at it.
+
+The packaging survey below then made the choice narrower than a preference.
+Availability of the crypto backends, measured per platform rather than assumed:
+
+| Platform | ngtcp2 | GnuTLS backend | OpenSSL backend |
+| --- | --- | --- | --- |
+| Debian trixie (the runtime image) | `libngtcp2-dev` 1.11.0 | `libngtcp2-crypto-gnutls-dev` 1.11.0 | not packaged |
+| Homebrew (macOS) | `libngtcp2` 1.25.0 | absent — the formula links `openssl@3` | via that formula |
+| MSYS2 mingw-w64 (Windows installers) | present | present | present |
+
+Debian packages only the GnuTLS binding, so on the platform the container image
+ships from, GnuTLS is not merely the better choice but the only one available
+without building ngtcp2 from source. Vendoring is not open to us either: the
+rejected-alternative section below rules it out, and that reasoning holds
+whichever backend is chosen.
+
+The cost is macOS. Homebrew's `libngtcp2` links OpenSSL, so a GnuTLS build there
+would need ngtcp2 from source, which is the vendoring this design rejects. macOS
+therefore builds with QUIC off and reaches peers over uTP, which the fallback
+above already requires to be automatic and silent -- a macOS user loses no
+capability, only the faster path. This is a starting position, not a permanent
+one: adding an OpenSSL backend later is additive, and `ENABLE_QUIC` is per-platform.
+
+That ordering also fits task 1.2, which defaults QUIC off until proven. Linux
+first, where the dependency is packaged and the interop target lives.
 
 ## Rejected alternative
 

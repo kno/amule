@@ -22,19 +22,22 @@
 // Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301, USA
 //
 
-// uTP shares the ed2k UDP port, so one datagram arrives and two parsers want
-// it. The design pins the order: the uTP context is offered the datagram
-// first, and only a datagram it declines continues to the ed2k UDP parser.
+// uTP, QUIC and ed2k UDP share one port, so one datagram arrives and three
+// parsers want it. The design pins the order: the uTP context is offered the
+// datagram first, a datagram it declines is offered to the QUIC context next,
+// and only a datagram both decline continues to the ed2k UDP parser.
 //
-// Inverting that order breaks exactly one of the two, and which one depends on
-// the direction of the inversion -- ed2k UDP if the uTP context is offered
-// nothing, uTP if the ed2k parser is allowed to consume 0xB2 first. Neither
-// failure produces a message. So both directions are asserted here, by
-// recording the order in which the two sides were actually called rather than
-// by trusting that reading the code the right way round is enough.
+// Inverting any part of that breaks exactly one of the three, and which one
+// depends on the direction of the inversion -- ed2k UDP if a transport context
+// is offered nothing, a transport if the ed2k parser is allowed to consume 0xB2
+// first, and QUIC if it is offered before uTP rather than after. None of those
+// failures produces a message. So the order is asserted by recording which
+// sides were actually called and in what sequence, rather than by trusting that
+// reading the code the right way round is enough.
 
 #include <muleunit/test.h>
 
+#include <QuicNattProtocol.h>
 #include <UtpDatagramRouting.h>
 #include <protocol/Protocols.h>
 
@@ -52,13 +55,18 @@ namespace
 //! Records what was called, with what, and in which order.
 struct SRouteRecorder
 {
-	//! "utp" / "ed2k" in call order. Two entries means a fall-through.
+	//! "utp" / "quic" / "ed2k" in call order. More than one entry means a
+	//! fall-through, and the sequence is the classification order itself.
 	std::vector<std::string> calls;
 	//! Whether the uTP side claims the datagram it is offered.
 	bool utpConsumes = false;
+	//! Whether the QUIC side claims the datagram it is offered.
+	bool quicConsumes = false;
 
 	const uint8_t *utpPayload = nullptr;
 	size_t utpPayloadLength = 0;
+	const uint8_t *quicPayload = nullptr;
+	size_t quicPayloadLength = 0;
 	const uint8_t *ed2kDatagram = nullptr;
 	size_t ed2kLength = 0;
 
@@ -68,6 +76,14 @@ struct SRouteRecorder
 		utpPayload = payload;
 		utpPayloadLength = payloadLength;
 		return utpConsumes;
+	}
+
+	bool OfferToQuic(const uint8_t *payload, size_t payloadLength)
+	{
+		calls.push_back("quic");
+		quicPayload = payload;
+		quicPayloadLength = payloadLength;
+		return quicConsumes;
 	}
 
 	void ParseAsEd2k(const uint8_t *datagram, size_t length)
@@ -89,14 +105,32 @@ std::vector<uint8_t> MakeUtpFrame(const std::vector<uint8_t> &payload)
 	return datagram;
 }
 
-bool Route(SRouteRecorder &recorder, std::vector<uint8_t> &datagram, bool utpAvailable)
+//! A QUIC frame on the same port: protocol byte, frame type 0x01, payload.
+std::vector<uint8_t> MakeQuicFrame(const std::vector<uint8_t> &payload)
+{
+	std::vector<uint8_t> datagram(QUIC_FRAME_HEADER_LENGTH + payload.size());
+	WriteQuicFrameHeader(&datagram[0]);
+	if (!payload.empty()) {
+		memcpy(&datagram[QUIC_FRAME_HEADER_LENGTH], &payload[0], payload.size());
+	}
+	return datagram;
+}
+
+bool Route(SRouteRecorder &recorder,
+	std::vector<uint8_t> &datagram,
+	bool utpAvailable,
+	bool quicAvailable = false)
 {
 	return RouteInboundDatagram(
 		&datagram[0],
 		datagram.size(),
 		utpAvailable,
+		quicAvailable,
 		[&recorder](const uint8_t *payload, size_t length) {
 			return recorder.OfferToUtp(payload, length);
+		},
+		[&recorder](const uint8_t *payload, size_t length) {
+			return recorder.OfferToQuic(payload, length);
 		},
 		[&recorder](const uint8_t *whole, size_t length) { recorder.ParseAsEd2k(whole, length); });
 }
@@ -236,7 +270,9 @@ TEST(UtpDatagramRouting, TruncatedDatagramIsNotUtp)
 		nullptr,
 		0,
 		true,
+		true,
 		[&empty](const uint8_t *p, size_t l) { return empty.OfferToUtp(p, l); },
+		[&empty](const uint8_t *p, size_t l) { return empty.OfferToQuic(p, l); },
 		[&empty](const uint8_t *p, size_t l) { empty.ParseAsEd2k(p, l); }));
 	ASSERT_EQUALS(0u, (unsigned)empty.calls.size());
 }
@@ -283,4 +319,131 @@ TEST(UtpDatagramRouting, ClassificationIsExact)
 
 	ASSERT_FALSE(IsUtpFrame(&utpFrame[0], 1));
 	ASSERT_FALSE(IsUtpFrame(nullptr, 2));
+}
+
+// Spec delta, "Shared port classification order": QUIC sits between uTP and the
+// ed2k UDP parser. A QUIC frame therefore reaches the QUIC context, and the
+// uTP context is asked first and declines -- both halves matter, because the
+// order is only observable when a consumer that could have claimed the datagram
+// is asked before one that did.
+TEST(UtpDatagramRouting, QuicFrameReachesTheQuicContextAfterUtpDeclines)
+{
+	std::vector<uint8_t> datagram = MakeQuicFrame({ 0xC3, 0x00, 0x00, 0x00, 0x01 });
+
+	SRouteRecorder recorder;
+	recorder.utpConsumes = true;  // Would claim anything it is offered...
+	recorder.quicConsumes = true; // ...but a QUIC frame is not offered to it.
+
+	ASSERT_TRUE(Route(recorder, datagram, true, true));
+
+	ASSERT_EQUALS(1u, (unsigned)recorder.calls.size());
+	ASSERT_TRUE(recorder.calls[0] == "quic");
+
+	// The QUIC context is handed the payload window, not the framing bytes:
+	// ngtcp2 parses a QUIC packet, and the two bytes in front of it are
+	// aMule's envelope.
+	ASSERT_TRUE(recorder.quicPayload == &datagram[QUIC_FRAME_HEADER_LENGTH]);
+	ASSERT_EQUALS(5u, (unsigned)recorder.quicPayloadLength);
+}
+
+// The full three-way order, asserted on one datagram that every consumer is
+// willing to look at. A datagram neither transport claims must reach the ed2k
+// parser whole -- including its 0xB2 protocol byte, because the ed2k side owns
+// the other OP_UDPRESERVEDPROT2 frame types.
+TEST(UtpDatagramRouting, DeclinedDatagramVisitsUtpThenQuicThenEd2k)
+{
+	std::vector<uint8_t> datagram = MakeUtpFrame({ 0x21, 0x00 });
+
+	SRouteRecorder recorder;
+	recorder.utpConsumes = false;
+	recorder.quicConsumes = false;
+
+	ASSERT_FALSE(Route(recorder, datagram, true, true));
+
+	// uTP first. QUIC is not offered a datagram that is framed as uTP: the
+	// frame type is what selects the transport, and offering 0x00 bytes to
+	// ngtcp2 would have it parse somebody else's protocol.
+	ASSERT_EQUALS(2u, (unsigned)recorder.calls.size());
+	ASSERT_TRUE(recorder.calls[0] == "utp");
+	ASSERT_TRUE(recorder.calls[1] == "ed2k");
+	ASSERT_TRUE(recorder.ed2kDatagram == &datagram[0]);
+	ASSERT_EQUALS(datagram.size(), recorder.ed2kLength);
+
+	// And the mirror: a QUIC-framed datagram the QUIC context declines
+	// continues to ed2k, again whole. The uTP context is never offered it.
+	std::vector<uint8_t> quicDatagram = MakeQuicFrame({ 0xC3, 0x00 });
+	SRouteRecorder second;
+	second.utpConsumes = true;
+	second.quicConsumes = false;
+
+	ASSERT_FALSE(Route(second, quicDatagram, true, true));
+
+	ASSERT_EQUALS(2u, (unsigned)second.calls.size());
+	ASSERT_TRUE(second.calls[0] == "quic");
+	ASSERT_TRUE(second.calls[1] == "ed2k");
+	ASSERT_TRUE(second.ed2kDatagram == &quicDatagram[0]);
+	ASSERT_EQUALS(quicDatagram.size(), second.ed2kLength);
+}
+
+// The default build, and the only one macOS gets: -DENABLE_QUIC=NO. The QUIC
+// context does not exist, so a QUIC frame from an eMuleAI peer must reach the
+// ed2k side and be dropped there as a recognised-but-unserved frame type
+// (ReservedProtocolFrames.h) -- never be silently consumed by a context that is
+// not there, and never disturb uTP.
+TEST(UtpDatagramRouting, WithoutAQuicContextQuicFramesFallThroughToEd2k)
+{
+	std::vector<uint8_t> datagram = MakeQuicFrame({ 0xC3, 0x00 });
+
+	SRouteRecorder recorder;
+	recorder.utpConsumes = true;
+	recorder.quicConsumes = true;
+
+	ASSERT_FALSE(Route(recorder, datagram, true, false));
+
+	ASSERT_EQUALS(1u, (unsigned)recorder.calls.size());
+	ASSERT_TRUE(recorder.calls[0] == "ed2k");
+	ASSERT_TRUE(recorder.quicPayload == nullptr);
+	ASSERT_TRUE(recorder.ed2kDatagram == &datagram[0]);
+	ASSERT_EQUALS(datagram.size(), recorder.ed2kLength);
+}
+
+// Neither transport compiled in. Every datagram goes straight to the ed2k
+// parser, which is the shared port behaving exactly as it did before either
+// transport existed. Task 1.3 rests on this case.
+TEST(UtpDatagramRouting, WithNeitherTransportEverythingIsEd2k)
+{
+	std::vector<std::vector<uint8_t>> datagrams = { MakeUtpFrame({ 0x21, 0x00 }),
+		MakeQuicFrame({ 0xC3, 0x00 }),
+		{ OP_UDPRESERVEDPROT2, OP_NATT_FRAME_KEY, 0x01 },
+		{ 0xE3, 0x9A, 0x01 } };
+
+	for (std::vector<uint8_t> &datagram : datagrams) {
+		SRouteRecorder recorder;
+		recorder.utpConsumes = true;
+		recorder.quicConsumes = true;
+
+		ASSERT_FALSE(Route(recorder, datagram, false, false));
+
+		ASSERT_EQUALS(1u, (unsigned)recorder.calls.size());
+		ASSERT_TRUE(recorder.calls[0] == "ed2k");
+		ASSERT_EQUALS(datagram.size(), recorder.ed2kLength);
+	}
+}
+
+// A datagram declined by all three is dropped without error, which the router
+// expresses by returning false and touching nothing: it has no error channel
+// of its own, and the drop -- with its reason -- belongs to the ed2k side's
+// frame demultiplexer.
+TEST(UtpDatagramRouting, DatagramDeclinedByAllThreeIsDroppedWithoutError)
+{
+	std::vector<uint8_t> datagram = MakeQuicFrame({ 0xC3 });
+
+	SRouteRecorder recorder;
+	recorder.utpConsumes = false;
+	recorder.quicConsumes = false;
+
+	ASSERT_FALSE(Route(recorder, datagram, true, true));
+
+	ASSERT_EQUALS(2u, (unsigned)recorder.calls.size());
+	ASSERT_TRUE(recorder.calls[1] == "ed2k");
 }

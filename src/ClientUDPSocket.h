@@ -30,21 +30,29 @@
 #include "NatRendezvousManager.h"   // Needed for CNatRendezvousManager
 #include "NatRendezvousRelay.h"     // Needed for CRendezvousRelayLimiter
 #include "PeerIdentity.h"           // Needed for PeerIdentity::EUdpRoute
+#include "QuicContext.h"            // Needed for CQuicContext / IQuicDatagramSink
+#include "QuicLibraryAdapter.h"     // Needed for CQuicLibraryAdapter
 #include "ReservedProtocolFrames.h" // Needed for CUnknownFrameLogThrottle
 #include "UtpContext.h"             // Needed for CUtpContext / IUtpDatagramSink
 #include "UtpInboundAcceptor.h"     // Needed for CUtpInboundAcceptor
 #include "UtpLibraryAdapter.h"      // Needed for CUtpLibraryAdapter
 
 /**
- * The ed2k UDP socket, which is also the uTP socket.
+ * The ed2k UDP socket, which is also the uTP socket and the QUIC socket.
  *
- * uTP gets no port of its own: its datagrams arrive and leave here, wrapped in
- * OP_UDPRESERVEDPROT2 / OP_NATT_FRAME_UTP. Sharing the port is what lets uTP
- * reuse the NAT mapping ed2k UDP already has, which is the whole reason uTP is
- * useful for NAT traversal later. IUtpDatagramSink is how the context reaches
- * this socket on the way out; ProcessUtpDatagram is the way in.
+ * Neither transport gets a port of its own: their datagrams arrive and leave
+ * here, wrapped in OP_UDPRESERVEDPROT2 with a frame type -- OP_NATT_FRAME_UTP
+ * (0x00) or OP_NATT_FRAME_QUIC (0x01). Sharing the port is what lets them reuse
+ * the NAT mapping ed2k UDP already has, which is the whole reason either is
+ * useful for NAT traversal. The two sink interfaces are how the contexts reach
+ * this socket on the way out; RouteInboundDatagram() is the way in, and the
+ * classification order it fixes -- uTP, then QUIC, then the ed2k parser -- lives
+ * in UtpDatagramRouting.h rather than here.
  */
-class CClientUDPSocket : public CMuleUDPSocket, public IUtpDatagramSink
+class CClientUDPSocket : public CMuleUDPSocket,
+			 public IUtpDatagramSink,
+			 public IQuicDatagramSink,
+			 public IQuicConnectionObserver
 {
 public:
 	CClientUDPSocket(const amuleIPV4Address &address, const CProxyData *ProxyData = NULL);
@@ -60,6 +68,30 @@ public:
 	//!        and their idle accounting and their zero-write backoff. The context passes
 	//!        it to every live connection.
 	void ServiceUtp(uint64_t nowMs) { m_utpContext.Tick(nowMs); }
+
+	/**
+	 * Drive the QUIC context, from the same core timer and for the same
+	 * reason: QUIC's loss detection and idle timer live in this pass, so an
+	 * endpoint serviced only from the receive path cannot recover a lost
+	 * packet on an idle connection.
+	 *
+	 * Inert in every build configured with -DENABLE_QUIC=NO, which is the
+	 * default and the only configuration macOS gets.
+	 */
+	void ServiceQuic(uint64_t nowMs) { m_quicContext.Tick(nowMs); }
+
+	/**
+	 * Whether this client can serve a QUIC connection to a peer right now.
+	 *
+	 * The QUIC twin of CanServeUtpConnections(), gating the
+	 * MOD_MISCOPT_NAT_TRAVERSAL_QUIC bit and the localCanServeQuic input to
+	 * SelectNattFrameType(). Again not "was QUIC compiled in": a build with
+	 * ngtcp2 whose TLS credentials failed to come up answers no handshake, and
+	 * a peer that read the bit would wait out the whole 1500 ms window before
+	 * falling back -- a second and a half per connection, with nothing logged
+	 * on either side.
+	 */
+	bool CanServeQuicConnections() { return m_quicContext.CanServeConnections(); }
 
 	/**
 	 * Drive the hole-punch schedules. Also called from
@@ -128,6 +160,29 @@ public:
 	//! queued on this socket so uTP and ed2k UDP share one port.
 	void SendUtpDatagram(
 		const uint8_t *payload, size_t length, const CNetworkAddress &to, uint16_t port) override;
+
+	//! Outbound QUIC datagrams, from the endpoint's send path. Framed with
+	//! 0xB2/0x01 and queued on this socket so QUIC, uTP and ed2k UDP share one
+	//! port and one NAT mapping.
+	void SendQuicDatagram(
+		const uint8_t *payload, size_t length, const CNetworkAddress &to, uint16_t port) override;
+
+	/**
+	 * One QUIC connection came up or ended.
+	 *
+	 * The log line lives here rather than in the bridge because
+	 * QuicLibraryAdapter.cpp is the one translation unit that sees ngtcp2's and
+	 * GnuTLS's headers and therefore cannot include Logger.h -- the same
+	 * constraint that puts CUtpInboundAcceptor's logging outside
+	 * UtpLibraryAdapter.cpp. What this function must not do is decide which
+	 * kind of failure it was: that is IsQuicAuthenticationOutcome(), which
+	 * QuicContextTest asserts, because a classification written inside a log
+	 * statement cannot be.
+	 */
+	void OnQuicConnectionOutcome(EQuicConnectionOutcome outcome,
+		EQuicProofResult proofResult,
+		const CNetworkAddress &peer,
+		uint16_t port) override;
 
 protected:
 	void OnReceive(int errorCode) override;
@@ -225,6 +280,14 @@ private:
 	//! therefore what makes CanServeUtpConnections() -- and the advertised
 	//! MOD_MISCOPT_NAT_TRAVERSAL bit -- able to be true.
 	CUtpInboundAcceptor m_utpAcceptor;
+
+	//! One QUIC context per client instance, on the same reasoning as the uTP
+	//! one: ngtcp2 keeps its connections inside an endpoint, and an endpoint
+	//! per connection would split its state across one UDP port. Unavailable
+	//! unless this build was configured with -DENABLE_QUIC=YES, in which case
+	//! the shared port behaves exactly as it did before QUIC existed.
+	CQuicContext m_quicContext;
+	CQuicLibraryAdapter m_quicLibrary{ &m_quicContext };
 
 	//! The rendezvous exchanges in flight. Empty in every ordinary session:
 	//! an entry exists only for a firewalled peer that advertised traversal

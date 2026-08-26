@@ -54,6 +54,7 @@
 #include "NatRendezvousRelay.h"    // Needed for RelayRendezvousRequest
 #include "NatTraversalPolicy.h"    // Needed for CNattCandidateSet
 #include "NetworkAddress.h"        // Needed for CNetworkAddress
+#include "QuicNattProtocol.h"      // Needed for the QUIC frame header
 #include "UtpDatagramRouting.h"    // Needed for RouteInboundDatagram
 
 //
@@ -77,6 +78,15 @@ CClientUDPSocket::CClientUDPSocket(const amuleIPV4Address &address, const CProxy
 	// answers an inbound SYN as soon as that callback exists.
 	m_utpContext.Configure(&m_utpLibrary, this, &m_utpAcceptor);
 #endif
+
+#ifdef AMULE_QUIC_TRANSPORT
+	// Only in a build that has ngtcp2 and its GnuTLS binding. Without this
+	// call the context has no library, IsAvailable() is false, and the shared
+	// port behaves exactly as it did before QUIC -- which is what every
+	// default build does, because ENABLE_QUIC is off by default, and what
+	// every macOS build does, because the dependency is not packageable there.
+	m_quicContext.Configure(&m_quicLibrary, this, this);
+#endif
 }
 
 void CClientUDPSocket::SendUtpDatagram(
@@ -97,6 +107,55 @@ void CClientUDPSocket::SendUtpDatagram(
 	// Never obfuscated and never a Kad packet: uTP carries its own framing
 	// and the peer recognises it by the two header bytes.
 	SendPacket(packet, ip, port, false, NULL, false, 0);
+}
+
+void CClientUDPSocket::SendQuicDatagram(
+	const uint8_t *payload, size_t length, const CNetworkAddress &to, uint16_t port)
+{
+	uint32_t ip = 0;
+	if (!to.ToIPv4NetworkOrder(ip) || length == 0) {
+		return;
+	}
+
+	// CPacket writes [protocol][opcode] as the UDP header, which is exactly
+	// the two framing bytes WriteQuicFrameHeader() defines and the receive
+	// path recognises: OP_UDPRESERVEDPROT2 then OP_NATT_FRAME_QUIC.
+	CPacket *packet = new CPacket(OP_NATT_FRAME_QUIC, length, OP_UDPRESERVEDPROT2);
+	packet->CopyToDataBuffer(0, payload, length);
+	theStats::AddUpOverheadOther(packet->GetPacketSize());
+
+	// Never obfuscated and never a Kad packet: QUIC carries its own framing
+	// and its own encryption, and the peer recognises it by the two header
+	// bytes. Obfuscating it would encrypt ciphertext to no end and make the
+	// frame type unreadable to the peer.
+	SendPacket(packet, ip, port, false, NULL, false, 0);
+}
+
+void CClientUDPSocket::OnQuicConnectionOutcome(EQuicConnectionOutcome outcome,
+	EQuicProofResult proofResult,
+	const CNetworkAddress &peer,
+	uint16_t port)
+{
+	const wxString peerText = wxString(peer.ToString());
+
+	if (IsQuicAuthenticationOutcome(outcome)) {
+		// A peer reached this end and failed to prove which ed2k client it is.
+		// Deliberately a different line from the transport one below, and
+		// deliberately louder: on a NAT-traversed path a dropped datagram or a
+		// mapping that did not hold is constant background, so one shared
+		// "QUIC connection failed" line would bury this inside it. The proof
+		// result is named because "no proof sent" and "proof for a different
+		// identity" are different events -- the first is a peer that does not
+		// speak this protocol, the second is a peer that does and is lying.
+		AddDebugLogLineC(logClientUDP,
+			CFormat("QUIC NAT-T authentication failure from %s:%u: %s") % peerText % port %
+				QuicProofResultName(proofResult));
+		return;
+	}
+
+	AddDebugLogLineN(logClientUDP,
+		CFormat("QUIC NAT-T connection with %s:%u %s") % peerText % port %
+			QuicConnectionOutcomeName(outcome));
 }
 
 void CClientUDPSocket::OnReceive(int errorCode)
@@ -152,23 +211,31 @@ void CClientUDPSocket::OnPacketReceived(
 		return;
 	}
 
-	// uTP first, then the ed2k UDP parser. The order is the design decision,
-	// not a preference: offer the ed2k side everything first and uTP never
-	// sees a packet, and a datagram the uTP context declines has to continue
-	// to the ed2k parser whole and unmodified, because the ed2k side owns the
-	// other OP_UDPRESERVEDPROT2 frame types. RouteInboundDatagram() is where
-	// that order lives (UtpDatagramRouting.h), so this function cannot
-	// express it any other way, and UtpDatagramRoutingTest asserts it in both
-	// directions.
+	// uTP first, then QUIC, then the ed2k UDP parser. The order is the design
+	// decision, not a preference: offer the ed2k side everything first and
+	// neither transport ever sees a packet, and a datagram a transport context
+	// declines has to continue to the ed2k parser whole and unmodified,
+	// because the ed2k side owns the other OP_UDPRESERVEDPROT2 frame types.
+	// RouteInboundDatagram() is where that order lives (UtpDatagramRouting.h),
+	// so this function cannot express it any other way, and
+	// UtpDatagramRoutingTest asserts it in every direction.
 	RouteInboundDatagram(
 		decryptedBuffer,
 		(size_t)packetLen,
 		m_utpContext.IsAvailable(),
+		m_quicContext.IsAvailable(),
 		[this, &peer, port](const uint8_t *utpPayload, size_t utpPayloadLength) {
 			// The peer at full width, not the 32-bit narrowing: uTP shares
 			// this socket, the socket is dual-stack, and a uTP datagram
 			// from a native IPv6 peer must not be attributed to 0.0.0.0.
 			return m_utpContext.ProcessDatagram(utpPayload, utpPayloadLength, peer, port);
+		},
+		[this, &peer, port](const uint8_t *quicPayload, size_t quicPayloadLength) {
+			// Same widths, same reason. The QUIC context declines a native
+			// IPv6 peer of its own accord -- see
+			// CQuicContext::IsUsableEndpointAddress() -- rather than being
+			// handed a narrowed address it cannot tell apart from 0.0.0.0.
+			return m_quicContext.ProcessDatagram(quicPayload, quicPayloadLength, peer, port);
 		},
 		[this, decryptedBuffer, length, &peer, route, ip, port, receiverVerifyKey, senderVerifyKey](
 			const uint8_t *datagram, size_t datagramLength) {
@@ -356,9 +423,16 @@ void CClientUDPSocket::ProcessReservedProt2Frame(
 		break;
 
 	case OP_NATT_FRAME_QUIC:
+		// Reached only after the QUIC context declined the datagram in
+		// OnPacketReceived(), or in a build that has no QUIC context at all
+		// -- which is the default build and every macOS build. Either way
+		// there is nothing further to do with it here: ngtcp2 has already had
+		// its chance at these bytes, and a 0x01 frame it does not recognise is
+		// not something a second parser should guess at.
 		AddDebugLogLineN(logClientUDP,
-			CFormat("Ignoring QUIC NAT-T frame from %s:%u: no QUIC transport in this build") %
-				peerText % port);
+			CFormat("Dropping QUIC NAT-T frame from %s:%u: %s") % peerText % port %
+				(m_quicContext.IsAvailable() ? "not for a connection on this endpoint"
+							     : "no QUIC transport in this build"));
 		break;
 
 	case OP_NATT_FRAME_CAPS:

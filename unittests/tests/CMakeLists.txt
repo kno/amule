@@ -971,6 +971,66 @@ target_link_libraries (ReservedProtocolFramesTest
 	mulecommon
 )
 
+# The QUIC NAT-T transport, in two suites and no ngtcp2.
+#
+# Same reasoning as the uTP suites below, and one step stronger: QUIC's
+# dependency is not packageable on every platform aMule ships on, so
+# -DENABLE_QUIC=NO is not merely the default but the permanent configuration on
+# macOS. Everything worth asserting therefore has to be assertable without
+# ngtcp2 present at all -- the wire identity and the peer proof are header-only,
+# and the context drives a fake IQuicLibrary.
+#
+# QuicNattProtocolTest links only muleunit and mulecommon: QuicNattProtocol.h
+# reaches nothing but protocol/Protocols.h, which is #defines.
+add_executable (QuicNattProtocolTest
+	QuicNattProtocolTest.cpp
+)
+
+add_test (NAME QuicNattProtocolTest
+	COMMAND QuicNattProtocolTest
+)
+
+target_include_directories (QuicNattProtocolTest
+	PRIVATE ${CMAKE_BINARY_DIR}
+	PRIVATE ${CMAKE_SOURCE_DIR}/src
+	PRIVATE ${CMAKE_SOURCE_DIR}/src/include
+)
+
+target_link_libraries (QuicNattProtocolTest
+	muleunit
+	# muleunit's MuleDebug.cpp calls CFormat, so every test binary needs
+	# mulecommon even when the code under test does not.
+	mulecommon
+)
+
+add_executable (QuicContextTest
+	QuicContextTest.cpp
+	# CNetworkAddress::FromString/ToString live in NetworkAddress.cpp: they are
+	# the only part of the type that still compiles Boost.Asio, and keeping them
+	# out of the header is what stops asio reaching most of src/. Every target
+	# that touches an address therefore has to link this TU -- the type is no
+	# longer header-only.
+	${CMAKE_SOURCE_DIR}/src/NetworkAddress.cpp
+)
+
+add_test (NAME QuicContextTest
+	COMMAND QuicContextTest
+)
+
+target_include_directories (QuicContextTest
+	PRIVATE ${CMAKE_BINARY_DIR}
+	PRIVATE ${CMAKE_SOURCE_DIR}/src
+	PRIVATE ${CMAKE_SOURCE_DIR}/src/include
+	# CNetworkAddress is a boost::asio::ip::address.
+	PRIVATE ${Boost_INCLUDE_DIR}
+)
+
+target_link_libraries (QuicContextTest
+	muleunit
+	mulecommon
+	${Boost_LIBRARIES}
+)
+
 # The uTP transport, in five suites and no libutp.
 #
 # Every one of these links nothing but muleunit, because the transport shim is

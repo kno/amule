@@ -1170,7 +1170,8 @@ void CUpDownClient::SendHelloTypePacket(CMemFile *data)
 	// the reader -- there must be no second expression able to disagree.
 	const uint32 uAdvertisedModMiscOptions =
 		AdvertisedModMiscOptions(
-			theApp->clientudp != NULL && theApp->clientudp->CanServeUtpConnections()) |
+			theApp->clientudp != NULL && theApp->clientudp->CanServeUtpConnections(),
+			theApp->clientudp != NULL && theApp->clientudp->CanServeQuicConnections()) |
 		theApp->GetReachability().AdvertisedModMiscOptions();
 	const bool bModMiscOptionsTagCounted = uAdvertisedModMiscOptions != 0;
 

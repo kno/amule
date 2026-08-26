@@ -171,9 +171,12 @@ TEST(PeerCapabilities, AdvertisesNoUnimplementedCapability)
 	// asserted as a subset rather than a literal, because both builds are
 	// legitimate and this test runs in either.
 	ASSERT_EQUALS((uint32_t)MOD_MISCOPT_IPV6, AdvertisableModMiscOptions() & (uint32_t)MOD_MISCOPT_IPV6);
-	const uint32_t shipped = (uint32_t)MOD_MISCOPT_IPV6 | (uint32_t)MOD_MISCOPT_NAT_TRAVERSAL;
-	// Nothing unimplemented is reachable: no extended SX, no buddy pull, no
-	// QUIC, and no reserved bit.
+	const uint32_t shipped = (uint32_t)MOD_MISCOPT_IPV6 | (uint32_t)MOD_MISCOPT_NAT_TRAVERSAL |
+				 (uint32_t)MOD_MISCOPT_NAT_TRAVERSAL_QUIC;
+	// Nothing unimplemented is reachable: no extended SX, no buddy pull, and
+	// no reserved bit. QUIC joined the ceiling with this change and, like uTP,
+	// is in it only in a build configured for it -- -DENABLE_QUIC=YES, which
+	// needs ngtcp2 and its GnuTLS binding; see cmake/ngtcp2.cmake.
 	ASSERT_EQUALS(0x00000000u, AdvertisableModMiscOptions() & ~shipped);
 }
 
@@ -188,16 +191,25 @@ TEST(PeerCapabilities, BothGatesComposeIntoOneWord)
 	const uint32_t ipv6Verified = (uint32_t)MOD_MISCOPT_IPV6;
 	const uint32_t ipv6NotVerified = 0u;
 
-	// Neither: nothing is claimed, and the handshake omits the tag entirely.
-	ASSERT_EQUALS(0x00000000u, AdvertisedModMiscOptions(false) | ipv6NotVerified);
+	// Nothing at all: no bit is claimed, and the handshake omits the tag
+	// entirely.
+	ASSERT_EQUALS(0x00000000u, AdvertisedModMiscOptions(false, false) | ipv6NotVerified);
 
 	// One each, independently. Each gate sets its own bit and only its own.
-	ASSERT_EQUALS(0x00000002u, AdvertisedModMiscOptions(true) | ipv6NotVerified);
-	ASSERT_EQUALS(0x00000004u, AdvertisedModMiscOptions(false) | ipv6Verified);
+	ASSERT_EQUALS(0x00000002u, AdvertisedModMiscOptions(true, false) | ipv6NotVerified);
+	ASSERT_EQUALS(0x00000004u, AdvertisedModMiscOptions(false, false) | ipv6Verified);
+	ASSERT_EQUALS(0x00000010u, AdvertisedModMiscOptions(false, true) | ipv6NotVerified);
 
-	// Both: bit 1 and bit 2 together, and nothing else.
-	ASSERT_EQUALS(0x00000006u, AdvertisedModMiscOptions(true) | ipv6Verified);
-	ASSERT_EQUALS(0x00000000u, (AdvertisedModMiscOptions(true) | ipv6Verified) & ~MOD_MISCOPT_KNOWN_MASK);
+	// uTP and IPv6: bit 1 and bit 2 together, and nothing else.
+	ASSERT_EQUALS(0x00000006u, AdvertisedModMiscOptions(true, false) | ipv6Verified);
+
+	// All three: bits 1, 2 and 4. The two transports are independent -- a
+	// client can serve QUIC without serving uTP and the reverse -- so every
+	// combination has to be reachable, and none may leak into another's bit.
+	ASSERT_EQUALS(0x00000016u, AdvertisedModMiscOptions(true, true) | ipv6Verified);
+	ASSERT_EQUALS(0x00000012u, AdvertisedModMiscOptions(true, true) | ipv6NotVerified);
+	ASSERT_EQUALS(
+		0x00000000u, (AdvertisedModMiscOptions(true, true) | ipv6Verified) & ~MOD_MISCOPT_KNOWN_MASK);
 }
 
 // The advertise decision as a function of whether the transport can actually
@@ -207,13 +219,21 @@ TEST(PeerCapabilities, BothGatesComposeIntoOneWord)
 // never complete.
 TEST(PeerCapabilities, AdvertisedWordFollowsWhatTheTransportCanServe)
 {
-	ASSERT_EQUALS(0x00000000u, AdvertisedModMiscOptions(false));
+	ASSERT_EQUALS(0x00000000u, AdvertisedModMiscOptions(false, false));
 
 	// Bit 1, MOD_MISCOPT_NAT_TRAVERSAL: the capability eMuleAI gates its
-	// uTP NAT traversal on. Nothing else is claimed -- QUIC and IPv6 uTP
-	// are other changes.
-	ASSERT_EQUALS(0x00000002u, AdvertisedModMiscOptions(true));
-	ASSERT_EQUALS(MOD_MISCOPT_NAT_TRAVERSAL, AdvertisedModMiscOptions(true));
+	// uTP NAT traversal on. Nothing else is claimed -- IPv6 uTP is another
+	// change.
+	ASSERT_EQUALS(0x00000002u, AdvertisedModMiscOptions(true, false));
+	ASSERT_EQUALS(MOD_MISCOPT_NAT_TRAVERSAL, AdvertisedModMiscOptions(true, false));
+
+	// Bit 4, MOD_MISCOPT_NAT_TRAVERSAL_QUIC, on its own gate. A build whose
+	// ngtcp2 endpoint came up but whose uTP context did not claims QUIC and
+	// not uTP: the two transports fail independently, and a gate that
+	// conflated them would have a client advertise a transport it cannot
+	// serve -- handshakes it never completes, with nothing logged either side.
+	ASSERT_EQUALS(0x00000010u, AdvertisedModMiscOptions(false, true));
+	ASSERT_EQUALS(MOD_MISCOPT_NAT_TRAVERSAL_QUIC, AdvertisedModMiscOptions(false, true));
 }
 
 // The distinction this gate exists for. Compiled in is the ceiling, not the
@@ -229,14 +249,17 @@ TEST(PeerCapabilities, AdvertisedWordFollowsWhatTheTransportCanServe)
 // linked into a unit test -- see the note at the top of this file.
 TEST(PeerCapabilities, CompiledInButUnableToServeAdvertisesNothing)
 {
-	// Compiled in but cannot serve: exactly the false branch.
-	ASSERT_EQUALS(0x00000000u, AdvertisedModMiscOptions(false));
+	// Compiled in but cannot serve: exactly the false branch, for both
+	// transports. A QUIC build whose TLS credentials failed to come up is the
+	// same situation as a uTP build with no accept path -- and costs the peer
+	// more, because it waits out the whole 1500 ms capability window first.
+	ASSERT_EQUALS(0x00000000u, AdvertisedModMiscOptions(false, false));
 
 	// Whatever this build's ceiling is, the word it actually sends never
 	// exceeds it, and the ceiling never leaves the five defined bits.
 	ASSERT_EQUALS(0x00000000u, AdvertisableModMiscOptions() & ~MOD_MISCOPT_KNOWN_MASK);
-	ASSERT_EQUALS(AdvertisedModMiscOptions(false),
-		AdvertisedModMiscOptions(false) & AdvertisableModMiscOptions());
+	ASSERT_EQUALS(AdvertisedModMiscOptions(false, false),
+		AdvertisedModMiscOptions(false, false) & AdvertisableModMiscOptions());
 }
 
 // Setters exist for the advertise side; they must land on the same bits the

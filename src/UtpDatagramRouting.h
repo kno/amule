@@ -30,34 +30,47 @@
 
 #include <protocol/Protocols.h> // Needed for OP_UDPRESERVEDPROT2 / OP_NATT_FRAME_UTP
 
+#include "QuicNattProtocol.h" // Needed for IsQuicFrame / QuicFramePayload
+
 /**
- * Inbound classification for the port uTP and ed2k UDP share.
+ * Inbound classification for the port uTP, QUIC and ed2k UDP share.
  *
- * uTP does not get a port of its own: its datagrams arrive on the ed2k UDP
- * port, wrapped in OP_UDPRESERVEDPROT2 (0xB2) with frame type
- * OP_NATT_FRAME_UTP (0x00), exactly as eMuleAI sends them
- * (srchybrid/ClientUDPSocket.cpp:410) and reads them back (:991). Sharing the
- * port is not an economy: the NAT hole punched for ed2k UDP is the hole uTP
- * uses, which is what makes uTP usable for NAT traversal later.
+ * Neither transport gets a port of its own: their datagrams arrive on the ed2k
+ * UDP port, wrapped in OP_UDPRESERVEDPROT2 (0xB2) with a frame type --
+ * OP_NATT_FRAME_UTP (0x00) or OP_NATT_FRAME_QUIC (0x01) -- exactly as eMuleAI
+ * sends them (srchybrid/ClientUDPSocket.cpp:410) and reads them back (:991).
+ * Sharing the port is not an economy: the NAT hole punched for ed2k UDP is the
+ * hole both transports use, which is what makes either of them usable for NAT
+ * traversal at all.
  *
- * Two parsers therefore want the same datagram, and the order is load-bearing:
+ * Three parsers therefore want the same datagram, and the order is
+ * load-bearing:
  *
  *   1. The uTP context is offered the datagram first.
- *   2. Only a datagram it declines continues to the ed2k UDP parser, whole and
+ *   2. A datagram it declines is offered to the QUIC context next.
+ *   3. Only a datagram both decline continues to the ed2k UDP parser, whole and
  *      unmodified -- including the 0xB2 protocol byte, because the ed2k side
  *      has its own demultiplexer for the other frame types
  *      (ReservedProtocolFrames.h) and expects the datagram it always got.
  *
- * Inverting that breaks exactly one of the two and never says so: offer the
- * ed2k parser everything first and uTP never sees a packet; offer the uTP
- * context datagrams it has no business seeing and ed2k UDP depends on libutp
- * declining them. RouteInboundDatagram() is where the order lives so that
- * CClientUDPSocket cannot express it any other way, and
- * UtpDatagramRoutingTest asserts it in both directions.
+ * Inverting any part of that breaks exactly one of the three and never says so:
+ * offer the ed2k parser everything first and neither transport sees a packet;
+ * offer a transport context datagrams it has no business seeing and ed2k UDP
+ * depends on a third-party library declining them. RouteInboundDatagram() is
+ * where the order lives so that CClientUDPSocket cannot express it any other
+ * way, and UtpDatagramRoutingTest asserts it in every direction.
+ *
+ * The two transports are selected by frame type rather than by trial, so
+ * neither is ever handed the other's bytes: uTP is offered only 0x00 frames and
+ * QUIC only 0x01 frames. The step from uTP to QUIC in the order above is
+ * therefore the step a *declined or absent* transport takes, which is what the
+ * spec delta's "datagram declined by uTP" describes.
  *
  * Header-only and free of theApp for the same reason as
  * ReservedProtocolFrames.h: CClientUDPSocket cannot be linked into a unit
- * test.
+ * test. The file keeps its uTP name because uTP is what defined this port
+ * sharing and every reference in the tree points here; the classification is
+ * the port's, not uTP's.
  */
 
 //! The two framing bytes in front of every uTP datagram on the shared port.
@@ -105,7 +118,7 @@ inline std::size_t UtpFramePayloadLength(std::size_t length)
 }
 
 /**
- * Route one inbound datagram: uTP first, then ed2k.
+ * Route one inbound datagram: uTP first, then QUIC, then ed2k.
  *
  * @param datagram  the whole datagram, protocol byte first. Never written
  *                  through, and never advanced before the ed2k parser sees it.
@@ -113,19 +126,28 @@ inline std::size_t UtpFramePayloadLength(std::size_t length)
  * @param utpAvailable  whether a uTP context exists at all. False in every
  *                  build configured with -DENABLE_UTP=NO, and the shared port
  *                  must behave exactly as it did before uTP in that case.
+ * @param quicAvailable  the same question for QUIC. False in every build
+ *                  configured with -DENABLE_QUIC=NO -- which is the default
+ *                  build, and the only one macOS gets. A QUIC frame then falls
+ *                  through to the ed2k side and is dropped there as a
+ *                  recognised-but-unserved frame type, with a reason, rather
+ *                  than being swallowed by a context that is not there.
  * @param offerToUtp  bool(const uint8_t *payload, size_t payloadLength) --
  *                  returns true when the context claimed the datagram.
+ * @param offerToQuic  the same shape for the QUIC context.
  * @param parseAsEd2k  void(const uint8_t *datagram, size_t length) -- the
  *                  existing ed2k UDP path, handed the datagram unmodified.
  *
- * @return true when uTP consumed the datagram, i.e. the ed2k parser was not
- *         and must not be entered.
+ * @return true when a transport consumed the datagram, i.e. the ed2k parser was
+ *         not and must not be entered.
  */
-template <class UtpOffer, class Ed2kParser>
+template <class UtpOffer, class QuicOffer, class Ed2kParser>
 inline bool RouteInboundDatagram(const std::uint8_t *datagram,
 	std::size_t length,
 	bool utpAvailable,
+	bool quicAvailable,
 	UtpOffer offerToUtp,
+	QuicOffer offerToQuic,
 	Ed2kParser parseAsEd2k)
 {
 	if (datagram == nullptr || length == 0) {
@@ -139,6 +161,16 @@ inline bool RouteInboundDatagram(const std::uint8_t *datagram,
 		// Declined: fall through with the original pointer and length.
 		// Not the payload window -- the ed2k side is entitled to the
 		// datagram it has always received.
+	}
+
+	if (quicAvailable && IsQuicFrame(datagram, length)) {
+		if (offerToQuic(QuicFramePayload(datagram), QuicFramePayloadLength(length))) {
+			return true;
+		}
+		// Declined, and falling through for the same reason: a 0x01 frame
+		// the QUIC context does not recognise is still an
+		// OP_UDPRESERVEDPROT2 frame the ed2k demultiplexer knows how to
+		// drop with a reason.
 	}
 
 	parseAsEd2k(datagram, length);

@@ -26,6 +26,13 @@ commands:
                              without installing a toolchain on the host.
                              Produces no artifact — a successful run IS
                              the result. arch: host (default) | x86_64 | aarch64
+  dev-quic [arch]            the same, but with -DENABLE_QUIC=YES, on Debian
+                             trixie. Separate because the 'dev' image is built
+                             on Ubuntu 22.04, which packages ngtcp2 0.1.0 — a
+                             pre-1.0 API this code cannot build against. ctest
+                             is GATING here: there is no baseline to discover,
+                             every suite is expected to pass.
+                             arch: host (default) | x86_64 | aarch64
   validate [arch]            run amuled --version inside a fixed matrix
                              of distro Docker images to catch lib-load
                              regressions. arch: host (default) only —
@@ -551,9 +558,76 @@ build_dev() {
         || "${DOCKER}" image inspect "${tag}" --format 'local id {{.Id}}'
 }
 
+build_dev_quic() {
+    # The QUIC-enabled twin of build_dev. Deliberately a separate image and a
+    # separate distribution: the dev image is Ubuntu 22.04, which packages
+    # ngtcp2 0.1.0, and 0.1.0 predates the API this code uses. Debian trixie
+    # packages 1.11.0 with the GnuTLS binding, and is what the runtime image
+    # ships from. See the header of dev/Dockerfile.quic.
+    local DOCKER
+    if command -v docker >/dev/null 2>&1; then
+        DOCKER=docker
+    elif command -v podman >/dev/null 2>&1; then
+        DOCKER=podman
+    else
+        echo "fatal: no container CLI found (looked for docker, podman)" >&2
+        exit 1
+    fi
+
+    norm_arch() {
+        case "$1" in
+            arm64|aarch64)          echo aarch64 ;;
+            amd64|x86_64|x86-64)    echo x86_64  ;;
+            *)                      echo "$1"    ;;
+        esac
+    }
+
+    local host_arch
+    host_arch="$(norm_arch "$(uname -m)")"
+
+    local arch_in="${1:-host}"
+    local target_arch
+    case "${arch_in}" in
+        host)    target_arch="${host_arch}" ;;
+        x86_64)  target_arch=x86_64 ;;
+        aarch64) target_arch=aarch64 ;;
+        *)       echo "fatal: unsupported arch '${arch_in}' (choose host|x86_64|aarch64)" >&2; exit 1 ;;
+    esac
+
+    local docker_platform
+    case "${target_arch}" in
+        x86_64)  docker_platform=linux/amd64 ;;
+        aarch64) docker_platform=linux/arm64 ;;
+        *)       echo "fatal: cannot map arch '${target_arch}' to a container platform" >&2; exit 1 ;;
+    esac
+
+    if [ "${target_arch}" != "${host_arch}" ]; then
+        if ! "${DOCKER}" run --rm --platform "${docker_platform}" alpine:latest /bin/true 2>/dev/null; then
+            echo "fatal: cross-arch build requested (target=${target_arch}, host=$(uname -m)) but binfmt not registered." >&2
+            echo "       run once on this host: $0 setup-cross-arch" >&2
+            exit 1
+        fi
+    fi
+
+    local tag="amule-dev-quic:${target_arch}"
+    echo "==> QUIC build + ctest (${target_arch}, platform=${docker_platform}, cli=${DOCKER})"
+    # No pinned build args: every dependency here is a trixie package, so the
+    # distribution is the pin. versions.env pins the sources dev/Dockerfile
+    # builds from, and this image builds none of them from source.
+    "${DOCKER}" buildx build \
+        --platform "${docker_platform}" \
+        -f "${SCRIPT_DIR}/dev/Dockerfile.quic" \
+        -t "${tag}" \
+        "${REPO_ROOT}"
+
+    echo "==> QUIC verification PASSED. Toolchain provenance:"
+    "${DOCKER}" run --rm "${tag}" cat /quic-toolchain.txt
+}
+
 case "${target}" in
     appimage)                build_appimage "${1:-}" ;;
     dev)                     build_dev "${1:-}" ;;
+    dev-quic)                build_dev_quic "${1:-}" ;;
     flatpak)                 build_flatpak "${1:-}" ;;
     static)                  build_static "${1:-}" ;;
     render-flatpak-manifest) render_flatpak_manifest ;;

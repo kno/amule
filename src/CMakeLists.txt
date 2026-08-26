@@ -759,6 +759,27 @@ if (ENABLE_UTP)
 	endforeach()
 endif()
 
+# QUIC rides the same client UDP socket as uTP, so it belongs to the same two
+# targets and is absent from amulegui for the same reason: amulegui has no core.
+# AMULE_QUIC_TRANSPORT is what every ngtcp2 call site is guarded by, and there
+# is exactly one -- QuicLibraryAdapter.cpp, which is the only translation unit
+# in the tree that includes ngtcp2's or GnuTLS's headers. Everything above it
+# (QuicNattProtocol.h, QuicContext.h, the frame-type policy in
+# NatTraversalPolicy.h) is ordinary C++ that compiles and is unit tested with
+# neither library present, which is what makes -DENABLE_QUIC=NO a build with no
+# QUIC rather than a build that does not compile.
+#
+# As with uTP, compiled in is not the same as able to serve: the capability bit
+# follows CQuicContext::CanServeConnections() at runtime, not this definition.
+if (ENABLE_QUIC)
+	foreach (_tgt IN ITEMS amuled amule)
+		if (TARGET ${_tgt})
+			target_link_libraries (${_tgt} PRIVATE Quic::Ngtcp2)
+			target_compile_definitions (${_tgt} PRIVATE AMULE_QUIC_TRANSPORT=1)
+		endif()
+	endforeach()
+endif()
+
 if (NEED_LIB_MULEAPPCOMMON)
 	add_library (muleappcommon STATIC
 		${UPNP_SOURCES}

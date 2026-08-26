@@ -8,7 +8,7 @@ depends_on:
 blocks: []
 new_dependencies:
   - ngtcp2
-  - "TLS stack (undecided — see tasks 0.1-0.2)"
+  - gnutls (ngtcp2 crypto backend; decided 2026-08-26, see design.md)
 optional: true
 phases:
   explore: complete
@@ -16,9 +16,6 @@ phases:
   spec: complete
   design: complete
   tasks: complete
-  apply: blocked
+  apply: complete
   verify: pending
   archive: pending
-blocked_reason: >
-  Requires a maintainer decision on adopting ngtcp2 and a TLS stack before
-  implementation can start. See tasks 0.1-0.3.

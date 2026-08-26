@@ -273,10 +273,30 @@ endif()
 option (ENABLE_UTP "enable the uTP transport (requires libutp)" OFF)
 option (USE_SYSTEM_LIBUTP "use a system-installed libutp instead of a bundled copy" OFF)
 
+# QUIC as a NAT-traversal data transport alongside uTP, on the same UDP port and
+# behind the same OP_UDPRESERVEDPROT2 envelope (frame type 0x01 rather than
+# 0x00). OFF by default, and more firmly so than ENABLE_UTP: this one adds two
+# dependencies aMule has never linked -- ngtcp2 and GnuTLS -- and there is no
+# bundled copy of either, because vendoring security-relevant code with an
+# active vulnerability history is a rejected alternative in this change's
+# design. A build without it is a build with no QUIC, never a build that fails
+# to compile: the protocol and policy headers still compile and are still unit
+# tested, only the adapter that calls ngtcp2_* is compiled out, and the client
+# advertises no QUIC capability to peers.
+#
+# Not viable on every platform aMule ships on, which is why the default matters.
+# Debian trixie packages ngtcp2 1.11 with its GnuTLS binding and MSYS2 has both;
+# Homebrew's libngtcp2 links openssl@3 and packages no GnuTLS-bound build, so
+# macOS builds with QUIC off and reaches peers over uTP. See the platform table
+# in openspec/changes/amule-quic-transport/design.md.
+option (ENABLE_QUIC "enable the QUIC NAT-T transport (requires ngtcp2 + its GnuTLS binding)" OFF)
+
 if (NOT NEED_LIB_MULEAPPCORE)
 	# uTP lives entirely in the core (the client UDP socket and the client
 	# connection path); there is nothing for it to do in a build without one.
+	# The same is true of QUIC, which rides the same socket.
 	set (ENABLE_UTP FALSE)
+	set (ENABLE_QUIC FALSE)
 endif()
 
 # Master switch for the in-app "check for a new aMule version" feature: the

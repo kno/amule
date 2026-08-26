@@ -1,0 +1,117 @@
+# syntax=docker/dockerfile:1
+#
+# QUIC verification image: the same job as dev/Dockerfile -- build with tests
+# enabled and run ctest -- but with -DENABLE_QUIC=YES, so the ngtcp2/GnuTLS
+# bridge is actually compiled somewhere.
+#
+# A separate image rather than another flag on the existing one, and the reason
+# is measured rather than stylistic. dev/Dockerfile is built on Ubuntu 22.04,
+# which packages ngtcp2 **0.1.0**:
+#
+#     $ apt-cache policy libngtcp2-dev          # ubuntu:22.04
+#     Candidate: 0.1.0+dfsg-1
+#
+# ngtcp2's API changed extensively before 1.0, so that package cannot build this
+# code -- and it would not fail with a version message, it would fail with a
+# wall of unresolved symbols and changed struct layouts. Debian trixie packages
+# 1.11.0 with the GnuTLS binding aMule needs:
+#
+#     $ apt-cache policy libngtcp2-dev libngtcp2-crypto-gnutls-dev   # debian:trixie-slim
+#     Candidate: 1.11.0-1+deb13u1
+#     Candidate: 1.11.0-1+deb13u1
+#
+# Trixie is also what packaging/linux/docker/Dockerfile ships the runtime image
+# from, so this image verifies the QUIC build on the distribution QUIC actually
+# ships from -- not on a second guess at it.
+#
+# Trixie packages wxWidgets 3.2 and libupnp 1.14 as well, so unlike the Ubuntu
+# image neither has to be built from source and this image is quick to produce.
+#
+# Driven by packaging/linux/build.sh dev-quic:
+#
+#   packaging/linux/build.sh dev-quic       # host arch
+#
+# The build fails if the tree does not compile, so a successful image build IS
+# the evidence that the QUIC configuration compiles.
+
+FROM debian:trixie-slim
+
+ENV DEBIAN_FRONTEND=noninteractive
+ENV TZ=Etc/UTC
+
+# The three QUIC packages are the point of this image; everything else mirrors
+# what packaging/linux/docker/Dockerfile installs to build this tree, plus the
+# test-only dependencies dev/Dockerfile needs.
+RUN apt-get update && apt-get install -y --no-install-recommends \
+        build-essential \
+        ccache \
+        cmake \
+        ninja-build \
+        pkg-config \
+        git \
+        ca-certificates \
+        binutils-dev \
+        gettext \
+        libboost-dev \
+        libcrypto++-dev \
+        libgd-dev \
+        libmaxminddb-dev \
+        libreadline-dev \
+        libcurl4-openssl-dev \
+        libglib2.0-dev \
+        libpng-dev \
+        libupnp-dev \
+        libwxgtk3.2-dev \
+        zlib1g-dev \
+        libngtcp2-dev \
+        libngtcp2-crypto-gnutls-dev \
+        libgnutls28-dev \
+    && rm -rf /var/lib/apt/lists/*
+
+ENV PATH="/usr/lib/ccache:${PATH}"
+
+WORKDIR /src
+COPY . /src
+
+# All three of monolithic / daemon / remotegui, per the project rule: the
+# preprocessor split means a change can compile in two of the three and break
+# the third.
+#
+# ENABLE_UTP=YES as well as ENABLE_QUIC=YES. The two transports share the client
+# UDP socket and its classification order, so a build with only one of them
+# compiled in never compiles the branch where both are present -- which is
+# precisely the configuration this change adds.
+RUN cmake -B build -G Ninja \
+        -DBUILD_TESTING=YES \
+        -DBUILD_MONOLITHIC=YES \
+        -DBUILD_DAEMON=YES \
+        -DBUILD_REMOTEGUI=YES \
+        -DENABLE_UTP=YES \
+        -DENABLE_QUIC=YES \
+    && cmake --build build -j"$(nproc)"
+
+# Recorded separately from the build so a compile failure and a test failure are
+# distinguishable in the layer log.
+#
+# GATING here, unlike dev/Dockerfile. That image exists to *discover* a baseline
+# on unmodified code, so a pre-existing failure must not abort it. This one
+# exists to verify one configuration of one change, and there is no baseline to
+# discover: every suite it runs is expected to pass.
+RUN ctest --test-dir build --output-on-failure 2>&1 | tee /quic-tests.txt
+
+# Toolchain provenance, in the same shape dev/Dockerfile records it.
+RUN { echo "=== QUIC verification toolchain ==="; \
+      head -2 /etc/os-release; \
+      echo "arch: $(uname -m)"; \
+      cmake --version | head -1; \
+      c++ --version | head -1; \
+      wx-config --version | sed 's/^/wxWidgets /'; \
+      pkg-config --modversion libngtcp2 | sed 's/^/ngtcp2 /'; \
+      pkg-config --modversion libngtcp2_crypto_gnutls | sed 's/^/ngtcp2_crypto_gnutls /'; \
+      pkg-config --modversion gnutls | sed 's/^/gnutls /'; \
+      echo "=== test result ==="; \
+      grep -E 'tests passed|tests failed' /quic-tests.txt || echo "no ctest summary"; \
+      sed -n '/The following tests FAILED/,$p' /quic-tests.txt || true; \
+    } > /quic-toolchain.txt && cat /quic-toolchain.txt
+
+CMD ["/bin/bash"]

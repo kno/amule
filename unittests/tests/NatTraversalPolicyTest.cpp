@@ -232,50 +232,141 @@ TEST(NatTraversalPolicy, NoRefusalReasonEverBlamesThePeer)
 	}
 }
 
-// Task 4.2. With QUIC advertised on both sides the QUIC frame type is preferred,
-// for exactly 1500 ms.
+// The frame-type decision, in one place, so a call site cannot omit one of the
+// four facts it depends on.
+static SNattFrameTypeInputs QuicOnBothSides()
+{
+	SNattFrameTypeInputs inputs;
+	inputs.peerAdvertisesQuic = true;
+	inputs.localCanServeQuic = true;
+	inputs.quicCapabilityFrameSeen = false;
+	inputs.msSinceRendezvousStarted = 0;
+	return inputs;
+}
+
+// Task 4.2. With QUIC advertised on both sides and no capability frame yet, the
+// QUIC frame type is preferred for exactly 1500 ms.
 TEST(NatTraversalPolicy, QuicFrameTypeIsPreferredForFifteenHundredMilliseconds)
 {
-	const SNattFrameTypeDecision early = SelectNattFrameType(true, true, 0);
+	SNattFrameTypeInputs inputs = QuicOnBothSides();
+
+	const SNattFrameTypeDecision early = SelectNattFrameType(inputs);
 	ASSERT_EQUALS(0x01, (int)early.frameType);
 	ASSERT_TRUE(early.waitingForQuic);
+	ASSERT_EQUALS((int)NATT_FRAME_QUIC_AWAITING_CAPABILITY, (int)early.reason);
 
-	const SNattFrameTypeDecision justBefore =
-		SelectNattFrameType(true, true, kNattFrameTypeFallbackWaitMs - 1);
+	inputs.msSinceRendezvousStarted = kNattFrameTypeFallbackWaitMs - 1;
+	const SNattFrameTypeDecision justBefore = SelectNattFrameType(inputs);
 	ASSERT_EQUALS(0x01, (int)justBefore.frameType);
 	ASSERT_TRUE(justBefore.waitingForQuic);
 
 	// At the boundary, not after it: 1500 ms is the whole wait.
-	const SNattFrameTypeDecision atBoundary =
-		SelectNattFrameType(true, true, kNattFrameTypeFallbackWaitMs);
+	inputs.msSinceRendezvousStarted = kNattFrameTypeFallbackWaitMs;
+	const SNattFrameTypeDecision atBoundary = SelectNattFrameType(inputs);
 	ASSERT_EQUALS(0x00, (int)atBoundary.frameType);
 	ASSERT_FALSE(atBoundary.waitingForQuic);
+	ASSERT_EQUALS((int)NATT_FRAME_UTP_CAPABILITY_TIMED_OUT, (int)atBoundary.reason);
 }
 
-// A peer that never advertised QUIC is not waited for. The 1500 ms is a wait for
-// an answer that might come, not a delay applied to everybody.
+// Spec delta, "Capability frame lost" -- the other half of it. Once the peer's
+// QUIC capability frame has actually arrived, the wait is over and the QUIC
+// frame type carries the exchange for as long as it runs. Without this the
+// 1500 ms would be a lifetime rather than a wait: a confirmed QUIC exchange
+// would drop back to uTP mid-flight at the boundary, which is the one outcome
+// neither side can diagnose.
+TEST(NatTraversalPolicy, ConfirmedQuicSurvivesTheFallbackBoundary)
+{
+	SNattFrameTypeInputs inputs = QuicOnBothSides();
+	inputs.quicCapabilityFrameSeen = true;
+
+	inputs.msSinceRendezvousStarted = 0;
+	const SNattFrameTypeDecision immediately = SelectNattFrameType(inputs);
+	ASSERT_EQUALS(0x01, (int)immediately.frameType);
+	// Confirmed, so not waiting for anything.
+	ASSERT_FALSE(immediately.waitingForQuic);
+	ASSERT_EQUALS((int)NATT_FRAME_QUIC_CONFIRMED, (int)immediately.reason);
+
+	inputs.msSinceRendezvousStarted = kNattFrameTypeFallbackWaitMs * 100;
+	const SNattFrameTypeDecision longAfter = SelectNattFrameType(inputs);
+	ASSERT_EQUALS(0x01, (int)longAfter.frameType);
+	ASSERT_FALSE(longAfter.waitingForQuic);
+	ASSERT_EQUALS((int)NATT_FRAME_QUIC_CONFIRMED, (int)longAfter.reason);
+}
+
+// A capability frame cannot conjure a transport that is not there. If either
+// side lacks QUIC, an arriving capability frame changes nothing -- otherwise a
+// peer could talk this end onto a frame type it has no context for.
+TEST(NatTraversalPolicy, CapabilityFrameDoesNotOverrideAMissingTransport)
+{
+	SNattFrameTypeInputs inputs = QuicOnBothSides();
+	inputs.quicCapabilityFrameSeen = true;
+
+	inputs.localCanServeQuic = false;
+	ASSERT_EQUALS(0x00, (int)SelectNattFrameType(inputs).frameType);
+	ASSERT_EQUALS((int)NATT_FRAME_UTP_LOCAL_HAS_NO_QUIC, (int)SelectNattFrameType(inputs).reason);
+
+	inputs.localCanServeQuic = true;
+	inputs.peerAdvertisesQuic = false;
+	ASSERT_EQUALS(0x00, (int)SelectNattFrameType(inputs).frameType);
+	ASSERT_EQUALS((int)NATT_FRAME_UTP_PEER_HAS_NO_QUIC, (int)SelectNattFrameType(inputs).reason);
+}
+
+// Spec delta, "Peer without QUIC": a peer that never advertised QUIC is not
+// waited for. The 1500 ms is a wait for an answer that might come, not a delay
+// applied to everybody.
 TEST(NatTraversalPolicy, PeerWithoutQuicIsNotWaitedForAtAll)
 {
-	const SNattFrameTypeDecision decision = SelectNattFrameType(false, true, 0);
+	SNattFrameTypeInputs inputs = QuicOnBothSides();
+	inputs.peerAdvertisesQuic = false;
+
+	const SNattFrameTypeDecision decision = SelectNattFrameType(inputs);
 
 	ASSERT_EQUALS(0x00, (int)decision.frameType);
 	ASSERT_FALSE(decision.waitingForQuic);
+	ASSERT_EQUALS((int)NATT_FRAME_UTP_PEER_HAS_NO_QUIC, (int)decision.reason);
 }
 
-// And the case every build in this tree is actually in: the peer advertises
-// QUIC, this build has no QUIC transport, so there is nothing to wait for and
-// the exchange rides the legacy uTP frame type immediately. Waiting 1500 ms for
-// a transport this build does not have would delay every traversal with an
-// eMuleAI peer by a second and a half and gain nothing.
+// The case a build with -DENABLE_QUIC=NO is in, which is the default build and
+// the only one macOS gets: the peer advertises QUIC, this build has no QUIC
+// transport, so there is nothing to wait for and the exchange rides the legacy
+// uTP frame type immediately. Waiting 1500 ms for a transport this build does
+// not have would delay every traversal with an eMuleAI peer by a second and a
+// half and gain nothing.
 TEST(NatTraversalPolicy, BuildWithoutQuicUsesTheLegacyFrameTypeWithNoWait)
 {
-	const SNattFrameTypeDecision decision = SelectNattFrameType(true, false, 0);
+	SNattFrameTypeInputs inputs = QuicOnBothSides();
+	inputs.localCanServeQuic = false;
+
+	const SNattFrameTypeDecision decision = SelectNattFrameType(inputs);
 
 	ASSERT_EQUALS(0x00, (int)decision.frameType);
 	ASSERT_FALSE(decision.waitingForQuic);
 
-	// And that is what this build reports about itself.
-	ASSERT_FALSE(LocalCanServeQuicNatTraversal());
+	// And that is what a test binary reports about itself: AMULE_QUIC_TRANSPORT
+	// is not defined here, so no runtime answer can turn the gate on. Passing
+	// true is what makes that assertion mean something -- with false it would
+	// pass for a gate that ignored the macro entirely.
+	ASSERT_FALSE(LocalCanServeQuicNatTraversal(true));
+	ASSERT_FALSE(LocalCanServeQuicNatTraversal(false));
+}
+
+// Spec delta, "Capability frame lost": the user-visible state must show a
+// connected peer, not a failure. Falling back is an ordinary outcome of a
+// negotiation, not an error, and enumerating every reason here means a new one
+// cannot be added without deciding that question.
+TEST(NatTraversalPolicy, NoFrameTypeOutcomeIsEverAUserVisibleFailure)
+{
+	SNattFrameTypeInputs variants[5] = {
+		QuicOnBothSides(), QuicOnBothSides(), QuicOnBothSides(), QuicOnBothSides(), QuicOnBothSides()
+	};
+	variants[1].quicCapabilityFrameSeen = true;
+	variants[2].peerAdvertisesQuic = false;
+	variants[3].localCanServeQuic = false;
+	variants[4].msSinceRendezvousStarted = kNattFrameTypeFallbackWaitMs;
+
+	for (const SNattFrameTypeInputs &inputs : variants) {
+		ASSERT_FALSE(SelectNattFrameType(inputs).surfacesFailure);
+	}
 }
 
 // Task 2.3 and 2.4. The hint is appended to what is already known, in that
