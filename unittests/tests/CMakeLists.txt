@@ -1003,6 +1003,35 @@ target_link_libraries (QuicNattProtocolTest
 	mulecommon
 )
 
+# The identity value the proof's second field carries, and the derivation of
+# this client's own. Two link closures in one target: the value type and the
+# direction constant are header-only, while DeriveLocalQuicProofValue() needs
+# cryptopp -- which is why the .cpp and CRYPTOPP::CRYPTOPP appear here and no wx
+# does. Nothing in this suite reaches theApp, ngtcp2 or GnuTLS, so every branch
+# is exercised in the default -DENABLE_QUIC=NO build.
+add_executable (QuicProofValueTest
+	QuicProofValueTest.cpp
+	${CMAKE_SOURCE_DIR}/src/QuicProofValue.cpp
+)
+
+add_test (NAME QuicProofValueTest
+	COMMAND QuicProofValueTest
+)
+
+target_include_directories (QuicProofValueTest
+	PRIVATE ${CMAKE_BINARY_DIR}
+	PRIVATE ${CMAKE_SOURCE_DIR}/src
+	PRIVATE ${CMAKE_SOURCE_DIR}/src/include
+)
+
+target_link_libraries (QuicProofValueTest
+	muleunit
+	# muleunit's MuleDebug.cpp calls CFormat, so every test binary needs
+	# mulecommon even when the code under test does not.
+	mulecommon
+	CRYPTOPP::CRYPTOPP
+)
+
 add_executable (QuicContextTest
 	QuicContextTest.cpp
 	# CNetworkAddress::FromString/ToString live in NetworkAddress.cpp: they are
@@ -1026,6 +1055,37 @@ target_include_directories (QuicContextTest
 )
 
 target_link_libraries (QuicContextTest
+	muleunit
+	mulecommon
+	${Boost_LIBRARIES}
+)
+
+# The QUIC byte-stream transport, and no ngtcp2. The library sits behind
+# IQuicStreamWriter and the tests drive a fake, which is what makes the two
+# behaviours with no visible failure mode assertable at all -- the write that
+# must not enter ngtcp2 from the throttler thread, and the queue bound that a
+# stalled peer would otherwise turn into unbounded memory.
+add_executable (QuicSocketTransportTest
+	QuicSocketTransportTest.cpp
+	# CNetworkAddress::FromString/ToString live in NetworkAddress.cpp: they are
+	# the only part of the type that still compiles Boost.Asio, and keeping them
+	# out of the header is what stops asio reaching most of src/.
+	${CMAKE_SOURCE_DIR}/src/NetworkAddress.cpp
+)
+
+add_test (NAME QuicSocketTransportTest
+	COMMAND QuicSocketTransportTest
+)
+
+target_include_directories (QuicSocketTransportTest
+	PRIVATE ${CMAKE_BINARY_DIR}
+	PRIVATE ${CMAKE_SOURCE_DIR}/src
+	PRIVATE ${CMAKE_SOURCE_DIR}/src/include
+	# CNetworkAddress is a boost::asio::ip::address.
+	PRIVATE ${Boost_INCLUDE_DIR}
+)
+
+target_link_libraries (QuicSocketTransportTest
 	muleunit
 	mulecommon
 	${Boost_LIBRARIES}

@@ -50,13 +50,13 @@ DECLARE_SIMPLE(QuicNattProtocol)
 
 namespace
 {
-//! A recognisable identity and nonce, distinct from each other so a proof
-//! builder that wrote the same value into both fields could not pass.
+//! A recognisable user hash and identity value, distinct from each other so a
+//! proof builder that wrote the same value into both fields could not pass.
 const uint8_t kUserHash[QUIC_NATT_PROOF_VALUE_LENGTH] = {
 	0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08, 0x09, 0x0A, 0x0B, 0x0C, 0x0D, 0x0E, 0x0F, 0x10
 };
 
-const uint8_t kNonce[QUIC_NATT_PROOF_VALUE_LENGTH] = {
+const uint8_t kIdentityValue[QUIC_NATT_PROOF_VALUE_LENGTH] = {
 	0xF0, 0xE1, 0xD2, 0xC3, 0xB4, 0xA5, 0x96, 0x87, 0x78, 0x69, 0x5A, 0x4B, 0x3C, 0x2D, 0x1E, 0x0F
 };
 } // namespace
@@ -144,19 +144,19 @@ TEST(QuicNattProtocol, FrameHeaderIsTwoBytesEndingInTheQuicType)
 // field by field rather than by round-tripping alone: a builder and a
 // validator that agreed on the wrong offsets would round-trip perfectly and
 // interoperate with nothing.
-TEST(QuicNattProtocol, ProofLayoutIsMagicThenIdentityThenNonce)
+TEST(QuicNattProtocol, ProofLayoutIsMagicThenIdentityThenIdentityValue)
 {
 	uint8_t proof[QUIC_NATT_PROOF_LENGTH];
 	memset(proof, 0xCC, sizeof(proof));
 
-	ASSERT_TRUE(BuildQuicNattProof(kUserHash, kNonce, proof));
+	ASSERT_TRUE(BuildQuicNattProof(kUserHash, kIdentityValue, proof));
 
 	ASSERT_TRUE(memcmp(proof, "EAQN1", 5) == 0);
 	ASSERT_TRUE(memcmp(proof + 5, kUserHash, 16) == 0);
-	ASSERT_TRUE(memcmp(proof + 21, kNonce, 16) == 0);
+	ASSERT_TRUE(memcmp(proof + 21, kIdentityValue, 16) == 0);
 
-	ASSERT_EQUALS(
-		(int)QUIC_PROOF_VALID, (int)ValidateQuicNattProof(proof, sizeof(proof), kUserHash, kNonce));
+	ASSERT_EQUALS((int)QUIC_PROOF_VALID,
+		(int)ValidateQuicNattProof(proof, sizeof(proof), kUserHash, kIdentityValue));
 }
 
 // Spec delta, "Missing or malformed proof". Each of the three shapes is
@@ -166,19 +166,20 @@ TEST(QuicNattProtocol, ProofLayoutIsMagicThenIdentityThenNonce)
 TEST(QuicNattProtocol, AbsentTruncatedAndWrongMagicProofsAreRejected)
 {
 	uint8_t proof[QUIC_NATT_PROOF_LENGTH];
-	ASSERT_TRUE(BuildQuicNattProof(kUserHash, kNonce, proof));
+	ASSERT_TRUE(BuildQuicNattProof(kUserHash, kIdentityValue, proof));
 
 	// Absent: nothing arrived. A null pointer and a zero length are the same
 	// condition and neither may read the pointer.
-	ASSERT_EQUALS((int)QUIC_PROOF_ABSENT, (int)ValidateQuicNattProof(NULL, 0, kUserHash, kNonce));
-	ASSERT_EQUALS((int)QUIC_PROOF_ABSENT, (int)ValidateQuicNattProof(proof, 0, kUserHash, kNonce));
+	ASSERT_EQUALS((int)QUIC_PROOF_ABSENT, (int)ValidateQuicNattProof(NULL, 0, kUserHash, kIdentityValue));
+	ASSERT_EQUALS(
+		(int)QUIC_PROOF_ABSENT, (int)ValidateQuicNattProof(proof, 0, kUserHash, kIdentityValue));
 
 	// Truncated: every length short of the full record, including lengths
 	// that stop inside the magic and lengths that stop inside a value. The
 	// sweep is the point -- an off-by-one bound only fails at one length.
 	for (size_t length = 1; length < QUIC_NATT_PROOF_LENGTH; ++length) {
 		ASSERT_EQUALS((int)QUIC_PROOF_TRUNCATED,
-			(int)ValidateQuicNattProof(proof, length, kUserHash, kNonce));
+			(int)ValidateQuicNattProof(proof, length, kUserHash, kIdentityValue));
 	}
 
 	// Longer than the record. The proof is a fixed-length field, not a
@@ -187,7 +188,7 @@ TEST(QuicNattProtocol, AbsentTruncatedAndWrongMagicProofsAreRejected)
 	memcpy(oversized, proof, QUIC_NATT_PROOF_LENGTH);
 	oversized[QUIC_NATT_PROOF_LENGTH] = 0x00;
 	ASSERT_EQUALS((int)QUIC_PROOF_OVERSIZED,
-		(int)ValidateQuicNattProof(oversized, sizeof(oversized), kUserHash, kNonce));
+		(int)ValidateQuicNattProof(oversized, sizeof(oversized), kUserHash, kIdentityValue));
 
 	// Wrong magic, at each of the five positions. Checked before the identity
 	// so that a peer speaking a different protocol is reported as such rather
@@ -198,19 +199,20 @@ TEST(QuicNattProtocol, AbsentTruncatedAndWrongMagicProofsAreRejected)
 		corrupted[i] = (uint8_t)(corrupted[i] ^ 0xFF);
 
 		ASSERT_EQUALS((int)QUIC_PROOF_BAD_MAGIC,
-			(int)ValidateQuicNattProof(corrupted, sizeof(corrupted), kUserHash, kNonce));
+			(int)ValidateQuicNattProof(corrupted, sizeof(corrupted), kUserHash, kIdentityValue));
 	}
 }
 
 // Spec delta, "Proof for a different identity". The whole point of the proof:
 // a well-formed record carrying somebody else's identity, or the right
-// identity with a nonce from a different rendezvous, must not pass. Every byte
+// identity with an identity value this end never learned from that peer, must
+// not pass. Every byte
 // of both fields is swept, because a comparison that stopped at the first few
 // bytes would pass most of these.
 TEST(QuicNattProtocol, ProofForAnotherIdentityIsRejected)
 {
 	uint8_t proof[QUIC_NATT_PROOF_LENGTH];
-	ASSERT_TRUE(BuildQuicNattProof(kUserHash, kNonce, proof));
+	ASSERT_TRUE(BuildQuicNattProof(kUserHash, kIdentityValue, proof));
 
 	for (size_t i = 0; i < QUIC_NATT_PROOF_VALUE_LENGTH; ++i) {
 		// One flipped byte of the identity.
@@ -218,23 +220,25 @@ TEST(QuicNattProtocol, ProofForAnotherIdentityIsRejected)
 		memcpy(otherIdentity, kUserHash, sizeof(otherIdentity));
 		otherIdentity[i] = (uint8_t)(otherIdentity[i] ^ 0xFF);
 		ASSERT_EQUALS((int)QUIC_PROOF_WRONG_IDENTITY,
-			(int)ValidateQuicNattProof(proof, sizeof(proof), otherIdentity, kNonce));
+			(int)ValidateQuicNattProof(proof, sizeof(proof), otherIdentity, kIdentityValue));
 
-		// One flipped byte of the nonce: the right peer, but a proof
-		// replayed from a rendezvous this connection did not negotiate.
-		uint8_t otherNonce[QUIC_NATT_PROOF_VALUE_LENGTH];
-		memcpy(otherNonce, kNonce, sizeof(otherNonce));
-		otherNonce[i] = (uint8_t)(otherNonce[i] ^ 0xFF);
+		// One flipped byte of the identity value: the right ed2k identity,
+		// but not the value that identity published in its hello -- which is
+		// what somebody who saw only the UDP half would be reduced to
+		// guessing.
+		uint8_t otherValue[QUIC_NATT_PROOF_VALUE_LENGTH];
+		memcpy(otherValue, kIdentityValue, sizeof(otherValue));
+		otherValue[i] = (uint8_t)(otherValue[i] ^ 0xFF);
 		ASSERT_EQUALS((int)QUIC_PROOF_WRONG_IDENTITY,
-			(int)ValidateQuicNattProof(proof, sizeof(proof), kUserHash, otherNonce));
+			(int)ValidateQuicNattProof(proof, sizeof(proof), kUserHash, otherValue));
 	}
 
-	// The two fields must not be interchangeable: a proof whose identity and
-	// nonce are swapped is a different proof.
+	// The two fields must not be interchangeable: a proof whose user hash and
+	// identity value are swapped is a different proof.
 	uint8_t swapped[QUIC_NATT_PROOF_LENGTH];
-	ASSERT_TRUE(BuildQuicNattProof(kNonce, kUserHash, swapped));
+	ASSERT_TRUE(BuildQuicNattProof(kIdentityValue, kUserHash, swapped));
 	ASSERT_EQUALS((int)QUIC_PROOF_WRONG_IDENTITY,
-		(int)ValidateQuicNattProof(swapped, sizeof(swapped), kUserHash, kNonce));
+		(int)ValidateQuicNattProof(swapped, sizeof(swapped), kUserHash, kIdentityValue));
 }
 
 // Task 3.3: the log has to say which of the two happened. A dropped packet and
@@ -277,9 +281,9 @@ TEST(QuicNattProtocol, ProofBuilderRefusesNullArguments)
 	uint8_t proof[QUIC_NATT_PROOF_LENGTH];
 	memset(proof, 0xCC, sizeof(proof));
 
-	ASSERT_FALSE(BuildQuicNattProof(NULL, kNonce, proof));
+	ASSERT_FALSE(BuildQuicNattProof(NULL, kIdentityValue, proof));
 	ASSERT_FALSE(BuildQuicNattProof(kUserHash, NULL, proof));
-	ASSERT_FALSE(BuildQuicNattProof(kUserHash, kNonce, NULL));
+	ASSERT_FALSE(BuildQuicNattProof(kUserHash, kIdentityValue, NULL));
 
 	// Nothing was written on the way to refusing.
 	for (size_t i = 0; i < sizeof(proof); ++i) {
@@ -293,10 +297,10 @@ TEST(QuicNattProtocol, ProofBuilderRefusesNullArguments)
 TEST(QuicNattProtocol, ValidatorWithoutAnExpectationRejects)
 {
 	uint8_t proof[QUIC_NATT_PROOF_LENGTH];
-	ASSERT_TRUE(BuildQuicNattProof(kUserHash, kNonce, proof));
+	ASSERT_TRUE(BuildQuicNattProof(kUserHash, kIdentityValue, proof));
 
 	ASSERT_EQUALS((int)QUIC_PROOF_WRONG_IDENTITY,
-		(int)ValidateQuicNattProof(proof, sizeof(proof), NULL, kNonce));
+		(int)ValidateQuicNattProof(proof, sizeof(proof), NULL, kIdentityValue));
 	ASSERT_EQUALS((int)QUIC_PROOF_WRONG_IDENTITY,
 		(int)ValidateQuicNattProof(proof, sizeof(proof), kUserHash, NULL));
 }

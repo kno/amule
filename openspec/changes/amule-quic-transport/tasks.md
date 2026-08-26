@@ -38,19 +38,48 @@
 
 ## 2. Transport
 
-- [ ] 2.1 Implement the QUIC socket half, shaped like the existing stream interface
-      -- PARTIAL, and the missing part is blocked rather than skipped. Present:
-      `CQuicContext` (`src/QuicContext.h`), shaped like `CUtpContext` -- one
-      endpoint per client instance, lazy creation, a tick independent of
-      traffic, `IsAvailable()` and `CanServeConnections()` kept as separate
-      answers -- plus the connection table, the inbound handshake, and framed
-      datagrams in and out through the shared socket.
-      Absent: the equivalent of `CUtpSocketTransport` / `CUtpInboundAcceptor`,
-      i.e. handing a validated byte stream to a `CClientTCPSocket`. That is
-      blocked on 3.1's expectation source below: no connection can authenticate
-      in this tree, so a stream nothing can reach would be dead code that no
-      test could exercise. `CQuicConnection::ReceiveStreamBytes()` names the
-      seam
+- [x] 2.1 Implement the QUIC socket half, shaped like the existing stream interface
+      -- complete. `CQuicContext` (`src/QuicContext.h`) was already there, shaped
+      like `CUtpContext`; what was missing was the byte-stream handoff, which was
+      blocked on 3.1 having no expectation source and is unblocked now that it
+      has one.
+      Added: `CQuicSocketTransport` (`src/QuicSocketTransport.h`), the QUIC twin
+      of `CUtpSocketTransport`, and `CQuicInboundAcceptor`
+      (`src/QuicInboundAcceptor.{h,cpp}`), the twin of `CUtpInboundAcceptor`,
+      which hands a validated connection to a `CClientTCPSocket` on exactly the
+      admission tests `CListenSocket::AcceptFrom()` applies.
+      `CQuicConnection::ReceiveStreamBytes()` no longer drops post-proof bytes:
+      it delivers them to the transport, and `CQuicConnection` implements
+      `IQuicStreamWriter` so the transport can write back on the stream the peer
+      opened -- the peer's stream, because a connection carrying two streams
+      would look like two connections to everything above the socket.
+      Two things are worth recording because neither is obvious from the code:
+        * **`CLibSocket` now routes one pointer, not two.** It named
+          `CUtpSocketTransport` at fifteen sites; a second concrete type would
+          have doubled them into fifteen pairs of branches that must never
+          drift, in the one file where a drift reads as a connection that
+          receives bytes and never sends them. `IStreamTransport`
+          (`src/StreamTransport.h`) is that one surface, both transports
+          implement it, and `IUtpSocketEvents` became `IStreamTransportEvents`
+          because both post the same four `CoreNotify_LibSocket*` events.
+          `HasUtpTransport()` survives as a question distinct from
+          `HasStreamTransport()`: its one caller is asking whether a uTP dial is
+          already in flight, and answering yes for a QUIC connection would
+          suppress a dial that should have happened.
+        * **A deadlock had to be designed out rather than tested out.**
+          `CQuicSocketTransport::OnQuicTick()` calls into ngtcp2 with its own
+          mutex held, and that call can fail and close the connection. So
+          `MarkClosed()` deliberately does not notify the transport --
+          `~CQuicConnection()` does, after `SweepClosed()` runs at the end of the
+          pass, by which time the mutex is released. The rule is written at both
+          ends, because at either end alone it reads as an omission.
+      Not carried by this transport yet: an *outbound* QUIC dial. The transport
+      and the writer are direction-agnostic, but nothing constructs one for a
+      dial, because a dial has to send a proof and which value belongs in its
+      second field is 3.1's unresolved directional question. Wiring a dial to a
+      guessed field would produce a handshake that fails silently, which is the
+      failure mode this change keeps refusing to build.
+
 - [x] 2.2 Implement the ngtcp2/TLS bridge as a separate unit
       -- `src/QuicLibraryAdapter.{h,cpp}` behind `IQuicLibrary`, mirroring
       eMuleAI's `CNgTcp2GnuTlsBridge` / `CQuicNatSocket` split. Measured from
@@ -82,42 +111,89 @@
 ## 3. Authentication
 
 - [x] 3.1 Build and validate the 37-byte `EAQN1` proof
-      -- `BuildQuicNattProof()` / `ValidateQuicNattProof()` in
+      -- complete, including the expectation source this task previously had to
+      leave absent. `BuildQuicNattProof()` / `ValidateQuicNattProof()` in
       `src/QuicNattProtocol.h`, with the two 16-byte values compared without an
       early exit so a guess cannot be timed.
-      One gap, stated because it changes what QUIC does at runtime: the
-      *expectation* has no source. The proof binds a connection to the identity
-      that negotiated the rendezvous and needs that identity's user hash, which
-      `SNattRendezvousRequest` does carry, and the nonce of that exchange, which
-      it does not -- the message is opcode, flags and a 16-byte hash and has no
-      field a nonce could travel in (`src/NatRendezvousProtocol.h`). Inventing
-      one would be a wire-format guess eMuleAI would not match, and defaulting
-      the expectation to whatever arrived would be a validator that passes
-      everything while looking like authentication. So
-      `CQuicEndpoint::FindExpectation()` returns NULL, the validator refuses,
-      and an inbound QUIC connection is closed as an authentication failure --
-      the peer then falls back to uTP, automatically and silently. This is the
-      same shape as `LocalCanDiscoverRendezvousRelay()` in
-      `amule-nat-rendezvous` task 4.9: one function, gated off, with the reason
-      written down.
-      Measured against a real eMuleAI v1.6.0 on 2026-08-26, which narrows the
-      gap and may remove it: the assumption above is that the second proof field
-      is a per-exchange nonce. eMuleAI sends, in its `OP_HELLOANSWER` and only
-      once the peer has advertised `CT_MOD_MISCOPTIONS`, a tag `0xBF` carrying
-      exactly 16 bytes of high-entropy data. Three properties fit the second
-      proof field: the length matches `QUIC_NATT_PROOF_VALUE_LENGTH`, it appears
-      only when NAT-T capability is claimed, and it is absent otherwise. One
-      property argues against a nonce reading: it was byte-identical across
-      three separate sessions, so it is a value stable per install -- plausibly
-      a key fingerprint, since that build keeps a `cryptkey.dat`.
-      If the second field is a stable peer identity rather than a nonce, then it
-      does travel and this gap is a misreading rather than a missing wire field.
-      That is a hypothesis, not a finding. The experiment that settles it needs
-      2.1 finished: build the proof with the peer's `0xBF` value as the second
-      field and see whether eMuleAI accepts the connection. Until then
-      `FindExpectation()` still returns NULL, because a validator fed a guess is
-      the "passes everything while looking like authentication" failure this
-      task refused in the first place
+      **The gap is closed and the earlier reading was the error.** This task
+      recorded that the proof's second field looked like a per-exchange nonce,
+      that the rendezvous message had no field to carry one, and that
+      `CQuicEndpoint::FindExpectation()` therefore had to keep returning NULL.
+      The nonce reading was wrong, not the wire. Measured against a real eMuleAI
+      v1.6.0 on 2026-08-26, three times and with a negative control:
+        * it sends tag `0xBF`, `TAGTYPE_HASH16`, exactly 16 bytes of
+          high-entropy data, in its `OP_HELLOANSWER`;
+        * the bytes were byte-identical across three separate sessions
+          (`04eeb1423ad7582a3d9ad69e47ce6fb6`), so the value is stable per
+          install and cannot be a nonce;
+        * it sends the tag with **no gate at all** -- see 4.4, which corrects a
+          second earlier reading.
+      So the second field is a stable peer identity value that travels in the
+      ed2k hello, the wire had the field all along, and this is what was built:
+        * `CQuicProofValue` and the derivation of this client's own value,
+          `src/QuicProofValue.{h,cpp}`. Ours is SHA-256 over a domain separator
+          and the *public* half of the secure-identification key, truncated to
+          16 bytes -- stable across restarts because `cryptkey.dat` is, and safe
+          to publish because that half is already sent in the clear to every
+          peer that completes a secure-identification exchange. No key means no
+          value, no tag, and no peer able to authenticate a connection from this
+          client, which is the fail-closed direction.
+        * `CT_MOD_QUIC_IDENT` (0xBF) parsed into `CUpDownClient` and advertised
+          back, gated in `SendHelloTypePacket()`.
+        * the expectation table on `CQuicContext`, filled in by
+          `CUpDownClient::RegisterQuicExpectation()` from the peer's hello, and
+          `CQuicEndpoint::FindExpectation()` forwarding to it. The table is
+          bounded at 256 and evicts the oldest: expectations are registered
+          while a stranger can still be negotiating, so an unbounded one is
+          memory an unauthenticated peer controls, and refusing rather than
+          evicting would let a flood lock out every real peer behind it.
+      **What makes it authentication is that it is cross-channel**, and the
+      safety constraint is structural rather than asserted: both halves of an
+      expectation come from the peer's ed2k hello over TCP, and no code path
+      derives either from the QUIC connection being validated. `FindExpectation()`
+      in the adapter has no expectation of its own to derive one into -- it only
+      forwards. A third party that hijacks a punched UDP mapping has seen the UDP
+      half and not the TCP one.
+      **Failing closed on absence is preserved, which was the point of the
+      original refusal.** A peer that advertised no `0xBF` value produces no
+      expectation, `FindExpectation()` returns NULL, `ValidateQuicNattProof()`
+      refuses a NULL expectation, and the connection is closed as an
+      authentication failure -- after which the peer falls back to uTP,
+      automatically and silently. `CQuicProofValue` keeps "absent"
+      distinguishable from "sixteen zero bytes" for exactly this reason: an
+      expectation of sixteen zeroes is one any third party can satisfy.
+      **What the proof does NOT prove, stated because a later reader will
+      otherwise assume more.** The value is stable and derived from public key
+      material, so it is an identity rather than a secret: anyone who has ever
+      handshaked with a peer, or observed one of its cleartext hellos, knows that
+      peer's value permanently. The property is "the attacker must have obtained
+      the impersonated peer's ed2k hello", not "the attacker must break a fresh
+      challenge", and a captured proof does replay against an attacker who
+      already had that hello. A per-exchange nonce would be strictly stronger; it
+      is also not what eMuleAI implements, and a proof neither side could
+      complete would authenticate nothing at all. It is still strictly better
+      than what it replaces, which was that no inbound QUIC connection could
+      authenticate under any circumstances. Documented at the value itself in
+      `src/QuicProofValue.h`, which is where a rendezvous nonce would land if the
+      message ever grows a field for one.
+      **The directional ambiguity, resolved explicitly and still unconfirmed.**
+      When this end sends a proof, the second field carries the value *the sender
+      itself advertised* -- `kQuicProofValueDirection ==
+      QUIC_PROOF_VALUE_SENDER_ADVERTISED` in `src/QuicProofValue.h`. The reason
+      is the proof's other field: `BuildQuicNattProof()` takes the sender's own
+      ed2k user hash, so read sender-side throughout the record says one thing --
+      "I am this ed2k identity, and here is the value that identity published" --
+      and the recipient's expectation is then entirely peer-side. A record whose
+      two fields described different ends is one neither end could describe in a
+      sentence. Both directions are unguessable to a third party, so both are
+      defensible; only one interoperates, and the evidence does not say which.
+      Reversing it is changing that one initialiser: every call site goes through
+      `SelectQuicProofValue()` or `ExpectedQuicProofValueFromPeer()`, and
+      `QuicProofValueTest.SelectionFollowsTheDirectionAndNothingElse` exercises
+      both branches, so the other direction is not untested code the day it is
+      needed. See 4.4 for why the experiment that would settle it still cannot
+      run.
+
 - [x] 3.2 Reject payload before proof validation completes
       -- structural rather than checked: there is no code path from
       `recv_stream_data` to a consumer that does not pass through
@@ -142,7 +218,20 @@
       flipped byte at each of the 32 identity and nonce positions, plus the two
       fields swapped). `EveryProofRejectionIsAnAuthenticationFailure` pins that
       no refusal is reported as a transport error and that no two reasons share
-      a name
+      a name.
+      Extended for the expectation source this change added, in
+      `QuicProofValueTest` and the new expectation suites in `QuicContextTest`:
+      expectation absent -> refused (`WithNothingLearnedThereIsNoExpectation`,
+      `ADefaultValueIsAbsentAndExposesNoBytes`,
+      `SelectionOfAnAbsentValueIsNull`); present and matching -> accepted, and
+      present and mismatched -> `QUIC_PROOF_WRONG_IDENTITY`
+      (`ProofForAnotherIdentityIsRejected`, which sweeps every byte of both
+      fields); a wrong-length tag rejected without storing
+      (`EveryWrongLengthIsRefusedWithoutStoring`, every length from 0 to 32 plus
+      NULL, and `ARefusedWriteLeavesAnEarlierValueIntact`). The "tag absent from
+      a hello stores nothing" case is structural rather than a test: the parse
+      arm is inside `if (temptag.IsHash())`, so a tag that is not there is a
+      `case` that never runs
 
 ## 4. Fallback
 
@@ -170,40 +259,58 @@
       runtime answer, which is what makes the macOS case silent rather than a
       failure
 - [ ] 4.4 Interop check against eMuleAI over QUIC, then with QUIC disabled
-      -- PARTIAL. A real eMuleAI v1.6.0 was obtained and run on 2026-08-26, so
-      the "no eMuleAI build" half of the original blocker is gone. What that
-      reached, and what it did not, in full because the negative half is the
-      part a later reader needs:
+      -- STILL PARTIAL, and the boundary has moved. The ed2k half is now
+      confirmed in both directions; the QUIC half remains unreachable, for a
+      reason that is a property of the interop target rather than of this code.
 
-      Confirmed against the running client and its `eMuleAI.exe`, so these are
-      no longer this change's guesses:
-        * `CT_MOD_MISCOPTIONS` = `0x0000001F` -- every bit of
-          `MOD_MISCOPT_KNOWN_MASK`, so the phase-1 bit assignment holds.
-        * The `EAQN1` magic and the ALPN `ed2k-ai-natt-quic-v1` both appear
-          verbatim in the binary. Task 2.3's ALPN is right.
-        * Its GnuTLS priority string admits AES-128-GCM, AES-256-GCM,
-          CHACHA20-POLY1305 and AES-128-CCM -- the same four this change offers,
-          in the same order -- over SECP256R1, X25519 and SECP384R1, a subset of
-          ours. The cipher and group intersection can never be empty.
-        * An ed2k handshake over native IPv6 completes between the two
-          implementations: a hand-built `OP_HELLO` to its `4662` answered with
-          `OP_HELLOANSWER` in cleartext.
-        * Its certificate CN is `eMuleAI QUIC NAT-T`; this end sends `CN=amule`.
-          Left divergent on purpose (`QuicLibraryAdapter.cpp`): neither side has
-          a CA, authentication is the proof, and a stable identifier in the CN
-          would travel in the clear on every handshake.
+      Confirmed against the running eMuleAI v1.6.0 and its `eMuleAI.exe`, from
+      the earlier session: `CT_MOD_MISCOPTIONS` = `0x0000001F`; the `EAQN1` magic
+      and the ALPN `ed2k-ai-natt-quic-v1` both appear verbatim in the binary; its
+      GnuTLS priority string admits the same four ciphers this change offers over
+      a subset of our groups, so the intersection can never be empty; an ed2k
+      handshake over native IPv6 completes between the two implementations; its
+      certificate CN is `eMuleAI QUIC NAT-T` against our `CN=amule`, left
+      divergent on purpose.
 
-      Not reached: the QUIC half, and no part of the NAT-T exchange. That client
-      emitted no UDP at all -- 150 s filtered and 60 s unfiltered on its own
-      network namespace showed only Docker gateway broadcasts. Its Kad never
-      connected, and it opens only `udp6 :::4672` with no IPv4 socket, while
-      this tree opens one per family, so IPv4 Kad nodes are unreachable for it.
-      Eight `OP_UDPRESERVEDPROT2` frame variants sent to that port drew no
-      reply, which is also what this tree does with a capability frame, so it
-      distinguishes nothing.
+      Newly confirmed, and this is what unblocked 2.1 and 3.1: tag `0xBF`,
+      `TAGTYPE_HASH16`, 16 bytes, `04eeb1423ad7582a3d9ad69e47ce6fb6`,
+      byte-identical across three sessions, alongside `0xAA` = `0x1F` and `0xAD`
+      carrying its IPv6 address.
 
-      Still unproven, therefore: `0x40` (`CONNECT_OPT_NATT_RELAYED`), the
-      `EAQN1` field semantics of 3.1, and whether the certificate CN matters
+      **Correction to this task's earlier record.** It said eMuleAI sends that
+      tag "only once the peer has advertised `CT_MOD_MISCOPTIONS`". That is
+      wrong, and it was wrong because every probe until now had carried a
+      capability word. With the negative control -- an `OP_HELLO` with no
+      `CT_MOD_MISCOPTIONS` tag at all -- the answer was byte-identical and still
+      carried `0xBF`. So **eMuleAI gates the tag on nothing.** aMule deliberately
+      does not copy that: the value is a stable per-install identifier, and
+      broadcasting one to every peer greeted would correlate this installation
+      across addresses and sessions for no benefit, since only an
+      eMuleAI-family peer can use it. Our gates are documented at the emission
+      site in `BaseClient.cpp` and cost nothing in interoperability, because
+      eMuleAI advertises all five capability bits itself.
+
+      Not reached: the QUIC half, still, and no part of the NAT-T exchange. A
+      **real** QUIC Initial was sent this time rather than a hand-built frame
+      variant: 1200 bytes generated by aioquic, offering
+      `ed2k-ai-natt-quic-v1`, inside the `0xB2`/`0x01` framing, to its IPv6 UDP
+      `4672`. No reply. Two controls went alongside -- the same Initial unframed,
+      and a framed Initial offering `h3` -- and both were equally silent, so
+      **this run distinguishes nothing**: it does not show the framing is wrong
+      and it does not show the ALPN is right. It is consistent with the earlier
+      finding that this client emits no UDP whatsoever (150 s filtered and 60 s
+      unfiltered on its own network namespace showed only Docker gateway
+      broadcasts; its Kad never connects and it opens only `udp6 :::4672`). No
+      positive control was available for its UDP receive path, so "no reply"
+      cannot be separated from "nothing listening".
+
+      Still unproven, therefore: `0x40` (`CONNECT_OPT_NATT_RELAYED`), whether the
+      certificate CN matters, and -- the one that would change code --
+      `kQuicProofValueDirection`. Settling it needs an eMuleAI whose QUIC
+      endpoint answers a datagram, which this build does not appear to be. The
+      cheapest next experiment is two aMule instances built with
+      `-DENABLE_QUIC=YES` on opposite sides of a NAT: that proves this tree
+      self-consistent, and says nothing about eMuleAI
 
 ## Building and testing this change
 

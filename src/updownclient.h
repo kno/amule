@@ -41,6 +41,7 @@
 #include "PeerCapabilities.h"    // Needed for CPeerCapabilities
 #include "PeerFamilyAttempts.h"  // Needed for DualStack::CPeerConnectAttempts
 #include "PeerIdentity.h"        // Needed for PeerIdentity::IsDirectlyReachable
+#include "QuicProofValue.h"      // Needed for CQuicProofValue
 #include "UtpTransportFailure.h" // Needed for CUtpTransportState
 
 #include <map>
@@ -760,6 +761,30 @@ public:
 	//! The peer's server IPv6 address from CT_MOD_SVR_IP_V6.
 	const CNetworkAddress &GetModServerIPv6() const { return m_modServerIPv6; }
 	bool HasModServerIPv6() const { return m_modServerIPv6.IsPresent(); }
+	/**
+	 * The peer's 16-byte QUIC NAT-T identity value, from CT_MOD_QUIC_IDENT.
+	 *
+	 * This is the only source of the second field of the QUIC peer proof, and
+	 * that it arrives here -- over the ed2k TCP hello -- is what makes the proof
+	 * a cross-channel check rather than a value the QUIC connection supplies
+	 * about itself. See src/QuicProofValue.h.
+	 *
+	 * Absent for every peer that sent no such tag, which is every non-eMuleAI
+	 * peer and every eMuleAI peer this client never advertised capabilities to.
+	 * Absent must stay distinguishable from "sixteen zero bytes": it is what
+	 * makes CQuicContext::FindExpectation() refuse rather than hand the
+	 * validator an expectation any third party could satisfy.
+	 */
+	const CQuicProofValue &GetModQuicProofValue() const { return m_modQuicProofValue; }
+	/**
+	 * Record what a QUIC connection from this peer at @a endpoint must prove.
+	 *
+	 * Both halves come from the peer's ed2k hello over TCP -- its user hash and
+	 * its CT_MOD_QUIC_IDENT value -- and neither from the QUIC connection being
+	 * validated. Does nothing when any input is missing, which fails closed:
+	 * see the definition in BaseClient.cpp for each case and why.
+	 */
+	void RegisterQuicExpectation(const CNetworkAddress &endpoint, uint16_t port);
 
 	/**
 	 * Advances to the peer's next advertised address family after a connect
@@ -1108,6 +1133,11 @@ private:
 	//! no separate "has" flag is needed and none should be reintroduced.
 	CNetworkAddress m_modIPv6;
 	CNetworkAddress m_modServerIPv6;
+	//! The peer's QUIC NAT-T identity value, from CT_MOD_QUIC_IDENT. Carries
+	//! its own presence flag, so no separate "has" bool is needed and none
+	//! should be reintroduced -- an absent value and sixteen zeroes must not
+	//! become the same state.
+	CQuicProofValue m_modQuicProofValue;
 	//! Outbound attempt accounting across the families this peer advertises.
 	DualStack::CPeerConnectAttempts m_familyAttempts;
 

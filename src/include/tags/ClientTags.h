@@ -42,6 +42,14 @@ enum client_tags
 	CT_MOD_IP_V6 = 0xAE,       // <hash> client IPv6 address, 16 bytes
 	CT_MOD_SVR_IP_V6 = 0xAF,   // <hash> server IPv6 address, 16 bytes
 
+	// Outside the 0xA? block on purpose: 0xBF is where a measured eMuleAI
+	// v1.6.0 puts it, and this value is wire format read off that client
+	// rather than a slot chosen here. It carries the 16-byte QUIC NAT-T
+	// identity value -- see src/QuicProofValue.h -- and eMuleAI emits it only
+	// after the peer has advertised CT_MOD_MISCOPTIONS, which is the gate
+	// CUpDownClient::SendHelloTypePacket() reproduces.
+	CT_MOD_QUIC_IDENT = 0xBF, // <hash> QUIC NAT-T identity value, 16 bytes
+
 	CT_EMULECOMPAT_OPTIONS = 0xEF,
 	CT_EMULE_RESERVED1 = 0xF0,
 	CT_EMULE_RESERVED2 = 0xF1,

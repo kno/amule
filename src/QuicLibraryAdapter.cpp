@@ -58,6 +58,9 @@
 // Free of aMule's Types.h and of `using namespace std`: it reaches only
 // protocol/Protocols.h, which is #defines.
 #include "QuicNattProtocol.h" // Needed for the ALPN and the peer proof
+// Free of aMule's Types.h and of wxWidgets for the same reason this file is:
+// the transport is a byte queue behind IQuicStreamWriter and nothing more.
+#include "QuicSocketTransport.h" // Needed for CQuicSocketTransport
 
 #ifdef AMULE_QUIC_TRANSPORT
 
@@ -136,22 +139,12 @@ bool ToSockAddr(const CNetworkAddress &address, std::uint16_t port, sockaddr_in 
 
 class CQuicEndpoint;
 
-/**
- * What a QUIC connection from one peer is required to prove.
- *
- * The rendezvous that produced the connection is what knows this: which ed2k
- * identity was being reached, and which nonce that particular exchange agreed
- * on. The endpoint holds the expectations rather than the connections, because
- * an expectation exists before its connection does -- the punch goes out
- * first.
- */
-struct SQuicPeerExpectation
-{
-	CNetworkAddress peer;
-	std::uint16_t port = 0;
-	std::uint8_t userHash[QUIC_NATT_PROOF_VALUE_LENGTH] = {};
-	std::uint8_t nonce[QUIC_NATT_PROOF_VALUE_LENGTH] = {};
-};
+// SQuicPeerExpectation lives in QuicContext.h, not here, and the move is the
+// substance of this change rather than tidying. The expectation is learned from
+// the peer's ed2k hello -- by CUpDownClient, which has no ngtcp2 in scope -- and
+// it exists before its connection does, because the punch goes out first. A
+// struct defined in this translation unit could not be filled in by the code
+// that knows the values.
 
 /**
  * One inbound QUIC connection.
@@ -166,7 +159,7 @@ struct SQuicPeerExpectation
  * no code path from the receive callback to a consumer that does not pass
  * through m_proofValidated.
  */
-class CQuicConnection
+class CQuicConnection : public IQuicStreamWriter
 {
 public:
 	/**
@@ -186,8 +179,27 @@ public:
 	{
 	}
 
-	~CQuicConnection()
+	/**
+	 * Tells the transport the connection is gone, then lets go of it.
+	 *
+	 * **This is the only place the transport is notified of a loss, and that is
+	 * a deadlock rule rather than a style choice.** CQuicSocketTransport calls
+	 * WriteQuicStream() with its own mutex held, and that call can fail and
+	 * close this connection; a notification issued from MarkClosed() would
+	 * re-enter the transport and take that same mutex again. So MarkClosed()
+	 * only sets a flag, the endpoint sweeps closed connections *after* the pass
+	 * that closed them, and by the time this destructor runs the transport's
+	 * mutex has been released.
+	 */
+	~CQuicConnection() override
 	{
+		if (m_transport != nullptr) {
+			// Failed rather than closed whenever the proof never validated:
+			// the socket above has to be able to tell an authenticated
+			// connection that ended from one that never came up.
+			m_transport->OnQuicStreamLost(!m_proofValidated);
+			m_transport = nullptr;
+		}
 		if (m_conn != nullptr) {
 			ngtcp2_conn_del(m_conn);
 		}
@@ -248,6 +260,41 @@ public:
 	//! ngtcp2's timers, and the packets they produce.
 	void HandleExpiry(std::uint64_t nowNs);
 
+	//
+	// IQuicStreamWriter: how the byte-stream transport reaches ngtcp2.
+	//
+
+	std::size_t WriteQuicStream(const std::uint8_t *data, std::size_t length) override;
+	void CloseQuicStream() override;
+	void DetachStreamTransport() override { m_transport = nullptr; }
+
+	/**
+	 * Record the stream the peer opened, if this is the first one.
+	 *
+	 * First only. A peer that opened a second stream would otherwise move where
+	 * this end writes, mid-connection, and the bytes already queued for the
+	 * first stream would be delivered on the second -- which the reader would
+	 * see as a corrupt ed2k packet rather than as a protocol violation. The
+	 * transport parameters advertise one bidirectional stream, so a second is
+	 * already refused by ngtcp2; this is the belt to that brace.
+	 */
+	void NoteStream(std::int64_t streamId)
+	{
+		if (m_streamId < 0) {
+			m_streamId = streamId;
+		}
+	}
+
+	//! Give the transport its tick, so queued application bytes reach ngtcp2.
+	//! Called before HandleExpiry() rather than after, so bytes queued this
+	//! period go out in the same pass that may then close the connection.
+	void ServiceTransport()
+	{
+		if (m_transport != nullptr && !m_closed) {
+			m_transport->OnQuicTick();
+		}
+	}
+
 private:
 	static ngtcp2_conn *GetConnFromRef(ngtcp2_crypto_conn_ref *ref)
 	{
@@ -255,6 +302,16 @@ private:
 	}
 
 	bool SetUpTlsSession();
+
+	/**
+	 * Hand this connection to the ed2k client layer, once its proof validated.
+	 *
+	 * @return false when there is no acceptor, or the acceptor refused -- an IP
+	 *         filter match, a ban, or the socket limit. The connection is then
+	 *         closed rather than kept: a validated stream with nothing reading
+	 *         it would accumulate bytes for a consumer that never arrives.
+	 */
+	bool HandOverToClientLayer();
 
 	//! Tell the observer, at most once per connection. This translation unit
 	//! cannot log -- see IQuicConnectionObserver -- so reporting is all it can
@@ -270,6 +327,22 @@ private:
 	ngtcp2_path_storage m_path{};
 	sockaddr_in m_localAddress{};
 	sockaddr_in m_remoteAddress{};
+
+	/**
+	 * The stream the peer opened, or -1 before its first frame arrives.
+	 *
+	 * The peer's own stream, not one this end opens: it is the stream the proof
+	 * arrived on, so writing back on it is what makes the connection a single
+	 * bidirectional byte stream -- which is the shape CEMSocket above it
+	 * requires. A second stream would be a second connection as far as the
+	 * socket layer is concerned.
+	 */
+	std::int64_t m_streamId = -1;
+
+	//! The byte-stream transport, once the proof validated. Non-owning: it
+	//! belongs to a CClientTCPSocket from the moment the acceptor hands it over,
+	//! and it detaches itself from here in its own destructor.
+	CQuicSocketTransport *m_transport = nullptr;
 
 	//! Bytes received before the proof completed. Bounded by the proof length:
 	//! a peer cannot make this grow, because anything past 37 bytes is either
@@ -342,27 +415,19 @@ public:
 	 * What a connection from this peer must prove, or NULL when nothing is
 	 * expected from it.
 	 *
-	 * NULL, always, and this is the one place that changes when it stops being
-	 * so -- the same shape as LocalCanDiscoverRendezvousRelay() in
-	 * NatTraversalPolicy.h, and for the same kind of reason.
+	 * Forwards to the context, which holds the table because the ed2k side
+	 * fills it in. Nothing is decided here, and that is the property worth
+	 * naming: this function cannot derive an expectation from the connection it
+	 * is about to validate, because it has no expectation of its own to derive
+	 * one into. An expectation invented at this seam would be the "validator
+	 * that passes everything while looking like authentication" the change was
+	 * required not to build.
 	 *
-	 * The gap is specific and is not an oversight. The proof binds a QUIC
-	 * connection to the ed2k identity that negotiated the rendezvous, and it
-	 * needs two values: that identity's user hash, which the rendezvous does
-	 * carry, and the nonce of that particular exchange, which it does not. The
-	 * rendezvous message aMule implements is opcode, flags and a 16-byte peer
-	 * hash (SNattRendezvousRequest, NatRendezvousProtocol.h) with no field a
-	 * nonce could travel in. Inventing one would be a wire-format guess that
-	 * eMuleAI would not match, and it would fail exactly the way this whole
-	 * protocol fails: silently, with the handshake simply never completing.
-	 *
-	 * Returning NULL is what keeps that honest. The validator refuses, so an
-	 * inbound QUIC connection reaches the proof stage and is closed as an
-	 * authentication failure, and the peer falls back to uTP -- which is the
-	 * documented behaviour for a peer whose QUIC does not come up, is automatic
-	 * and silent, and costs nothing. The alternative -- accepting whatever
-	 * arrived as the expectation -- would be a validator that passes everything
-	 * while looking like authentication, which is worse than having no QUIC.
+	 * NULL when the peer advertised no identity value, or when the peer is
+	 * unknown. That still refuses -- ValidateQuicNattProof() refuses a NULL
+	 * expectation -- so the connection is closed as an authentication failure
+	 * and the peer falls back to uTP, automatically and silently. Failing
+	 * closed on absence is the requirement, not the fallback.
 	 */
 	const SQuicPeerExpectation *FindExpectation(const CNetworkAddress &peer, std::uint16_t port) const;
 
@@ -416,12 +481,19 @@ void CQuicConnection::MarkClosed(EQuicConnectionOutcome outcome, EQuicProofResul
 bool CQuicConnection::ReceiveStreamBytes(const std::uint8_t *data, std::size_t length)
 {
 	if (m_proofValidated) {
-		// The handover to the ed2k client layer belongs to the accept path,
-		// which this change does not ship -- see the note in
-		// CQuicEndpoint::ProcessDatagram(). Until it does, validated bytes are
-		// accounted for and dropped rather than being handed to a consumer
-		// that does not exist. Dropping them here is visible and bounded;
-		// buffering them for a reader that never arrives would not be.
+		if (m_transport == nullptr) {
+			// The connection validated and was then refused by the client
+			// layer, or its socket has already gone. Nothing reads these bytes,
+			// so the connection is closed rather than left accumulating them
+			// for a consumer that will never arrive.
+			MarkClosed(QUIC_CONNECTION_CLOSED, QUIC_PROOF_VALID);
+			return false;
+		}
+
+		// Past the proof, so this is the ed2k byte stream: the first byte
+		// delivered here is the first byte of the peer's hello, which is exactly
+		// what CEncryptedStreamSocket above the socket expects to read.
+		m_transport->OnQuicStreamData(data, length);
 		return true;
 	}
 
@@ -441,17 +513,23 @@ bool CQuicConnection::ReceiveStreamBytes(const std::uint8_t *data, std::size_t l
 		return true;
 	}
 
-	// The identity this connection is expected to belong to comes from the
-	// rendezvous that produced it. When there is no expectation --  which is
-	// every connection in this tree today, see FindExpectation() -- the
-	// validator is handed NULL and refuses. That is the fail-closed direction
-	// and it is deliberate: an expectation invented here would be a validator
-	// that passes everything while looking like authentication.
+	// What this connection is expected to prove comes from the peer's ed2k
+	// hello, over TCP, and from nowhere else -- see SQuicPeerExpectation in
+	// QuicContext.h. That is what makes the check cross-channel and therefore
+	// worth performing: a third party that hijacked the punched UDP mapping
+	// never saw the TCP half these two values travelled in, and cannot guess 16
+	// bytes of entropy.
+	//
+	// When there is no expectation -- a peer that advertised no identity value,
+	// or one this end never negotiated with -- the validator is handed NULL and
+	// refuses. Failing closed on absence is required, not a fallback: an
+	// expectation invented here would be a validator that passes everything
+	// while looking like authentication.
 	const SQuicPeerExpectation *expected = m_owner->FindExpectation(m_peer, m_port);
 	const EQuicProofResult result = ValidateQuicNattProof(m_proof,
 		m_proofBytes,
 		(expected != nullptr) ? expected->userHash : nullptr,
-		(expected != nullptr) ? expected->nonce : nullptr);
+		(expected != nullptr) ? expected->proofValue : nullptr);
 
 	if (IsQuicAuthenticationFailure(result)) {
 		// An authentication failure, not a transport one. The two are
@@ -466,7 +544,106 @@ bool CQuicConnection::ReceiveStreamBytes(const std::uint8_t *data, std::size_t l
 
 	m_proofValidated = true;
 	Report(QUIC_CONNECTION_ESTABLISHED, QUIC_PROOF_VALID);
+
+	// Validated, so the connection stops being an anonymous peer and becomes an
+	// ed2k client connection. Reported established first and handed over second:
+	// the outcome is a fact about the handshake, and it must be logged even when
+	// the client layer then refuses the connection for a reason of its own.
+	if (!HandOverToClientLayer()) {
+		MarkClosed(QUIC_CONNECTION_CLOSED, QUIC_PROOF_VALID);
+		return false;
+	}
+
 	return true;
+}
+
+bool CQuicConnection::HandOverToClientLayer()
+{
+	IQuicConnectionAcceptor *acceptor = (m_owner != nullptr && m_owner->Owner() != nullptr)
+						    ? m_owner->Owner()->GetAcceptor()
+						    : nullptr;
+	if (acceptor == nullptr) {
+		return false;
+	}
+
+	m_transport = acceptor->AcceptQuicConnection(this, m_peer, m_port);
+	return m_transport != nullptr;
+}
+
+std::size_t CQuicConnection::WriteQuicStream(const std::uint8_t *data, std::size_t length)
+{
+	if (m_conn == nullptr || m_closed || m_streamId < 0 || data == nullptr || length == 0) {
+		return 0;
+	}
+
+	const std::uint64_t nowNs = MonotonicNs();
+	std::size_t consumed = 0;
+
+	// Bounded rather than "until ngtcp2 stops taking bytes", on the same
+	// reasoning as DrainOutbound(): this runs on the core thread and a bound is
+	// what keeps one connection from holding it for an unbounded time. Whatever
+	// is left over stays queued in the transport and goes on the next tick.
+	for (int packet = 0; packet < 16 && consumed < length; ++packet) {
+		std::uint8_t buffer[kMaxDatagramSize];
+		ngtcp2_pkt_info packetInfo{};
+
+		ngtcp2_vec vec;
+		vec.base = const_cast<std::uint8_t *>(data + consumed);
+		vec.len = length - consumed;
+
+		ngtcp2_ssize accepted = 0;
+		const ngtcp2_ssize written = ngtcp2_conn_writev_stream(m_conn,
+			&m_path.path,
+			&packetInfo,
+			buffer,
+			sizeof(buffer),
+			&accepted,
+			NGTCP2_WRITE_STREAM_FLAG_NONE,
+			m_streamId,
+			&vec,
+			1,
+			nowNs);
+
+		if (written < 0) {
+			if (written == NGTCP2_ERR_STREAM_DATA_BLOCKED ||
+				written == NGTCP2_ERR_STREAM_SHUT_WR) {
+				// Flow control, not a failure. The peer's window is closed and
+				// will reopen; reporting this as a lost connection would drop a
+				// healthy transfer at the first full receive buffer.
+				break;
+			}
+			// Anything else ends the connection. MarkClosed() deliberately does
+			// not reach back into the transport -- see ~CQuicConnection() -- and
+			// this call site is exactly why: the transport's mutex is held right
+			// now, by the caller.
+			MarkClosed(QUIC_CONNECTION_CLOSED, QUIC_PROOF_VALID);
+			break;
+		}
+
+		if (accepted > 0) {
+			consumed += static_cast<std::size_t>(accepted);
+		}
+		if (written == 0) {
+			// Nothing to put on the wire. With no bytes accepted either, a
+			// further pass would produce the same answer.
+			if (accepted <= 0) {
+				break;
+			}
+			continue;
+		}
+
+		m_owner->Send(buffer, static_cast<std::size_t>(written), m_peer, m_port);
+	}
+
+	return consumed;
+}
+
+void CQuicConnection::CloseQuicStream()
+{
+	// Idempotent, and it has to be: the transport's Close() and its destructor
+	// can both arrive here, on different teardown paths. MarkClosed() reports
+	// the outcome once and then only sets the flag.
+	MarkClosed(QUIC_CONNECTION_CLOSED, QUIC_PROOF_VALID);
 }
 
 bool CQuicConnection::SetUpTlsSession()
@@ -533,7 +710,6 @@ int OnRecvStreamData(ngtcp2_conn *conn,
 {
 	(void)conn;
 	(void)flags;
-	(void)stream_id;
 	(void)offset;
 	(void)stream_user_data;
 
@@ -541,6 +717,12 @@ int OnRecvStreamData(ngtcp2_conn *conn,
 	if (connection == nullptr) {
 		return NGTCP2_ERR_CALLBACK_FAILURE;
 	}
+
+	// The stream the peer opened is the stream this end writes back on -- see
+	// m_streamId. Recorded from the first frame rather than opened by this end,
+	// because a connection carrying two streams would look like two connections
+	// to everything above the socket.
+	connection->NoteStream(stream_id);
 
 	if (!connection->ReceiveStreamBytes(data, datalen)) {
 		// Tearing the connection down from inside a callback is what
@@ -874,9 +1056,11 @@ void CQuicEndpoint::Send(
 const SQuicPeerExpectation *CQuicEndpoint::FindExpectation(
 	const CNetworkAddress &peer, std::uint16_t port) const
 {
-	(void)peer;
-	(void)port;
-	return nullptr;
+	if (m_owner == nullptr) {
+		return nullptr;
+	}
+
+	return m_owner->FindExpectation(peer, port);
 }
 
 CQuicConnection *CQuicEndpoint::FindConnection(const CNetworkAddress &from, std::uint16_t port)
@@ -959,9 +1143,17 @@ void CQuicEndpoint::CheckTimeouts(std::uint64_t nowNs)
 	// connection, and SweepClosed() runs after the pass rather than during it
 	// precisely so nothing is destroyed while ngtcp2 is inside it.
 	for (std::size_t i = 0; i < m_connections.size(); ++i) {
+		// Application bytes first, then ngtcp2's own timers. This is the one
+		// place a queued write reaches the library, which is what confines
+		// ngtcp2 to the core thread -- CQuicSocketTransport::Write() arrives on
+		// the upload throttler's thread and only ever queues.
+		m_connections[i]->ServiceTransport();
 		m_connections[i]->HandleExpiry(nowNs);
 	}
 
+	// After the pass, never during it: a connection destroyed here notifies its
+	// transport, and doing that from inside ServiceTransport() would re-enter a
+	// mutex the transport is still holding. See ~CQuicConnection().
 	SweepClosed();
 }
 

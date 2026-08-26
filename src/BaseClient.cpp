@@ -694,6 +694,44 @@ bool CUpDownClient::ProcessHelloTypePacket(const CMemFile &data)
 			}
 			break;
 
+		case CT_MOD_QUIC_IDENT:
+			// The peer's stable 16-byte QUIC NAT-T identity value, and the
+			// only source of the second field of the QUIC peer proof.
+			//
+			// That it is learned *here* -- from an ed2k hello that arrived over
+			// TCP -- is the whole security argument of the QUIC path: the peer
+			// must reproduce these bytes inside the proof it sends over UDP,
+			// and a third party hijacking the punched UDP mapping has seen only
+			// the UDP half. See src/QuicProofValue.h.
+			//
+			// The length is not checked here and does not need to be. A
+			// TAGTYPE_HASH16 tag is exactly 16 bytes by construction of the tag
+			// reader; a payload of any other length arrives as some other tag
+			// type, IsHash() is false, and nothing is stored. Failing closed on
+			// a malformed tag is required rather than merely tidy -- a stored
+			// partial value would become an expectation compared against
+			// uninitialised bytes -- so SetFromWire() re-checks the length
+			// itself and refuses without disturbing anything already learned.
+			//
+			// Recorded whatever the peer's capability word says. Gating the
+			// *store* on the QUIC bit would mean a peer that advertised the tag
+			// before the bit could never authenticate, and the value costs
+			// nothing to keep; what the bit gates is whether QUIC is attempted
+			// at all (SelectNattFrameType(), NatTraversalPolicy.h).
+			if (temptag.IsHash()) {
+				if (m_modQuicProofValue.SetFromWire(
+					    temptag.GetHash().GetHash(), QUIC_NATT_PROOF_VALUE_LENGTH)) {
+					// Deliberately not logged as bytes. The value is not a
+					// secret -- it is a fingerprint of a public key -- but a
+					// stable per-install identifier in a debug log is a
+					// correlatable identifier in a debug log, and nothing about
+					// diagnosing this path needs the bytes.
+					AddDebugLogLineN(logClient,
+						wxT("Peer advertises a QUIC NAT-T identity value"));
+				}
+			}
+			break;
+
 		default:
 			// An unrecognised tag is not a broken handshake. The switch
 			// has always fallen through silently for tags aMule does not
@@ -822,7 +860,71 @@ bool CUpDownClient::ProcessHelloTypePacket(const CMemFile &data)
 		Kademlia::CKademlia::Bootstrap(wxUINT32_SWAP_ALWAYS(GetIP()), GetKadPort());
 	}
 
+	// The hello is what taught us this peer's QUIC identity value, so this is
+	// where that knowledge becomes an expectation an inbound QUIC connection can
+	// be checked against. Registered here rather than lazily when a connection
+	// arrives, because by then it is too late: the expectation has to exist
+	// before its connection does.
+	RegisterQuicExpectation(m_userAddress, GetUDPPort());
+
 	return bIsMule;
+}
+
+/**
+ * Record what a QUIC connection from this peer at @a endpoint must prove.
+ *
+ * Both halves of the expectation come from the peer's ed2k hello, over TCP: the
+ * user hash from its fixed header and the identity value from its
+ * CT_MOD_QUIC_IDENT tag. Nothing here reads a QUIC connection, and that is the
+ * safety property the whole QUIC authentication path rests on -- an expectation
+ * derived from the thing it validates would be a validator that passes
+ * everything while looking like authentication.
+ *
+ * Silently does nothing, and must, whenever any input is missing:
+ *
+ *   - no QUIC context, or a build with no ngtcp2 at all;
+ *   - the peer never advertised MOD_MISCOPT_NAT_TRAVERSAL_QUIC, so it will not
+ *     be speaking QUIC and an expectation for it would be state kept for
+ *     nothing;
+ *   - the peer sent no CT_MOD_QUIC_IDENT tag, which is the case that matters:
+ *     with no value learned there is nothing to expect, FindExpectation() keeps
+ *     returning NULL, and the connection is refused. Failing closed on absence
+ *     is required rather than tolerated, and it costs only the faster path --
+ *     the peer falls back to uTP;
+ *   - no valid user hash, or a zero port. Zero is "unknown" rather than a port
+ *     (PeerIdentity::MatchesUdpSourcePort()), and an expectation under it would
+ *     be found by any datagram whose source port could not be read.
+ *
+ * @param endpoint the address the QUIC datagrams will arrive from.
+ * @param port     the UDP port they will arrive from. This is deliberately the
+ *        peer's UDP port and not its TCP one: they are different numbers and a
+ *        registration under the wrong one would match nothing at all, silently
+ *        -- which looks exactly like a peer that is offline.
+ */
+void CUpDownClient::RegisterQuicExpectation(const CNetworkAddress &endpoint, uint16_t port)
+{
+	if (theApp == NULL || theApp->clientudp == NULL) {
+		return;
+	}
+	if (!m_modCapabilities.SupportsNatTraversalQuic()) {
+		return;
+	}
+	if (!m_modQuicProofValue.IsPresent() || !HasValidHash()) {
+		return;
+	}
+
+	CQuicContext *context = theApp->clientudp->GetQuicContext();
+	if (context == NULL || !context->IsAvailable()) {
+		return;
+	}
+
+	if (context->RegisterExpectation(
+		    endpoint, port, GetUserHash().GetHash(), m_modQuicProofValue.Bytes())) {
+		AddDebugLogLineN(logClient,
+			CFormat("An inbound QUIC connection from %s:%u will be required to prove this "
+				"peer's advertised identity") %
+				wxString(endpoint.ToString()) % (unsigned)port);
+	}
 }
 
 bool CUpDownClient::SendHelloPacket()
@@ -1123,6 +1225,50 @@ void CUpDownClient::SendHelloAnswer()
 	SendPacket(packet, true);
 }
 
+/**
+ * This client's own QUIC NAT-T identity value, or NULL when it has none.
+ *
+ * Derived once from the secure-identification public key and then cached, which
+ * is both an optimisation and a correctness property: the value must be the same
+ * in every hello this process sends, and the same again after a restart, or a
+ * peer that learned it from one handshake would refuse the connection that
+ * followed. Caching also makes the "no key yet" case reachable more than once --
+ * cryptkey.dat is loaded during startup, so an early hello can legitimately find
+ * no key and a later one find it.
+ *
+ * NULL means no key, which is a real state rather than a failure: secure
+ * identification may be off or its key not yet loaded. A client with no value
+ * advertises no tag, no peer can form an expectation for it, and every inbound
+ * QUIC connection to it is refused -- costing the faster path and nothing else,
+ * because the peer falls back to uTP automatically and silently.
+ *
+ * @return QUIC_NATT_PROOF_VALUE_LENGTH bytes, or NULL.
+ */
+static const uint8_t *LocalQuicProofValue()
+{
+	static uint8_t value[QUIC_NATT_PROOF_VALUE_LENGTH] = { 0 };
+	static bool derived = false;
+
+	if (derived) {
+		return value;
+	}
+
+	if (theApp == NULL || theApp->clientcredits == NULL) {
+		return NULL;
+	}
+
+	// The public half only. See DeriveLocalQuicProofValue() in
+	// src/QuicProofValue.cpp for what is hashed and why publishing a
+	// fingerprint of an already-public key discloses nothing.
+	if (!DeriveLocalQuicProofValue(
+		    theApp->clientcredits->GetPublicKey(), theApp->clientcredits->GetPubKeyLen(), value)) {
+		return NULL;
+	}
+
+	derived = true;
+	return value;
+}
+
 void CUpDownClient::SendHelloTypePacket(CMemFile *data)
 {
 	data->WriteHash(thePrefs::GetUserHash());
@@ -1192,10 +1338,61 @@ void CUpDownClient::SendHelloTypePacket(CMemFile *data)
 	// And the runtime half: the word never exceeds what this build could claim.
 	wxASSERT((uAdvertisedModMiscOptions & ~AdvertisableModMiscOptions()) == 0);
 
+	// CT_MOD_QUIC_IDENT is a third vendor tag, on three gates, and this end is
+	// deliberately stricter than the reference implementation about all of them.
+	//
+	// **eMuleAI v1.6.0 gates it on nothing.** Measured against the running
+	// client on 2026-08-26: an OP_HELLO carrying no CT_MOD_MISCOPTIONS tag at
+	// all still drew a byte-identical OP_HELLOANSWER carrying tag 0xBF, and the
+	// 16 bytes were the same across three separate sessions. The earlier reading
+	// -- that it waits for the peer to advertise capabilities -- was an artefact
+	// of only ever having probed it with a capability word present.
+	//
+	// So the gates below are aMule's choice rather than eMuleAI's, and each
+	// costs nothing in interoperability because eMuleAI advertises all five
+	// capability bits itself:
+	//
+	//   - the peer must have advertised CT_MOD_MISCOPTIONS. This value is a
+	//     stable per-install identifier, so sending it unconditionally would
+	//     hand every peer aMule ever greets a token that correlates this
+	//     installation across addresses and sessions. It is not a secret -- it
+	//     is a fingerprint of an already-public key -- but "not secret" and
+	//     "broadcast to strangers" are different things, and only a peer in the
+	//     eMuleAI family can do anything with it. `IsEmpty()` is the right test
+	//     for "advertised": eMuleAI omits its own word when it is zero, exactly
+	//     as aMule does above, so an absent tag and an all-zero word are one
+	//     state on both sides.
+	//   - this end must be advertising the QUIC bit, on the same pattern
+	//     CT_MOD_IP_V6 follows against MOD_MISCOPT_IPV6: the tag rides the
+	//     capability it belongs to. A build with no ngtcp2 can neither answer a
+	//     QUIC connection nor make one, so the sixteen bytes would buy that peer
+	//     nothing, and a tag emitted without the capability would be an
+	//     invitation to a handshake this end cannot complete -- the one failure
+	//     mode this whole change is arranged to avoid.
+	//   - there must be a value at all: no secure-identification key means no
+	//     identity value, no tag, and no peer able to authenticate a QUIC
+	//     connection from this client. That fails closed -- see
+	//     LocalQuicProofValue().
+	//
+	// The asymmetry is safe in the direction that matters. A peer needs our
+	// value only to authenticate a connection *we* dial, and we dial QUIC only
+	// when we have the capability we are gating on.
+	//
+	// Decided once, into a const, for the same reason as the word above: the
+	// tagcount goes on the wire before the tags, so a second expression able to
+	// disagree with this one would desynchronise the reader.
+	const uint8_t *localQuicProofValue = LocalQuicProofValue();
+	const bool emitModQuicIdent = !m_modCapabilities.IsEmpty() &&
+				      (uAdvertisedModMiscOptions & MOD_MISCOPT_NAT_TRAVERSAL_QUIC) != 0 &&
+				      localQuicProofValue != NULL;
+
 	if (bModMiscOptionsTagCounted) {
 		tagcount++;
 	}
 	if (emitModIPv6) {
+		tagcount++;
+	}
+	if (emitModQuicIdent) {
 		tagcount++;
 	}
 
@@ -1344,6 +1541,20 @@ void CUpDownClient::SendHelloTypePacket(CMemFile *data)
 		// Sixteen bytes, big-endian, in the tag type eMuleAI reads them from.
 		CTagHash tagModIPv6(CT_MOD_IP_V6, CMD4Hash(localIPv6Bytes));
 		tagModIPv6.WriteTagToFile(data);
+	}
+	if (emitModQuicIdent) {
+		// This client's stable QUIC NAT-T identity value, in the 16-byte
+		// hash-typed tag eMuleAI sends it in. CMD4Hash is the tag type's
+		// carrier here and nothing MD4 is implied -- the bytes are a truncated
+		// SHA-256 digest (src/QuicProofValue.cpp) and the tag reader treats a
+		// TAGTYPE_HASH16 payload as sixteen opaque bytes.
+		//
+		// The peer stores this and will require the same sixteen bytes inside
+		// the proof of any QUIC connection we dial to it, which is the whole
+		// mechanism: the value travelled over TCP, so an attacker on the punched
+		// UDP mapping cannot supply it.
+		CTagHash tagModQuicIdent(CT_MOD_QUIC_IDENT, CMD4Hash(localQuicProofValue));
+		tagModQuicIdent.WriteTagToFile(data);
 	}
 
 #ifdef __GIT__
@@ -1935,6 +2146,17 @@ bool CUpDownClient::ConnectOverUtp()
 					wxString(target.ToString()) % targetPort);
 			target = punched;
 			targetPort = punchedPort;
+
+			// A second expectation, under the punched mapping. The one
+			// registered from the hello is keyed on the UDP port the peer
+			// believes it has, and behind a port-rewriting NAT that is
+			// frequently not the port its packets arrive from -- which is the
+			// whole reason this branch exists for the dial. An inbound QUIC
+			// connection over the punched hole would then find no expectation
+			// and be refused, silently, for a reason neither side can see. Both
+			// are kept rather than one replaced: which mapping the peer uses is
+			// its choice, not ours.
+			RegisterQuicExpectation(punched, punchedPort);
 		}
 	}
 
