@@ -970,6 +970,29 @@ void CamuleRemoteGuiApp::FinishReconnect(int result)
 			if (friendlist) {
 				friendlist->ResetForNewSession();
 			}
+			if (searchlist) {
+				// Searches survive a restart -- amuled persists them and
+				// re-registers each restored one, so the daemon hands the
+				// same results back under their original search ids. What
+				// does NOT survive is the per-result ECID: the counter
+				// restarts with the process, so every restored result
+				// arrives as an id this client has never seen and is added
+				// alongside the copy it already holds.
+				//
+				// Nothing reaps the stale copy on its own. The search list
+				// deletes only on an explicit EC_TAG_FILE_REMOVED tombstone
+				// (it opted out of the base class's absence sweep so an idle
+				// search costs no traffic), and a daemon that has just
+				// started never emits a tombstone for an ECID it never knew
+				// about. Both copies therefore stay -- issue #1101, where
+				// every result appears twice after a restart.
+				searchlist->ResetForNewSession();
+				if (amuledlg && amuledlg->m_searchwnd) {
+					// Frees every result, so the tabs must drop their rows
+					// before anything repaints through them.
+					amuledlg->m_searchwnd->ResetResultViews();
+				}
+			}
 		} else if (knownfiles) {
 			// Same daemon: the next full poll reconciles every list against
 			// the fresh snapshot in place (update / add / prune) — no wipe,
@@ -2066,6 +2089,41 @@ void CSharedFilesRem::VerifyLocalData(const CKnownFile *file) const
 	m_conn->SendPacket(&request);
 }
 
+unsigned CSharedFilesRem::RefreshMediaMetadata(const std::vector<CMD4Hash> &hashes)
+{
+	if (hashes.empty()) {
+		return 0;
+	}
+	// ONE packet carrying every hash. One request per file would push the
+	// selection through m_req_fifo a packet at a time, and OnPollTimer stops
+	// updating the GUI while that fifo is full -- on a large selection the
+	// window would go quiet for as long as it took to drain.
+	CECPacket request(EC_OP_REFRESH_MEDIA_METADATA);
+	for (const CMD4Hash &hash : hashes) {
+		// A FRESH tag per hash, deliberately. CECTag::AddTag swaps the
+		// argument's contents into the child list and leaves the original
+		// empty, so adding the same tag object twice appends one real child
+		// and one blank -- silently sending fewer hashes than intended.
+		request.AddTag(CECTag(EC_TAG_KNOWNFILE, hash));
+	}
+	m_conn->SendPacket(&request);
+	// Sent, not probed: the daemon decides eligibility and reports what it did
+	// in its own log, which this GUI displays.
+	return hashes.size();
+}
+
+bool CSharedFilesRem::RefreshMediaMetadata(const CMD4Hash &hash)
+{
+	CECPacket request(EC_OP_REFRESH_MEDIA_METADATA);
+	request.AddTag(CECTag(EC_TAG_KNOWNFILE, hash));
+	m_conn->SendPacket(&request);
+	// Sent, not probed. A daemon that predates the opcode answers EC_OP_FAILED
+	// and the reply is dropped here as it is for every other fire-and-forget
+	// request on this class; the user sees nothing happen, which is the same
+	// outcome as the action not existing.
+	return true;
+}
+
 void CSharedFilesRem::SetFileCommentRating(CKnownFile *file, const wxString &newComment, int8 newRating)
 {
 	CECPacket request(EC_OP_SHARED_FILE_SET_COMMENT);
@@ -2149,6 +2207,63 @@ uint32 CKnownFilesRem::GetItemID(CKnownFile *file)
 {
 	return file->ECID();
 }
+
+namespace
+{
+
+// Copy the six FT_MEDIA_* fields off an EC tag onto the local proxy object, so
+// the identical GetIntTagValue / GetStrTagValue / GetMetaDataVer calls in the
+// File Details dialog work unchanged in the remote build.
+//
+// A zero / empty value is the daemon saying the field is GONE, not a value
+// worth storing -- it only sends one for a field it previously sent a real
+// value for (see AddMediaTagsPresent). Storing it would leave the dialog
+// showing 0:00 or a blank Artist where N/A is the honest answer.
+//
+// Shared by the known-file walker and the search-result one because the daemon
+// emits these from ONE place for both: CEC_SharedFile_Tag's base ctor, which
+// CEC_SearchFile_Tag derives from. Two copies of this loop would drift the
+// moment a seventh field appeared, and the search half is only being written
+// now because the first copy was missing there entirely.
+void DecodeMediaTags(const CECTag *tag, CAbstractFile *file)
+{
+	static const struct
+	{
+		ec_tagname_t ecId;
+		uint8 ftId;
+		bool isInt;
+	} kMedia[] = { { EC_TAG_KNOWNFILE_MEDIA_LENGTH, FT_MEDIA_LENGTH, true },
+		{ EC_TAG_KNOWNFILE_MEDIA_BITRATE, FT_MEDIA_BITRATE, true },
+		{ EC_TAG_KNOWNFILE_MEDIA_CODEC, FT_MEDIA_CODEC, false },
+		{ EC_TAG_KNOWNFILE_MEDIA_ARTIST, FT_MEDIA_ARTIST, false },
+		{ EC_TAG_KNOWNFILE_MEDIA_ALBUM, FT_MEDIA_ALBUM, false },
+		{ EC_TAG_KNOWNFILE_MEDIA_TITLE, FT_MEDIA_TITLE, false } };
+	for (const auto &entry : kMedia) {
+		const CECTag *m = tag->GetTagByName(entry.ecId);
+		if (!m) {
+			// Absent means UNCHANGED, per the CValueMap contract -- not
+			// cleared. Leave whatever is already stored.
+			continue;
+		}
+		if (entry.isInt) {
+			const uint32 v = m->GetInt();
+			if (v) {
+				file->AddTagUnique(CTagInt32(entry.ftId, v));
+			} else {
+				file->RemoveTag(entry.ftId);
+			}
+		} else {
+			const wxString v = m->GetStringData();
+			if (!v.IsEmpty()) {
+				file->AddTagUnique(CTagString(entry.ftId, v));
+			} else {
+				file->RemoveTag(entry.ftId);
+			}
+		}
+	}
+}
+
+} // namespace
 
 void CKnownFilesRem::ProcessItemUpdate(const CEC_SharedFile_Tag *tag, CKnownFile *file)
 {
@@ -2289,6 +2404,15 @@ void CKnownFilesRem::ProcessItemUpdate(const CEC_SharedFile_Tag *tag, CKnownFile
 	if (!m_initialUpdate && theApp->amuledlg) {
 		theApp->amuledlg->m_sharedfileswnd->sharedfilesctrl->UpdateItem(file);
 	}
+
+	// Media metadata rides the SHARED-FILE base tag, so it is decoded here for
+	// every known file rather than inside the partfile branch below. It used
+	// to live there, which meant a COMPLETED shared file -- the only kind the
+	// completion re-probe produces -- had all six tags dropped on the floor,
+	// and the File Details dialog showed N/A for anything not currently
+	// downloading. The same mistake the comments/ratings decode already
+	// avoids for the same reason.
+	DecodeMediaTags(tag, file);
 
 	if (file->IsPartFile()) {
 		ProcessItemUpdatePartfile(
@@ -2741,8 +2865,9 @@ void CUpDownClientListRem::DeleteItem(CClientRef *clientref)
 
 #ifdef DEBUG_ZOMBIE_CLIENTS
 	if (client->m_linked > 1) {
-		AddLogLineC(CFormat("Client %d still linked in %d places: %s") % client->ECID() %
-			    (client->m_linked - 1) % client->GetLinkedFrom());
+		// Same level and wording as the core-side twin in BaseClient.cpp.
+		AddLogLineN(CFormat("Client %d: deletion deferred, still referenced in %d place(s): %s") %
+			    client->ECID() % (client->m_linked - 1) % client->GetLinkedFrom());
 		client->m_linkedDebug = true;
 	}
 #endif
@@ -3108,29 +3233,6 @@ void CKnownFilesRem::ProcessItemUpdatePartfile(const CEC_PartFile_Tag *tag, CPar
 				}
 			}
 		}
-	}
-
-	// Media metadata (issue #418): store the EC tags on the proxy as the
-	// same FT_MEDIA_* CTags the monolithic file carries, so the identical
-	// GetIntTagValue / GetStrTagValue / GetMetaDataVer calls in the File
-	// Details dialog work unchanged in the remote build.
-	if (const CECTag *m = tag->GetTagByName(EC_TAG_KNOWNFILE_MEDIA_LENGTH)) {
-		file->AddTagUnique(CTagInt32(FT_MEDIA_LENGTH, m->GetInt()));
-	}
-	if (const CECTag *m = tag->GetTagByName(EC_TAG_KNOWNFILE_MEDIA_BITRATE)) {
-		file->AddTagUnique(CTagInt32(FT_MEDIA_BITRATE, m->GetInt()));
-	}
-	if (const CECTag *m = tag->GetTagByName(EC_TAG_KNOWNFILE_MEDIA_CODEC)) {
-		file->AddTagUnique(CTagString(FT_MEDIA_CODEC, m->GetStringData()));
-	}
-	if (const CECTag *m = tag->GetTagByName(EC_TAG_KNOWNFILE_MEDIA_ARTIST)) {
-		file->AddTagUnique(CTagString(FT_MEDIA_ARTIST, m->GetStringData()));
-	}
-	if (const CECTag *m = tag->GetTagByName(EC_TAG_KNOWNFILE_MEDIA_ALBUM)) {
-		file->AddTagUnique(CTagString(FT_MEDIA_ALBUM, m->GetStringData()));
-	}
-	if (const CECTag *m = tag->GetTagByName(EC_TAG_KNOWNFILE_MEDIA_TITLE)) {
-		file->AddTagUnique(CTagString(FT_MEDIA_TITLE, m->GetStringData()));
 	}
 
 	// Comments/ratings + the Kad-notes running flag are decoded once for every
@@ -4020,6 +4122,15 @@ void CSearchListRem::ProcessItemUpdate(const CEC_SearchFile_Tag *tag, CSearchFil
 	if (const CECTag *kadSearchTag = tag->GetTagByName(EC_TAG_PARTFILE_KAD_COMMENT_SEARCHING)) {
 		file->SetKadCommentSearchRunning(kadSearchTag->GetInt() != 0);
 	}
+
+	// The daemon has always sent these for search results -- CEC_SearchFile_Tag
+	// derives from CEC_SharedFile_Tag, whose base ctor emits them -- and this
+	// walker never read them back. So amulegui showed an empty Length /
+	// Bitrate / Codec for every hit while the monolithic client filled those
+	// columns in from the same server reply. CreateItem calls this immediately
+	// after constructing, so a result is decoded on arrival as well as on
+	// update.
+	DecodeMediaTags(tag, file);
 
 	if (file->m_sourceCount != sourceCount || file->m_completeSourceCount != completeSourceCount ||
 		file->m_downloadStatus != status) {

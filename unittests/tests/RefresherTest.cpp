@@ -1064,6 +1064,79 @@ TEST(Refresher, MediaMetadataDecode)
 	ASSERT_TRUE(!it2->second.has_media);
 }
 
+// The clear half of the same contract. amuled sends a zero / empty value for
+// a field it previously sent a real one for -- a tag that is simply not
+// offered reads as UNCHANGED to a CValueMap peer, so an omitted field would
+// leave this snapshot serving the stale value, including one inherited
+// unverified from a search result. That is exactly what the completion
+// re-probe exists to correct, and it regressed once already.
+TEST(Refresher, MediaMetadataClearRemovesFieldsAndRecomputesHasMedia)
+{
+	FileMap cache;
+	std::map<std::uint32_t, PartFileEncoderData> rle_state;
+	{
+		CECPacket resp(EC_OP_SHARED_FILES);
+		CECTag pf(EC_TAG_PARTFILE, static_cast<std::uint32_t>(700));
+		pf.AddTag(CECTag(EC_TAG_KNOWNFILE_MEDIA_LENGTH, static_cast<std::uint32_t>(180)));
+		pf.AddTag(CECTag(EC_TAG_KNOWNFILE_MEDIA_BITRATE, static_cast<std::uint32_t>(1500)));
+		pf.AddTag(CECTag(EC_TAG_KNOWNFILE_MEDIA_CODEC, std::string("h264")));
+		pf.AddTag(CECTag(EC_TAG_KNOWNFILE_MEDIA_ARTIST, std::string("Peer Supplied")));
+		resp.AddTag(pf);
+		ApplyGetUpdateToDownloads(&resp, cache, rle_state);
+	}
+	ASSERT_TRUE(cache.find(700)->second.has_media);
+	ASSERT_EQUALS(std::string("Peer Supplied"), cache.find(700)->second.media.artist);
+
+	// The local probe found a codec and nothing else, so amuled clears the
+	// three fields it could not determine and keeps the one it could.
+	{
+		CECPacket resp(EC_OP_SHARED_FILES);
+		CECTag pf(EC_TAG_PARTFILE, static_cast<std::uint32_t>(700));
+		pf.AddTag(CECTag(EC_TAG_KNOWNFILE_MEDIA_LENGTH, static_cast<std::uint32_t>(0)));
+		pf.AddTag(CECTag(EC_TAG_KNOWNFILE_MEDIA_BITRATE, static_cast<std::uint32_t>(0)));
+		pf.AddTag(CECTag(EC_TAG_KNOWNFILE_MEDIA_ARTIST, std::string()));
+		resp.AddTag(pf);
+		ApplyGetUpdateToDownloads(&resp, cache, rle_state);
+	}
+	const auto it = cache.find(700);
+	ASSERT_TRUE(it != cache.end());
+	ASSERT_EQUALS(static_cast<std::uint32_t>(0), it->second.media.length_s);
+	ASSERT_EQUALS(static_cast<std::uint32_t>(0), it->second.media.bitrate);
+	ASSERT_TRUE(it->second.media.artist.empty());
+	// The codec was not mentioned this time, which means UNCHANGED -- not
+	// cleared. Distinguishing those two is the whole point of the design.
+	ASSERT_EQUALS(std::string("h264"), it->second.media.codec);
+	// Still has media, because one field survives.
+	ASSERT_TRUE(it->second.has_media);
+}
+
+TEST(Refresher, MediaMetadataClearingEveryFieldDropsHasMedia)
+{
+	// has_media is DERIVED, not latched: a file whose every field has been
+	// cleared must stop reporting media, or the API keeps emitting an empty
+	// `media` object for it.
+	FileMap cache;
+	std::map<std::uint32_t, PartFileEncoderData> rle_state;
+	{
+		CECPacket resp(EC_OP_SHARED_FILES);
+		CECTag pf(EC_TAG_PARTFILE, static_cast<std::uint32_t>(701));
+		pf.AddTag(CECTag(EC_TAG_KNOWNFILE_MEDIA_LENGTH, static_cast<std::uint32_t>(180)));
+		pf.AddTag(CECTag(EC_TAG_KNOWNFILE_MEDIA_CODEC, std::string("mp3")));
+		resp.AddTag(pf);
+		ApplyGetUpdateToDownloads(&resp, cache, rle_state);
+	}
+	ASSERT_TRUE(cache.find(701)->second.has_media);
+	{
+		CECPacket resp(EC_OP_SHARED_FILES);
+		CECTag pf(EC_TAG_PARTFILE, static_cast<std::uint32_t>(701));
+		pf.AddTag(CECTag(EC_TAG_KNOWNFILE_MEDIA_LENGTH, static_cast<std::uint32_t>(0)));
+		pf.AddTag(CECTag(EC_TAG_KNOWNFILE_MEDIA_CODEC, std::string()));
+		resp.AddTag(pf);
+		ApplyGetUpdateToDownloads(&resp, cache, rle_state);
+	}
+	ASSERT_TRUE(!cache.find(701)->second.has_media);
+}
+
 // ----------------------------------------------------------------------
 // /servers — GET_UPDATE wraps per-server tags in an EC_TAG_SERVER
 // container at top level. Walker iterates INTO the container and
@@ -1845,7 +1918,7 @@ static void PutClientWithPartStatus(CECPacket &resp,
 TEST(Refresher, ClientEmptyPartStatusMeansFullSource)
 {
 	std::map<std::uint32_t, ClientSnapshot> cache;
-	std::map<std::uint32_t, std::string> no_files;
+	const FileMap no_files;
 	CECPacket resp(EC_OP_SHARED_FILES);
 	PutClientWithPartStatus(resp, 11, nullptr, 0);
 
@@ -1862,7 +1935,7 @@ TEST(Refresher, ClientEmptyPartStatusMeansFullSource)
 TEST(Refresher, ClientPartStatusIsDecodedLsbFirst)
 {
 	std::map<std::uint32_t, ClientSnapshot> cache;
-	std::map<std::uint32_t, std::string> no_files;
+	const FileMap no_files;
 	CECPacket resp(EC_OP_SHARED_FILES);
 	// 0x05 = bits 0 and 2 set, LSB-first (BitVector::s_posMask).
 	const std::uint8_t buf[] = { 0x05 };
@@ -1900,6 +1973,20 @@ static void PutClientWithReqFileAndPartStatus(CECPacket &resp,
 	resp.AddTag(container);
 }
 
+// ApplyGetUpdateToClients resolves a peer's ECID against the live file map,
+// so the fixtures need FileMap entries rather than a bare ecid->hash map.
+static FileMap FilesWithHashes(std::initializer_list<std::pair<std::uint32_t, const char *>> rows)
+{
+	FileMap m;
+	for (const auto &row : rows) {
+		FileSnapshot f;
+		f.ecid = row.first;
+		f.hash = row.second;
+		m.emplace(row.first, std::move(f));
+	}
+	return m;
+}
+
 TEST(Refresher, ClientPartStatusIsDroppedWhenTheRequestFileChanges)
 {
 	// An A4AF swap. CUpDownClient::SetReqFile clears m_downPartStatus without
@@ -1908,9 +1995,8 @@ TEST(Refresher, ClientPartStatusIsDroppedWhenTheRequestFileChanges)
 	// describe the OLD file and report the peer as holding parts of a file it
 	// has never sent a status for.
 	std::map<std::uint32_t, ClientSnapshot> cache;
-	std::map<std::uint32_t, std::string> files;
-	files[70] = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
-	files[71] = "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb";
+	const FileMap files = FilesWithHashes(
+		{ { 70, "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa" }, { 71, "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb" } });
 
 	const std::uint8_t buf[] = { 0x05 };
 	CECPacket first(EC_OP_SHARED_FILES);
@@ -1936,9 +2022,8 @@ TEST(Refresher, ClientPartStatusInTheSameTickSurvivesTheFileChange)
 	// hash is merged before the PART_STATUS decode, so a peer that swaps and
 	// reports its new status in one tick keeps the new status.
 	std::map<std::uint32_t, ClientSnapshot> cache;
-	std::map<std::uint32_t, std::string> files;
-	files[70] = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
-	files[71] = "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb";
+	const FileMap files = FilesWithHashes(
+		{ { 70, "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa" }, { 71, "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb" } });
 
 	const std::uint8_t old_buf[] = { 0x05 };
 	CECPacket first(EC_OP_SHARED_FILES);
@@ -1962,8 +2047,7 @@ TEST(Refresher, ClientRequestFileZeroClearsTheDownloadHash)
 	// absent tag. Reading that as "unchanged" left a finished peer listed as
 	// a source of the file it had just completed, bitmap and all.
 	std::map<std::uint32_t, ClientSnapshot> cache;
-	std::map<std::uint32_t, std::string> files;
-	files[70] = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
+	const FileMap files = FilesWithHashes({ { 70, "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa" } });
 
 	const std::uint8_t buf[] = { 0x05 };
 	CECPacket first(EC_OP_SHARED_FILES);
@@ -1992,7 +2076,7 @@ TEST(Refresher, ClientAbsentPartStatusLeavesCachedBitmap)
 		c.has_part_status = true;
 		cache.emplace(13, c);
 	}
-	std::map<std::uint32_t, std::string> no_files;
+	const FileMap no_files;
 	CECPacket resp(EC_OP_SHARED_FILES);
 	PutOneClient(resp, 13, static_cast<std::uint32_t>(SO_AMULE), nullptr);
 
@@ -2007,7 +2091,7 @@ TEST(Refresher, ClientAbsentPartStatusLeavesCachedBitmap)
 TEST(Refresher, ClientVersionUnknownYieldsLocaleIndependentSentinel)
 {
 	std::map<std::uint32_t, ClientSnapshot> cache;
-	std::map<std::uint32_t, std::string> no_files;
+	const FileMap no_files;
 	CECPacket resp(EC_OP_SHARED_FILES);
 	// Unidentified client + a translated version string, as a non-English
 	// daemon would ship it. Must NOT leak into the API response.
@@ -2020,7 +2104,7 @@ TEST(Refresher, ClientVersionUnknownYieldsLocaleIndependentSentinel)
 TEST(Refresher, ClientVersionKnownStringPassesThrough)
 {
 	std::map<std::uint32_t, ClientSnapshot> cache;
-	std::map<std::uint32_t, std::string> no_files;
+	const FileMap no_files;
 	CECPacket resp(EC_OP_SHARED_FILES);
 	PutOneClient(resp, 8, static_cast<std::uint32_t>(SO_AMULE), "aMule 2.3.3");
 	ApplyGetUpdateToClients(&resp, cache, no_files);
@@ -2031,7 +2115,7 @@ TEST(Refresher, ClientVersionKnownStringPassesThrough)
 TEST(Refresher, ClientKnownButNoVersionStringFallsBackToSentinel)
 {
 	std::map<std::uint32_t, ClientSnapshot> cache;
-	std::map<std::uint32_t, std::string> no_files;
+	const FileMap no_files;
 	CECPacket resp(EC_OP_SHARED_FILES);
 	// Known software, but the daemon shipped no version string at all.
 	PutOneClient(resp, 9, static_cast<std::uint32_t>(SO_EMULE), nullptr);
@@ -2049,7 +2133,7 @@ TEST(Refresher, ClientKnownButNoVersionStringFallsBackToSentinel)
 TEST(Refresher, ClientDetailFieldsDecode)
 {
 	std::map<std::uint32_t, ClientSnapshot> cache;
-	std::map<std::uint32_t, std::string> no_files;
+	const FileMap no_files;
 	CECPacket resp(EC_OP_SHARED_FILES);
 	CECTag container(EC_TAG_CLIENT, static_cast<std::uint32_t>(0));
 

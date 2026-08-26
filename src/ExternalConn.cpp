@@ -48,8 +48,10 @@
 #include "ServerConnect.h"       // Needed for CServerConnect
 #include "UploadQueue.h"         // Needed for CUploadQueue
 #include "AmuleApiCredentials.h"
+#include "BrowseManager.h"
 #include "amule.h"      // Needed for theApp
 #include "SearchList.h" // Needed for GetSearchResults
+#include "ClientVersionString.h"
 #include "ClientList.h"
 #include "ChatSessionStore.h"
 #include "ClientCreditsList.h" // Needed for CClientCreditsList
@@ -1061,14 +1063,16 @@ void CExternalConnListener::OnAccept()
 	// non-blocking accept (although if we got here, there
 	// should ALWAYS be a pending connection).
 	if (AcceptWith(*sock, false)) {
-		// Apply EC keepalive on the freshly-accepted server-side
-		// socket so amuled detects a half-open EC client (gui
-		// process killed, network blip, FIN lost) symmetrically
-		// with what the client just enabled on its end. Without
-		// this, the kernel sits on the dead connection for the
-		// default ~2h TCP retransmit timeout, holding the
-		// CECServerSocket and its m_ec_notifier reference.
-		sock->ApplyEcKeepalive();
+		// Apply the EC socket options on the freshly-accepted
+		// server-side socket, symmetrically with what the client just
+		// enabled on its end: keepalive so amuled detects a half-open
+		// EC client (gui process killed, network blip, FIN lost)
+		// instead of sitting on the dead connection for the default
+		// ~2h TCP retransmit timeout, holding the CECServerSocket and
+		// its m_ec_notifier reference; and TCP_NODELAY, which only
+		// removes the ~40 ms Nagle/delayed-ACK stall on the replies we
+		// send if it is set on this end too.
+		sock->ApplyEcSocketOptions();
 		AddLogLineN(_("New external connection accepted"));
 	} else {
 		delete sock;
@@ -1927,16 +1931,13 @@ static CECPacket *Get_EC_Response_ClientHistory()
 			entry.AddTag(CECTag(EC_TAG_CLIENT_USER_PORT, meta.lastPort));
 			entry.AddTag(CECTag(EC_TAG_CLIENT_KAD_PORT, meta.kadPort));
 			entry.AddTag(CECTag(EC_TAG_CLIENT_SOFTWARE, meta.clientSoft));
-			// The generic major.minor.update form, not the per-software
-			// rendering ReGetClientSoft() produces. That one branches on
-			// the client type and is built from locals inside the
-			// handshake, so reproducing it here would mean either
-			// duplicating it or refactoring the handshake -- and the
-			// difference only shows on the few clients with a bespoke
-			// format (lPhant, eMule+), in a history row.
+			// The same per-software rendering the live path uses. This used
+			// to be a generic major.minor.update built here, on the reasoning
+			// that only lPhant and eMule+ have a bespoke format -- which
+			// overlooked plain eMule, whose update component is a letter, so
+			// every eMule in the history read as v0.70.1 rather than v0.70b.
 			entry.AddTag(CECTag(EC_TAG_CLIENT_SOFT_VER_STR,
-				CFormat(wxT("v%u.%u.%u")) % (meta.version / 100000) %
-					((meta.version % 100000) / 1000) % ((meta.version % 1000) / 100)));
+				FormatPackedClientVersion(meta.clientSoft, meta.version)));
 			entry.AddTag(CECTag(EC_TAG_CLIENT_FROM, meta.sourceFrom));
 			entry.AddTag(CECTag(EC_TAG_CLIENT_OBFUSCATION_STATUS, meta.obfuscation));
 #ifdef ENABLE_IP2COUNTRY
@@ -2556,16 +2557,14 @@ static CECPacket *Get_EC_Response_Friend(const CECPacket *request, bool multiSea
 		// instead of minting a second identity for it. CUpDownClient::
 		// RequestSharedFileList() declines to re-ask a peer that is still
 		// answering, so a freshly allocated ID would never be stamped with a
-		// lifecycle -- while SetBrowseSearchId has already repointed every
+		// lifecycle -- while PinBrowseSearchId has already repointed every
 		// later status write away from the first ID, leaving that one
 		// BROWSE_IN_PROGRESS with nothing able to terminalize it. There is
-		// exactly one m_browseStatus / m_iFileListRequested per client, so
-		// there can only be one ID to report on. Returns 0 when the peer has
-		// no browse running, i.e. when the caller should allocate as usual.
+		// exactly one browse per client, so there can only be one ID to
+		// report on. Returns 0 when the peer has no browse running, i.e. when
+		// the caller should allocate as usual.
 		auto browseInFlightId = [](const CUpDownClient *peer) -> uint32 {
-			return (peer != nullptr && peer->GetFileListRequested() > 0)
-				       ? peer->GetBrowseSearchId()
-				       : 0;
+			return peer != nullptr ? theApp->browsemanager->SearchIdFor(peer) : 0;
 		};
 		// Same reply as a fresh browse, pointing at the browse that is really
 		// running: no allocation (the second ID would be stranded), no
@@ -2616,7 +2615,7 @@ static CECPacket *Get_EC_Response_Friend(const CECPacket *request, bool multiSea
 						theApp->searchlist->RegisterBrowseSearch(
 							browseId, client->GetUserName(), client->ECID());
 					}
-					client->SetBrowseSearchId(browseId);
+					client->PinBrowseSearchId(browseId);
 					client->RequestSharedFileList();
 					response = BuildBrowseReply(browseId, reftag);
 				}
@@ -2822,20 +2821,20 @@ static CECPacket *Get_EC_Response_Search_Results(CObjTagMap &tagmap, wxUIntPtr s
 // which demuxes by search ID), and its container's bulk-delete-on-poll works
 // correctly across the union. Only reached for m_multiSearchActive clients.
 //
-// Enumerates CSearchList::GetKnownSearchIds() + GetBrowseSearchIds() -- every
-// search AND "View Files" browse tab the core holds, started by the
-// monolithic GUI or by any EC client -- rather than s_ecSearches.ActiveIds(),
+// Enumerates CSearchList::GetKnownSearchIds() -- every search AND "View Files"
+// browse tab the core holds, started by the monolithic GUI or by any EC client
+// -- rather than s_ecSearches.ActiveIds(),
 // which only ever holds EC-initiated searches (Register() is called from
 // exactly one place, the EC_OP_SEARCH_START handler). A monolithic-started
 // search's results would otherwise never reach amulegui even once
 // Get_EC_Response_Search_List (below) learned to enumerate it: the two have
 // to agree on the same set, or a discovered tab appears and never fills.
-// Browses need their own second source here (but NOT in
-// Get_EC_Response_Search_List -- see that function) since a browse tab is
-// not a CSearchList search and so is absent from m_searchStrings; without
-// it, a browse's own STRINGS reply (BuildBrowseReply) tells the client to
-// expect results on this id, but this union never sends any (got3nks, PR
-// #680 review). s_ecSearches keeps governing EC-client lifecycle and
+// Browses need no second source here any more: every one of them reaches
+// RegisterBrowseSearch before its request goes out, so m_searchStrings holds
+// them alongside real searches and GetKnownSearchIds() covers both. It used
+// to be absent from that map, and the second source was what stopped a
+// browse's own STRINGS reply (BuildBrowseReply) promising results this union
+// would then never send (got3nks, PR #680 review). s_ecSearches keeps governing EC-client lifecycle and
 // eviction only -- folding monolithic searches into that 20-entry LRU would
 // let unrelated EC traffic evict, and so stop, a local user's own
 // still-running Kad search.
@@ -2889,11 +2888,12 @@ static CECPacket *Get_EC_Response_Search_Results_Union(
 			}
 		}
 	};
+	// GetKnownSearchIds() covers browses too: RequestSharedFileList registers
+	// every one of them, by either route, before the request goes out, and
+	// RemoveResults drops the registration and the browse together. The second
+	// source this loop used to have emitted each browse a second time.
 	for (const auto &entry : theApp->searchlist->GetKnownSearchIds()) {
 		emitResultsFor(entry.first);
-	}
-	for (const auto &entry : theApp->searchlist->GetBrowseSearchIds()) {
-		emitResultsFor(static_cast<uint32>(entry.first));
 	}
 
 	if (partial_update_active) {
@@ -3020,8 +3020,12 @@ static CECPacket *Get_EC_Response_Search_List()
 // reply's (or the entry's) first tag via GetFirstTagSafe.
 static void AppendSearchProgress(CECTag &out, wxUIntPtr sid)
 {
-	if (theApp->searchlist->HasBrowseStatus(sid)) {
-		const uint8 browseStatus = theApp->searchlist->GetBrowseStatusById(sid);
+	if (theApp->browsemanager->Has(static_cast<uint32>(sid))) {
+		const browse::State bstate = theApp->browsemanager->StateOf(static_cast<uint32>(sid));
+		const uint8 browseStatus =
+			static_cast<uint8>(bstate == browse::State::InProgress ? BROWSE_IN_PROGRESS
+					   : bstate == browse::State::Finished ? BROWSE_FINISHED
+									       : BROWSE_FAILED);
 		// Bar value (0..100 running, 0xffff done/failed) so amuleGUI drives
 		// the browse tab's gauge via the same UpdateSearchProgress path as
 		// a search.
@@ -3029,6 +3033,10 @@ static void AppendSearchProgress(CECTag &out, wxUIntPtr sid)
 		out.AddTag(CECTag(EC_TAG_SEARCH_STATUS, bar));
 		out.AddTag(CECTag(EC_TAG_SEARCH_BROWSE_STATUS, browseStatus));
 		out.AddTag(CECTag(EC_TAG_SEARCH_ID, static_cast<uint32>(sid)));
+		// The peer's nickname, for a browse. Same tag and same source as the
+		// search list's, so a client polling progress can name what it is
+		// reporting on without a second round trip for the list.
+		out.AddTag(EC_TAG_SEARCH_NAME, theApp->searchlist->GetSearchStringById(sid));
 		out.AddTag(CECTag(EC_TAG_SEARCH_RESULT_COUNT,
 			static_cast<uint32>(theApp->searchlist->GetSearchResults(sid).size())));
 		// Also emit the standard lifecycle tags (mapped from the browse
@@ -3055,6 +3063,11 @@ static void AppendSearchProgress(CECTag &out, wxUIntPtr sid)
 	out.AddTag(CECTag(EC_TAG_SEARCH_STATUS, theApp->searchlist->GetSearchBarStatusById(sid)));
 	// Echo the ID so the client can confirm which search this is for.
 	out.AddTag(CECTag(EC_TAG_SEARCH_ID, static_cast<uint32>(sid)));
+	// ...and the query it was started with, so a progress reply is readable on
+	// its own. The search list carries the same tag from the same source; a
+	// client that polls progress per tab should not have to fetch the list as
+	// well just to label it.
+	out.AddTag(EC_TAG_SEARCH_NAME, theApp->searchlist->GetSearchStringById(sid));
 	out.AddTag(CECTag(EC_TAG_SEARCH_LIFECYCLE_STATE, static_cast<uint8>(st)));
 	// Per-id kind (not the scalar): a multi-search client polls each tab by id
 	// and needs THIS search's real type, e.g. to enable the Kad-only "More"
@@ -3131,11 +3144,9 @@ static CECPacket *Get_EC_Response_Search_Progress_Union(const CECPacket *request
 
 	// No ids named: report everything the daemon holds. Used by a stateless
 	// caller that has no tracked set to enumerate.
+	// Browses included; see the union poll above.
 	for (const auto &known : theApp->searchlist->GetKnownSearchIds()) {
 		emitOne(known.first);
-	}
-	for (const auto &browse : theApp->searchlist->GetBrowseSearchIds()) {
-		emitOne(browse.first);
 	}
 
 	return response;
@@ -4275,6 +4286,57 @@ CECPacket *CECServerSocket::ProcessRequest2(const CECPacket *request)
 		response = new CECPacket(EC_OP_CHAT_MESSAGES);
 		response->AddTag(CECTag(EC_TAG_CHAT_MSG_ID, theApp->chatsessions->LastMsgId()));
 		response->AddTag(EncodeChatSession(*session, ChatCursorFrom(request)));
+		break;
+	}
+	case EC_OP_REFRESH_MEDIA_METADATA: {
+		// Re-extract media metadata: for one file when the request names a
+		// hash, otherwise for the whole share. Answers immediately with how
+		// many probes were queued -- the work happens on the media-probe
+		// worker, so a large library does not block this EC lane.
+		// Disabled is not the same answer as "nothing was eligible", and both
+		// used to arrive as queued = 0. A caller cannot act on that: a share
+		// with no media in it legitimately queues nothing. Answered first, and
+		// as a failure, so REST turns it into an error naming the reason
+		// instead of a cheerful 202 that did nothing.
+		if (!thePrefs::GetMediaMetadataEnabled()) {
+			response = new CECPacket(EC_OP_FAILED);
+			response->AddTag(CECTag(EC_TAG_STRING,
+				wxTRANSLATE("Media metadata extraction is disabled in preferences")));
+			break;
+		}
+		// Every EC_TAG_KNOWNFILE child, not just the first: the GUI sends one
+		// request for a whole selection rather than one packet per file, which
+		// would stall its own polling on the request fifo.
+		std::vector<CMD4Hash> hashes;
+		for (const CECTag &child : *request) {
+			if (child.GetTagName() == EC_TAG_KNOWNFILE) {
+				hashes.push_back(child.GetMD4Data());
+			}
+		}
+		unsigned queued = 0;
+		if (hashes.size() > 1) {
+			queued = theApp->sharedfiles->RefreshMediaMetadata(hashes);
+		} else if (!hashes.empty()) {
+			const CMD4Hash hash = hashes.front();
+			if (!theApp->sharedfiles->RefreshMediaMetadata(hash)) {
+				// The caller already resolved the hash against its own
+				// snapshot, so "no such file" is not the reason by the time
+				// this runs -- what is left is a file whose extension is not
+				// audio/video, or an in-progress download. Say that, rather
+				// than a message whose first half can no longer be true.
+				response = new CECPacket(EC_OP_FAILED);
+				response->AddTag(CECTag(EC_TAG_STRING,
+					wxTRANSLATE("File is not eligible for media metadata "
+						    "extraction (not an audio/video file, or an "
+						    "incomplete download)")));
+				break;
+			}
+			queued = 1;
+		} else {
+			queued = theApp->sharedfiles->RefreshAllMediaMetadata();
+		}
+		response = new CECPacket(EC_OP_NOOP);
+		response->AddTag(CECTag(EC_TAG_KNOWNFILE_MEDIA_QUEUED, static_cast<uint32>(queued)));
 		break;
 	}
 	case EC_OP_GET_CHAT_SESSIONS: {

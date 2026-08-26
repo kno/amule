@@ -91,6 +91,9 @@ public:
 	// admit the connection; returns a 401/403/429 Response to short-
 	// circuit unauth peers without burning a slot.
 	boost::optional<CHttpServer::Response> PreflightEvents(const CHttpServer::Request &req);
+	// CORS for transport-built replies (408 / 413 / 431); see the .cpp.
+	void StampCorsForTransport(
+		std::map<std::string, std::string> &headers, const std::string &origin_header);
 
 private:
 	// Inner routing — picks the right Handle*() based on path/method,
@@ -134,9 +137,9 @@ private:
 		const CHttpServer::Request &, const std::string &key);
 	// source-reported filenames + counts. `key` = 32-char MD4 hash.
 	CHttpServer::Response HandleDownloadFilenames(const CHttpServer::Request &, const std::string &key);
-	// A4AF swap action (POST). `key` = 32-char MD4 hash. The GET that once
-	// listed the sources is retired -- the rows now come from
-	// GET /downloads/{hash}/clients, which flags each one with `a4af`.
+	// A4AF swap action (POST). `key` = 32-char MD4 hash. The source rows
+	// come from GET /downloads/{hash}/clients, which flags each one with
+	// `a4af`.
 	CHttpServer::Response HandleDownloadA4afAction(const CHttpServer::Request &, const std::string &key);
 	// download lifecycle mutations.
 	CHttpServer::Response HandleDownloadAdd(const CHttpServer::Request &);
@@ -220,12 +223,22 @@ private:
 	// roots and re-publishes whatever's there. Parameterless EC op
 	// (EC_OP_SHAREDFILES_RELOAD).
 	CHttpServer::Response HandleSharedReload(const CHttpServer::Request &);
+
+	// Re-extract media metadata: the whole share, or one file by hash. Both
+	// answer 202 -- the probes are queued on amuled's media-probe worker and
+	// the response says how many, never what they found.
+	CHttpServer::Response HandleSharedMediaRefresh(const CHttpServer::Request &);
+	CHttpServer::Response HandleSharedMediaRefreshOne(
+		const CHttpServer::Request &, const std::string &hash);
 	CHttpServer::Response HandleSharedDirectories(const CHttpServer::Request &);
 	CHttpServer::Response HandleSharedDirectoriesPut(const CHttpServer::Request &);
 	CHttpServer::Response HandleSharedDirectoriesAdd(const CHttpServer::Request &);
 	CHttpServer::Response HandleSharedDirectoriesDelete(const CHttpServer::Request &);
 	// categories CRUD.
 	CHttpServer::Response HandleCategoryCreate(const CHttpServer::Request &);
+	CHttpServer::Response HandleHealth(const CHttpServer::Request &req);
+	CHttpServer::Response HandleCategoryOne(
+		const CHttpServer::Request &req, const std::string &index_str);
 	CHttpServer::Response HandleCategoryUpdate(
 		const CHttpServer::Request &, const std::string &index_str);
 	CHttpServer::Response HandleCategoryDelete(
@@ -362,7 +375,8 @@ private:
 	mutable std::mutex m_etagCacheMu;
 	struct EtagCacheEntry
 	{
-		std::time_t snapshot_at = 0;
+		// Refresh revision, not a timestamp; see CApiDispatcher::Dispatch.
+		std::uint64_t snapshot_rev = 0;
 		std::string etag;
 	};
 	std::map<std::string, EtagCacheEntry> m_etagCache;

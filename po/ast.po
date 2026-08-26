@@ -9,8 +9,8 @@ msgid ""
 msgstr ""
 "Project-Id-Version: aMule\n"
 "Report-Msgid-Bugs-To: https://github.com/amule-org/amule/issues\n"
-"POT-Creation-Date: 2026-08-25 08:51+0200\n"
-"PO-Revision-Date: 2026-08-22 15:11+0000\n"
+"POT-Creation-Date: 2026-08-25 21:00+0200\n"
+"PO-Revision-Date: 2026-08-25 10:02+0000\n"
 "Last-Translator: astur <malditoastur@gmail.com>\n"
 "Language-Team: Language ast <malditoastur@gmail.com>\n"
 "Language: ast\n"
@@ -502,6 +502,11 @@ msgstr ""
 #: src/amule.cpp
 msgid "Server hostname notified"
 msgstr "Nome sirvidor notificáu"
+
+#: src/amule.cpp
+#, c-format
+msgid "Media metadata: probed file is no longer known, result discarded (%s)"
+msgstr ""
 
 #: src/amule.cpp
 #, c-format
@@ -1058,11 +1063,6 @@ msgstr "1.x (basáu en eMule v0.%u)"
 
 #: src/BaseClient.cpp
 #, c-format
-msgid "Failed to retrieve shared files from user '%s'"
-msgstr "Fallu al obtener la llista de compartíos del usuariu '%s'"
-
-#: src/BaseClient.cpp
-#, c-format
 msgid "NickName: %s ID: %u"
 msgstr "Nomatu:  %s ID: %u"
 
@@ -1103,6 +1103,11 @@ msgstr "Nuevu mensax de '%s' (IP:%s)"
 #, fuzzy, c-format
 msgid "User %s (%u) requested sharedfiles-list for not existing directory '%s' -> Ignored"
 msgstr "Usuariu %s (%u) solicitó la to llista de ficheros compartíos del direutoriu %s-> Refugada"
+
+#: src/BrowseManager.cpp
+#, c-format
+msgid "Failed to retrieve shared files from user '%s'"
+msgstr "Fallu al obtener la llista de compartíos del usuariu '%s'"
 
 #: src/CanceledFileList.cpp src/KnownFileList.cpp src/SearchList.cpp
 #, fuzzy, c-format
@@ -2221,6 +2226,15 @@ msgid "No such chat session"
 msgstr "Zarrar esta sesión de charra"
 
 #: src/ExternalConn.cpp
+#, fuzzy
+msgid "Media metadata extraction is disabled in preferences"
+msgstr "Kad ta deshabilitáu n'opciones."
+
+#: src/ExternalConn.cpp
+msgid "File is not eligible for media metadata extraction (not an audio/video file, or an incomplete download)"
+msgstr ""
+
+#: src/ExternalConn.cpp
 msgid "Empty chat message"
 msgstr ""
 
@@ -2873,6 +2887,11 @@ msgid "Migrated existing GeoLite2-Country.mmdb to %s"
 msgstr ""
 
 #: src/IP2Country.cpp
+#, c-format
+msgid "%s is not a readable MaxMindDB file - discarding it. A fresh copy will be downloaded on the next start, or now via Preferences -> IP2Country -> 'Update now'."
+msgstr ""
+
+#: src/IP2Country.cpp
 msgid "IP2Country: MaxMind selected as the GeoIP source but no License Key configured. Open Preferences -> IP2Country, paste your free MaxMind License Key and click 'Update now'."
 msgstr ""
 
@@ -3251,6 +3270,11 @@ msgstr ""
 
 #: src/MediaProbe.cpp
 #, c-format
+msgid "Media metadata: %s is gone, nothing to extract"
+msgstr ""
+
+#: src/MediaProbe.cpp
+#, c-format
 msgid "Extracting media metadata with ffprobe: %s"
 msgstr ""
 
@@ -3261,20 +3285,49 @@ msgstr ""
 
 #: src/MediaProbe.cpp
 #, c-format
+msgid "Media metadata: ignoring implausibly large ffprobe output for %s"
+msgstr ""
+
+#: src/MediaProbe.cpp
+#, c-format
+msgid "Media metadata: could not run ffprobe (%s) -- check the media metadata settings"
+msgstr ""
+
+#: src/MediaProbe.cpp
+#, c-format
 msgid "Media metadata: ffprobe failed (code %d) for %s"
+msgstr ""
+
+#: src/MediaProbe.cpp
+#, c-format
+msgid "Media metadata: ffprobe found nothing usable in %s"
 msgstr ""
 
 #: src/MediaProbeThread.cpp
 #, c-format
-msgid "Extracted media metadata from %u file (%u failed)"
-msgid_plural "Extracted media metadata from %u files (%u failed)"
+msgid "Finished extracting media metadata from %u shared file (%u failed)"
+msgid_plural "Finished extracting media metadata from %u shared files (%u failed)"
 msgstr[0] ""
 msgstr[1] ""
 
 #: src/MediaProbeThread.cpp
 #, c-format
-msgid "Extracted media metadata from %u file"
-msgid_plural "Extracted media metadata from %u files"
+msgid "Finished extracting media metadata from %u shared file"
+msgid_plural "Finished extracting media metadata from %u shared files"
+msgstr[0] ""
+msgstr[1] ""
+
+#: src/MediaProbeThread.cpp
+#, c-format
+msgid "%u further file failed media metadata extraction (not listed individually)"
+msgid_plural "%u further files failed media metadata extraction (not listed individually)"
+msgstr[0] ""
+msgstr[1] ""
+
+#: src/MediaProbeThread.cpp
+#, c-format
+msgid "%u further shared file is gone (not listed individually)"
+msgid_plural "%u further shared files are gone (not listed individually)"
 msgstr[0] ""
 msgstr[1] ""
 
@@ -6583,6 +6636,10 @@ msgid "Unexpected error while attempting Kad search: "
 msgstr "Fallu non esperáu mentantu tentaba guetar en Kad: "
 
 #: src/SearchList.cpp
+msgid "Search timed out: the server did not answer."
+msgstr ""
+
+#: src/SearchList.cpp
 msgid "Kad search: requested wider results from one more peer."
 msgstr ""
 
@@ -6650,6 +6707,48 @@ msgstr "Encaboxar"
 
 #: src/SearchListCtrl.cpp
 msgid "New"
+msgstr ""
+
+#: src/SearchProgressReport.cpp
+#, fuzzy
+msgid "running"
+msgstr "Executando"
+
+#: src/SearchProgressReport.cpp
+#, fuzzy
+msgid "finished"
+msgstr "Finlandés"
+
+#: src/SearchProgressReport.cpp
+msgid "idle"
+msgstr ""
+
+#: src/SearchProgressReport.cpp
+#, c-format
+msgid "Search %u: %s, %u %% (%u results)\n"
+msgstr ""
+
+#: src/SearchProgressReport.cpp
+#, c-format
+msgid "Search %u \"%s\": %s, %u %% (%u results)\n"
+msgstr ""
+
+#: src/SearchProgressReport.cpp src/TextClient.cpp
+msgid "Search expired or unknown ID. Start a new search.\n"
+msgstr ""
+
+#: src/SearchProgressReport.cpp
+#, c-format
+msgid "Search progress: %u %% \n"
+msgstr ""
+
+#: src/SearchProgressReport.cpp
+#, fuzzy
+msgid "Search progress not available"
+msgstr "Amosar porcentax de progresu"
+
+#: src/SearchProgressReport.cpp
+msgid "No search to report on.\n"
 msgstr ""
 
 #: src/ServerConnect.cpp
@@ -7249,6 +7348,17 @@ msgid "No shareable files found in directory: %s"
 msgstr "Ensin ficheros que compartir en direutoriu: %s"
 
 #: src/SharedFileList.cpp
+msgid "Media metadata extraction is disabled in preferences, so there is nothing to re-extract."
+msgstr ""
+
+#: src/SharedFileList.cpp
+#, c-format
+msgid "Re-extracting media metadata for %u shared file"
+msgid_plural "Re-extracting media metadata for %u shared files"
+msgstr[0] ""
+msgstr[1] ""
+
+#: src/SharedFileList.cpp
 #, fuzzy, c-format
 msgid "Now sharing file: %s"
 msgstr "Fallu guardando ficheru known.met: %s"
@@ -7337,6 +7447,10 @@ msgid "Verify Local Data"
 msgstr ""
 
 #: src/SharedFilesCtrl.cpp
+msgid "Re-extract &media metadata"
+msgstr ""
+
+#: src/SharedFilesCtrl.cpp
 msgid "Add files in collection to transfer list"
 msgstr "Amestar ficheros en colleición a la llista de descargues"
 
@@ -7376,6 +7490,49 @@ msgstr ""
 #: src/SharedFilesCtrl.cpp
 #, c-format
 msgid "Verify Local Data on PartFile is currently not supported: %s"
+msgstr ""
+
+#: src/SharedFilesCtrl.cpp
+#, c-format
+msgid "Media metadata: skipping %u incomplete download"
+msgid_plural "Media metadata: skipping %u incomplete downloads"
+msgstr[0] ""
+msgstr[1] ""
+
+#: src/SharedFilesCtrl.cpp
+#, c-format
+msgid "Media metadata: skipping %u file that is not audio or video"
+msgid_plural "Media metadata: skipping %u files that are not audio or video"
+msgstr[0] ""
+msgstr[1] ""
+
+#: src/SharedFilesCtrl.cpp
+#, c-format
+msgid "Re-extract media metadata for %u file?"
+msgid_plural "Re-extract media metadata for %u files?"
+msgstr[0] ""
+msgstr[1] ""
+
+#: src/SharedFilesCtrl.cpp
+#, c-format
+msgid "%u incomplete download will be skipped."
+msgid_plural "%u incomplete downloads will be skipped."
+msgstr[0] ""
+msgstr[1] ""
+
+#: src/SharedFilesCtrl.cpp
+#, c-format
+msgid "%u file is not audio or video and will be skipped."
+msgid_plural "%u files are not audio or video and will be skipped."
+msgstr[0] ""
+msgstr[1] ""
+
+#: src/SharedFilesCtrl.cpp
+msgid "This runs in the background. Progress is reported in the log."
+msgstr ""
+
+#: src/SharedFilesCtrl.cpp
+msgid "Re-extract media metadata"
 msgstr ""
 
 #: src/SharedFilesCtrl.cpp
@@ -7694,6 +7851,10 @@ msgid "Execute <str> and exit."
 msgstr "Executa <str> y cuela."
 
 #: src/TextClient.cpp
+msgid "Separate list fields with spaces, as before, instead of tabs."
+msgstr ""
+
+#: src/TextClient.cpp
 msgid "Invalid IP format. Use xxx.xxx.xxx.xxx:xxxx\n"
 msgstr "Formatu IP non válidu. Usa xxx.xxx.xxx.xxx:xxxx\n"
 
@@ -7862,23 +8023,9 @@ msgid "[PartFile]"
 msgstr "[Ficheru part]"
 
 #: src/TextClient.cpp
-msgid "Search expired or unknown ID. Start a new search.\n"
-msgstr ""
-
-#: src/TextClient.cpp
 #, c-format
 msgid "Number of search results: %i\n"
 msgstr "Númberu de resultaos de la gueta: %i\n"
-
-#: src/TextClient.cpp
-#, c-format
-msgid "Search progress: %u %% \n"
-msgstr ""
-
-#: src/TextClient.cpp
-#, fuzzy
-msgid "Search progress not available"
-msgstr "Amosar porcentax de progresu"
 
 #: src/TextClient.cpp
 #, c-format

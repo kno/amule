@@ -26,6 +26,8 @@
 #include "config.h" // Needed for VERSION
 #include "TextClient.h"
 
+#include "SearchProgressReport.h"
+
 #ifndef __WINDOWS__
 #include <unistd.h> // Do_not_auto_remove
 #endif
@@ -225,10 +227,15 @@ void CamulecmdApp::OnInitCmdLine(wxCmdLineParser &parser)
 		_("Execute <str> and exit."),
 		wxCMD_LINE_VAL_STRING,
 		wxCMD_LINE_PARAM_OPTIONAL);
+	parser.AddSwitch("",
+		"space-separated",
+		_("Separate list fields with spaces, as before, instead of tabs."),
+		wxCMD_LINE_PARAM_OPTIONAL);
 }
 
 bool CamulecmdApp::OnCmdLineParsed(wxCmdLineParser &parser)
 {
+	m_spaceSeparated = parser.Found("space-separated");
 	m_HasCmdOnCmdLine = parser.Found("command", &m_CmdString);
 	if (m_CmdString.Lower().StartsWith("help")) {
 		OnInitCommandSet();
@@ -947,26 +954,36 @@ void CamulecmdApp::Process_Answer_v2(const CECPacket *response)
 			uint64 filesize, donesize;
 			filesize = tag->SizeFull();
 			donesize = tag->SizeDone();
-			s << tag->FileHashString() << " " << tag->FileName()
-			  << (CFormat("\n\t [%.1f%%] %4i/%4i ") %
-				     ((float)donesize / ((float)filesize) * 100.0) %
+			// Still two lines per entry: the newline delimits records and the
+			// leading tab marks the continuation, so splitting each line on
+			// the separator stays unambiguous.
+			s << tag->FileHashString() << Sep(" ") << Field(tag->FileName())
+			  << (CFormat("\n\t [%.1f%%]") % ((float)donesize / ((float)filesize) * 100.0))
+			  << Sep(" ")
+			  << (CFormat("%4i/%4i") %
 				     ((int)tag->SourceCount() - (int)tag->SourceNotCurrCount()) %
 				     (int)tag->SourceCount())
+			  << Sep(" ")
+			  // The no-value branches were padding that stood in for the
+			  // value AND its separator, so in tab mode each becomes one
+			  // empty field -- every row keeps the same field count.
 			  << ((int)tag->SourceCountA4AF()
-					     ? wxString(CFormat("+%2.2i ") % (int)tag->SourceCountA4AF())
-					     : wxString("    "))
+					     ? wxString(CFormat("+%2.2i") % (int)tag->SourceCountA4AF()) +
+						       Sep(" ")
+					     : Sep("    "))
 			  << ((int)tag->SourceXferCount()
-					     ? wxString(CFormat("(%2.2i) - ") % (int)tag->SourceXferCount())
-					     : wxString("     - "))
+					     ? wxString(CFormat("(%2.2i)") % (int)tag->SourceXferCount()) +
+						       Sep(" - ")
+					     : Sep("     - "))
 			  << tag->GetFileStatusString();
-			s << " - " << tag->PartMetName();
+			s << Sep(" - ") << tag->PartMetName();
 			if (tag->DownPrio() < 10) {
-				s << " - " << PriorityToStr((int)tag->DownPrio(), 0);
+				s << Sep(" - ") << PriorityToStr((int)tag->DownPrio(), 0);
 			} else {
-				s << " - " << PriorityToStr((tag->DownPrio() - 10), 1);
+				s << Sep(" - ") << PriorityToStr((tag->DownPrio() - 10), 1);
 			}
 			if (tag->SourceXferCount() > 0) {
-				s << " - " + CastItoSpeed(tag->Speed());
+				s << Sep(" - ") + CastItoSpeed(tag->Speed());
 			}
 			s << "\n";
 		}
@@ -980,9 +997,10 @@ void CamulecmdApp::Process_Answer_v2(const CECPacket *response)
 			const CECTag *partfileSpeed = tag->GetTagByName(EC_TAG_CLIENT_UP_SPEED);
 			if (clientName && partfileName && partfileSizeXfer && partfileSpeed) {
 				s << "\n"
-				  << CFormat("%10u ") % tag->GetInt() << clientName->GetStringData() << " "
-				  << partfileName->GetStringData() << " "
-				  << CastItoXBytes(partfileSizeXfer->GetInt()) << " "
+				  << CFormat("%10u") % tag->GetInt() << Sep(" ")
+				  << Field(clientName->GetStringData()) << Sep(" ")
+				  << Field(partfileName->GetStringData()) << Sep(" ")
+				  << CastItoXBytes(partfileSizeXfer->GetInt()) << Sep(" ")
 				  << CastItoSpeed(partfileSpeed->GetInt());
 			}
 		}
@@ -1002,10 +1020,16 @@ void CamulecmdApp::Process_Answer_v2(const CECPacket *response)
 			const CECTag *country = tag.GetTagByName(EC_TAG_SERVER_COUNTRY);
 			if (serverName) {
 				wxString ip = tag.GetIPv4Data().StringIP();
-				ip.Append(' ', 24 - ip.Length());
-				s << ip << serverName->GetStringData();
+				if (m_spaceSeparated) {
+					// The column padding was the separator.
+					ip.Append(' ', 24 - ip.Length());
+					s << ip;
+				} else {
+					s << ip << "\t";
+				}
+				s << Field(serverName->GetStringData());
 				if (country && !country->GetStringData().IsEmpty()) {
-					s << " [" << country->GetStringData() << "]";
+					s << Sep(" ") << "[" << country->GetStringData() << "]";
 				}
 				s << "\n";
 			}
@@ -1015,7 +1039,7 @@ void CamulecmdApp::Process_Answer_v2(const CECPacket *response)
 	case EC_OP_SHARED_FILES:
 		for (CECPacket::const_iterator it = response->begin(); it != response->end(); ++it) {
 			const CEC_SharedFile_Tag *tag = static_cast<const CEC_SharedFile_Tag *>(&*it);
-			s << tag->FileHashString() << " ";
+			s << tag->FileHashString() << Sep(" ");
 			wxString filePath = tag->FilePath();
 			bool ispartfile = true;
 			if (filePath.EndsWith(".part")) {
@@ -1029,23 +1053,24 @@ void CamulecmdApp::Process_Answer_v2(const CECPacket *response)
 				ispartfile = false;
 			}
 			if (ispartfile) {
-				s << _("[PartFile]") << " ";
+				s << _("[PartFile]") << Sep(" ");
 			} else {
-				s << filePath
+				s << Field(filePath)
 #ifdef __WINDOWS__
 				  << '\\';
 #else
 				  << '/';
 #endif
 			}
-			s << tag->FileName() << "\n\t"
-			  << PriorityToStr(tag->UpPrio() % 10, tag->UpPrio() >= 10) << " - "
-			  << CFormat("%i(%i) / %i(%i) - %s (%s) - %.2f\n") % tag->GetRequests() %
-					tag->GetAllRequests() % tag->GetAccepts() % tag->GetAllAccepts() %
-					CastItoXBytes(tag->GetXferred()) %
-					CastItoXBytes(tag->GetAllXferred()) %
-					(static_cast<float>(tag->GetAllXferred()) /
-						static_cast<float>(tag->SizeFull()));
+			s << Field(tag->FileName()) << "\n\t"
+			  << PriorityToStr(tag->UpPrio() % 10, tag->UpPrio() >= 10) << Sep(" - ")
+			  << CFormat("%i(%i)") % tag->GetRequests() % tag->GetAllRequests() << Sep(" / ")
+			  << CFormat("%i(%i)") % tag->GetAccepts() % tag->GetAllAccepts() << Sep(" - ")
+			  << CFormat("%s (%s)") % CastItoXBytes(tag->GetXferred()) %
+					CastItoXBytes(tag->GetAllXferred())
+			  << Sep(" - ")
+			  << CFormat("%.2f\n") % (static_cast<float>(tag->GetAllXferred()) /
+							 static_cast<float>(tag->SizeFull()));
 		}
 		break;
 
@@ -1071,20 +1096,14 @@ void CamulecmdApp::Process_Answer_v2(const CECPacket *response)
 		ShowResults(m_Results_map);
 		break;
 	}
-	case EC_OP_SEARCH_PROGRESS: {
-		if (response->GetTagByName(EC_TAG_SEARCH_EXPIRED)) {
-			s += _("Search expired or unknown ID. Start a new search.\n");
-			break;
-		}
-		const CECTag *tab = response->GetTagByNameSafe(EC_TAG_SEARCH_STATUS);
-		uint32 progress = tab->GetInt();
-		if (progress <= 100) {
-			s += CFormat(_("Search progress: %u %% \n")) % progress;
-		} else {
-			s += _("Search progress not available");
-		}
+	case EC_OP_SEARCH_PROGRESS:
+		// Every shape the daemon may answer with, decoded in one place. This
+		// used to read EC_TAG_SEARCH_STATUS off the top level, which the union
+		// reply does not carry there -- and since amulecmd advertises the
+		// union capability along with multi-search, the union is exactly what
+		// it gets, so `progress` reported 0 % whatever the search was doing.
+		s += ecprogress::FormatSearchProgress(*response);
 		break;
-	}
 	default:
 		s += CFormat(_("Received an unknown reply from the server, OpCode = %#x.")) %
 		     response->GetOpCode();

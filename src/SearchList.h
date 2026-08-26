@@ -181,7 +181,7 @@ public:
 	 * True if this core currently routes results/progress for searchID --
 	 * either a CSearchList search (m_searchStrings, populated in
 	 * StartNewSearch, pruned in RemoveResults) or a "View Files" browse tab
-	 * (m_browseBar; browses are not CSearchList searches but share the same
+	 * (CBrowseManager; browses are not CSearchList searches but share the same
 	 * per-ID result-routing and EC lifecycle -- got3nks, PR #680 review).
 	 * Use this to gate per-ID EC replies (SEARCH_PROGRESS, single-ID
 	 * SEARCH_RESULTS, Stop, Request_More) instead of the EC-only
@@ -208,20 +208,6 @@ public:
 	 * request, but a copy is still needless. Neither caller needs ownership.
 	 */
 	const std::map<uint32_t, wxString> &GetKnownSearchIds() const { return m_searchStrings; }
-
-	/**
-	 * Every ID this core currently holds a browse progress bar for, used as
-	 * the multi-search results union poll's second source. Not redundant with
-	 * GetKnownSearchIds() even though a browse is registered there too: the
-	 * bar is keyed by CUpDownClient::GetBrowseRoutingId(), which is the
-	 * client pointer until a browse has an ID of its own, so a monolithic
-	 * local browse has a pointer-keyed entry here between the request going
-	 * out and its first directory arriving (that is when ProcessSharedFileList
-	 * allocates the ID and registers it). Returned by reference; runs every
-	 * poll tick for every connected multi-search client, so a per-call copy
-	 * here is the one that would actually show up in the arithmetic.
-	 */
-	const std::map<wxUIntPtr, uint16> &GetBrowseSearchIds() const { return m_browseBar; }
 
 	/**
 	 * Ask the Kad search identified by searchID to widen its frontier
@@ -257,28 +243,10 @@ public:
 	// percent. Single source of truth for the bottom bar, shared by the EC
 	// PROGRESS reply (remote GUI / amuleapi) and the monolithic search dialog.
 	uint32 GetSearchBarStatusById(wxUIntPtr searchID) const;
-	// "View Files" browse tabs are not CSearchList searches, so their bar value
-	// is supplied by the browsing client (CUpDownClient::UpdateBrowseBar): 0..100
-	// running percent while the listing streams in, 0xffff when done/failed.
-	// GetSearchBarStatusById consults this first, so both the monolithic bar and
-	// the EC PROGRESS reply render the browse percent through the same path.
-	void SetBrowseBar(wxUIntPtr searchID, uint16 value) { m_browseBar[searchID] = value; }
-	// The browse lifecycle (EBrowseStatus: browsing / finished / failed) recorded
-	// by search ID alongside the bar, so the EC PROGRESS reply can report a
-	// browse's terminal state even after the browsing client has been reaped
-	// (0xffff in m_browseBar can't tell "finished" from "failed"). Set from
-	// CUpDownClient::UpdateBrowseBar; pruned in RemoveResults, so it's bounded by
-	// the same LRU ring that caps m_browseBar and every ed2k/Kad search bucket.
-	void SetBrowseStatusById(wxUIntPtr searchID, uint8 status) { m_browseStatus[searchID] = status; }
-	bool HasBrowseStatus(wxUIntPtr searchID) const
-	{
-		return m_browseStatus.find(searchID) != m_browseStatus.end();
-	}
-	uint8 GetBrowseStatusById(wxUIntPtr searchID) const
-	{
-		std::map<wxUIntPtr, uint8>::const_iterator it = m_browseStatus.find(searchID);
-		return it != m_browseStatus.end() ? it->second : 0 /* BROWSE_NONE */;
-	}
+	// "View Files" browse tabs are not CSearchList searches: CBrowseManager
+	// owns their bar, and GetSearchBarStatusById consults it first, so the
+	// monolithic bar and the EC PROGRESS reply render the same value.
+
 	// Echoes m_searchType for the current/last search; meaningful only
 	// when state is RUNNING or FINISHED. Returns LocalSearch by default.
 	SearchType GetSearchLifecycleKind() const { return m_searchType; }
@@ -488,6 +456,41 @@ private:
 	void FinalizeGlobalSearch();
 
 	/**
+	 * Shared cleanup for local-search completion, whether the connected
+	 * server answered or the wait for it ran out.
+	 */
+	void FinalizeLocalSearch();
+
+	/**
+	 * Whether a server answer arriving now has a search to be filed under.
+	 *
+	 * Shared by the TCP and UDP result paths so the two cannot drift on what
+	 * counts as filable.
+	 */
+	bool CanFileServerAnswer() const;
+
+	/**
+	 * How long an ed2k search waits for the connected server's
+	 * OP_SEARCHRESULT before it is given up on.
+	 *
+	 * Both kinds need it, for the same reason. A local search has no other
+	 * terminal path at all: the single call to LocalSearchEnd is what ends
+	 * it. A global search does have one -- the sweep drains and calls
+	 * FinalizeGlobalSearch -- but the sweep is armed *by* LocalSearchEnd,
+	 * so until the server answers there is nothing running to bound it
+	 * either. A server that never replies therefore leaves either kind
+	 * RUNNING for as long as it stays the most recent search.
+	 *
+	 * Disconnection does not cover it: CServerConnect passes globalOnly,
+	 * and StopSearch ignores a local search entirely.
+	 *
+	 * Long enough that a slow-but-alive server is not cut off, short enough
+	 * that the progress bar, the Stop button and
+	 * EC_TAG_SEARCH_LIFECYCLE_STATE do not sit wrong for a visible stretch.
+	 */
+	static const int SERVER_ANSWER_TIMEOUT_MS = 12000;
+
+	/**
 	 * Adds the specified file to the current search's results.
 	 *
 	 * @param toadd The result to add.
@@ -559,15 +562,6 @@ private:
 	//! of its own to fall back on.
 	std::map<uint32_t, wxString> m_searchStrings;
 
-	//! Bar value for "View Files" browse tabs, keyed by routing ID and set by
-	//! the browsing client (0..100 percent, or 0xffff finished/failed). Read by
-	//! GetSearchBarStatusById. Pruned in RemoveResults.
-	std::map<wxUIntPtr, uint16> m_browseBar;
-	//! Browse lifecycle (EBrowseStatus) by search ID, kept in lockstep with
-	//! m_browseBar so a browse's terminal state survives the client's teardown.
-	//! Pruned in RemoveResults.
-	std::map<wxUIntPtr, uint8> m_browseStatus;
-
 	//! ED2K-side counterpart of m_KadSearchFinished, covering both local
 	//! and global searches. Cleared to false in StartNewSearch when an
 	//! ED2K search is issued; set back to true in LocalSearchEnd (local)
@@ -575,6 +569,13 @@ private:
 	//! explicit abort). GetSearchLifecycleState uses this as the
 	//! RUNNING vs FINISHED signal for the ED2K branch.
 	bool m_ed2kSearchFinished;
+	/**
+	 * True from an ed2k search going out until the connected server answers.
+	 * Tells OnGlobalSearchTimer whether a tick is the answer-timeout one-shot
+	 * or a sweep tick: m_serverQueue is still inactive on the sweep's first
+	 * tick (that tick is what attaches the observer), so it cannot say.
+	 */
+	bool m_awaitingServerAnswer;
 
 	//! Wall-clock start of the current/last search. Stamped in
 	//! StartNewSearch; feeds the Kad cosmetic progress ramp in

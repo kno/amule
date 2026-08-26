@@ -10,7 +10,7 @@ import { api } from "../api.js";
 import { data } from "../events.js";
 import { store } from "../store.js";
 import { html, useState, useEffect, useRef, useStore } from "../dom.js";
-import { Tabs, Placeholder, toast, confirmDialog, CountryCell } from "../components.js";
+import { Tabs, listPlaceholder, toast, confirmDialog, CountryCell } from "../components.js";
 import { VirtualTable, sortRows, useTablePrefs, ColumnPicker, ipNum } from "../table.js";
 import { Chart } from "../charts.js";
 import { formatInt, formatTimestamp } from "../format.js";
@@ -124,7 +124,11 @@ function NetworkConnectButton({ network }) {
 
 // --- ED2K tab: server list, live via the SSE "servers" channel ------------
 function ServersPanel({ isGuest }) {
-  const servers = useStore("servers") || [];
+  // undefined until the first snapshot lands, [] once the list is known
+  // empty; listPlaceholder tells the two apart.
+  const rawServers = useStore("servers");
+  const servers = rawServers || [];
+  const loading = rawServers === undefined;
   const status = useStore("status");
   const ed2k = status && status.ed2k;
   const { sortKey, sortDir, hidden, widths, toggleSort, toggleCol, setWidth, resetPrefs } =
@@ -171,9 +175,11 @@ function ServersPanel({ isGuest }) {
     catch (e) { toast(terr(e) || t("networks_server_error"), "error"); }
   };
 
-  // The two sides format the address differently — the list ships "ip:port",
-  // status.ed2k.server_ip comes from EC_IPv4_t::StringIP() as "[ip:port]" — so
-  // compare the dotted quad pulled out of each, plus the port.
+  // The two sides format the address differently — the list ships "ip:port"
+  // while status.ed2k.server_ip is a bare dotted quad — so compare the quad
+  // pulled out of each, plus the port. The regex also tolerates the older
+  // "[ip:port]" form that server_ip used to carry, so this keeps working
+  // against a daemon that predates the fix.
   const ipv4 = (v) => { const m = String(v || "").match(/\d+\.\d+\.\d+\.\d+/); return m ? m[0] : ""; };
   const isConnected = (s) =>
     ed2k && ed2k.state === "connected"
@@ -276,7 +282,7 @@ function ServersPanel({ isGuest }) {
     <${VirtualTable} columns=${shown} rows=${list} rowKey=${(s) => s.ecid} rowClass=${rowClass}
                      sortKey=${sortKey} sortDir=${sortDir} onSort=${toggleSort}
                      widths=${widths} onResize=${setWidth}
-                     empty=${html`<${Placeholder} kind="info">${t("networks_server_empty")}<//>`} />`;
+                     empty=${listPlaceholder(loading, t("networks_server_empty"))} />`;
 }
 
 // --- Kad tab: connect toggle, bootstrap, live nodes graph -----------------
@@ -329,11 +335,30 @@ const append = (box, text) => {
   box.appendChild(document.createTextNode(text));
   if (stick) box.scrollTop = box.scrollHeight;
 };
+const setText = (box, text, isErr) => {
+  box.textContent = text;
+  box.classList.toggle("logbox-err", !!isErr);
+};
 
-function logBox(clear, boxRef, extraCls) {
+const saveText = (name, text) => {
+  const url = URL.createObjectURL(new Blob([text], { type: "text/plain" }));
+  const a = Object.assign(document.createElement("a"), { href: url, download: name });
+  a.click();
+  // Deferred: revoking in the same task can cancel the download.
+  setTimeout(() => URL.revokeObjectURL(url), 0);
+};
+
+function logBox(clear, save, boxRef, extraCls) {
   return html`
     <div class="logbox-wrap">
-      <button class="btn admin-only logbox-clear" onClick=${clear}>${t("networks_log_clear")}</button>
+      <div class="logbox-actions">
+        <button class="btn btn-icon btn-sm" title=${t("networks_log_download")} onClick=${save}>
+          <${Icon} name="downloads" />
+        </button>
+        <button class="btn btn-icon btn-sm admin-only" title=${t("networks_log_clear")} onClick=${clear}>
+          <${Icon} name="trash" />
+        </button>
+      </div>
       <pre class=${"logbox" + (extraCls ? " " + extraCls : "")} ref=${boxRef}></pre>
     </div>`;
 }
@@ -346,13 +371,18 @@ function AmuleLogPanel() {
     try {
       const r = await api.get("logs/amule?tail=" + AMULE_TAIL);
       if (!boxRef.current) return;
-      boxRef.current.textContent = (r.lines || []).join("");
+      setText(boxRef.current, (r.lines || []).join(""));
       boxRef.current.scrollTop = boxRef.current.scrollHeight;
-    } catch (e) { if (boxRef.current) boxRef.current.textContent = terr(e) || t("networks_log_error"); }
+    } catch (e) { if (boxRef.current) setText(boxRef.current, terr(e) || t("networks_log_error"), true); }
   };
   const clear = async () => {
     if (!(await confirmDialog(t("networks_log_confirm_clear_amule")))) return;
-    try { await api.del("logs/amule"); if (boxRef.current) boxRef.current.textContent = ""; toast(t("networks_log_toast_cleared"), "success"); }
+    try { await api.del("logs/amule"); if (boxRef.current) setText(boxRef.current, ""); toast(t("networks_log_toast_cleared"), "success"); }
+    catch (e) { toast(terr(e) || t("networks_log_error"), "error"); }
+  };
+  // No `tail`: the whole history, not just the lines on screen.
+  const save = async () => {
+    try { const r = await api.get("logs/amule"); saveText("amule-log.txt", (r.lines || []).join("")); }
     catch (e) { toast(terr(e) || t("networks_log_error"), "error"); }
   };
 
@@ -368,7 +398,7 @@ function AmuleLogPanel() {
     return () => unsub();
   }, []);
 
-  return logBox(clear, boxRef);
+  return logBox(clear, save, boxRef);
 }
 
 // No SSE channel for this one — polled.
@@ -379,13 +409,17 @@ function ServerInfoPanel() {
     try {
       const r = await api.get("logs/serverinfo");
       if (!boxRef.current) return;
-      boxRef.current.textContent = r.text || "";
+      setText(boxRef.current, r.text || "");
       boxRef.current.scrollTop = boxRef.current.scrollHeight;
-    } catch (e) { if (boxRef.current) boxRef.current.textContent = terr(e) || t("networks_log_error"); }
+    } catch (e) { if (boxRef.current) setText(boxRef.current, terr(e) || t("networks_log_error"), true); }
   };
   const clear = async () => {
     if (!(await confirmDialog(t("networks_log_confirm_clear_serverinfo")))) return;
-    try { await api.del("logs/serverinfo"); if (boxRef.current) boxRef.current.textContent = ""; toast(t("networks_log_toast_cleared"), "success"); }
+    try { await api.del("logs/serverinfo"); if (boxRef.current) setText(boxRef.current, ""); toast(t("networks_log_toast_cleared"), "success"); }
+    catch (e) { toast(terr(e) || t("networks_log_error"), "error"); }
+  };
+  const save = async () => {
+    try { const r = await api.get("logs/serverinfo"); saveText("server-info.txt", r.text || ""); }
     catch (e) { toast(terr(e) || t("networks_log_error"), "error"); }
   };
 
@@ -395,7 +429,7 @@ function ServerInfoPanel() {
     return () => clearInterval(timer);
   }, []);
 
-  return logBox(clear, boxRef, "logbox-sm");
+  return logBox(clear, save, boxRef, "logbox-sm");
 }
 
 // --- bottom tabs: per-network info grids ---------------------------------

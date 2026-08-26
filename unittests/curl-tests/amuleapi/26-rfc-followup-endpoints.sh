@@ -29,6 +29,10 @@ TEST_LINK="ed2k://|file|ubuntu-24.04.4-desktop-amd64.iso|6655619072|0031C9CBA65C
 
 FAIL_COUNT=0
 TEST_COUNT=0
+# Skips are counted apart from TEST_COUNT, never folded into it: a skipped
+# check is coverage that did not happen, and adding it to the passed tally
+# would report the absence of a check as a check that succeeded.
+SKIP_COUNT=0
 SSE=$(mktemp -t amuleapi_26_rfc_followup_endpoints_sse.XXXXXX)
 trap '
 	rm -f "$SSE"
@@ -44,7 +48,7 @@ trap '
 
 _die()  { echo "FATAL: $*" >&2; exit 2; }
 _pass() { TEST_COUNT=$((TEST_COUNT+1)); echo "  PASS  $1"; }
-_skip() { TEST_COUNT=$((TEST_COUNT+1)); echo "  SKIP  $1"; }
+_skip() { SKIP_COUNT=$((SKIP_COUNT+1)); echo "  SKIP  $1"; }
 _fail() {
 	TEST_COUNT=$((TEST_COUNT+1)); FAIL_COUNT=$((FAIL_COUNT+1))
 	echo "  FAIL  $1"
@@ -82,7 +86,7 @@ done
 
 # --- 2. POST /shared/reload. -------------------------------------
 RC=$(curl -s -o /tmp/p11_shared_reload.json -w "%{http_code}" -X POST "${H_AUTH[@]}" \
-	"$HOST/api/v0/shared/reload")
+	"$HOST/api/v0/shared_reload")
 if [ "$RC" = "202" ]; then
 	_pass "POST /shared/reload → 202"
 else
@@ -96,7 +100,7 @@ fi
 
 # --- 3. POST /servers/update — body validation. ------------------
 RC=$(curl -s -o /tmp/p11_su.json -w "%{http_code}" -X POST "${H_AUTH[@]}" \
-	-H "Content-Type: application/json" -d '{}' "$HOST/api/v0/servers/update")
+	-H "Content-Type: application/json" -d '{}' "$HOST/api/v0/servers_update")
 if [ "$RC" = "400" ]; then
 	_pass "POST /servers/update missing url → 400"
 else
@@ -104,7 +108,7 @@ else
 fi
 RC=$(curl -s -o /tmp/p11_su.json -w "%{http_code}" -X POST "${H_AUTH[@]}" \
 	-H "Content-Type: application/json" \
-	-d '{"servers_url":"ftp://nope"}' "$HOST/api/v0/servers/update")
+	-d '{"servers_url":"ftp://nope"}' "$HOST/api/v0/servers_update")
 if [ "$RC" = "400" ]; then
 	_pass "POST /servers/update non-http url → 400"
 else
@@ -113,7 +117,7 @@ fi
 RC=$(curl -s -o /tmp/p11_su.json -w "%{http_code}" -X POST "${H_AUTH[@]}" \
 	-H "Content-Type: application/json" \
 	-d '{"servers_url":"http://upd.emule-security.org/server.met"}' \
-	"$HOST/api/v0/servers/update")
+	"$HOST/api/v0/servers_update")
 if [ "$RC" = "202" ]; then
 	_pass "POST /servers/update valid url → 202"
 else
@@ -127,14 +131,14 @@ fi
 # than being turned away earlier as bad input.
 UNKNOWN_SRV=192.0.2.1:1
 RC=$(curl -s -o /dev/null -w "%{http_code}" -X POST "${H_AUTH[@]}" \
-	"$HOST/api/v0/servers/$UNKNOWN_SRV/connect")
+	"$HOST/api/v0/servers/by-address/$UNKNOWN_SRV/connect")
 if [ "$RC" = "404" ]; then
 	_pass "POST /servers/<unknown-ip:port>/connect → 404"
 else
 	_fail "address alias 404" "expected 404, got $RC"
 fi
 RC=$(curl -s -o /dev/null -w "%{http_code}" -X DELETE "${H_AUTH[@]}" \
-	"$HOST/api/v0/servers/$UNKNOWN_SRV")
+	"$HOST/api/v0/servers/by-address/$UNKNOWN_SRV")
 if [ "$RC" = "404" ]; then
 	_pass "DELETE /servers/<unknown-ip:port> → 404"
 else
@@ -145,9 +149,9 @@ fi
 # ip == 0, so a 0.0.0.0 selector could otherwise resolve to whichever
 # such row shared the port. Rejected as bad input, and the message says
 # so rather than claiming a malformed quad.
-BODY=$(curl -s -X POST "${H_AUTH[@]}" "$HOST/api/v0/servers/0.0.0.0:4242/connect")
+BODY=$(curl -s -X POST "${H_AUTH[@]}" "$HOST/api/v0/servers/by-address/0.0.0.0:4242/connect")
 RC=$(curl -s -o /dev/null -w "%{http_code}" -X POST "${H_AUTH[@]}" \
-	"$HOST/api/v0/servers/0.0.0.0:4242/connect")
+	"$HOST/api/v0/servers/by-address/0.0.0.0:4242/connect")
 if [ "$RC" = "400" ] && printf '%s' "$BODY" | jq -e '.error.code == "bad_request"' >/dev/null 2>&1; then
 	_pass "POST /servers/0.0.0.0:<port>/connect → 400 (not a server address)"
 else
@@ -159,7 +163,7 @@ else
 	_fail "0.0.0.0 rejection message" "still reports a syntax error: $BODY"
 fi
 # A genuinely malformed selector still reports malformed.
-BODY=$(curl -s -X POST "${H_AUTH[@]}" "$HOST/api/v0/servers/not-an-ip:4242/connect")
+BODY=$(curl -s -X POST "${H_AUTH[@]}" "$HOST/api/v0/servers/by-address/not-an-ip:4242/connect")
 if printf '%s' "$BODY" | jq -e '.error.message | test("malformed")' >/dev/null 2>&1; then
 	_pass "a malformed selector still reports malformed"
 else
@@ -173,7 +177,7 @@ ADDR=$(curl -s "${H_AUTH[@]}" "$HOST/api/v0/servers" \
 	| jq -r '.servers[0].address // empty')
 if [ -n "$ADDR" ] && [ "$ADDR" != "null" ]; then
 	RC=$(curl -s -o /dev/null -w "%{http_code}" -X POST "${H_AUTH[@]}" \
-		"$HOST/api/v0/servers/$ADDR/connect")
+		"$HOST/api/v0/servers/by-address/$ADDR/connect")
 	if [ "$RC" = "202" ] || [ "$RC" = "200" ]; then
 		_pass "POST /servers/$ADDR/connect resolves alias and accepts ($RC)"
 	else
@@ -392,7 +396,7 @@ if [ -n "$FIRST_CLIENT" ]; then
 			"a /clients object is missing upload_file_name/download_file_name or it is not a string"
 	fi
 else
-	_pass "/clients base filename-field check skipped (no peers connected)"
+	_skip "/clients base filename-field check (no peers connected)"
 fi
 
 # --- 9b. /clients/{ecid} detail (issue #422). --------------------
@@ -418,7 +422,7 @@ if [ -n "$FIRST_ECID" ]; then
 		_fail "clients detail shape" "missing detail fields: $DETAIL"
 	fi
 else
-	_pass "/clients/{ecid} detail 200 skipped (no peers connected)"
+	_skip "/clients/{ecid} detail 200 (no peers connected)"
 fi
 # Unknown ecid → 404 (0xFFFFFFFF is effectively never a live ECID)
 RC=$(curl -s -o /dev/null -w "%{http_code}" "${H_AUTH[@]}" "$HOST/api/v0/clients/4294967295")
@@ -469,9 +473,15 @@ else
 	_fail "events channel-filter positive" \
 		"no download/status events seen; sample: $(head -10 "$SSE")"
 fi
-LEAKED=$(grep -cE "^event: (client_|server_|shared_|log_|search_)" "$SSE" || true)
+# comments_ is in this list on purpose. comments_updated has the prefix
+# `comments`, which event_channel does not map, so its channel is literally
+# `comments` -- NOT `downloads`, even though the event is a downloads
+# concern and the prose reads that way. The channel table documents it as
+# its own row; if anyone later folds the prefix into `downloads` without
+# updating that table, this assertion is what notices.
+LEAKED=$(grep -cE "^event: (client_|server_|shared_|log_|search_|comments_)" "$SSE" || true)
 if [ "$LEAKED" -eq 0 ]; then
-	_pass "/events?channels=downloads,status excludes client/server/shared/log/search events"
+	_pass "/events?channels=downloads,status excludes client/server/shared/log/search/comments events"
 else
 	_fail "events channel-filter leak" \
 		"$LEAKED off-channel events leaked through"
@@ -506,8 +516,10 @@ fi
 
 # --- Summary. -----------------------------------------------------
 echo
+SKIP_NOTE=""
+[ "$SKIP_COUNT" -gt 0 ] && SKIP_NOTE=" ($SKIP_COUNT check(s) skipped)"
 if [ "$FAIL_COUNT" -eq 0 ]; then
-	echo "OK: $TEST_COUNT/$TEST_COUNT passed"
+	echo "OK: $TEST_COUNT/$TEST_COUNT passed$SKIP_NOTE"
 	exit 0
 fi
 echo "FAIL: $FAIL_COUNT/$TEST_COUNT failed"

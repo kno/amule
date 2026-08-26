@@ -100,9 +100,17 @@ struct FileSnapshot
 	std::string comment;            // the user's own file comment
 	std::int32_t rating = 0;        // the user's own rating, 0-5 (0 = unrated)
 
-	// Audio/video media metadata (issue #418). amuled emits it only for
-	// probed files (GetMetaDataVer != 0), so `has_media` gates the
-	// `media` object on the detail endpoints — omitted entirely when false.
+	// Audio/video media metadata (issue #418). amuled emits each field only
+	// when that field has a value -- deliberately NOT gated on the aggregate
+	// GetMetaDataVer(), which would send length 0 / bitrate 0 for a file that
+	// probed to a codec and no duration, and a displayed zero is a claim where
+	// absence is not. A zero / empty value is amuled saying the field is GONE,
+	// which is how a re-probe's clear reaches us at all.
+	//
+	// `has_media` is therefore DERIVED from the fields below rather than being
+	// something amuled sent: latching it on any tag arriving would report
+	// media on a file whose every field has since been cleared. It gates the
+	// `media` object on the detail endpoints -- omitted entirely when false.
 	bool has_media = false;
 	struct Media
 	{
@@ -575,6 +583,48 @@ struct ChatSessionSnapshot
 // is built from a GUI_ID, with no walker involved).
 std::string IPv4ToDotted(std::uint32_t ip_lsb_first);
 
+// Is this request target eligible for the response-ETag memo?
+//
+// OPT-IN. The memo key is (target, snapshot revision) and nothing else, which
+// makes two demands on anything eligible; a route that fails either one gets
+// answered 304 for content that has changed:
+//
+//  1. Its body must move only when the state moves, so the revision covers
+//     it. Endpoints with their own TTL cache, an append-only mirror, a
+//     refresh-on-read, or a live EC roundtrip per request do not qualify.
+//  2. Its body must be identical for every caller. The key carries no
+//     principal, so a per-caller document would share one validator between
+//     whoever asked first.
+//
+// This was an exclusion list and it was wrong four times over, each time for
+// a different reason. The eligible set is now spelled out instead, so the
+// cost of overlooking a route is a wasted hash rather than a stale 304.
+bool MemoizableTarget(const std::string &target);
+
+// Whether a response may be read from, or written to, the ETag memo. Two
+// independent conditions, both required:
+//
+//  1. MemoizableTarget(target) -- the opt-in eligibility above.
+//  2. The snapshot revision did not move while the handler ran. The body is
+//     serialized inside the handler under its own read lock, dropped before
+//     the caller can sample again; if a write lands in that window the body
+//     belongs to `rev_before` while the key would claim `rev_after`, and every
+//     later hit serves a validator describing neither.
+//
+// Condition 2 guards a race, so nothing in a sequential test notices when it
+// is removed. It lives here, as a decision separate from the dispatch that
+// makes it, so that removing it fails a test instead of nothing.
+bool MemoUsable(const std::string &target, std::uint64_t rev_before, std::uint64_t rev_after);
+
+// Whether the dispatcher should hash the body and stamp its own ETag.
+//
+// `handler_set_etag` is the half worth spelling out: a handler that computed
+// its own validator owns it, and stamping the body hash over the top hands out
+// two different ETags for one resource depending on which branch answered.
+// That is exactly what the static path did before -- it clears the body for
+// HEAD, so only the GET reached the hashing branch.
+bool ShouldStampEtag(bool is_safe_method, bool handler_set_etag, unsigned status, bool body_empty);
+
 // The same key built straight from a GUI_ID, for paths that only have the id
 // (a session that was closed is gone from the snapshot, so there is no
 // ChatSessionSnapshot left to ask). GUI_ID is (ip << 16) | port.
@@ -804,8 +854,11 @@ struct SearchResult
 	// desktop's Directories column shows them.
 	std::string directory;
 	// Audio/video media metadata (issue #430), same shape as the file
-	// detail endpoints' `media` object. `has_media` gates it — omitted
-	// when the hit carries no FT_MEDIA_* tags (most remote results).
+	// detail endpoints' `media` object. `has_media` gates it, and like the
+	// file-side flag above it is DERIVED from the field values rather than
+	// from which tags arrived -- a hit carrying an FT_MEDIA_* tag whose value
+	// is empty reads as no media, which is what the daemon means by sending
+	// one. Omitted entirely when false (most remote results).
 	bool has_media = false;
 	struct Media
 	{
@@ -1349,6 +1402,11 @@ struct StatusSnapshot
 // Invariant: a FileSnapshot's `hash` is content-derived and never
 // changes once set. Walkers MUST NOT reassign `hash` via the iterator
 // (the index would desync). Set hash before emplace, never after.
+//
+// Invariant: an entry's key IS its FileSnapshot::ecid, enforced by emplace()
+// rather than left to the caller. A snapshot filed under one id but carrying
+// another silently breaks every reader that resolves via find() and then
+// trusts what it gets back -- /clients' file hashes among them.
 class FileMap
 {
 public:
@@ -1370,6 +1428,8 @@ public:
 	// variadic emplace is too liberal for our index-keeping discipline.
 	std::pair<iterator, bool> emplace(std::uint32_t ecid, FileSnapshot f)
 	{
+		// The key wins -- readers resolve by it. See the invariant above.
+		f.ecid = ecid;
 		auto r = m_files.emplace(ecid, std::move(f));
 		if (r.second && !r.first->second.hash.empty()) {
 			m_hash_to_ecid[r.first->second.hash] = ecid;
@@ -1452,6 +1512,11 @@ public:
 	// handlers slice the tail before serialising via the
 	// `?tail=N` query param.
 	std::vector<std::string> AmuleLog() const;
+	//! The lines from `first` on, plus the current total, under one lock. A
+	//! `first` past the end gives an empty tail, which with `total` is how the
+	//! caller sees a truncation. Copies nothing when nothing was appended,
+	//! which the per-tick log diff needs and AmuleLog() cannot do.
+	std::vector<std::string> AmuleLogFrom(std::size_t first, std::size_t &total) const;
 	ServerInfoLog ServerInfo() const;
 
 	// Flat list views. Reads the ECID-keyed map under shared_lock and
@@ -1460,19 +1525,58 @@ public:
 	// that want a specific order sort on their side (by name / date /
 	// progress / etc.).
 	//
-	// `Downloads()` filters `m_files` by `is_downloading`, `Shared()`
-	// filters by `is_shared`. Both views consult the same underlying
-	// unified map — see FileSnapshot above for the role-flag model.
-	std::vector<FileSnapshot> Downloads() const;
-	std::vector<FileSnapshot> Shared() const;
-	// Unfiltered view used by EventDiff to compute role-flag
-	// transitions. Not surfaced on the REST API.
-	std::vector<FileSnapshot> Files() const;
+	// The role-filtered views are gone: no reader wanted whole snapshots copied
+	// out. Filter `m_files` on the role flag inside WithFiles() instead.
+	//! Read the unified file map in place, under the shared lock. Same contract
+	//! as WithKnownClients: the callback must not call back into CState, nor
+	//! retain the reference. For readers wanting a few fields per file, or
+	//! pointers to sort and page -- a FileSnapshot is 848 bytes plus a heap
+	//! allocation per string, so copying the collection out is never cheap.
+	// Re-entrancy detector for the callback accessors below.
+	//
+	// Every WithX() / MutateX() runs a caller-supplied callback while holding
+	// m_mu. Calling back into the same CState from inside one takes that
+	// non-recursive std::shared_timed_mutex a second time: undefined
+	// behaviour, and in practice a hang -- immediately on the exclusive
+	// paths, and on the shared ones as soon as a writer is queued, because
+	// the implementation stops admitting new readers to avoid starving it.
+	//
+	// The rule was documentation only, so a violation surfaced as a wedged
+	// daemon under load rather than as a test failure -- the callbacks are
+	// pure today, but nothing stopped the next edit from reaching for
+	// m_state. Enforced in Release as well as Debug, and aborting rather
+	// than returning, for the reason the Session dtor gives in
+	// HttpServer.cpp: assert() is stripped by NDEBUG, and the alternative
+	// here is not a wrong answer but a process that stops responding with
+	// nothing in the log. The thread would deadlock on the next line
+	// regardless; this way it leaves a message and a core instead.
+	//
+	// Constructed BEFORE the lock, deliberately. A re-entrant call blocks on
+	// the mutex it can never obtain, so a guard placed after the lock would
+	// never run for the one case it exists to catch.
+	class ReentryGuard
+	{
+	public:
+		explicit ReentryGuard(const CState *self);
+		~ReentryGuard();
+		ReentryGuard(const ReentryGuard &) = delete;
+		ReentryGuard &operator=(const ReentryGuard &) = delete;
+
+	private:
+		const CState *m_prev;
+	};
+
+	template <class F> void WithFiles(F &&fn) const
+	{
+		const ReentryGuard guard(this);
+		std::shared_lock<std::shared_timed_mutex> lock(m_mu);
+		fn(static_cast<const FileMap &>(m_files));
+	}
 
 	// Full peer list (all upload_state values, including queue
 	// waiters, idle peers, and banned). Backs /clients.
-	// The legacy /uploads endpoint is retired — consumers query
-	// /clients and filter by role on their side.
+	// Consumers query /clients and filter by role on their side rather
+	// than asking for a pre-filtered upload view.
 	std::vector<ClientSnapshot> Clients() const;
 
 	// --- Known clients (the daemon's credit store) -------------------------
@@ -1513,6 +1617,7 @@ public:
 	//! into CState, and must not retain the reference.
 	template <class F> void WithKnownClients(F &&fn) const
 	{
+		const ReentryGuard guard(this);
 		std::shared_lock<std::shared_timed_mutex> lock(m_mu);
 		fn(static_cast<const std::vector<KnownClientSnapshot> &>(m_known_clients));
 	}
@@ -1604,7 +1709,19 @@ public:
 	// its internal hash→ECID index in sync on every emplace/erase.
 	void MutateDownloads(const std::function<void(FileMap &)> &fn);
 	void MutateShared(const std::function<void(FileMap &)> &fn);
+	//! Clients only. Reach for MutateClientsWithFiles below when the callback
+	//! also needs the file map, rather than pairing this with WithFiles: that
+	//! pair is two acquisitions where one does, which is what the clients
+	//! walker was moved off.
 	void MutateClients(const std::function<void(std::map<std::uint32_t, ClientSnapshot> &)> &fn);
+	//! Clients plus a read-only view of the file map, under the one acquisition
+	//! this was already taking. The clients walker resolves ECIDs against the
+	//! files but cannot fetch them itself: m_mu is a single non-recursive
+	//! mutex, so reaching back into CState from inside the callback trips
+	//! ReentryGuard. Second argument carries the same borrow contract as
+	//! WithFiles -- valid for the call only, never retained.
+	void MutateClientsWithFiles(
+		const std::function<void(std::map<std::uint32_t, ClientSnapshot> &, const FileMap &)> &fn);
 	void MutateServers(const std::function<void(std::map<std::uint32_t, ServerSnapshot> &)> &fn);
 	void MutateFriends(const std::function<void(std::map<std::uint32_t, FriendSnapshot> &)> &fn);
 	// The walker replaces the whole session vector each tick rather than
@@ -1685,14 +1802,29 @@ public:
 	void WriteStatsTree(StatsTreeNode t);
 	void WriteGraphs(StatsGraphs g);
 	void MarkTickSuccess();
+	// Monotonic counter advanced by every successful refresh, from the
+	// background loop and from the inline refreshes that mutating handlers
+	// run. `snapshot_at` cannot play this role: it is whole seconds, so two
+	// refreshes inside one second are indistinguishable, and it is stamped
+	// only by the loop, so a mutation could change a body while it stood
+	// still -- which answered the next conditional GET with 304 for content
+	// that had just changed. Anything keyed on "has the state moved" wants
+	// this, not the timestamp.
+	void BumpSnapshotRevision();
+	std::uint64_t SnapshotRevision() const;
 	void MarkTickFailure();
 
 private:
 	mutable std::shared_timed_mutex m_mu;
+	// Which CState this thread is currently inside a callback of, so the
+	// guard can tell "re-entered the same instance" (a deadlock) from
+	// "touched a different one" (harmless -- a different mutex).
+	static thread_local const CState *t_in_callback;
 
 	bool m_has_first_snapshot = false;
 	bool m_ec_connected = false;
 	std::time_t m_snapshot_at = 0;
+	std::uint64_t m_snapshot_rev = 0;
 
 	StatusSnapshot m_status;
 	KadSnapshot m_kad;

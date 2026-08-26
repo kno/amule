@@ -12,8 +12,8 @@ msgid ""
 msgstr ""
 "Project-Id-Version: aMule\n"
 "Report-Msgid-Bugs-To: https://github.com/amule-org/amule/issues\n"
-"POT-Creation-Date: 2026-08-25 08:51+0200\n"
-"PO-Revision-Date: 2026-08-22 15:38+0000\n"
+"POT-Creation-Date: 2026-08-25 21:00+0200\n"
+"PO-Revision-Date: 2026-08-25 10:14+0000\n"
 "Last-Translator: Marcel Pol <marcel@timelord.nl>\n"
 "Language-Team: Dutch <nl@li.org>\n"
 "Language: nl\n"
@@ -386,7 +386,7 @@ msgstr "webserver draait met pid %d"
 
 #: src/amule.cpp
 msgid "You requested to run web server on startup, but the amuleweb binary cannot be run. Please install the package containing aMule web server, or build aMule from source with -DBUILD_WEBSERVER=YES and install it."
-msgstr "U hebt gevraagd om de webserver bij het opstarten uit te voeren, maar het binaire bestand amuleweb kan niet worden uitgevoerd. Installeer het pakket met de aMule-webserver, of bouw aMule vanuit de broncode met -DBUILD_WEBSERVER=YES en installeer het."
+msgstr "U hebt gevraagd om de webserver bij het opstarten uit te voeren, maar het programma amuleweb kan niet worden uitgevoerd. Installeer het pakket met de aMule-webserver, of bouw aMule vanuit de broncode met -DBUILD_WEBSERVER=YES en installeer het."
 
 #: src/amule.cpp src/amule-remote-gui.cpp src/DownloadQueue.cpp
 #: src/PrefsUnifiedDlg.cpp src/SearchDlg.cpp
@@ -405,7 +405,7 @@ msgstr "amuleapi actief met pid %d"
 
 #: src/amule.cpp
 msgid "You requested to run amuleapi on startup, but the amuleapi binary cannot be run. Please install the package containing aMule's REST API server, or build aMule from source with -DBUILD_AMULEAPI=YES and install it."
-msgstr "U hebt gevraagd om amuleapi bij het opstarten uit te voeren, maar het binaire bestand amuleapi kan niet worden uitgevoerd. Installeer het pakket met de REST API-server van aMule, of bouw aMule vanuit de broncode met -DBUILD_AMULEAPI=YES en installeer het."
+msgstr "U hebt gevraagd om amuleapi bij het opstarten uit te voeren, maar het programma amuleapi kan niet worden uitgevoerd. Installeer het pakket met de REST API-server van aMule, of bouw aMule vanuit de broncode met -DBUILD_AMULEAPI=YES en installeer het."
 
 #: src/amule.cpp
 msgid "Could not bind an IPv6 socket. IPv6 appears to be unavailable on this host; IPv4 operation is unaffected."
@@ -503,6 +503,11 @@ msgstr ""
 #: src/amule.cpp
 msgid "Server hostname notified"
 msgstr "Server-hostnaam geïnformeerd"
+
+#: src/amule.cpp
+#, c-format
+msgid "Media metadata: probed file is no longer known, result discarded (%s)"
+msgstr ""
 
 #: src/amule.cpp
 #, c-format
@@ -1061,11 +1066,6 @@ msgstr "1.x (gebaseerd op eMule v0.%u)"
 
 #: src/BaseClient.cpp
 #, c-format
-msgid "Failed to retrieve shared files from user '%s'"
-msgstr "Kon gedeelde bestanden niet ontvangen van gebruiker '%s'"
-
-#: src/BaseClient.cpp
-#, c-format
 msgid "NickName: %s ID: %u"
 msgstr "Bijnaam: %s ID: %u"
 
@@ -1106,6 +1106,11 @@ msgstr "Nieuw bericht van '%s' (IP:%s)"
 #, c-format
 msgid "User %s (%u) requested sharedfiles-list for not existing directory '%s' -> Ignored"
 msgstr "Gebruiker %s (%u) vroeg uw gedeelde-bestandenlijst van niet-bestaande map '%s' op -> Genegeerd"
+
+#: src/BrowseManager.cpp
+#, c-format
+msgid "Failed to retrieve shared files from user '%s'"
+msgstr "Kon gedeelde bestanden niet ontvangen van gebruiker '%s'"
 
 #: src/CanceledFileList.cpp src/KnownFileList.cpp src/SearchList.cpp
 #, c-format
@@ -2021,7 +2026,7 @@ msgstr "Onbekende versie"
 
 #: src/ExternalConn.cpp
 msgid "Incorrect EC version ID, there might be binary incompatibility. Use core and remote from same snapshot."
-msgstr "Incorrecte EV-versie ID, mogelijk niet compatible. Gebruik kern en op afstand van dezelfde snapshot."
+msgstr "Incorrecte EV-versie ID, mogelijk is het programma incompatibel. Gebruik kern en op afstand van dezelfde snapshot."
 
 #: src/ExternalConn.cpp
 msgid "You cannot connect to a release version from an arbitrary development snapshot! *sigh* possible crash prevented"
@@ -2185,7 +2190,7 @@ msgstr "Kon naam van bestand niet wijzigen."
 
 #: src/ExternalConn.cpp
 msgid "Client could not be swapped to that file."
-msgstr ""
+msgstr "Kan de client niet naar dat bestand overschakelen."
 
 #: src/ExternalConn.cpp
 #, c-format
@@ -2193,23 +2198,29 @@ msgid "Could not save the amuleapi password: %s"
 msgstr "Kon het amuleapi-wachtwoord niet opslaan: %s"
 
 #: src/ExternalConn.cpp
-#, fuzzy
 msgid "Missing chat session id"
-msgstr "Nieuwe chatsessie begonnen"
+msgstr "Ontbrekende chatsessie-id"
+
+#: src/ExternalConn.cpp
+msgid "No such chat session"
+msgstr "Chatsessie onvindbaar"
 
 #: src/ExternalConn.cpp
 #, fuzzy
-msgid "No such chat session"
-msgstr "Sluit deze chat-sessie."
+msgid "Media metadata extraction is disabled in preferences"
+msgstr "Kad is uitgeschakeld in voorkeuren."
 
 #: src/ExternalConn.cpp
-msgid "Empty chat message"
+msgid "File is not eligible for media metadata extraction (not an audio/video file, or an incomplete download)"
 msgstr ""
 
 #: src/ExternalConn.cpp
-#, fuzzy
+msgid "Empty chat message"
+msgstr "Leeg chatbericht"
+
+#: src/ExternalConn.cpp
 msgid "Unknown chat target"
-msgstr "(Onbekende naam)"
+msgstr "Onbekende doelchat"
 
 #: src/ExternalConn.cpp
 msgid "Kad is disabled in preferences."
@@ -2861,6 +2872,11 @@ msgid "Migrated existing GeoLite2-Country.mmdb to %s"
 msgstr "Bestaand GeoLite2-Country.mmdb gemigreerd naar %s"
 
 #: src/IP2Country.cpp
+#, c-format
+msgid "%s is not a readable MaxMindDB file - discarding it. A fresh copy will be downloaded on the next start, or now via Preferences -> IP2Country -> 'Update now'."
+msgstr ""
+
+#: src/IP2Country.cpp
 msgid "IP2Country: MaxMind selected as the GeoIP source but no License Key configured. Open Preferences -> IP2Country, paste your free MaxMind License Key and click 'Update now'."
 msgstr "IP2Country: MaxMind geselecteerd als GeoIP-bron maar geen Licentiesleutel ingesteld. Open Voorkeuren -> IP2Country, plak uw gratis MaxMind-Licentiesleutel en klik op 'Nu bijwerken'."
 
@@ -3231,34 +3247,68 @@ msgstr "WAARSCHUWING: "
 
 #: src/MediaProbe.cpp
 msgid "Media metadata: no ffprobe binary found. Install ffmpeg, or set the ffprobe path in preferences; length, bitrate and codec will not be extracted."
-msgstr ""
+msgstr "Media-metadata: geen ffprobe-programma gevonden. Installeer ffmpeg of stel het pad naar ffprobe in Voorkeuren in; Lengte, bitrate en codec worden niet uitgelezen."
+
+#: src/MediaProbe.cpp
+#, fuzzy, c-format
+msgid "Media metadata: %s is gone, nothing to extract"
+msgstr "Extractie van mediametagegevens"
 
 #: src/MediaProbe.cpp
 #, c-format
 msgid "Extracting media metadata with ffprobe: %s"
-msgstr ""
+msgstr "Media-metadata wordt uitgelezen met ffprobe: %s"
 
 #: src/MediaProbe.cpp
 #, c-format
 msgid "Media metadata: ffprobe timed out or was cancelled for %s"
+msgstr "Media-metadata: time-out van ffprobe of geannuleerd voor %s"
+
+#: src/MediaProbe.cpp
+#, c-format
+msgid "Media metadata: ignoring implausibly large ffprobe output for %s"
+msgstr ""
+
+#: src/MediaProbe.cpp
+#, c-format
+msgid "Media metadata: could not run ffprobe (%s) -- check the media metadata settings"
 msgstr ""
 
 #: src/MediaProbe.cpp
 #, c-format
 msgid "Media metadata: ffprobe failed (code %d) for %s"
+msgstr "Media-metadata: ffprobe mislukt (code %d) voor %s"
+
+#: src/MediaProbe.cpp
+#, c-format
+msgid "Media metadata: ffprobe found nothing usable in %s"
 msgstr ""
 
 #: src/MediaProbeThread.cpp
 #, c-format
-msgid "Extracted media metadata from %u file (%u failed)"
-msgid_plural "Extracted media metadata from %u files (%u failed)"
+msgid "Finished extracting media metadata from %u shared file (%u failed)"
+msgid_plural "Finished extracting media metadata from %u shared files (%u failed)"
 msgstr[0] ""
 msgstr[1] ""
 
 #: src/MediaProbeThread.cpp
 #, c-format
-msgid "Extracted media metadata from %u file"
-msgid_plural "Extracted media metadata from %u files"
+msgid "Finished extracting media metadata from %u shared file"
+msgid_plural "Finished extracting media metadata from %u shared files"
+msgstr[0] ""
+msgstr[1] ""
+
+#: src/MediaProbeThread.cpp
+#, c-format
+msgid "%u further file failed media metadata extraction (not listed individually)"
+msgid_plural "%u further files failed media metadata extraction (not listed individually)"
+msgstr[0] ""
+msgstr[1] ""
+
+#: src/MediaProbeThread.cpp
+#, c-format
+msgid "%u further shared file is gone (not listed individually)"
+msgid_plural "%u further shared files are gone (not listed individually)"
 msgstr[0] ""
 msgstr[1] ""
 
@@ -4395,11 +4445,11 @@ msgstr "Geavanceerde I.C.H. vertrouwt elke hash (niet aanbevolen)"
 
 #: src/muuli_wdr.cpp src/PrefsUnifiedDlg.cpp
 msgid "Media metadata extraction"
-msgstr "Extractie van mediametagegevens"
+msgstr "Uitlezen van media-metadata"
 
 #: src/muuli_wdr.cpp
 msgid "Extract length / bitrate / codec from shared audio and video files"
-msgstr "Lengte/bitrate/codec extraheren uit gedeelde audio- en videobestanden"
+msgstr "Lengte/bitrate/codec uitlezen uit gedeelde audio- en videobestanden"
 
 #: src/muuli_wdr.cpp
 msgid "When enabled, aMule runs ffprobe on each shared media file to fill in the Length / Bitrate / Codec columns other clients see when they find the file in a search. Requires ffmpeg (the ffprobe binary) to be installed."
@@ -6457,11 +6507,15 @@ msgid ""
 "\n"
 "Start the new search anyway?"
 msgstr ""
+"Een eD2k-zoekopdracht loopt nog. Door een nieuwe te starten stopt deze vorige, omdat het eD2k-protocol slechts één zoekopdracht tegelijkertijd toestaat.\n"
+"\n"
+"Gevonden resultaten worden behouden; nieuwe resultaten komen niet meer binnen.\n"
+"\n"
+"Alsnog de nieuwe zoekopdracht starten?"
 
 #: src/SearchDlg.cpp
-#, fuzzy
 msgid "Search in progress"
-msgstr "Voortgang zoeken: %u %% \n"
+msgstr "Zoekopdracht in uitvoering"
 
 #: src/SearchDlg.cpp
 msgid "Min size must be smaller than max size. Max size ignored."
@@ -6500,6 +6554,10 @@ msgstr "Geen zoekwoord opgegeven voor zoeken in Kad - afbreken"
 #: src/SearchList.cpp
 msgid "Unexpected error while attempting Kad search: "
 msgstr "Onverwachte fout bij Kad-zoekopdracht: "
+
+#: src/SearchList.cpp
+msgid "Search timed out: the server did not answer."
+msgstr ""
 
 #: src/SearchList.cpp
 msgid "Kad search: requested wider results from one more peer."
@@ -6566,6 +6624,48 @@ msgstr "Geannuleerd"
 #: src/SearchListCtrl.cpp
 msgid "New"
 msgstr "Nieuw"
+
+#: src/SearchProgressReport.cpp
+#, fuzzy
+msgid "running"
+msgstr "Draaiende"
+
+#: src/SearchProgressReport.cpp
+#, fuzzy
+msgid "finished"
+msgstr "Fins"
+
+#: src/SearchProgressReport.cpp
+msgid "idle"
+msgstr ""
+
+#: src/SearchProgressReport.cpp
+#, c-format
+msgid "Search %u: %s, %u %% (%u results)\n"
+msgstr ""
+
+#: src/SearchProgressReport.cpp
+#, c-format
+msgid "Search %u \"%s\": %s, %u %% (%u results)\n"
+msgstr ""
+
+#: src/SearchProgressReport.cpp src/TextClient.cpp
+msgid "Search expired or unknown ID. Start a new search.\n"
+msgstr "Zoekopdracht verlopen of onbekende ID. Start een nieuwe zoekopdracht.\n"
+
+#: src/SearchProgressReport.cpp
+#, c-format
+msgid "Search progress: %u %% \n"
+msgstr "Voortgang zoeken: %u %% \n"
+
+#: src/SearchProgressReport.cpp
+msgid "Search progress not available"
+msgstr "Voortgang zoeken niet beschikbaar"
+
+#: src/SearchProgressReport.cpp
+#, fuzzy
+msgid "No search to report on.\n"
+msgstr "Geen bestanden geselecteerd om te exporteren."
 
 #: src/ServerConnect.cpp
 msgid "Failed to connect to all obfuscated static servers listed. Making another pass without obfuscation."
@@ -6639,7 +6739,7 @@ msgstr "FOUT: Socket ongeldig op timeoutcheck"
 #: src/ServerConnect.cpp
 #, c-format
 msgid "Connection attempt to %s (%s:%i) timed out."
-msgstr "Poging tot verbinden met %s (%s:%i) gaf timeout."
+msgstr "Poging tot verbinden met %s (%s:%i) gaf time-out."
 
 #: src/ServerConnect.cpp
 msgid "Received late result of DNS lookup, discarding."
@@ -7109,8 +7209,8 @@ msgstr "Gedeelde map-wachter: back-end overstroming/fout (%s); terugvallen op vo
 #, c-format
 msgid "Shared-dir watcher: %u new subdirectory found since last run, rescanning shares"
 msgid_plural "Shared-dir watcher: %u new subdirectories found since last run, rescanning shares"
-msgstr[0] ""
-msgstr[1] ""
+msgstr[0] "Gedeelde-map wachter: %u nieuwe submap gevonden sinds laatste uitvoering, deelmappen worden opnieuw gescand"
+msgstr[1] "Gedeelde-map wachter: %u nieuwe submappen gevonden sinds laatste uitvoering, deelmappen worden opnieuw gescand"
 
 #: src/SharedDirWatcher.cpp
 msgid "Shared-dir watcher: events dropped by backend, forcing a full shared-files reload to resync"
@@ -7151,35 +7251,47 @@ msgid "No shareable files found in directory: %s"
 msgstr "Geen deelbare bestanden gevonden in map: %s"
 
 #: src/SharedFileList.cpp
-#, fuzzy, c-format
+#, fuzzy
+msgid "Media metadata extraction is disabled in preferences, so there is nothing to re-extract."
+msgstr "Extractie van mediametagegevens"
+
+#: src/SharedFileList.cpp
+#, c-format
+msgid "Re-extracting media metadata for %u shared file"
+msgid_plural "Re-extracting media metadata for %u shared files"
+msgstr[0] ""
+msgstr[1] ""
+
+#: src/SharedFileList.cpp
+#, c-format
 msgid "Now sharing file: %s"
-msgstr "Fout bij het bewaren van bestand %s: %s"
+msgstr "Dit bestand wordt nu gedeeld: %s"
 
 #: src/SharedFileList.cpp
-#, fuzzy, c-format
+#, c-format
 msgid "Stopped sharing removed file: %s"
-msgstr "Laden van server.met bestand: %s"
+msgstr "Gestopt met het delen van verwijderd bestand: %s"
 
 #: src/SharedFileList.cpp
-#, fuzzy, c-format
+#, c-format
 msgid "Stopped sharing %u file under removed directory: %s"
 msgid_plural "Stopped sharing %u files under removed directory: %s"
-msgstr[0] "Geen deelbare bestanden gevonden in map: %s"
-msgstr[1] "Geen deelbare bestanden gevonden in map: %s"
+msgstr[0] "Gestopt met delen van %u bestand in verwijderde map: %s"
+msgstr[1] "Gestopt met delen van %u bestanden in verwijderde map: %s"
 
 #: src/SharedFileList.cpp
-#, fuzzy, c-format
+#, c-format
 msgid "Now sharing %u file found in a new shared directory"
 msgid_plural "Now sharing %u files found in new shared directories"
-msgstr[0] "Geen deelbare bestanden gevonden in map: %s"
-msgstr[1] "Geen deelbare bestanden gevonden in map: %s"
+msgstr[0] "%u bestand gevonden in een nieuwe gedeelde map wordt nu gedeeld"
+msgstr[1] "%u bestanden gevonden in nieuwe gedeelde mappen worden nu gedeeld"
 
 #: src/SharedFileList.cpp
-#, fuzzy, c-format
+#, c-format
 msgid "Discovered %u new shared file"
 msgid_plural "Discovered %u new shared files"
-msgstr[0] "%i bekend gedeeld bestand gevonden"
-msgstr[1] "%i bekende gedeelde bestanden gevonden"
+msgstr[0] "%u nieuw gedeeld bestand ontdekt"
+msgstr[1] "%u nieuwe gedeelde bestanden ontdekt"
 
 #: src/SharedFilePeersListCtrl.cpp src/SourceListCtrl.cpp
 msgid "User Name"
@@ -7234,6 +7346,10 @@ msgid "Verify Local Data"
 msgstr "Lokale gegevens verifiëren"
 
 #: src/SharedFilesCtrl.cpp
+msgid "Re-extract &media metadata"
+msgstr ""
+
+#: src/SharedFilesCtrl.cpp
 msgid "Add files in collection to transfer list"
 msgstr "Voeg bestanden in verzameling toe aan overdrachtenlijst"
 
@@ -7273,6 +7389,49 @@ msgstr "Exporteer geselecteerde bestanden naar een emulecollection"
 #, c-format
 msgid "Verify Local Data on PartFile is currently not supported: %s"
 msgstr "Lokale gegevens verifiëren op partbestand wordt momenteel niet ondersteund: %s"
+
+#: src/SharedFilesCtrl.cpp
+#, c-format
+msgid "Media metadata: skipping %u incomplete download"
+msgid_plural "Media metadata: skipping %u incomplete downloads"
+msgstr[0] ""
+msgstr[1] ""
+
+#: src/SharedFilesCtrl.cpp
+#, c-format
+msgid "Media metadata: skipping %u file that is not audio or video"
+msgid_plural "Media metadata: skipping %u files that are not audio or video"
+msgstr[0] ""
+msgstr[1] ""
+
+#: src/SharedFilesCtrl.cpp
+#, c-format
+msgid "Re-extract media metadata for %u file?"
+msgid_plural "Re-extract media metadata for %u files?"
+msgstr[0] ""
+msgstr[1] ""
+
+#: src/SharedFilesCtrl.cpp
+#, c-format
+msgid "%u incomplete download will be skipped."
+msgid_plural "%u incomplete downloads will be skipped."
+msgstr[0] ""
+msgstr[1] ""
+
+#: src/SharedFilesCtrl.cpp
+#, c-format
+msgid "%u file is not audio or video and will be skipped."
+msgid_plural "%u files are not audio or video and will be skipped."
+msgstr[0] ""
+msgstr[1] ""
+
+#: src/SharedFilesCtrl.cpp
+msgid "This runs in the background. Progress is reported in the log."
+msgstr ""
+
+#: src/SharedFilesCtrl.cpp
+msgid "Re-extract media metadata"
+msgstr ""
 
 #: src/SharedFilesCtrl.cpp
 msgid "You need a HighID to create a valid sourcelink"
@@ -7588,6 +7747,10 @@ msgid "Execute <str> and exit."
 msgstr "Voer <str> uit en sluit af."
 
 #: src/TextClient.cpp
+msgid "Separate list fields with spaces, as before, instead of tabs."
+msgstr ""
+
+#: src/TextClient.cpp
 msgid "Invalid IP format. Use xxx.xxx.xxx.xxx:xxxx\n"
 msgstr "Ongeldig IP-formaat: Gebruik xxx.xxx.xxx.xxx:xxxx\n"
 
@@ -7760,22 +7923,9 @@ msgid "[PartFile]"
 msgstr "[PartBestand]"
 
 #: src/TextClient.cpp
-msgid "Search expired or unknown ID. Start a new search.\n"
-msgstr "Zoekopdracht verlopen of onbekende ID. Start een nieuwe zoekopdracht.\n"
-
-#: src/TextClient.cpp
 #, c-format
 msgid "Number of search results: %i\n"
 msgstr "Aantal zoekresultaten: %i\n"
-
-#: src/TextClient.cpp
-#, c-format
-msgid "Search progress: %u %% \n"
-msgstr "Voortgang zoeken: %u %% \n"
-
-#: src/TextClient.cpp
-msgid "Search progress not available"
-msgstr "Voortgang zoeken niet beschikbaar"
 
 #: src/TextClient.cpp
 #, c-format
@@ -8193,19 +8343,19 @@ msgid "aMule text client"
 msgstr "aMule tekstclient"
 
 #: src/ThreadTasks.cpp
-#, fuzzy, c-format
+#, c-format
 msgid "Hashing downloaded file: %s"
-msgstr "Verwijderen van bestand: %s"
+msgstr "Gedownload bestand wordt gehashed: %s"
 
 #: src/ThreadTasks.cpp
-#, fuzzy, c-format
+#, c-format
 msgid "Hashing file: %s"
-msgstr "Verwijderen van bestand: %s"
+msgstr "Bestand wordt gehashed: %s"
 
 #: src/ThreadTasks.cpp
-#, fuzzy, c-format
+#, c-format
 msgid "Rebuilding AICH hashset for file: %s"
-msgstr "Verder gaan met uploads van bestand: %s"
+msgstr "AICH hash-set wordt herbouwd voor bestand: %s"
 
 #: src/ThreadTasks.cpp
 #, c-format
