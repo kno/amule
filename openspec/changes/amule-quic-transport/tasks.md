@@ -99,7 +99,25 @@
       the peer then falls back to uTP, automatically and silently. This is the
       same shape as `LocalCanDiscoverRendezvousRelay()` in
       `amule-nat-rendezvous` task 4.9: one function, gated off, with the reason
-      written down
+      written down.
+      Measured against a real eMuleAI v1.6.0 on 2026-08-26, which narrows the
+      gap and may remove it: the assumption above is that the second proof field
+      is a per-exchange nonce. eMuleAI sends, in its `OP_HELLOANSWER` and only
+      once the peer has advertised `CT_MOD_MISCOPTIONS`, a tag `0xBF` carrying
+      exactly 16 bytes of high-entropy data. Three properties fit the second
+      proof field: the length matches `QUIC_NATT_PROOF_VALUE_LENGTH`, it appears
+      only when NAT-T capability is claimed, and it is absent otherwise. One
+      property argues against a nonce reading: it was byte-identical across
+      three separate sessions, so it is a value stable per install -- plausibly
+      a key fingerprint, since that build keeps a `cryptkey.dat`.
+      If the second field is a stable peer identity rather than a nonce, then it
+      does travel and this gap is a misreading rather than a missing wire field.
+      That is a hypothesis, not a finding. The experiment that settles it needs
+      2.1 finished: build the proof with the peer's `0xBF` value as the second
+      field and see whether eMuleAI accepts the connection. Until then
+      `FindExpectation()` still returns NULL, because a validator fed a guess is
+      the "passes everything while looking like authentication" failure this
+      task refused in the first place
 - [x] 3.2 Reject payload before proof validation completes
       -- structural rather than checked: there is no code path from
       `recv_stream_data` to a consumer that does not pass through
@@ -152,14 +170,40 @@
       runtime answer, which is what makes the macOS case silent rather than a
       failure
 - [ ] 4.4 Interop check against eMuleAI over QUIC, then with QUIC disabled
-      -- NOT POSSIBLE HERE, for the same reason as `amule-nat-rendezvous` task
-      4.5: there is no eMuleAI build and no NAT lab, and two aMule containers on
-      one podman network have nothing to traverse. It is also blocked behind 3.1
-      above -- with no expectation source no QUIC connection authenticates, so
-      an interop attempt would fail at the proof stage on aMule's side rather
-      than testing the wire. The values such a check would contradict first are
-      the ones this change picks rather than inherits: the ALPN string, the
-      `EAQN1` layout, and the self-signed certificate this end presents
+      -- PARTIAL. A real eMuleAI v1.6.0 was obtained and run on 2026-08-26, so
+      the "no eMuleAI build" half of the original blocker is gone. What that
+      reached, and what it did not, in full because the negative half is the
+      part a later reader needs:
+
+      Confirmed against the running client and its `eMuleAI.exe`, so these are
+      no longer this change's guesses:
+        * `CT_MOD_MISCOPTIONS` = `0x0000001F` -- every bit of
+          `MOD_MISCOPT_KNOWN_MASK`, so the phase-1 bit assignment holds.
+        * The `EAQN1` magic and the ALPN `ed2k-ai-natt-quic-v1` both appear
+          verbatim in the binary. Task 2.3's ALPN is right.
+        * Its GnuTLS priority string admits AES-128-GCM, AES-256-GCM,
+          CHACHA20-POLY1305 and AES-128-CCM -- the same four this change offers,
+          in the same order -- over SECP256R1, X25519 and SECP384R1, a subset of
+          ours. The cipher and group intersection can never be empty.
+        * An ed2k handshake over native IPv6 completes between the two
+          implementations: a hand-built `OP_HELLO` to its `4662` answered with
+          `OP_HELLOANSWER` in cleartext.
+        * Its certificate CN is `eMuleAI QUIC NAT-T`; this end sends `CN=amule`.
+          Left divergent on purpose (`QuicLibraryAdapter.cpp`): neither side has
+          a CA, authentication is the proof, and a stable identifier in the CN
+          would travel in the clear on every handshake.
+
+      Not reached: the QUIC half, and no part of the NAT-T exchange. That client
+      emitted no UDP at all -- 150 s filtered and 60 s unfiltered on its own
+      network namespace showed only Docker gateway broadcasts. Its Kad never
+      connected, and it opens only `udp6 :::4672` with no IPv4 socket, while
+      this tree opens one per family, so IPv4 Kad nodes are unreachable for it.
+      Eight `OP_UDPRESERVEDPROT2` frame variants sent to that port drew no
+      reply, which is also what this tree does with a capability frame, so it
+      distinguishes nothing.
+
+      Still unproven, therefore: `0x40` (`CONNECT_OPT_NATT_RELAYED`), the
+      `EAQN1` field semantics of 3.1, and whether the certificate CN matters
 
 ## Building and testing this change
 
