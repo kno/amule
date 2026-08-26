@@ -25,6 +25,8 @@
 
 #include "amule.h" // Interface declarations.
 
+#include "BrowseManager.h"
+
 #include <csignal>
 #include <cstring>
 #include <wx/process.h>
@@ -227,6 +229,7 @@ CamuleApp::CamuleApp()
 	clientlist = NULL;
 	chatsessions = nullptr;
 	searchlist = NULL;
+	browsemanager = nullptr;
 	knownfiles = NULL;
 	canceledfiles = NULL;
 	serverlist = NULL;
@@ -430,6 +433,15 @@ int CamuleApp::OnExit()
 
 	delete canceledfiles;
 	canceledfiles = NULL;
+
+	// Immediately before clientlist, and after everything that destroys
+	// clients on its way out -- serverconnect, listensocket, clientudp. Each
+	// of those reaps peers through CClientList::RemoveClient, which asks the
+	// manager to let go of any browse of them; deleting it earlier left that
+	// call reaching through a dangling pointer whenever a peer socket was
+	// still open at exit, which is the ordinary case.
+	delete browsemanager;
+	browsemanager = nullptr;
 
 	delete clientlist;
 	clientlist = NULL;
@@ -875,6 +887,7 @@ bool CamuleApp::OnInit()
 	friendlist = new CFriendList();
 	chatsessions = new CChatSessionStore();
 	searchlist = new CSearchList();
+	browsemanager = new CBrowseManager();
 	knownfiles = new CKnownFileList();
 	canceledfiles = new CCanceledFileList;
 	serverlist = new CServerList();
@@ -886,17 +899,6 @@ bool CamuleApp::OnInit()
 	downloadqueue = new CDownloadQueue();
 	uploadqueue = new CUploadQueue();
 
-	// Restore search results saved on a previous clean shutdown (issue #641
-	// Phase 3, StoredSearches.met). Must run only once downloadqueue/
-	// knownfiles/canceledfiles all exist, since LoadSearches() recomputes
-	// each restored result's download status against them. Registering each
-	// restored search with the EC multi-search registry makes it reachable
-	// via EC_OP_SEARCH_LIST for any client (amuleGUI/amuleapi) that connects
-	// later; monolithic tab creation for these is wired separately in
-	// amule-gui.cpp, since the search dialog doesn't exist yet here.
-	for (uint32_t restoredId : searchlist->LoadSearches()) {
-		RegisterRestoredSearch(restoredId);
-	}
 	// partFileWriteThread / partFileHashThread are constructed AFTER
 	// InitGui() further down — both spawn a wxThread in their ctor,
 	// and the amuled `-f` fork only carries the calling thread to the
@@ -1122,6 +1124,35 @@ bool CamuleApp::OnInit()
 	downloadqueue->LoadMetFiles(thePrefs::GetTempDir());
 	sharedfiles->Reload();
 #endif
+
+	// Restore search results saved on a previous clean shutdown (issue #641
+	// Phase 3, StoredSearches.met). Registering each restored search with the
+	// EC multi-search registry makes it reachable via EC_OP_SEARCH_LIST for
+	// any client (amuleGUI/amuleapi) that connects later.
+	//
+	// Deliberately *after* LoadMetFiles() and sharedfiles->Reload(), not
+	// merely after those objects are constructed. LoadSearches() recomputes
+	// each restored result's download status through
+	// CSearchFile::SetDownloadStatus(), which asks three lists whether it
+	// knows the hash. knownfiles and canceledfiles load in their own
+	// constructors, so they answer correctly from the moment they exist --
+	// but CDownloadQueue's constructor only makes an empty queue, and it is
+	// LoadMetFiles() that fills it. Running the restore before that meant
+	// every result asked an empty download queue and was told "no", so
+	// anything already downloading came back NEW instead of QUEUED. Nothing
+	// corrected it afterwards either: LoadMetFiles() appends to m_filelist
+	// directly rather than through AddDownload(), so the
+	// UpdateSearchFileByHash() that would have re-run the check never fires
+	// (#1101 -- "Hide Known Files" stopped hiding those results, while the
+	// daemon still refused the download with "You are already trying to
+	// download the file").
+	for (uint32_t restoredId : searchlist->LoadSearches()) {
+		RegisterRestoredSearch(restoredId);
+	}
+	// The monolithic search tabs are built from what the loop above just
+	// restored, so they follow it rather than sitting in InitGui() where the
+	// list is still empty. No-op on the daemon.
+	RestoreSearchTabs();
 
 	// Source seeds need two things: the part files they belong to, loaded
 	// just above, and a filter to check the seeded IPs against, which the
@@ -2469,30 +2500,145 @@ void CamuleApp::OnMediaProbeFinished(CMediaProbeEvent &evt)
 	// we were probing. Re-resolve the hash instead of holding a
 	// CKnownFile* across the boundary.
 	CKnownFile *file = theApp->knownfiles->FindKnownFileByID(evt.GetHash());
+	// The shared list can hold a DIFFERENT object for the same hash than the
+	// known-file map does -- that is what happens when the same content is
+	// shared at more than one path, which on a media library is common. The
+	// probe is scheduled off the shared-list entry and its gate reads that
+	// entry, but the result was only ever applied to the known-file map's, so
+	// for such a file the tags landed on an object nothing consults: the
+	// shared entry stayed bare, still looked unprobed, and was re-queued on
+	// every reload and every restart -- succeeding every time, which is why it
+	// showed up as a repeating probe with no failures at all (issue #1116).
+	//
+	// Both objects are updated. Usually they ARE the same object and the
+	// second update is skipped.
+	CKnownFile *sharedFile =
+		theApp->sharedfiles ? theApp->sharedfiles->GetFileByID(evt.GetHash()) : nullptr;
+	if (sharedFile == file) {
+		sharedFile = nullptr;
+	}
+	if (!file && sharedFile) {
+		file = sharedFile;
+		sharedFile = nullptr;
+	}
 	if (!file) {
+		// The probe ran and its result is being thrown away. That is expected
+		// when the file was unshared mid-probe, but it is also the shape a
+		// silently-dropped result would have -- and a dropped result means the
+		// file keeps no metadata and no marker, so it is re-probed on every
+		// reload forever with nothing in the log to say why. Reported so that
+		// case is visible rather than inferred from a repeating probe count.
+		AddLogLineN(CFormat(_("Media metadata: probed file is no longer known, result discarded "
+				      "(%s)")) %
+			    evt.GetHash().Encode());
 		return;
 	}
 
-	// AddTagUnique replaces any existing tag with the same ID, so
-	// re-probing a file (e.g. mtime changed) simply overwrites the
-	// previous values rather than accumulating duplicates.
-	if (evt.GetLengthSeconds()) {
-		file->AddTagUnique(CTagInt32(FT_MEDIA_LENGTH, evt.GetLengthSeconds()));
+	// A probe that produced nothing still has to leave a trace, or the gate
+	// that skips already-probed files cannot tell it from a file never tried
+	// and re-queues it on every reload and every restart (issue #1116). The
+	// existing media tags are left alone: a probe that failed has established
+	// nothing about the file, so it is no grounds to discard what an earlier
+	// successful probe stored.
+	if (!evt.Succeeded()) {
+		// Only a verdict about the file is recorded. A missing or broken
+		// ffprobe, a timeout, or a file that vanished between queue and probe
+		// says nothing about the file itself, and marking on those would mean
+		// one mistyped ffprobe path brands every media file in the library and
+		// nothing re-probes them once it is corrected.
+		if (evt.MarkUnprobeable()) {
+			file->AddTagUnique(CTagInt32(FT_MEDIA_PROBE_FAILED, 1));
+			if (sharedFile) {
+				sharedFile->AddTagUnique(CTagInt32(FT_MEDIA_PROBE_FAILED, 1));
+			}
+			m_mediaTagsDirtiedMs = theStats::GetUptimeMillis();
+		}
+		return;
 	}
-	if (evt.GetBitrateKbps()) {
-		file->AddTagUnique(CTagInt32(FT_MEDIA_BITRATE, evt.GetBitrateKbps()));
-	}
-	if (!evt.GetCodec().IsEmpty()) {
-		file->AddTagUnique(CTagString(FT_MEDIA_CODEC, evt.GetCodec()));
+
+	// A successful probe is AUTHORITATIVE for every media field: what it found
+	// is attached, and what it did NOT find is removed. The alternative to a
+	// value the probe could not determine is not "no tag" -- it is whatever
+	// was there before, which for a completed download is the unverified
+	// preview inherited from the search result. Leaving that in place made
+	// aMule republish a peer's numbers to ed2k and Kad as its own, which is
+	// exactly what the completion re-probe exists to prevent.
+	//
+	// This runs only when Probe() returned true; a failed probe never reaches
+	// here, so an unreadable file keeps its preview rather than being wiped.
+	//
+	// KNOWN LIMITATION: this corrects a file only when a probe actually runs
+	// for it, and the two callers are the initial share-add and the completion
+	// re-probe. Anything already carrying media tags is skipped by the
+	// scheduler's gate, so no later start re-probes it. Two populations are
+	// therefore left uncorrected, and neither is only about inherited
+	// previews:
+	//
+	//  - a download that COMPLETED BEFORE this change keeps whatever its
+	//    search result advertised;
+	//  - a file probed by an earlier build keeps what THAT probe stored --
+	//    including a cover-art codec, since such a file also carries a real
+	//    length and so looks probed to every version of the gate.
+	//
+	// There is deliberately no migration for either: correcting them needs an
+	// explicit user-triggered re-extraction, which is what issue #1079 is
+	// for.
+	const MediaInfo &info = evt.GetInfo();
+	const auto setOrClearInt = [&](uint8 id, uint32 value) {
+		for (CKnownFile *target : { file, sharedFile }) {
+			if (!target) {
+				continue;
+			}
+			if (value) {
+				target->AddTagUnique(CTagInt32(id, value));
+			} else {
+				target->RemoveTag(id);
+			}
+		}
+	};
+	const auto setOrClearStr = [&](uint8 id, const wxString &value) {
+		for (CKnownFile *target : { file, sharedFile }) {
+			if (!target) {
+				continue;
+			}
+			if (!value.IsEmpty()) {
+				target->AddTagUnique(CTagString(id, value));
+			} else {
+				target->RemoveTag(id);
+			}
+		}
+	};
+	setOrClearInt(FT_MEDIA_LENGTH, info.length_seconds);
+	setOrClearInt(FT_MEDIA_BITRATE, info.bitrate_kbps);
+	setOrClearStr(FT_MEDIA_CODEC, info.codec);
+	setOrClearStr(FT_MEDIA_ARTIST, info.artist);
+	setOrClearStr(FT_MEDIA_ALBUM, info.album);
+	setOrClearStr(FT_MEDIA_TITLE, info.title);
+	// This probe worked, so any earlier failure is stale -- clear it, or a
+	// file that has since been fixed would keep a marker saying otherwise.
+	file->RemoveTag(FT_MEDIA_PROBE_FAILED);
+	if (sharedFile) {
+		sharedFile->RemoveTag(FT_MEDIA_PROBE_FAILED);
 	}
 	// Traced under logMediaProbe — the "metadata actually landed"
 	// confirmation, logged once per file when tags are attached.
 	AddDebugLogLineN(logMediaProbe,
-		CFormat(wxT("Media metadata: %s -> length=%us bitrate=%ukbps codec=%s")) %
-			file->GetFileName() % evt.GetLengthSeconds() % evt.GetBitrateKbps() % evt.GetCodec());
+		CFormat(wxT("Media metadata: %s -> length=%us bitrate=%ukbps codec=%s artist=%s album=%s "
+			    "title=%s")) %
+			file->GetFileName() % info.length_seconds % info.bitrate_kbps % info.codec %
+			info.artist % info.album % info.title);
 	// EC exports the tag list; the remote GUI + web UI need to see
 	// the new values on next refresher tick.
 	file->MarkECChanged();
+	// The shared-list object is the one EC serves: CFileEncoderMap builds its
+	// encoders from CopyFileList(shares) keyed by ECID, so leaving it unmarked
+	// means Get_EC_Response_GetUpdate takes its unchanged shortcut and every
+	// remote client keeps showing the file bare -- the same "tags landed where
+	// nothing looked" failure this handler exists to fix, surviving on the
+	// clients.
+	if (sharedFile) {
+		sharedFile->MarkECChanged();
+	}
 	// Coalesce the known.met save instead of rewriting the whole file per
 	// probe. CKnownFileList::Save rewrites every known file, so a per-probe
 	// save is O(files) each time -- O(N^2) when the whole library is probed at

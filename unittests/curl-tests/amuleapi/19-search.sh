@@ -45,7 +45,46 @@ GUEST_PASS=${GUEST_PASS:-guestpass}
 EC_HOST=${EC_HOST:-127.0.0.1}
 EC_PORT=${EC_PORT:-4712}
 EC_PASSWORD=${EC_PASSWORD:-amule}
-AMULEAPI_BIN=${AMULEAPI_BIN:-$(cd "$(dirname "$0")/../../.." && pwd)/build-macos/src/webapi/amuleapi}
+# Locate the amuleapi binary the sub-instances need. Deliberately NOT falling
+# back to PATH: an installed package would silently be tested in place of the
+# working tree, which is worse than not finding anything. Set AMULEAPI_BIN to
+# point somewhere else on purpose.
+#
+# Any build*/ directory counts, not a fixed list of three: per-branch and
+# per-arch trees are normal, and a name this function has never heard of used
+# to mean a silent skip. Where several exist the NEWEST wins -- picking the
+# first match let a stale build/ supply the binary while the tree under test
+# was built somewhere else, which is the one failure mode that produces a
+# confident wrong answer rather than a missing one. Unmatched globs stay
+# literal and fail the -x test, so no nullglob is needed.
+_find_amuleapi_bin() {
+	local root=$1 c best=
+	for c in "$root"/src/webapi/amuleapi \
+		"$root"/build*/src/webapi/amuleapi \
+		"$root"/_build/src/webapi/amuleapi \
+		"$root"/cmake-build-*/src/webapi/amuleapi; do
+		[ -x "$c" ] || continue
+		if [ -z "$best" ] || [ "$c" -nt "$best" ]; then
+			best=$c
+		fi
+	done
+	[ -n "$best" ] || return 1
+	echo "$best"
+}
+
+AMULEAPI_BIN=${AMULEAPI_BIN:-$(_find_amuleapi_bin "$(cd "$(dirname "$0")/../../.." && pwd)")}
+# Three sections below drive a SECOND amuleapi against the same amuled. Without
+# a binary to start one, skip them rather than fail on the daemon's behalf.
+if [ -x "${AMULEAPI_BIN:-/nonexistent}" ]; then
+	HAVE_SECOND_INSTANCE=1
+else
+	HAVE_SECOND_INSTANCE=0
+fi
+# Counted so the summary cannot report a clean pass over a partial run:
+# every section below that skips increments this, and a non-zero count
+# is spelled out next to the OK line.
+SKIP_COUNT=0
+_skip() { SKIP_COUNT=$((SKIP_COUNT+1)); echo "  SKIP  $1"; }
 
 # A query likely to return results on any operator's daemon connected
 # to ed2k. "ubuntu" is a safe choice — well-seeded across the network.
@@ -166,11 +205,16 @@ _assert_status 400 "POST /search (malformed JSON) → 400"
 # Multi-search: each POST /search gets its own daemon-allocated search_id
 # and its own result slot; a new search does NOT wipe the others. Every
 # read/stop/free names its id in the path -- there is no implicit target,
-# which is what the retired-route and bad-id assertions below pin down.
+# which is what the bad-id assertions below pin down.
+#
+# `results` and `stop` reach the {id} matcher and are rejected as ids, which
+# is the honest answer: they are not routes, and the rejection already names
+# where to find a real one.
 _curl -H "Authorization: Bearer $ADMIN_TOKEN" "$HOST/api/v0/search/results"
-_assert_status 404 "GET /search/results → 404 (retired: id goes in the path)"
+_assert_status 400 "GET /search/results → 400 (id goes in the path)"
+_assert_json_eq '.error.code' bad_request '/search/results rejection names the id rule'
 _curl -X POST -H "Authorization: Bearer $ADMIN_TOKEN" "$HOST/api/v0/search/stop"
-_assert_status 404 "POST /search/stop → 404 (retired: id goes in the path)"
+_assert_status 400 "POST /search/stop → 400 (id goes in the path)"
 
 _curl -X POST -H "Authorization: Bearer $ADMIN_TOKEN" \
 	-H "Content-Type: application/json" \
@@ -226,6 +270,32 @@ _assert_json_eq "[.searches[] | select(.search_id == $FIRST_SID)][0].result_coun
 # ...and it agrees with what the results endpoint reports as `total` -- but only
 # once the search has settled. While it runs, result_count is the daemon's live
 # index and `total` is whatever amuleapi last pulled into its cache, so the two
+# --- GET /search is a list endpoint like the others. ---------------
+#
+# It was the one collection with no envelope: no total, no offset, no limit and
+# no sort, so a client had to special-case it. It is also unbounded (whatever
+# EC_OP_SEARCH_LIST returns, including searches this process never started), and
+# entries arrive id-ascending while id order is not start order, because Kad ids
+# carry a high-bit mask and always sort above eD2k ones.
+_curl -H "Authorization: Bearer $ADMIN_TOKEN" "$HOST/api/v0/search"
+_assert_status 200 "GET /search → 200"
+_assert_json_eq '.total | type'  number '/search carries total'
+_assert_json_eq '.offset | type' number '/search carries offset'
+_assert_json_eq '.limit | type'  number '/search carries limit'
+
+_curl -H "Authorization: Bearer $ADMIN_TOKEN" "$HOST/api/v0/search?limit=1"
+_assert_status 200 "GET /search?limit=1 → 200"
+_assert_json_eq '.searches | length' 1 '/search?limit=1 returns one row'
+
+# The recency signal the docs point at is now actually askable.
+_curl -H "Authorization: Bearer $ADMIN_TOKEN" "$HOST/api/v0/search?sort=started_at&order=desc"
+_assert_status 200 "GET /search?sort=started_at&order=desc → 200"
+
+for bad in "limit=abc" "limit=99999" "order=sideways" "sort=nonexistent_field"; do
+	_curl -H "Authorization: Bearer $ADMIN_TOKEN" "$HOST/api/v0/search?$bad"
+	_assert_status 400 "GET /search?$bad → 400"
+done
+
 # legitimately differ by a fetch.
 LIST_COUNT=$(printf '%s' "$CURL_BODY" \
 	| jq -r "[.searches[] | select(.search_id == $FIRST_SID)][0].result_count")
@@ -244,6 +314,9 @@ if [ "$HAVE_GUEST" = "1" ]; then
 	_assert_status 200 "GET /search (guest) → 200 (GUEST-readable)"
 fi
 
+if [ "$HAVE_SECOND_INSTANCE" -eq 0 ]; then
+	_skip "3.2 cross-session discovery (no amuleapi binary; set AMULEAPI_BIN)"
+else
 # --- 3.2 Cross-session discovery: a second amuleapi instance against the
 # same amuled sees $FIRST_SID even though it never called POST /search
 # itself (got3nks, PR #680 review point 6 — no amulecmd needed, two
@@ -312,6 +385,7 @@ fi
 kill "$SECOND_PID" >/dev/null 2>&1
 wait "$SECOND_PID" 2>/dev/null
 rm -rf "$SECOND_CONFIG_DIR" "$SECOND_LOG"
+fi # HAVE_SECOND_INSTANCE -- section 3.2
 
 # --- 3.5 Regression: progress shouldn't claim finished right after POST. -
 # amuled briefly reports raw=100 in the "queue-empty-at-start" window
@@ -322,7 +396,19 @@ rm -rf "$SECOND_CONFIG_DIR" "$SECOND_LOG"
 # this asserts the mask is in force.
 _curl -H "Authorization: Bearer $ADMIN_TOKEN" "$HOST/api/v0/search/$FIRST_SID/results"
 _assert_status 200 "GET /search/{id}/results immediately after POST → 200"
-_assert_json_eq '.progress.state' running 'progress.state is "running" after POST /search'
+# The window guarded here is `finished` with an EMPTY list, from the unmasked
+# raw=100. A search that genuinely completed first is also `finished`, so a flat
+# `running` comparison failed on a fast local hit or a warm server queue.
+EARLY_STATE=$(printf '%s' "$CURL_BODY" | jq -r '.progress.state' 2>/dev/null)
+EARLY_RESULTS=$(printf '%s' "$CURL_BODY" | jq -r '.results | length' 2>/dev/null)
+if [ "$EARLY_STATE" = "running" ] ||
+	{ [ "$EARLY_STATE" = "finished" ] && [ "${EARLY_RESULTS:-0}" -gt 0 ]; }; then
+	_pass "progress.state right after POST is not an empty \"finished\" ($EARLY_STATE, ${EARLY_RESULTS:-0} results)"
+else
+	_fail "early progress state" \
+		"got state=$EARLY_STATE with ${EARLY_RESULTS:-0} results" \
+		"amuled's queue-empty-at-start raw=100 is leaking through unmasked"
+fi
 _assert_json_eq '.progress.kind | type' string 'progress.kind is a string'
 
 # --- 4. Poll /search/{id}/results until we get hits (max ~10 s). --
@@ -863,6 +949,9 @@ if [ -n "$SID_CLOSE" ] && [ "$SID_CLOSE" != "null" ]; then
 	# And it is gone for everyone, not just the session that closed it --
 	# a second instance re-reads the same core state. This is what a
 	# second amulegui would have shown had it still been open.
+	if [ "$HAVE_SECOND_INSTANCE" -eq 0 ]; then
+		_skip "close: second-instance cross-check (no amuleapi binary)"
+	else
 	SECOND2_CONFIG_DIR=$(mktemp -d -t amuleapi_19_close_second.XXXXXX)
 	SECOND2_LOG=$(mktemp -t amuleapi_19_close_second_log.XXXXXX)
 	"$AMULEAPI_BIN" --config-dir="$SECOND2_CONFIG_DIR" \
@@ -893,6 +982,7 @@ if [ -n "$SID_CLOSE" ] && [ "$SID_CLOSE" != "null" ]; then
 	kill "$SECOND2_PID" >/dev/null 2>&1
 	wait "$SECOND2_PID" 2>/dev/null
 	rm -rf "$SECOND2_CONFIG_DIR" "$SECOND2_LOG"
+	fi # HAVE_SECOND_INSTANCE -- close cross-check
 
 	# Its results are unaddressable afterwards, too -- the bucket is freed,
 	# not merely hidden from the listing.
@@ -903,6 +993,9 @@ else
 	_fail "close setup" "POST /search did not return a search_id ($CLOSE_RES)"
 fi
 
+if [ "$HAVE_SECOND_INSTANCE" -eq 0 ]; then
+	_skip "12.1 foreign-search stop (no amuleapi binary; set AMULEAPI_BIN)"
+else
 # --- 12.1 A foreign search must be stoppable, not just visible. ----
 # Found by driving two clients against one daemon and using the other as
 # an oracle: GET /api/v0/search enumerates live core state, so it lists
@@ -967,6 +1060,7 @@ fi
 kill "$FOREIGN_PID" >/dev/null 2>&1
 wait "$FOREIGN_PID" 2>/dev/null
 rm -rf "$FOREIGN_CONFIG_DIR" "$FOREIGN_LOG"
+fi # HAVE_SECOND_INSTANCE -- section 12.1
 
 # --- 13. A failed search start must not wedge discovery. -----------
 # amulegui defers EC_OP_SEARCH_LIST-driven tab creation while it has a
@@ -1006,6 +1100,53 @@ if [ -n "$SID_AFTER" ] && [ "$SID_AFTER" != "null" ] && [ "$SID_AFTER" != "0" ];
 else
 	_fail "failed start: subsequent search" "POST /search returned no id ($AFTER_BAD)"
 fi
+
+# --- 13.1 A search that retained no results still reports a terminal state.
+#
+# The per-id lifecycle used to be inferred from the retained result bucket, so a
+# search that indexed nothing -- no server match, every hit dropped by the file
+# type filter, or a global sweep stopped before its first result -- reported
+# `idle` forever. `idle` is not terminal, so the progress sentinel fell through
+# to the running percent (0) and every consumer read a finished search as still
+# running at 0%: Stop stayed live, the bar never cleared, and amulegui's "an
+# eD2k search is still running" prompt fired on a long-finished tab (issue
+# #1103).
+#
+# Two searches are needed. While a search is the most recent one its state comes
+# from the live scalar, which was always right; only the older of the two takes
+# the inferred path this asserts on.
+ZERO_QUERY="amuleapi19nosuchkeyword"
+_curl -X POST -H "Authorization: Bearer $ADMIN_TOKEN" \
+	-H "Content-Type: application/json" \
+	-d "{\"query\":\"$ZERO_QUERY\",\"type\":\"global\"}" "$HOST/api/v0/search"
+_assert_status 202 "POST /search (zero-result probe) → 202"
+ZERO_SID=$(printf '%s' "$CURL_BODY" | jq -r '.search_id')
+
+_curl -X POST -H "Authorization: Bearer $ADMIN_TOKEN" \
+	-H "Content-Type: application/json" \
+	-d "{\"query\":\"${ZERO_QUERY}b\",\"type\":\"global\"}" "$HOST/api/v0/search"
+_assert_status 202 "POST /search (demotes the zero-result probe) → 202"
+DEMOTER_SID=$(printf '%s' "$CURL_BODY" | jq -r '.search_id')
+
+_curl -H "Authorization: Bearer $ADMIN_TOKEN" "$HOST/api/v0/search"
+_assert_status 200 "GET /search → 200 (after the zero-result probe)"
+ZERO_COUNT=$(printf '%s' "$CURL_BODY" \
+	| jq -r "[.searches[] | select(.search_id == $ZERO_SID)][0].result_count // empty")
+# Guarded on the probe actually having retained nothing: on a daemon where the
+# nonsense keyword somehow matched, this assertion would pass through the
+# results-retained branch and prove nothing.
+if [ "$ZERO_COUNT" = "0" ]; then
+	_assert_json_eq "[.searches[] | select(.search_id == $ZERO_SID)][0].state" finished \
+		'a demoted search that retained no results reports finished, not idle'
+else
+	_skip "zero-result lifecycle: probe retained ${ZERO_COUNT:-no} result(s), not 0"
+fi
+
+# Free both probes so the browse contract below sees the search set it expects.
+for sid in "$ZERO_SID" "$DEMOTER_SID"; do
+	curl -s -X DELETE -H "Authorization: Bearer $ADMIN_TOKEN" \
+		"$HOST/api/v0/search/$sid" > /dev/null 2>&1
+done
 
 # --- Browse ("View Files") contract. -------------------------------
 # POST /clients/{ecid}/shared_files starts a browse and returns a
@@ -1273,8 +1414,10 @@ _assert_json_eq '[.servers[]? | .tcp_flags | has("related_search")] | all' true 
 
 # --- Summary. -----------------------------------------------------
 echo
+SKIP_NOTE=""
+[ "$SKIP_COUNT" -gt 0 ] && SKIP_NOTE=" ($SKIP_COUNT section(s) skipped: no second amuleapi instance)"
 if [ "$FAIL_COUNT" -eq 0 ]; then
-	echo "OK: $TEST_COUNT/$TEST_COUNT passed"
+	echo "OK: $TEST_COUNT/$TEST_COUNT passed$SKIP_NOTE"
 	exit 0
 fi
 echo "FAIL: $FAIL_COUNT/$TEST_COUNT failed"

@@ -19,8 +19,8 @@
 #     (cookie-auth-compatible with the per-origin echo).
 #   * Preflight: `OPTIONS` + `Access-Control-Request-Method` short-
 #     circuits before auth, replies 204 with
-#     `Access-Control-Allow-Methods: GET, HEAD, POST, PATCH, DELETE,
-#     OPTIONS` and `Access-Control-Allow-Headers: Authorization,
+#     `Access-Control-Allow-Methods: GET, HEAD, POST, PUT, PATCH,
+#     DELETE, OPTIONS` and `Access-Control-Allow-Headers: Authorization,
 #     Content-Type, If-None-Match, Last-Event-ID` and
 #     `Access-Control-Max-Age: 86400`.
 #   * SSE: the streaming response carries the same Allow-Origin /
@@ -32,8 +32,44 @@ set -o pipefail
 HOST=${HOST:-localhost:4713}
 ADMIN_PASS=${ADMIN_PASS:-adminpass}
 CONFIG_DIR=${AMULEAPI_CONFIG_DIR:-/tmp/amuleapi-regtest}
-BIN=${AMULEAPI_BIN:-$(cd "$(dirname "$0")/../../.." && pwd)/build-macos/src/webapi/amuleapi}
+# Locate the amuleapi binary the sub-instances need. Deliberately NOT falling
+# back to PATH: an installed package would silently be tested in place of the
+# working tree, which is worse than not finding anything. Set AMULEAPI_BIN to
+# point somewhere else on purpose.
+#
+# Any build*/ directory counts, not a fixed list of three: per-branch and
+# per-arch trees are normal, and a name this function has never heard of used
+# to mean a silent skip. Where several exist the NEWEST wins -- picking the
+# first match let a stale build/ supply the binary while the tree under test
+# was built somewhere else, which is the one failure mode that produces a
+# confident wrong answer rather than a missing one. Unmatched globs stay
+# literal and fail the -x test, so no nullglob is needed.
+_find_amuleapi_bin() {
+	local root=$1 c best=
+	for c in "$root"/src/webapi/amuleapi \
+		"$root"/build*/src/webapi/amuleapi \
+		"$root"/_build/src/webapi/amuleapi \
+		"$root"/cmake-build-*/src/webapi/amuleapi; do
+		[ -x "$c" ] || continue
+		if [ -z "$best" ] || [ "$c" -nt "$best" ]; then
+			best=$c
+		fi
+	done
+	[ -n "$best" ] || return 1
+	echo "$best"
+}
+
+ROOT=${AMULEAPI_ROOT:-$(cd "$(dirname "$0")/../../.." && pwd)}
+BIN=${AMULEAPI_BIN:-$(_find_amuleapi_bin "$ROOT")}
 LOG=${AMULEAPI_LOG:-/tmp/amuleapi.log}
+# The daemon this smoke drives. Defaults are the orchestrator's, but every
+# value is overridable so the suite can be pointed at a daemon that is not
+# on the stock EC port; hardcoding them here made that impossible.
+EC_HOST=${EC_HOST:-127.0.0.1}
+EC_PORT=${EC_PORT:-4712}
+EC_PASSWORD=${EC_PASSWORD:-amule}
+# The HTTP port the rewritten config must bind is the one $HOST names.
+HTTP_PORT=${HOST##*:}
 
 FAIL_COUNT=0
 TEST_COUNT=0
@@ -57,7 +93,7 @@ if ! curl -s -o /dev/null --max-time 2 "$HOST/api/v0/version" 2>/dev/null; then
 	_die "amuleapi at $HOST is not reachable."
 fi
 if [ ! -x "$BIN" ]; then
-	_die "amuleapi binary not found at $BIN. Set AMULEAPI_BIN to override."
+	_die "no usable amuleapi binary under $ROOT. Set AMULEAPI_BIN to point at one."
 fi
 
 echo "amuleapi 25-cors smoke @ $HOST (bin=$BIN config=$CONFIG_DIR)"
@@ -74,14 +110,14 @@ _rewrite_cors_and_restart() {
 	cat > "$CONFIG_DIR/amuleapi.conf" <<EOF
 [Server]
 BindAddress=127.0.0.1
-Port=4713
+Port=$HTTP_PORT
 AllowCORS=$allow
 CorsOriginAllowlist=$allowlist
 
 [EC]
-Host=127.0.0.1
-Port=4712
-Password=amule
+Host=$EC_HOST
+Port=$EC_PORT
+Password=$EC_PASSWORD
 
 [Auth]
 LoginFailureWindowSeconds=60
@@ -89,7 +125,7 @@ LoginFailureThreshold=5
 LoginLockoutSeconds=300
 EOF
 	"$BIN" --config-dir="$CONFIG_DIR" \
-		--host=127.0.0.1 --port=4712 \
+		--host="$EC_HOST" --port="$EC_PORT" \
 		> "$LOG" 2>&1 &
 	# Wait for /version to respond.
 	for _ in 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15; do
@@ -221,6 +257,41 @@ else
 	_fail "Vary on rejection" "got: $VARY"
 fi
 
+# --- Transport-built replies carry CORS too. ---------------------
+#
+# 408 / 413 / 431 / the streaming cap refusal / the handler catch-all are
+# built by the transport, before or instead of a handler, so the dispatcher's
+# CORS pass never sees them. They are the replies a cross-origin client most
+# needs to read, and they went uncovered: nulling the stamper left the whole
+# suite green.
+BIG_BODY=$(mktemp -t amuleapi_25_big.XXXXXX)
+if command -v python3 >/dev/null 2>&1 &&
+	python3 -c "import sys; sys.stdout.write('{\"password\":\"' + 'a'*2200000 + '\"}')" \
+		> "$BIG_BODY" 2>/dev/null && [ -s "$BIG_BODY" ]; then
+	_curl -X POST -H "Origin: https://allowed.example.com" \
+		-H "Content-Type: application/json" \
+		--data-binary @"$BIG_BODY" "$HOST/api/v0/auth/login"
+	BIG_STATUS=$(head -1 "$HDR" | awk '{print $2}')
+	BIG_ACAO=$(_hdr "Access-Control-Allow-Origin")
+	if [ "$BIG_STATUS" = "413" ]; then
+		if [ "$BIG_ACAO" = "https://allowed.example.com" ]; then
+			_pass "a transport-built 413 carries Allow-Origin"
+		else
+			_fail "transport-built 413 CORS" "expected the echoed origin, got '$BIG_ACAO'"
+		fi
+		BIG_EXPOSE=$(_hdr "Access-Control-Expose-Headers")
+		case "$BIG_EXPOSE" in
+		*Retry-After*) _pass "Expose-Headers advertises Retry-After" ;;
+		*) _fail "Expose-Headers Retry-After" "got '$BIG_EXPOSE'" ;;
+		esac
+	else
+		_fail "transport-built 413" "expected 413, got '$BIG_STATUS'"
+	fi
+else
+	_pass "SKIPPED transport-built 413 CORS (python3 unavailable)"
+fi
+rm -f "$BIG_BODY"
+
 # --- OPTIONS preflight (Mode C, allowed origin). -----------------
 _curl -X OPTIONS \
 	-H "Origin: https://allowed.example.com" \
@@ -248,6 +319,30 @@ if echo "$ACAM" | grep -q "POST" && echo "$ACAM" | grep -q "PATCH" \
 	_pass "Preflight: Allow-Methods lists mutating verbs"
 else
 	_fail "Allow-Methods" "expected POST/PATCH/DELETE listed, got '$ACAM'"
+fi
+# PUT specifically: PUT /api/v0/share_directories is a real route (the
+# replace-the-whole-share-root-list form), and it was missing from the
+# advertised list. A browser doing a cross-origin PUT there was told the
+# method is not allowed and blocked the request before sending it -- the
+# route worked from curl and was unreachable from a page.
+if echo "$ACAM" | grep -q "PUT"; then
+	_pass "Preflight: Allow-Methods lists PUT"
+else
+	_fail "Allow-Methods PUT" "PUT is a real route on /shared/directories, got '$ACAM'"
+fi
+
+# And the same preflight asked about that route by name.
+_curl -X OPTIONS \
+	-H "Origin: https://allowed.example.com" \
+	-H "Access-Control-Request-Method: PUT" \
+	"$HOST/api/v0/share_directories"
+PUT_STATUS=$(head -1 "$HDR" | awk '{print $2}')
+PUT_ACAM=$(_hdr "Access-Control-Allow-Methods")
+if [ "$PUT_STATUS" = "204" ] && echo "$PUT_ACAM" | grep -q "PUT"; then
+	_pass "Preflight for PUT /shared/directories advertises PUT"
+else
+	_fail "Preflight PUT /shared/directories" \
+		"status '$PUT_STATUS', Allow-Methods '$PUT_ACAM'"
 fi
 if echo "$ACAH" | grep -qi "Authorization" \
    && echo "$ACAH" | grep -qi "If-None-Match" \

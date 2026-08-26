@@ -42,6 +42,7 @@
 #include "ThreadTasks.h"      // Needed for CThreadScheduler and CHasherTask
 #include "MediaProbeThread.h" // Needed for CMediaProbeThread (media probe queue)
 #include "OtherFunctions.h"   // Needed for GetED2KFileTypeID / ED2KFT_* (MaybeScheduleMediaProbe)
+#include "ThreadScheduler.h"  // Needed for CThreadScheduler::GetPendingCount (bulk probe logging)
 #include "Preferences.h"      // Needed for thePrefs
 #include "DownloadQueue.h"    // Needed for CDownloadQueue
 #include "amule.h"            // Needed for theApp
@@ -745,32 +746,50 @@ bool CSharedFileList::AddFile(CKnownFile *pFile)
 		const wxString key =
 			NormalizePathKey(pFile->GetFilePath().JoinPaths(pFile->GetFileName()).GetRaw());
 		m_pathIndex[key] = pFile;
-		MaybeScheduleMediaProbe(pFile);
+		// Two ways this is a mass operation rather than one file the user is
+		// watching. `reloading` covers the share walk itself. The hashing
+		// queue covers what the walk leaves behind: files it discovered are
+		// hashed asynchronously and only reach here when their task finishes,
+		// by which time the walk is long over -- so a first import of a large
+		// library would print one line per file with `reloading` alone, which
+		// is precisely the log flood the summary exists to prevent.
+		//
+		// `> 1`, not `> 0`: GetPendingCount counts the running task too, so a
+		// single file dropped into a shared directory reads as 1 while it is
+		// being hashed. Misjudging the last file of an import as singular
+		// costs one extra line; misjudging a single file as bulk would lose
+		// the only feedback that file ever produces.
+		const bool massOperation = reloading || CThreadScheduler::GetPendingCount(wxT("Hashing")) > 1;
+		MaybeScheduleMediaProbe(pFile, MediaProbeMode::Normal, massOperation);
 		return true;
 	}
 	return false;
 }
 
-void CSharedFileList::MaybeScheduleMediaProbe(CKnownFile *pFile, bool bForceReprobe)
+bool CSharedFileList::MaybeScheduleMediaProbe(CKnownFile *pFile, MediaProbeMode mode, bool bulk)
 {
-	// Called from AddFile under list_mut so we already know pFile is
-	// live and stable for the duration of this call.
-	// #140 — probe local shared audio / video files with ffprobe to
-	// populate FT_MEDIA_LENGTH / _BITRATE / _CODEC. Cost-limiting:
-	//  * off by default in Preferences,
-	//  * only fires when the ffprobe path is populated,
+	// Callers must keep pFile alive for the duration of this call. AddFile
+	// holds list_mut, which does that; the refresh walk instead snapshots the
+	// pointers under the lock and schedules outside it, which is safe because
+	// both callers run on the main thread and only the main thread removes a
+	// file from the list. It is that single-thread property doing the work
+	// here, not the mutex.
+	// #140 — probe local shared audio / video files with ffprobe to populate
+	// the six FT_MEDIA_* fields (length, bitrate, codec, artist, album,
+	// title). Cost-limiting:
+	//  * on by default since #1080, and still switchable off in Preferences,
 	//  * only for files whose ED2K file-type is audio / video (cheap
 	//    extension-based filter — a .zip renamed to .mp4 gets
 	//    scheduled and ffprobe fails fast in the worker, but this
 	//    filter skips the mass of docs / archives / images in a
 	//    typical share tree),
-	//  * only when the file doesn't already carry FT_MEDIA_LENGTH
-	//    (retrofits pre-#140 known.met entries once, then never
-	//    re-probes).
+	//  * only when the file has no media metadata at all yet
+	//    (GetMetaDataVer() == 0), so a probed file is never re-probed.
+	// An empty ffprobe path is NOT "off": it means auto-detect.
 	// CThreadScheduler naturally throttles: it runs one task at a
 	// time at ETP_Low so hashing / completion never starve.
 	if (!thePrefs::GetMediaMetadataEnabled()) {
-		return;
+		return false;
 	}
 	// An empty preference is not "off" -- it means "whatever this machine
 	// has", which is what every place that documents the setting promises.
@@ -779,9 +798,12 @@ void CSharedFileList::MaybeScheduleMediaProbe(CKnownFile *pFile, bool bForceRepr
 	// subprocess off this thread and pays for it once per process rather
 	// than once per file.
 	const wxString &ffprobePath = thePrefs::GetMediaMetadataFFProbePath();
-	const EED2KFileType type = GetED2KFileTypeID(pFile->GetFileName());
-	if (type != ED2KFT_AUDIO && type != ED2KFT_VIDEO) {
-		return;
+	// Shared with the GUI's menu-enable test (IsMediaProbeCandidate, in
+	// OtherFunctions): the view must not offer an action the scheduler will
+	// silently drop, which is what two copies of this rule would eventually
+	// produce.
+	if (!IsMediaProbeCandidate(pFile->GetFileName())) {
+		return false;
 	}
 	// Never probe an in-progress download. A partfile is shared while
 	// transferring, so this fires from AddFile() during the download; there is
@@ -789,23 +811,53 @@ void CSharedFileList::MaybeScheduleMediaProbe(CKnownFile *pFile, bool bForceRepr
 	// metadata is derived exactly once -- on completion, which re-enters here
 	// with bForceReprobe set. Skipping unconditionally (not just when metadata
 	// happened to be inherited from the search result) keeps that guarantee.
-	if (!bForceReprobe && pFile->IsPartFile()) {
+	// Only Completion lifts this, and only because a just-completed download
+	// is still a CPartFile object while its bytes are already all on disk. A
+	// Refresh walk MUST NOT inherit that licence: an in-progress download is
+	// in the shared list too, and there is nothing complete to read for it.
+	if (mode != MediaProbeMode::Completion && pFile->IsPartFile()) {
 		AddDebugLogLineN(logMediaProbe,
 			CFormat(wxT("MediaProbe: skip (incomplete download) %s")) % pFile->GetFileName());
-		return;
+		return false;
 	}
-	if (!bForceReprobe && pFile->GetIntTagValue(FT_MEDIA_LENGTH) > 0) {
+	// GetMetaDataVer(), not a second FT_MEDIA_LENGTH test: one definition of
+	// "this file has been probed", shared with the publishers and the UI. The
+	// length-only form here never considered a codec-only file probed, so
+	// every startup re-ran ffprobe on all of them.
+	if (mode == MediaProbeMode::Normal && pFile->GetMetaDataVer() > 0) {
 		AddDebugLogLineN(logMediaProbe,
 			CFormat(wxT("MediaProbe: skip (already has metadata) %s")) % pFile->GetFileName());
-		return;
+		return false;
+	}
+	// A file ffprobe already tried and could not read is not re-tried on the
+	// normal path. Nothing about it has changed since the last attempt, so a
+	// share reload would spawn ffprobe on every broken file in the library,
+	// every time, to fail identically (issue #1116). Refresh deliberately
+	// ignores this -- that is the whole point of an explicit re-extraction --
+	// and a successful probe clears the marker.
+	if (mode == MediaProbeMode::Normal && pFile->GetIntTagValue(FT_MEDIA_PROBE_FAILED)) {
+		AddDebugLogLineN(logMediaProbe,
+			CFormat(wxT("MediaProbe: skip (previous probe found nothing) %s")) %
+				pFile->GetFileName());
+		return false;
 	}
 	const CPath fullPath = pFile->GetFilePath().JoinPaths(pFile->GetFileName());
 	// Only probe a file that is actually on disk at this resolved path -- a
 	// stale known.met record can outlive its deleted file, and this is cheap
 	// insurance against handing ffprobe a path that cannot succeed. (In-progress
 	// downloads are already excluded by the partfile guard above.)
-	if (!fullPath.FileExists()) {
-		return;
+	//
+	// Skipped for Refresh, which walks the WHOLE share from an EC handler on
+	// the main thread: one stat per file is cheap, N of them synchronously
+	// before the reply goes out is not, and it is the same stall the shared-
+	// files reload was deliberately made asynchronous to avoid. Nothing is
+	// lost by deferring it -- MediaProbe::Probe stats the path again on the
+	// worker before spawning ffprobe, and logs the file as vanished. The cost
+	// is that `queued` counts a file that has since been deleted, which is
+	// honest: it says how many were accepted for probing, not how many
+	// produced metadata.
+	if (mode != MediaProbeMode::Refresh && !fullPath.FileExists()) {
+		return false;
 	}
 	// #280: run on the dedicated media-probe worker, NOT the shared
 	// CThreadScheduler — a slow/hung ffprobe there wedges completions.
@@ -813,12 +865,86 @@ void CSharedFileList::MaybeScheduleMediaProbe(CKnownFile *pFile, bool bForceRepr
 		AddDebugLogLineN(logMediaProbe,
 			CFormat(wxT("MediaProbe: queueing %s (ffprobe=%s)")) % pFile->GetFileName() %
 				ffprobePath);
-		theApp->mediaProbeThread->QueueProbe(pFile->GetFileHash(), fullPath, ffprobePath);
+		theApp->mediaProbeThread->QueueProbe(pFile->GetFileHash(), fullPath, ffprobePath, bulk);
+		return true;
 	} else {
 		AddDebugLogLineN(logMediaProbe,
 			CFormat(wxT("MediaProbe: dropped %s - probe thread not ready")) %
 				pFile->GetFileName());
 	}
+	return false;
+}
+
+// A user-triggered refresh must never decline in silence. The scheduler's own
+// "feature is off" check is a debug line, which compiles out of release builds,
+// so a refresh with media metadata disabled did exactly nothing and said
+// nothing -- the GUI greys its entry out for this now, but an older GUI, a
+// script driving EC, or the REST endpoint can still ask.
+static bool MediaRefreshAvailable()
+{
+	if (thePrefs::GetMediaMetadataEnabled()) {
+		return true;
+	}
+	AddLogLineN(_("Media metadata extraction is disabled in preferences, so there is nothing to "
+		      "re-extract."));
+	return false;
+}
+
+unsigned CSharedFileList::RefreshAllMediaMetadata()
+{
+	if (!MediaRefreshAvailable()) {
+		return 0;
+	}
+	// Snapshot under the lock, schedule outside it. Holding list_mut across a
+	// whole library's worth of scheduling would block every reader, including
+	// the EC handlers this is invoked from.
+	std::vector<CKnownFile *> files;
+	{
+		wxMutexLocker lock(list_mut);
+		files.reserve(m_Files_map.size());
+		for (const auto &entry : m_Files_map) {
+			files.push_back(entry.second);
+		}
+	}
+
+	unsigned queued = 0;
+	for (CKnownFile *file : files) {
+		if (MaybeScheduleMediaProbe(file, MediaProbeMode::Refresh, /*bulk=*/true)) {
+			++queued;
+		}
+	}
+	AddLogLineN(CFormat(wxPLURAL("Re-extracting media metadata for %u shared file",
+			    "Re-extracting media metadata for %u shared files",
+			    queued)) %
+		    queued);
+	return queued;
+}
+
+unsigned CSharedFileList::RefreshMediaMetadata(const std::vector<CMD4Hash> &hashes)
+{
+	if (!MediaRefreshAvailable()) {
+		return 0;
+	}
+	unsigned queued = 0;
+	for (const CMD4Hash &hash : hashes) {
+		CKnownFile *file = GetFileByID(hash);
+		// bulk: a selection of many files is one user action and reports one
+		// summary, the same as a whole-share refresh. A selection of one is a
+		// single file the user is looking at, and keeps its per-file line.
+		if (file && MaybeScheduleMediaProbe(file, MediaProbeMode::Refresh, hashes.size() > 1)) {
+			++queued;
+		}
+	}
+	return queued;
+}
+
+bool CSharedFileList::RefreshMediaMetadata(const CMD4Hash &hash)
+{
+	if (!MediaRefreshAvailable()) {
+		return false;
+	}
+	CKnownFile *file = GetFileByID(hash);
+	return file && MaybeScheduleMediaProbe(file, MediaProbeMode::Refresh);
 }
 
 void CSharedFileList::SafeAddKFile(CKnownFile *toadd, bool bOnlyAdd)
@@ -881,10 +1007,11 @@ void CSharedFileList::SafeAddKFile(CKnownFile *toadd, bool bOnlyAdd)
 			// tags on the next startup rescan. Now that it is complete on disk
 			// at its Incoming path, schedule the probe here. QueueProbe() only
 			// enqueues (it never runs ffprobe inline), so this cannot stall the
-			// completion. Force it (bypassing the already-has-FT_MEDIA gate) so
+			// completion. Completion mode bypasses BOTH gates -- the file is
+			// still a CPartFile object at this point -- so
 			// the authoritative local probe overwrites any metadata inherited
 			// from the search result, which is only a during-download preview.
-			MaybeScheduleMediaProbe(toadd, /*bForceReprobe=*/true);
+			MaybeScheduleMediaProbe(toadd, MediaProbeMode::Completion);
 		}
 	}
 

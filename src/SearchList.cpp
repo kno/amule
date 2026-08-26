@@ -25,6 +25,8 @@
 
 #include "SearchList.h" // Interface declarations.
 
+#include "BrowseManager.h"
+
 #include <algorithm> // Needed for std::sort (StoreSearches)
 #include <utility>   // Needed for std::move (LoadSearches)
 
@@ -279,6 +281,7 @@ CSearchList::CSearchList()
 , m_64bitSearchPacket(false)
 , m_KadSearchFinished(true)
 , m_ed2kSearchFinished(true)
+, m_awaitingServerAnswer(false)
 , m_searchStart(0)
 , m_shuttingDown(false)
 {
@@ -327,8 +330,9 @@ void CSearchList::RemoveResults(wxUIntPtr searchID)
 	m_searchStartTimes.erase(static_cast<uint32_t>(searchID));
 	m_searchKinds.erase(static_cast<uint32_t>(searchID));
 	m_searchStrings.erase(static_cast<uint32_t>(searchID));
-	m_browseBar.erase(searchID);
-	m_browseStatus.erase(searchID);
+	m_browsePeers.erase(static_cast<uint32_t>(searchID));
+	// The browse record outlives its client but not its search.
+	theApp->browsemanager->Remove(static_cast<uint32_t>(searchID));
 
 	// This list owns its results, so free them before dropping the index
 	// (which, being shared with the remote search list, never deletes).
@@ -689,6 +693,12 @@ wxString CSearchList::StartNewSearch(uint32 *searchID, SearchType type, CSearchP
 		theStats::AddUpOverheadServer(searchPacket->GetPacketSize());
 		theApp->serverconnect->SendPacket(searchPacket, (type == LocalSearch));
 
+		// Bound the wait for the server's answer, for either kind: a local
+		// search has no other terminal path, and a global one's sweep is
+		// armed by the very answer we are waiting for.
+		m_awaitingServerAnswer = true;
+		m_searchTimer.Start(SERVER_ANSWER_TIMEOUT_MS, true /* one shot */);
+
 		if (type == GlobalSearch) {
 			delete m_searchPacket;
 			m_searchPacket = searchPacket;
@@ -726,6 +736,20 @@ wxString CSearchList::StartNewSearch(uint32 *searchID, SearchType type, CSearchP
 
 void CSearchList::LocalSearchEnd()
 {
+	if (!m_searchInProgress) {
+		// Nothing left for this reply to end: the wait for it ran out, or the
+		// search was stopped. Without this, a late answer to a terminalized
+		// global search reaches the wxCHECK_RET below with the packet already
+		// released -- silent under NDEBUG, an assertion in a Debug build.
+		return;
+	}
+
+	// The answer is in; from here the global branch's sweep bounds itself and
+	// the local branch is already terminal, so the one-shot has nothing left
+	// to guard. Cleared before either branch, since the global one restarts
+	// the same timer as the sweep ticker.
+	m_awaitingServerAnswer = false;
+
 	if (m_searchType == GlobalSearch) {
 		wxCHECK_RET(m_searchPacket, "Global search, but no packet");
 
@@ -733,10 +757,19 @@ void CSearchList::LocalSearchEnd()
 		theApp->serverlist->RemoveObserver(&m_serverQueue);
 		m_searchTimer.Start(750);
 	} else {
-		m_searchInProgress = false;
-		m_ed2kSearchFinished = true;
-		Notify_SearchLocalEnd();
+		FinalizeLocalSearch();
 	}
+}
+
+void CSearchList::FinalizeLocalSearch()
+{
+	// Harmless when the server answered in time and the timer never fired;
+	// required when it did not, so the one-shot cannot outlive its search.
+	m_searchTimer.Stop();
+	m_awaitingServerAnswer = false;
+	m_searchInProgress = false;
+	m_ed2kSearchFinished = true;
+	Notify_SearchLocalEnd();
 }
 
 uint32 CSearchList::GetSearchProgress() const
@@ -835,6 +868,23 @@ uint8 CSearchList::GetSearchLifecyclePercent() const
 
 void CSearchList::OnGlobalSearchTimer(CTimerEvent &WXUNUSED(evt))
 {
+	if (m_awaitingServerAnswer && m_searchInProgress) {
+		// The one-shot armed at StartNewSearch: the connected server never
+		// sent OP_SEARCHRESULT, so neither kind of ed2k search has anything
+		// left that would end it. Terminalize through the finalizer the kind
+		// already has rather than leave it reporting RUNNING for good.
+		//
+		// Tested before the packet check below, which a local search would
+		// otherwise fall into: it has no search packet.
+		AddLogLineN(_("Search timed out: the server did not answer."));
+		if (m_searchType == GlobalSearch) {
+			FinalizeGlobalSearch();
+		} else {
+			FinalizeLocalSearch();
+		}
+		return;
+	}
+
 	// Ensure that the server-queue contains the current servers.
 	if (m_searchPacket == NULL) {
 		// This was a pending event, handled after 'Stop' was pressed.
@@ -934,11 +984,10 @@ void CSearchList::ProcessSharedFileList(const uint8_t *in_packet,
 {
 	wxCHECK_RET(sender, "No sender in search-results from client.");
 
-	// Route the browsed listing to a result bucket. For an EC-initiated browse
-	// (remote GUI) the daemon has pinned a real, wire-safe search ID on the
-	// client; use it so the union/per-ID poll and the LRU ring can address these
-	// results. A monolithic local browse leaves it 0 and keeps the historical
-	// per-client-pointer key.
+	// Route the browsed listing to a result bucket. Every browse has a real,
+	// wire-safe search ID by now -- pinned by the EC handler for a remote one,
+	// allocated by RequestSharedFileList for a local one -- so the union and
+	// per-ID polls and the LRU ring can all address these results.
 	// A local browse used to key its results on the client pointer, which no
 	// remote client can address -- it is this process's memory, so the browse
 	// was invisible to amulegui, amuleweb and amuleapi while an EC-initiated
@@ -962,11 +1011,6 @@ void CSearchList::ProcessSharedFileList(const uint8_t *in_packet,
 	const bool ecInitiated = sender->IsBrowseEcInitiated();
 #endif
 
-	if (!sender->GetBrowseSearchId()) {
-		const uint32 localBrowseId = AllocateEd2kId();
-		sender->SetBrowseSearchId(localBrowseId);
-		RegisterBrowseSearch(localBrowseId, sender->GetUserName(), sender->ECID());
-	}
 	wxUIntPtr searchID = static_cast<wxUIntPtr>(sender->GetBrowseSearchId());
 
 #ifndef AMULE_DAEMON
@@ -1020,10 +1064,26 @@ static inline bool IsActiveSearchTypeEd2k(SearchType t)
 	return t == LocalSearch || t == GlobalSearch;
 }
 
+bool CSearchList::CanFileServerAnswer() const
+{
+	// Late server replies keep arriving after a search is over, and where they
+	// may be filed is not the same question as whether the search is still
+	// running. A terminalized search still owns its id -- both the timeout and
+	// the sweep's natural drain leave m_currentSearch alone -- so its results
+	// have a bucket of their own and are worth keeping.
+	//
+	// An explicit stop is what does not: it hands m_currentSearch back to the
+	// sentinel the EC handler pins across all its searches, and filing server
+	// hits there contaminates the bucket StartNewSearch takes care to keep
+	// clean. Test that, rather than m_searchInProgress, so nothing is dropped
+	// that had somewhere to go.
+	return IsActiveSearchTypeEd2k(m_searchType) && m_currentSearch != wxUIntPtr(-1);
+}
+
 void CSearchList::ProcessSearchAnswer(
 	const uint8_t *in_packet, uint32_t size, bool optUTF8, uint32_t serverIP, uint16_t serverPort)
 {
-	if (!IsActiveSearchTypeEd2k(m_searchType)) {
+	if (!CanFileServerAnswer()) {
 		return;
 	}
 	CMemFile packet(in_packet, size);
@@ -1037,7 +1097,7 @@ void CSearchList::ProcessSearchAnswer(
 void CSearchList::ProcessUDPSearchAnswer(
 	const CMemFile &packet, bool optUTF8, uint32_t serverIP, uint16_t serverPort)
 {
-	if (!IsActiveSearchTypeEd2k(m_searchType)) {
+	if (!CanFileServerAnswer()) {
 		return;
 	}
 	AddToList(new CSearchFile(packet, optUTF8, m_currentSearch, serverIP, serverPort), false);
@@ -1214,7 +1274,7 @@ wxString CSearchList::GetSearchStringById(uint32_t searchID) const
 
 bool CSearchList::IsKnownSearchId(uint32_t searchID) const
 {
-	return m_searchStrings.count(searchID) != 0 || m_browseBar.count(searchID) != 0;
+	return m_searchStrings.count(searchID) != 0 || theApp->browsemanager->Has(searchID);
 }
 
 uint32 CSearchList::GetBrowsePeerEcid(uint32 searchID) const
@@ -1277,6 +1337,17 @@ void CSearchList::StopSearch(bool globalOnly)
 	if (m_searchType == GlobalSearch) {
 		FinalizeGlobalSearch();
 		m_currentSearch = -1;
+	} else if (m_searchType == LocalSearch) {
+		// A local search has no sweep to halt, but it does have an armed
+		// answer timeout and an m_searchInProgress that nothing else clears.
+		// Leaving both is what made a stopped local search hang; leaving just
+		// the timer would be worse still, announcing a timeout for a search
+		// the user stopped, against a server that may well have answered.
+		//
+		// Not gated on globalOnly: that spares Kad, and a local search is
+		// ed2k, exactly like the global branch above.
+		FinalizeLocalSearch();
+		m_currentSearch = -1;
 	} else if (m_searchType == KadSearch && !globalOnly) {
 		Kademlia::CSearchManager::StopSearch(m_currentSearch, false);
 		m_currentSearch = -1;
@@ -1308,8 +1379,8 @@ void CSearchList::SetKadSearchFinished(uint32_t searchID)
 CSearchList::SearchLifecycleState CSearchList::GetSearchLifecycleStateById(wxUIntPtr searchID) const
 {
 	uint32_t sid = static_cast<uint32_t>(searchID);
-	// A browse ("View Files") is not a CSearchList search: its lifecycle lives
-	// in m_browseStatus, keyed by the same id this function is asked about.
+	// A browse ("View Files") is not a CSearchList search: CBrowseManager owns
+	// its lifecycle, keyed by the same id this function is asked about.
 	// Without this the generic tail below decides it from retained results,
 	// which is wrong in both directions -- a browse still streaming reports
 	// finished as soon as its first directory lands, and one the peer denied
@@ -1317,9 +1388,10 @@ CSearchList::SearchLifecycleState CSearchList::GetSearchLifecycleStateById(wxUIn
 	// ternary. Same mapping the EC progress reply applies (ExternalConn.cpp's
 	// AppendSearchProgress), here instead of only there so the SEARCH_LIST
 	// listing cannot disagree with the per-id progress reply about the same id.
-	if (HasBrowseStatus(searchID)) {
-		return GetBrowseStatusById(searchID) == BROWSE_IN_PROGRESS ? SEARCH_LIFECYCLE_RUNNING
-									   : SEARCH_LIFECYCLE_FINISHED;
+	if (theApp->browsemanager->Has(sid)) {
+		return theApp->browsemanager->StateOf(sid) == browse::State::InProgress
+			       ? SEARCH_LIFECYCLE_RUNNING
+			       : SEARCH_LIFECYCLE_FINISHED;
 	}
 	// Kad searches are tracked per-ID: still registered in the manager =>
 	// running; recorded as finished (its CSearch was destroyed on the result
@@ -1335,8 +1407,34 @@ CSearchList::SearchLifecycleState CSearchList::GetSearchLifecycleStateById(wxUIn
 	if (searchID == m_currentSearch) {
 		return GetSearchLifecycleState();
 	}
-	// Otherwise: results retained => finished; nothing => idle/unknown.
-	return HasSearchResults(searchID) ? SEARCH_LIFECYCLE_FINISHED : SEARCH_LIFECYCLE_IDLE;
+	// Otherwise this id is done, whatever any sweep is still doing: results are
+	// filed under the scalar m_currentSearch (ProcessSearchAnswer /
+	// ProcessUDPSearchAnswer), so once a newer ed2k search takes that scalar
+	// nothing further can land in this id's bucket. Unreachable, not idle.
+	//
+	// Deliberately NOT "no other ed2k search is in flight", which is false on
+	// one of the two paths: only the EC start handler finalizes the previous
+	// sweep (StopInFlightEd2kSearch, whose sole caller it is), while the
+	// monolithic dialog calls StartNewSearch directly and merely abandons it,
+	// so an older search's sweep may well still be running. Reachability of the
+	// bucket is the narrower property, and the one that holds on both paths.
+	//
+	// Deciding this from the retained results instead reported every search
+	// that indexed *nothing* as IDLE forever -- a query no server matched, one
+	// whose every hit AddToList dropped on the file-type filter, or a global
+	// sweep stopped before its first result. IDLE is not terminal, so
+	// GetSearchBarStatusById fell through to the running percent (0) and every
+	// consumer read a finished search as running at 0%: the Stop button stayed
+	// live, the bar never cleared, the EC lifecycle tag said "idle", and the
+	// "an eD2k search is still running" prompt fired on a tab that had long
+	// since finished (issue #1103).
+	//
+	// IsKnownSearchId is the discriminator the result bucket could not be:
+	// m_searchStrings is written when the search starts, independent of what
+	// it kept, so a search started here reads FINISHED whether or not it
+	// retained anything, while an id that is genuinely unknown -- never
+	// started here, or already evicted -- still reads IDLE.
+	return IsKnownSearchId(sid) ? SEARCH_LIFECYCLE_FINISHED : SEARCH_LIFECYCLE_IDLE;
 }
 
 uint8 CSearchList::GetSearchLifecyclePercentById(wxUIntPtr searchID) const
@@ -1358,15 +1456,12 @@ uint8 CSearchList::GetSearchLifecyclePercentById(wxUIntPtr searchID) const
 	// A browse reports the share of the peer's directory list received so far,
 	// rather than the 0/100 the state switch above would derive.
 	//
-	// Read m_browseBar directly, NOT through GetSearchBarStatusById: that
+	// Straight from the manager, NOT through GetSearchBarStatusById: that
 	// function falls through to this one for anything it does not consider
-	// finished, so routing this branch through it would recurse between the two
-	// for an id with a browse status but no bar entry. The two maps are written
-	// and pruned together, so that should not arise -- which is exactly why it
-	// must not be load-bearing.
-	if (HasBrowseStatus(searchID)) {
-		std::map<wxUIntPtr, uint16>::const_iterator bar = m_browseBar.find(searchID);
-		const uint16 pct = (bar != m_browseBar.end()) ? bar->second : 0;
+	// finished, so routing this branch through it would recurse between the
+	// two.
+	if (theApp->browsemanager->Has(sid)) {
+		const uint16 pct = theApp->browsemanager->BarValue(sid);
 		// 0xffff is the bar's terminal sentinel, not a percent.
 		return (pct == 0xffff) ? 100 : static_cast<uint8>(pct);
 	}
@@ -1389,13 +1484,11 @@ uint8 CSearchList::GetSearchLifecyclePercentById(wxUIntPtr searchID) const
 
 uint32 CSearchList::GetSearchBarStatusById(wxUIntPtr searchID) const
 {
-	// A "View Files" browse tab isn't a CSearchList search: its bar value is
-	// pushed by the browsing client. Return it directly when present.
-	if (!m_browseBar.empty()) {
-		std::map<wxUIntPtr, uint16>::const_iterator it = m_browseBar.find(searchID);
-		if (it != m_browseBar.end()) {
-			return it->second;
-		}
+	// A "View Files" browse tab isn't a CSearchList search: CBrowseManager
+	// owns its lifecycle, so ask there rather than keeping a second copy here
+	// that would have to be kept in step by hand.
+	if (theApp->browsemanager->Has(static_cast<uint32_t>(searchID))) {
+		return theApp->browsemanager->BarValue(static_cast<uint32_t>(searchID));
 	}
 	if (GetSearchLifecycleStateById(searchID) == SEARCH_LIFECYCLE_FINISHED) {
 		return IsOrWasKadSearch(static_cast<uint32_t>(searchID)) ? 0xfffe : 0xffff;
@@ -1428,6 +1521,7 @@ void CSearchList::FinalizeGlobalSearch()
 	m_searchPacket = NULL;
 	m_searchInProgress = false;
 	m_searchTimer.Stop();
+	m_awaitingServerAnswer = false;
 
 	CoreNotify_Search_Update_Progress(0xffff);
 }

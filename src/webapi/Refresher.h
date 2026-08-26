@@ -80,6 +80,11 @@ SearchFetchOutcome FetchSearchResults(CamuleapiApp &app, CState &state, std::uin
 // diff on the next 1-second tick instead of immediately.
 void EmitDiffsForEventBus(CamuleapiApp &app, const CState &state);
 
+// Bring the diff baseline up to the current state without publishing. Used on
+// the first tick after diffs were skipped, which would otherwise emit one event
+// per record; whoever subscribed during the gap gets `resync` instead.
+void PrimeDiffBaseline(CamuleapiApp &app, const CState &state);
+
 // Sub-tick helpers exposed for testing. The Refresher uses these
 // internally; the unit test calls them against hand-crafted
 // CECPacket fixtures to pin the EC-tag-to-State mapping without
@@ -266,15 +271,15 @@ SearchProgressSnapshot AdvanceSearchProgress(
 // suppression operates on the tag's *children*, not on the entity
 // itself), so cache entries not seen in this response are gone on
 // amuled's side (peer disconnected, dropped from queue, banned).
-// `file_hash_by_ecid` lets the walker resolve EC_TAG_CLIENT_UPLOAD_FILE
-// / EC_TAG_CLIENT_REQUEST_FILE (raw amuled ECIDs) into MD4 hashes
-// at walker time, so ClientSnapshot can surface the hash directly.
-// Build it from the unified file map AFTER the downloads/shared
-// walkers have run on the same tick. Empty map = correlator hashes
-// stay empty (matches "not currently transferring" semantics).
-void ApplyGetUpdateToClients(const CECPacket *resp,
-	std::map<std::uint32_t, ClientSnapshot> &cache,
-	const std::map<std::uint32_t, std::string> &file_hash_by_ecid);
+// `files` lets the walker resolve EC_TAG_CLIENT_UPLOAD_FILE /
+// EC_TAG_CLIENT_REQUEST_FILE (raw amuled ECIDs) into MD4 hashes at
+// walker time, so ClientSnapshot can surface the hash directly. It is
+// the live map, keyed by the same ECIDs, so pass it via
+// CState::MutateClientsWithFiles AFTER the downloads/shared walkers
+// have run on the same tick. Empty map = correlator hashes stay empty
+// (matches "not currently transferring" semantics).
+void ApplyGetUpdateToClients(
+	const CECPacket *resp, std::map<std::uint32_t, ClientSnapshot> &cache, const FileMap &files);
 
 } // namespace webapi
 

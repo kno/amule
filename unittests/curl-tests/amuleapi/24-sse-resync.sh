@@ -31,16 +31,28 @@ ADMIN_PASS=${ADMIN_PASS:-adminpass}
 BIN=${AMULEAPI_BIN:?orchestrator must export AMULEAPI_BIN}
 CONFIG_DIR=${AMULEAPI_CONFIG_DIR:?orchestrator must export AMULEAPI_CONFIG_DIR}
 LOG=${AMULEAPI_LOG:-/tmp/amuleapi.log}
+# The daemon this smoke drives. Defaults are the orchestrator's, but every
+# value is overridable so the suite can be pointed at a daemon that is not
+# on the stock EC port; hardcoding them here made that impossible.
+EC_HOST=${EC_HOST:-127.0.0.1}
+EC_PORT=${EC_PORT:-4712}
+EC_PASSWORD=${EC_PASSWORD:-amule}
+# The HTTP port the rewritten config must bind is the one $HOST names.
+HTTP_PORT=${HOST##*:}
 
 FAIL_COUNT=0
 TEST_COUNT=0
+# Skips are counted apart from TEST_COUNT, never folded into it: a skipped
+# check is coverage that did not happen, and adding it to the passed tally
+# would report the absence of a check as a check that succeeded.
+SKIP_COUNT=0
 
 SSE=$(mktemp -t amuleapi_24-sse-resync.XXXXXX)
 trap 'rm -f "$SSE"' EXIT
 
 _die()  { echo "FATAL: $*" >&2; exit 2; }
 _pass() { TEST_COUNT=$((TEST_COUNT+1)); echo "  PASS  $1"; }
-_skip() { TEST_COUNT=$((TEST_COUNT+1)); echo "  SKIP  $1"; }
+_skip() { SKIP_COUNT=$((SKIP_COUNT+1)); echo "  SKIP  $1"; }
 _fail() {
 	TEST_COUNT=$((TEST_COUNT+1)); FAIL_COUNT=$((FAIL_COUNT+1))
 	echo "  FAIL  $1"
@@ -65,12 +77,12 @@ sleep 1
 cat > "$CONFIG_DIR/amuleapi.conf" <<EOF
 [Server]
 BindAddress=127.0.0.1
-Port=4713
+Port=$HTTP_PORT
 
 [EC]
-Host=127.0.0.1
-Port=4712
-Password=amule
+Host=$EC_HOST
+Port=$EC_PORT
+Password=$EC_PASSWORD
 
 [Auth]
 LoginFailureWindowSeconds=60
@@ -81,7 +93,7 @@ LoginLockoutSeconds=300
 EventBusRingCapacity=4
 EOF
 "$BIN" --config-dir="$CONFIG_DIR" \
-	--host=127.0.0.1 --port=4712 \
+	--host="$EC_HOST" --port="$EC_PORT" \
 	> "$LOG" 2>&1 &
 for _ in 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15; do
 	if curl -s -o /dev/null --max-time 1 "$HOST/api/v0/version" 2>/dev/null; then
@@ -103,8 +115,19 @@ ADMIN_TOKEN=$(curl -s -X POST -H "Content-Type: application/json" \
 # its next tick — guarantee OldestId climbs above 1. Each op is spaced
 # past one tick so the refresher can't coalesce an add+delete pair
 # into a no-op. End on a delete so the queue is clean for test 4.
+#
+# A subscriber has to be attached for all of it. The refresher stops diffing
+# once nothing has been subscribed for a few ticks, and this loop runs for
+# ~17 s, so without one the ring would never rotate and the gap case below
+# would be unreachable -- Last-Event-ID: 1 would land above an empty bus's
+# newest and report `restart` instead.
 FILL_LINK="ed2k://|file|ubuntu-24.04.4-desktop-amd64.iso|6655619072|0031C9CBA65C50DD2015C184B2CA2C88|/"
 FILL_HASH="0031c9cba65c50dd2015c184b2ca2c88"
+FILL_SUB=$(mktemp -t amuleapi_24_fillsub.XXXXXX)
+(curl -s -m 30 -N -H "Authorization: Bearer $ADMIN_TOKEN" \
+	"$HOST/api/v0/events" > "$FILL_SUB" 2>&1) &
+FILL_PID=$!
+sleep 1
 for _ in 1 2 3 4; do
 	curl -s -o /dev/null -X POST -H "Authorization: Bearer $ADMIN_TOKEN" \
 		-H "Content-Type: application/json" \
@@ -114,8 +137,12 @@ for _ in 1 2 3 4; do
 		"$HOST/api/v0/downloads/$FILL_HASH"
 	sleep 2
 done
-# Final settle so the last download_removed is in the ring.
+# Final settle so the last download_removed is in the ring, then drop the
+# subscriber that kept the refresher diffing.
 sleep 1
+kill $FILL_PID 2>/dev/null
+wait $FILL_PID 2>/dev/null
+rm -f "$FILL_SUB"
 
 # --- 1. resync(reason=gap) — Last-Event-ID below OldestId. -------
 #
@@ -263,10 +290,66 @@ else
 	_skip "log_appended observable in smoke window (amuled logs are sparse; EventDiffTest covers the wiring)"
 fi
 
+# --- 5. resync(reason=idle) — the diff was skipped while nobody -----
+# was subscribed, so no cursor from before that period is meaningful even
+# when it is still in range. Published on the bus by the tick that resumes,
+# after it re-establishes its baseline, rather than synthesised at connect:
+# announcing first would put the client's re-GET before the baseline was
+# rebuilt and lose whatever changed in between.
+#
+# Also asserts the filter bypass. `resync` carries no channel prefix, so a
+# subscriber that asked for one unrelated channel must still receive it --
+# a cache invalidation is not something a client can opt out of.
+#
+# The cursor starts in range, because `idle` is precisely the case where a
+# client's id is valid and still cannot be trusted -- but it may not stay that
+# way. The ring is 16 slots (EventBusRingCapacity=4 is clamped up to
+# CEventBus::kMinCapacity), test 4 leaves the ISO in the queue so every tick
+# publishes, and the grace ticks below keep publishing while nobody is
+# subscribed. On a daemon with a source or two that is enough to evict the
+# cursor, in which case connecting also synthesises a `resync(gap)` first. So
+# scan every resync frame for the one this section is about rather than taking
+# the first.
+: > "$SSE"
+(curl -s -m 4 -N -H "Authorization: Bearer $ADMIN_TOKEN" \
+	"$HOST/api/v0/events" >> "$SSE" 2>&1) &
+PID=$!
+sleep 3
+kill $PID 2>/dev/null
+wait $PID 2>/dev/null
+IDLE_CURSOR=$(grep "^id: " "$SSE" | tail -1 | sed 's/^id: //')
+[ -n "$IDLE_CURSOR" ] || IDLE_CURSOR=1
+
+echo "    info: idling past the suspend threshold (cursor $IDLE_CURSOR)..."
+sleep 9
+
+: > "$SSE"
+(curl -s -m 6 -N \
+	-H "Last-Event-ID: $IDLE_CURSOR" \
+	-H "Authorization: Bearer $ADMIN_TOKEN" \
+	"$HOST/api/v0/events?channels=servers" >> "$SSE" 2>&1) &
+PID=$!
+sleep 4
+kill $PID 2>/dev/null
+wait $PID 2>/dev/null
+
+RESYNCS=$(awk '/^event: resync$/{f=1;next} f&&/^data: /{sub(/^data: /,"");print;f=0}' "$SSE")
+IDLE_DATA=$(printf '%s\n' "$RESYNCS" | jq -c 'select(.reason == "idle")' 2>/dev/null | head -1)
+if [ -n "$IDLE_DATA" ]; then
+	_pass "resync(idle) fires on reconnect after the diff was suspended"
+	_pass "resync(idle) reached a subscriber filtered to ?channels=servers (bypass holds)"
+else
+	_fail "resync(idle) event" \
+		"no resync frame with reason=idle after idling past the threshold" \
+		"cursor was $IDLE_CURSOR; resync frames seen: $(printf '%s' "$RESYNCS" | tr '\n' ' ')"
+fi
+
 # --- Summary. -----------------------------------------------------
 echo
+SKIP_NOTE=""
+[ "$SKIP_COUNT" -gt 0 ] && SKIP_NOTE=" ($SKIP_COUNT check(s) skipped)"
 if [ "$FAIL_COUNT" -eq 0 ]; then
-	echo "OK: $TEST_COUNT/$TEST_COUNT passed"
+	echo "OK: $TEST_COUNT/$TEST_COUNT passed$SKIP_NOTE"
 	exit 0
 fi
 echo "FAIL: $FAIL_COUNT/$TEST_COUNT failed"

@@ -24,6 +24,8 @@
 
 #include "PathPatterns.h"
 
+#include <cstdint>
+
 namespace web_api_path
 {
 
@@ -100,6 +102,52 @@ bool LooksMalicious(const std::string &path)
 		seg_start = i + 1;
 	}
 
+	return false;
+}
+
+// See PathPatterns.h.
+std::string StripTrailingSlash(const std::string &path)
+{
+	if (path.size() > 1 && path.back() == '/') {
+		return path.substr(0, path.size() - 1);
+	}
+	return path;
+}
+
+// See PathPatterns.h.
+bool ParseBoundedUint(const std::string &s, std::uint64_t min, std::uint64_t max, std::uint64_t &out)
+{
+	if (s.empty()) {
+		return false;
+	}
+	std::uint64_t v = 0;
+	for (char c : s) {
+		if (c < '0' || c > '9') {
+			return false;
+		}
+		v = v * 10 + static_cast<std::uint64_t>(c - '0');
+		if (v > max) {
+			return false;
+		}
+	}
+	if (v < min) {
+		return false;
+	}
+	out = v;
+	return true;
+}
+
+// See PathPatterns.h.
+bool ParseBoolValue(const std::string &s, bool &out)
+{
+	if (s == "1" || s == "true" || s == "yes") {
+		out = true;
+		return true;
+	}
+	if (s == "0" || s == "false" || s == "no") {
+		out = false;
+		return true;
+	}
 	return false;
 }
 
@@ -195,6 +243,10 @@ bool Match(const RoutePattern &pattern,
 	std::map<std::string, std::string> caps;
 	for (size_t i = 0; i < pattern.segments.size(); ++i) {
 		if (!pattern.capture_names[i].empty()) {
+			// See the header: an empty capture names no resource.
+			if (path_segments[i].empty()) {
+				return false;
+			}
 			caps[pattern.capture_names[i]] = path_segments[i];
 		} else if (pattern.segments[i] != path_segments[i]) {
 			return false;

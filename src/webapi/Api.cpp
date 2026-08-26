@@ -23,6 +23,7 @@
 //
 
 #include "Api.h"
+#include "JsonDepthScan.h" // webapi::JsonNestingWithinLimit
 
 #include "ClientTagNames.h" // Needed for the shared client-tag token decoders
 // Shared server capability-bit tables, decoded to JSON
@@ -111,6 +112,34 @@ void SplitPathAndQuery(const std::string &target, std::string &path, std::string
 	}
 }
 
+// Serialise the writer's buffer into the response body. Every JSON response in
+// this file goes through here -- open-coding it is how nine handlers came to
+// hold a stale copy of the conversion.
+// Emit `key` as a number, or as null when the value is not known.
+//
+// Six sites spelled this out as a four-line if/else, which is how one response
+// family came to carry four different spellings of "I don't know". The rule is
+// in REFERENCE.md under `Unknown values`; this is the one place that implements
+// it, so a seventh nullable field cannot quietly pick -1 or 0 instead.
+void WriteIntOrNull(CJsonWriter &w, const char *key, bool known, std::int64_t value)
+{
+	w.Key(key);
+	if (known)
+		w.ValueInt(value);
+	else
+		w.ValueNull();
+}
+
+void FinalizeJsonBody(CJsonWriter &w, CHttpServer::Response &r)
+{
+	// The writer already holds UTF-8, so this is a move, not a convert+copy.
+	// Never route it through wxString: amuleapi calls neither setlocale nor
+	// wxLocale, so it runs in the "C" locale whatever LANG says, and
+	// wxString's std::string ctor decodes with the locale -- turning a body
+	// with any non-ASCII byte into an empty one.
+	r.body = w.TakeBuffer();
+}
+
 CHttpServer::Response ErrorResponse(unsigned status, const char *code, const char *message)
 {
 	CHttpServer::Response r;
@@ -126,9 +155,22 @@ CHttpServer::Response ErrorResponse(unsigned status, const char *code, const cha
 	w.ValueString(wxString::FromAscii(message));
 	w.EndObject();
 	w.EndObject();
-	const wxString js = w.GetBuffer();
-	const wxScopedCharBuffer ub = js.utf8_str();
-	r.body.assign(ub.data(), ub.length());
+	FinalizeJsonBody(w, r);
+	return r;
+}
+
+// 405 with the `Allow` header RFC 9110 §15.5.6 requires ("The origin server
+// MUST generate an Allow header field in a 405 response containing a list of
+// the target resource's currently supported methods"). The accepted methods
+// were already spelled out in the human-readable message at every rejection
+// site; generic tooling and capability discovery read the header instead, so
+// the same list is now emitted both ways. `allow` is the machine-readable
+// form -- comma-separated, in RFC order -- and includes HEAD wherever GET is
+// served, which several of the messages omit.
+CHttpServer::Response MethodNotAllowed(const char *allow, const char *message)
+{
+	CHttpServer::Response r = ErrorResponse(405, "method_not_allowed", message);
+	r.headers["Allow"] = allow;
 	return r;
 }
 
@@ -538,7 +580,9 @@ CApiDispatcher::CApiDispatcher(CAmuleApiConfig &config, CJwt &jwt, webapi::CStat
 // crash-pad against credential-stuffing across all non-
 // login endpoints and can become a config knob in 3.1 if
 // anyone asks.
-m_authRateLimiter(webapi::CRateLimiter::Config{ 60u, 30u, 300u })
+m_authRateLimiter(webapi::CRateLimiter::Config{ config.AuthCfg().token_failure_window_seconds,
+	config.AuthCfg().token_failure_threshold,
+	config.AuthCfg().token_lockout_seconds })
 {
 }
 
@@ -599,7 +643,7 @@ void ApplyCorsHeaders(
 {
 	if (!cors_enabled)
 		return;
-	headers["Vary"] = "Origin";
+	AppendHeaderToken(headers, "Vary", "Origin");
 	if (resolved_origin.empty())
 		return;
 	headers["Access-Control-Allow-Origin"] = resolved_origin;
@@ -609,7 +653,7 @@ void ApplyCorsHeaders(
 	// response headers (Cache-Control, Content-Language, Content-Type,
 	// Expires, Last-Modified, Pragma). amuleapi clients want to read
 	// ETag for cache validation; SSE clients don't need this list.
-	headers["Access-Control-Expose-Headers"] = "ETag";
+	headers["Access-Control-Expose-Headers"] = "ETag, Allow, Retry-After";
 }
 
 // The Kad `network` rollup, byte-identical on GET /status (nested
@@ -662,6 +706,22 @@ bool ParseJsonObjectBody(const std::string &body, picojson::value &out, std::str
 
 } // namespace
 
+// Did the caller present credentials at all? Mirrors what Authenticate()
+// accepts -- an Authorization header, or the session cookie the WebUI uses --
+// without verifying them: an invalid or expired credential still means the
+// response was computed for a specific caller and must not be shared.
+bool RequestCarriesCredentials(const CHttpServer::Request &req, const std::string &cookie_name)
+{
+	if (!FindHeaderCaseInsensitive(req.headers, "Authorization").empty()) {
+		return true;
+	}
+	const std::string cookie = FindHeaderCaseInsensitive(req.headers, "Cookie");
+	if (cookie.empty()) {
+		return false;
+	}
+	return !webapi::ExtractCookieValue(cookie, cookie_name).empty();
+}
+
 CHttpServer::Response CApiDispatcher::Dispatch(const CHttpServer::Request &req)
 {
 	const bool cors_enabled = m_config.ServerCfg().allow_cors;
@@ -681,7 +741,7 @@ CHttpServer::Response CApiDispatcher::Dispatch(const CHttpServer::Request &req)
 		ApplyCorsHeaders(pre.headers, cors_org, cors_enabled);
 		if (!cors_org.empty()) {
 			pre.headers["Access-Control-Allow-Methods"] =
-				"GET, HEAD, POST, PATCH, DELETE, OPTIONS";
+				"GET, HEAD, POST, PUT, PATCH, DELETE, OPTIONS";
 			// Headers actual requests may send. Authorization for
 			// bearer; If-None-Match for ETag conditional GET;
 			// Last-Event-ID for SSE replay.
@@ -698,41 +758,92 @@ CHttpServer::Response CApiDispatcher::Dispatch(const CHttpServer::Request &req)
 	// through unchanged — there's no benefit to ETag-caching a 4xx
 	// body, and a mutation's response carries the post-mutation
 	// state which the client always wants delivered.
+	// Sampled BEFORE the handler runs, and again after. The memo pairs an
+	// ETag with a revision, and the body is serialized inside the handler
+	// under its own read lock which it has dropped by the time we get here
+	// -- so reading the revision only afterwards can pair etag(old body)
+	// with the NEW revision if a write lands in that window, and every
+	// later hit then serves a validator that describes neither. Two
+	// samples make the window observable: if anything moved, this response
+	// is not attributable to a revision and is simply not memoized.
+	const std::uint64_t rev_before = m_state.SnapshotRevision();
 	CHttpServer::Response resp = DispatchToHandler(req);
+	const std::uint64_t rev_after = m_state.SnapshotRevision();
 
 	const bool is_safe_method = (req.method == "GET" || req.method == "HEAD");
-	if (is_safe_method && resp.status == 200 && !resp.body.empty()) {
-		// Snapshot-versioned memoization: skip the MD5 over the
-		// (potentially multi-MB) body when the (target,
-		// snapshot_at) tuple matches what we already hashed.
-		const std::time_t snap = m_state.SnapshotAt();
+	// A handler that computed its own validator owns it. Stamping the
+	// body hash over the top would hand out two different ETags for one
+	// resource depending on which branch answered -- which is what the
+	// static path did, since it clears the body for HEAD and so only the
+	// GET reached the hashing branch below.
+	const bool handler_set_etag = (resp.headers.find("ETag") != resp.headers.end());
+	if (webapi::ShouldStampEtag(is_safe_method, handler_set_etag, resp.status, resp.body.empty())) {
+		// Skip the MD5 over a (potentially multi-MB) body when
+		// nothing has changed since we last hashed it. The key is
+		// (target, snapshot revision): the revision is advanced by
+		// every writer of an eligible body, so unlike a timestamp it
+		// cannot stand still through a mutation, cannot collapse two
+		// changes inside one second, and does not depend on any
+		// caller remembering to stamp it.
+		//
+		// Eligibility is opt-in -- see MemoizableTarget -- and covers
+		// only /downloads and /shared, which is where skipping a hash
+		// is worth anything. Everything else hashes per request and is
+		// immune to a mispaired validator by construction.
+		//
+		// Revision stability is the other half, and MemoUsable carries
+		// it: without it the key says which revision was current when
+		// we looked, not which one this body came from.
+		const std::uint64_t snap = rev_after;
+		const bool memoizable = webapi::MemoUsable(req.target, rev_before, rev_after);
 		std::string etag;
-		{
+		if (memoizable) {
 			std::lock_guard<std::mutex> g(m_etagCacheMu);
 			auto it = m_etagCache.find(req.target);
-			if (it != m_etagCache.end() && it->second.snapshot_at == snap && snap != 0) {
+			if (it != m_etagCache.end() && it->second.snapshot_rev == snap && snap != 0) {
 				etag = it->second.etag;
 			}
 		}
 		if (etag.empty()) {
 			etag = webcommon::Etag(resp.body);
-			std::lock_guard<std::mutex> g(m_etagCacheMu);
-			if (m_etagCache.size() >= kEtagCacheCapacity) {
-				// Crude memory backstop. Real workload is a few
-				// dozen unique targets; the wholesale clear is
-				// cheaper than a real LRU machinery.
-				m_etagCache.clear();
+			if (memoizable) {
+				std::lock_guard<std::mutex> g(m_etagCacheMu);
+				if (m_etagCache.size() >= kEtagCacheCapacity) {
+					// Crude memory backstop. Real workload is a few
+					// dozen unique targets; the wholesale clear is
+					// cheaper than a real LRU machinery.
+					m_etagCache.clear();
+				}
+				EtagCacheEntry e;
+				e.snapshot_rev = snap;
+				e.etag = etag;
+				m_etagCache[req.target] = std::move(e);
 			}
-			EtagCacheEntry e;
-			e.snapshot_at = snap;
-			e.etag = etag;
-			m_etagCache[req.target] = std::move(e);
 		}
 		// RFC 7232 §2.3 — the header value MUST be quoted.
-		resp.headers["ETag"] = "\"" + etag + "\"";
+		// Which representation is this validator naming? The transport
+		// appends the coding when it compresses, but a 304 carries no
+		// body for it to compress, so the answer has to be worked out
+		// here -- while the body is still present to measure -- and it
+		// has to be the SAME answer. A client that cached the gzip form
+		// and gets the identity ETag back can never match its stored
+		// response again.
+		const bool coded = WillCompressBody(
+			AcceptsGzip(FindHeaderCaseInsensitive(req.headers, "Accept-Encoding")),
+			resp.body.size(),
+			resp.content_type,
+			resp.headers.find("Content-Encoding") != resp.headers.end());
+		const std::string wire_etag = webcommon::WithCodingSuffix(etag, coded);
+		resp.headers["ETag"] = "\"" + wire_etag + "\"";
 
+		// Against wire_etag, which names the representation THIS request
+		// selected. Matching either coding would defeat the suffix
+		// entirely: a client holding the gzip bytes and asking for
+		// identity would be told its copy is current, and one holding
+		// identity bytes would be handed a 304 stamped with the gzip
+		// validator, matching nothing it stored.
 		const std::string inm = FindHeaderCaseInsensitive(req.headers, "If-None-Match");
-		if (webcommon::IfNoneMatchHits(inm, etag)) {
+		if (webcommon::IfNoneMatchHits(inm, wire_etag)) {
 			// 304 carries no body and no Content-Type, but the ETag
 			// header IS preserved (RFC 7232 §4.1 — clients use it to
 			// re-stamp the cached representation).
@@ -740,12 +851,47 @@ CHttpServer::Response CApiDispatcher::Dispatch(const CHttpServer::Request &req)
 			resp.body.clear();
 			resp.content_type.clear();
 		}
-		// HEAD never carries a body — the inner handler already shaped
-		// the response body for the GET path; strip it now. The ETag
-		// header is preserved so HEAD-based cache validators work.
-		if (req.method == "HEAD") {
-			resp.body.clear();
-		}
+	}
+	// HEAD carries no content, on ANY status. The strip used to live
+	// inside the 200-only block above, so every HEAD that ended in 4xx or
+	// 5xx shipped the JSON error envelope as content -- content RFC 9110
+	// §9.3.2 says must not be there, and bytes a client that correctly
+	// stops reading after the headers leaves in the socket to corrupt the
+	// next response on a keep-alive connection. It is not stripped here
+	// either: the transport writes headers only, so Content-Length still
+	// reports what the equivalent GET would return.
+
+	// A response produced for a caller who presented credentials is that
+	// caller's, and must not be stored where another caller can be served
+	// it. Authenticate() takes a bearer token OR a session cookie, and the
+	// browser WebUI uses the cookie -- so these requests carry no
+	// Authorization header, and RFC 9111 3.5's shared-cache prohibition
+	// never engages on them. Without an explicit expiry a shared cache may
+	// keep a 200 under heuristic freshness, and with Cookie absent from
+	// Vary two users share a cache key.
+	//
+	// Stamped here rather than in each handler so a new authenticated
+	// route cannot forget it, and only when the caller actually presented
+	// credentials: an unauthenticated public probe like /version stays
+	// cacheable and keeps its conditional GET. A handler that set its own
+	// policy -- the static assets' public, no-cache, the country flags'
+	// public, max-age, /auth/session's private, no-store, the SSE
+	// no-cache -- is left alone.
+	//
+	// `private` and NOT `no-store`: no-store forbids the client's OWN
+	// cache, so no browser would ever hold an entry to revalidate and no
+	// authenticated route would ever see an If-None-Match -- which throws
+	// away the whole point of the validator and memo machinery here, and
+	// makes the WebUI re-transfer the full download list on every load. It
+	// also lands on 304s, telling a cache to drop the entry it has just
+	// been told is good. `private` alone is what answers the concern:
+	// RFC 9111 3.5 stops a SHARED cache storing it, which is the cache
+	// that could serve one user's list to another.
+	if (RequestCarriesCredentials(req, kSessionCookieName) &&
+		resp.headers.find("Cache-Control") == resp.headers.end()) {
+		resp.headers["Cache-Control"] = "private";
+		// Vary is the half that matters to a cache which stores anyway.
+		AppendHeaderToken(resp.headers, "Vary", "Cookie");
 	}
 
 	// stamp CORS on every response (success and error paths)
@@ -769,38 +915,52 @@ CHttpServer::Response CApiDispatcher::DispatchToHandler(const CHttpServer::Reque
 		return ErrorResponse(400, "bad_request", "path contains a traversal/injection token");
 	}
 
+	// `/api/v0/status/` and `/api/v0/status` name the same resource, so
+	// route them the same way. Confined to the API prefix on purpose: the
+	// static fallthrough below maps a path onto a filesystem, where a
+	// trailing slash is a directory rather than a spelling.
+	if (path.compare(0, 5, "/api/") == 0) {
+		path = web_api_path::StripTrailingSlash(path);
+	}
+
+	if (path == "/api/v0/health") {
+		if (req.method != "GET" && req.method != "HEAD") {
+			return MethodNotAllowed("GET, HEAD", "only GET / HEAD on /health");
+		}
+		return HandleHealth(req);
+	}
+
 	if (path == "/api/v0/version") {
 		if (req.method != "GET" && req.method != "HEAD") {
-			return ErrorResponse(
-				405, "method_not_allowed", "method not allowed on /api/v0/version");
+			return MethodNotAllowed("GET, HEAD", "method not allowed on /api/v0/version");
 		}
 		return HandleVersion(req);
 	}
 
 	if (path == "/api/v0/version/check") {
 		if (req.method != "POST") {
-			return ErrorResponse(405, "method_not_allowed", "only POST on /api/v0/version/check");
+			return MethodNotAllowed("POST", "only POST on /api/v0/version/check");
 		}
 		return HandleVersionCheck(req);
 	}
 
 	if (path == "/api/v0/auth/login") {
 		if (req.method != "POST") {
-			return ErrorResponse(405, "method_not_allowed", "only POST on /auth/login");
+			return MethodNotAllowed("POST", "only POST on /auth/login");
 		}
 		return HandleLogin(req);
 	}
 
 	if (path == "/api/v0/auth/logout") {
 		if (req.method != "POST") {
-			return ErrorResponse(405, "method_not_allowed", "only POST on /auth/logout");
+			return MethodNotAllowed("POST", "only POST on /auth/logout");
 		}
 		return HandleLogout(req);
 	}
 
 	if (path == "/api/v0/auth/session") {
 		if (req.method != "GET" && req.method != "HEAD") {
-			return ErrorResponse(405, "method_not_allowed", "only GET on /auth/session");
+			return MethodNotAllowed("GET, HEAD", "only GET on /auth/session");
 		}
 		return HandleSession(req);
 	}
@@ -812,12 +972,22 @@ CHttpServer::Response CApiDispatcher::DispatchToHandler(const CHttpServer::Reque
 		if (req.method == "PATCH") {
 			return HandleAuthPasswordsPatch(req);
 		}
-		return ErrorResponse(405, "method_not_allowed", "only GET or PATCH on /auth/passwords");
+		return MethodNotAllowed("GET, HEAD, PATCH", "only GET or PATCH on /auth/passwords");
+	}
+
+	// /events reaches the dispatcher only on a method the streaming
+	// resolver declined, since it diverts GET and HEAD before this point.
+	// Without an arm here the request fell through to the catch-all 404,
+	// so the one endpoint a client is most likely to probe reported that
+	// it does not exist -- and it was the only route to escape the Allow
+	// sweep, while the docs promise the header on every 405.
+	if (path == "/api/v0/events") {
+		return MethodNotAllowed("GET, HEAD", "only GET / HEAD on /events");
 	}
 
 	if (path == "/api/v0/status") {
 		if (req.method != "GET" && req.method != "HEAD") {
-			return ErrorResponse(405, "method_not_allowed", "only GET on /status");
+			return MethodNotAllowed("GET, HEAD", "only GET on /status");
 		}
 		return HandleStatus(req);
 	}
@@ -838,25 +1008,24 @@ CHttpServer::Response CApiDispatcher::DispatchToHandler(const CHttpServer::Reque
 			// bulk cancel+remove over {hashes:[...]}.
 			return HandleDownloadsBulkDelete(req);
 		}
-		return ErrorResponse(
-			405, "method_not_allowed", "only GET / HEAD / POST / PATCH / DELETE on /downloads");
+		return MethodNotAllowed("GET, HEAD, POST, PATCH, DELETE",
+			"only GET / HEAD / POST / PATCH / DELETE on /downloads");
 	}
 
 	// bulk clear-completed.
-	if (path == "/api/v0/downloads/clear_completed") {
+	if (path == "/api/v0/downloads_clear_completed") {
 		if (req.method != "POST") {
-			return ErrorResponse(
-				405, "method_not_allowed", "only POST on /downloads/clear_completed");
+			return MethodNotAllowed("POST", "only POST on /downloads/clear_completed");
 		}
 		return HandleDownloadsClearCompleted(req);
 	}
 
-	// /uploads was retired in — /clients covers the full
-	// peer surface (every upload_state, including queue waiters and
-	// download peers); consumers filter client-side by upload_state.
+	// /clients is the whole peer surface: every upload_state, including
+	// queue waiters and download peers. Consumers filter client-side by
+	// upload_state rather than asking for a pre-filtered view.
 	if (path == "/api/v0/clients") {
 		if (req.method != "GET" && req.method != "HEAD") {
-			return ErrorResponse(405, "method_not_allowed", "only GET on /clients");
+			return MethodNotAllowed("GET, HEAD", "only GET on /clients");
 		}
 		return HandleClients(req);
 	}
@@ -869,7 +1038,7 @@ CHttpServer::Response CApiDispatcher::DispatchToHandler(const CHttpServer::Reque
 	// pattern accepts any single segment.
 	if (path == "/api/v0/known_clients") {
 		if (req.method != "GET" && req.method != "HEAD") {
-			return ErrorResponse(405, "method_not_allowed", "only GET on /known_clients");
+			return MethodNotAllowed("GET, HEAD", "only GET on /known_clients");
 		}
 		return HandleKnownClients(req);
 	}
@@ -884,7 +1053,7 @@ CHttpServer::Response CApiDispatcher::DispatchToHandler(const CHttpServer::Reque
 			if (req.method == "GET" || req.method == "HEAD") {
 				return HandleClientDetail(req, caps["ecid"]);
 			}
-			return ErrorResponse(405, "method_not_allowed", "only GET / HEAD on /clients/{ecid}");
+			return MethodNotAllowed("GET, HEAD", "only GET / HEAD on /clients/{ecid}");
 		}
 	}
 
@@ -899,8 +1068,7 @@ CHttpServer::Response CApiDispatcher::DispatchToHandler(const CHttpServer::Reque
 			if (req.method == "POST") {
 				return HandleClientBrowse(req, caps["ecid"]);
 			}
-			return ErrorResponse(
-				405, "method_not_allowed", "only POST on /clients/{ecid}/shared_files");
+			return MethodNotAllowed("POST", "only POST on /clients/{ecid}/shared_files");
 		}
 	}
 
@@ -912,21 +1080,31 @@ CHttpServer::Response CApiDispatcher::DispatchToHandler(const CHttpServer::Reque
 			// bulk upload-priority PATCH over {hashes:[...], priority}.
 			return HandleSharedBulkPatch(req);
 		}
-		return ErrorResponse(405, "method_not_allowed", "only GET / HEAD / PATCH on /shared");
+		return MethodNotAllowed("GET, HEAD, PATCH", "only GET / HEAD / PATCH on /shared");
 	}
 
-	if (path == "/api/v0/shared/reload") {
+	if (path == "/api/v0/shared_reload") {
 		if (req.method != "POST") {
-			return ErrorResponse(405, "method_not_allowed", "only POST on /shared/reload");
+			return MethodNotAllowed("POST", "only POST on /shared/reload");
 		}
 		return HandleSharedReload(req);
+	}
+
+	// /shared/media/refresh — re-extract media metadata for the whole share.
+	// Literal path, so it has to be matched before the /shared/{hash} patterns
+	// below or "media" would be captured as a hash.
+	if (path == "/api/v0/shared/media/refresh") {
+		if (req.method != "POST") {
+			return MethodNotAllowed("POST", "only POST on /shared/media/refresh");
+		}
+		return HandleSharedMediaRefresh(req);
 	}
 
 	// /shared/directories — the configured share roots, as opposed to /shared
 	// which lists the files those roots produced. Literal path, so it has to be
 	// matched before the /shared/{hash} patterns below or "directories" would be
 	// captured as a hash.
-	if (path == "/api/v0/shared/directories") {
+	if (path == "/api/v0/share_directories") {
 		if (req.method == "GET" || req.method == "HEAD") {
 			return HandleSharedDirectories(req);
 		}
@@ -939,8 +1117,7 @@ CHttpServer::Response CApiDispatcher::DispatchToHandler(const CHttpServer::Reque
 		if (req.method == "DELETE") {
 			return HandleSharedDirectoriesDelete(req);
 		}
-		return ErrorResponse(405,
-			"method_not_allowed",
+		return MethodNotAllowed("GET, HEAD, POST, PUT, DELETE",
 			"only GET / HEAD / PUT / POST / DELETE on /shared/directories");
 	}
 
@@ -952,7 +1129,7 @@ CHttpServer::Response CApiDispatcher::DispatchToHandler(const CHttpServer::Reque
 			// add a server by host:port.
 			return HandleServerAdd(req);
 		}
-		return ErrorResponse(405, "method_not_allowed", "only GET / HEAD / POST on /servers");
+		return MethodNotAllowed("GET, HEAD, POST", "only GET / HEAD / POST on /servers");
 	}
 
 	if (path == "/api/v0/friends") {
@@ -962,7 +1139,7 @@ CHttpServer::Response CApiDispatcher::DispatchToHandler(const CHttpServer::Reque
 		if (req.method == "POST") {
 			return HandleFriendAdd(req);
 		}
-		return ErrorResponse(405, "method_not_allowed", "only GET / HEAD / POST on /friends");
+		return MethodNotAllowed("GET, HEAD, POST", "only GET / HEAD / POST on /friends");
 	}
 
 	// One friend by ECID: remove, set the friend slot, or browse their shared
@@ -976,9 +1153,7 @@ CHttpServer::Response CApiDispatcher::DispatchToHandler(const CHttpServer::Reque
 		std::map<std::string, std::string> caps;
 		if (web_api_path::Match(friend_browse, path_segs, caps)) {
 			if (req.method != "POST") {
-				return ErrorResponse(405,
-					"method_not_allowed",
-					"only POST on /friends/{ecid}/shared_files");
+				return MethodNotAllowed("POST", "only POST on /friends/{ecid}/shared_files");
 			}
 			return HandleFriendBrowse(req, caps["ecid"]);
 		}
@@ -989,8 +1164,7 @@ CHttpServer::Response CApiDispatcher::DispatchToHandler(const CHttpServer::Reque
 			if (req.method == "PATCH") {
 				return HandleFriendPatch(req, caps["ecid"]);
 			}
-			return ErrorResponse(
-				405, "method_not_allowed", "only DELETE / PATCH on /friends/{ecid}");
+			return MethodNotAllowed("PATCH, DELETE", "only DELETE / PATCH on /friends/{ecid}");
 		}
 	}
 
@@ -998,7 +1172,7 @@ CHttpServer::Response CApiDispatcher::DispatchToHandler(const CHttpServer::Reque
 		if (req.method == "GET" || req.method == "HEAD") {
 			return HandleChats(req);
 		}
-		return ErrorResponse(405, "method_not_allowed", "only GET / HEAD on /chats");
+		return MethodNotAllowed("GET, HEAD", "only GET / HEAD on /chats");
 	}
 
 	// One conversation, keyed on "<ip>:<port>". The messages sub-resource is
@@ -1016,15 +1190,14 @@ CHttpServer::Response CApiDispatcher::DispatchToHandler(const CHttpServer::Reque
 			if (req.method == "POST") {
 				return HandleChatSend(req, caps["peer"]);
 			}
-			return ErrorResponse(405,
-				"method_not_allowed",
-				"only GET / HEAD / POST on /chats/{peer}/messages");
+			return MethodNotAllowed(
+				"GET, HEAD, POST", "only GET / HEAD / POST on /chats/{peer}/messages");
 		}
 		if (web_api_path::Match(chat_one, path_segs, caps)) {
 			if (req.method == "DELETE") {
 				return HandleChatClose(req, caps["peer"]);
 			}
-			return ErrorResponse(405, "method_not_allowed", "only DELETE on /chats/{peer}");
+			return MethodNotAllowed("DELETE", "only DELETE on /chats/{peer}");
 		}
 	}
 
@@ -1040,23 +1213,21 @@ CHttpServer::Response CApiDispatcher::DispatchToHandler(const CHttpServer::Reque
 		std::map<std::string, std::string> caps;
 		if (web_api_path::Match(friend_messages, path_segs, caps)) {
 			if (req.method != "POST") {
-				return ErrorResponse(
-					405, "method_not_allowed", "only POST on /friends/{ecid}/messages");
+				return MethodNotAllowed("POST", "only POST on /friends/{ecid}/messages");
 			}
 			return HandleFriendMessageSend(req, caps["ecid"]);
 		}
 		if (web_api_path::Match(client_messages, path_segs, caps)) {
 			if (req.method != "POST") {
-				return ErrorResponse(
-					405, "method_not_allowed", "only POST on /clients/{ecid}/messages");
+				return MethodNotAllowed("POST", "only POST on /clients/{ecid}/messages");
 			}
 			return HandleClientMessageSend(req, caps["ecid"]);
 		}
 	}
 
-	if (path == "/api/v0/servers/update") {
+	if (path == "/api/v0/servers_update") {
 		if (req.method != "POST") {
-			return ErrorResponse(405, "method_not_allowed", "only POST on /servers/update");
+			return MethodNotAllowed("POST", "only POST on /servers/update");
 		}
 		return HandleServerUpdateFromUrl(req);
 	}
@@ -1071,42 +1242,51 @@ CHttpServer::Response CApiDispatcher::DispatchToHandler(const CHttpServer::Reque
 		static const auto server_connect =
 			web_api_path::ParsePattern("/api/v0/servers/{ecid}/connect");
 		static const auto server_one = web_api_path::ParsePattern("/api/v0/servers/{ecid}");
+		static const auto server_addr_connect =
+			web_api_path::ParsePattern("/api/v0/servers/by-address/{address}/connect");
+		static const auto server_addr_one =
+			web_api_path::ParsePattern("/api/v0/servers/by-address/{address}");
 		const auto path_segs = web_api_path::SplitPath(path);
 		std::map<std::string, std::string> caps;
+		// The address form has its own path rather than sharing {ecid}.
+		// One capture with two identity domains, disambiguated by sniffing
+		// for a colon, is a dispatch rule invisible from outside -- and it
+		// forecloses ever accepting an IPv6 literal here, since those are
+		// all colons.
+		if (web_api_path::Match(server_addr_connect, path_segs, caps)) {
+			if (req.method != "POST") {
+				return MethodNotAllowed(
+					"POST", "only POST on /servers/by-address/{address}/connect");
+			}
+			return HandleServerConnectByAddress(req, caps["address"]);
+		}
+		if (web_api_path::Match(server_addr_one, path_segs, caps)) {
+			if (req.method != "DELETE" && req.method != "PATCH") {
+				return MethodNotAllowed("PATCH, DELETE",
+					"only DELETE / PATCH on /servers/by-address/{address}");
+			}
+			return req.method == "PATCH" ? HandleServerPatchByAddress(req, caps["address"])
+						     : HandleServerDeleteByAddress(req, caps["address"]);
+		}
 		if (web_api_path::Match(server_connect, path_segs, caps)) {
 			if (req.method != "POST") {
-				return ErrorResponse(
-					405, "method_not_allowed", "only POST on /servers/{ecid}/connect");
-			}
-			// `{ecid}` capture also matches "<ip>:<port>" because the
-			// path-pattern matcher is opaque-segment. Disambiguate
-			// here: if the capture contains a colon, treat it as an
-			// address-keyed alias.
-			if (caps["ecid"].find(':') != std::string::npos) {
-				return HandleServerConnectByAddress(req, caps["ecid"]);
+				return MethodNotAllowed("POST", "only POST on /servers/{ecid}/connect");
 			}
 			return HandleServerConnect(req, caps["ecid"]);
 		}
 		if (web_api_path::Match(server_one, path_segs, caps)) {
 			if (req.method != "DELETE" && req.method != "PATCH") {
-				return ErrorResponse(
-					405, "method_not_allowed", "only DELETE / PATCH on /servers/{ecid}");
+				return MethodNotAllowed(
+					"PATCH, DELETE", "only DELETE / PATCH on /servers/{ecid}");
 			}
-			const bool by_address = caps["ecid"].find(':') != std::string::npos;
-			if (req.method == "PATCH") {
-				return by_address ? HandleServerPatchByAddress(req, caps["ecid"])
-						  : HandleServerPatch(req, caps["ecid"]);
-			}
-			if (by_address) {
-				return HandleServerDeleteByAddress(req, caps["ecid"]);
-			}
-			return HandleServerDelete(req, caps["ecid"]);
+			return req.method == "PATCH" ? HandleServerPatch(req, caps["ecid"])
+						     : HandleServerDelete(req, caps["ecid"]);
 		}
 	}
 
 	if (path == "/api/v0/kad") {
 		if (req.method != "GET" && req.method != "HEAD") {
-			return ErrorResponse(405, "method_not_allowed", "only GET on /kad");
+			return MethodNotAllowed("GET, HEAD", "only GET on /kad");
 		}
 		return HandleKad(req);
 	}
@@ -1114,13 +1294,13 @@ CHttpServer::Response CApiDispatcher::DispatchToHandler(const CHttpServer::Reque
 	// connection control.
 	if (path == "/api/v0/networks/connect") {
 		if (req.method != "POST") {
-			return ErrorResponse(405, "method_not_allowed", "only POST on /networks/connect");
+			return MethodNotAllowed("POST", "only POST on /networks/connect");
 		}
 		return HandleNetworksConnect(req);
 	}
 	if (path == "/api/v0/networks/disconnect") {
 		if (req.method != "POST") {
-			return ErrorResponse(405, "method_not_allowed", "only POST on /networks/disconnect");
+			return MethodNotAllowed("POST", "only POST on /networks/disconnect");
 		}
 		return HandleNetworksDisconnect(req);
 	}
@@ -1130,14 +1310,14 @@ CHttpServer::Response CApiDispatcher::DispatchToHandler(const CHttpServer::Reque
 	// /networks/* makes the dedicated shortcut redundant.
 	if (path == "/api/v0/kad/update") {
 		if (req.method != "POST") {
-			return ErrorResponse(405, "method_not_allowed", "only POST on /kad/update");
+			return MethodNotAllowed("POST", "only POST on /kad/update");
 		}
 		return HandleKadUpdateFromUrl(req);
 	}
 
 	if (path == "/api/v0/kad/bootstrap") {
 		if (req.method != "POST") {
-			return ErrorResponse(405, "method_not_allowed", "only POST on /kad/bootstrap");
+			return MethodNotAllowed("POST", "only POST on /kad/bootstrap");
 		}
 		return HandleKadBootstrap(req);
 	}
@@ -1147,14 +1327,14 @@ CHttpServer::Response CApiDispatcher::DispatchToHandler(const CHttpServer::Reque
 	// desktop Security page's "Reload List" and "Update now" buttons.
 	if (path == "/api/v0/ipfilter/reload") {
 		if (req.method != "POST") {
-			return ErrorResponse(405, "method_not_allowed", "only POST on /ipfilter/reload");
+			return MethodNotAllowed("POST", "only POST on /ipfilter/reload");
 		}
 		return HandleIpfilterReload(req);
 	}
 
 	if (path == "/api/v0/ipfilter/update") {
 		if (req.method != "POST") {
-			return ErrorResponse(405, "method_not_allowed", "only POST on /ipfilter/update");
+			return MethodNotAllowed("POST", "only POST on /ipfilter/update");
 		}
 		return HandleIpfilterUpdate(req);
 	}
@@ -1163,13 +1343,20 @@ CHttpServer::Response CApiDispatcher::DispatchToHandler(const CHttpServer::Reque
 	// single-segment `/shared/{hash}` pattern below purely for locality —
 	// the two can't collide, this one carries an extra path segment.
 	{
+		static const auto shared_media_refresh =
+			web_api_path::ParsePattern("/api/v0/shared/{hash}/media/refresh");
 		static const auto shared_verify = web_api_path::ParsePattern("/api/v0/shared/{hash}/verify");
 		const auto path_segs = web_api_path::SplitPath(path);
 		std::map<std::string, std::string> caps;
+		if (web_api_path::Match(shared_media_refresh, path_segs, caps)) {
+			if (req.method != "POST") {
+				return MethodNotAllowed("POST", "only POST on /shared/{hash}/media/refresh");
+			}
+			return HandleSharedMediaRefreshOne(req, caps["hash"]);
+		}
 		if (web_api_path::Match(shared_verify, path_segs, caps)) {
 			if (req.method != "POST") {
-				return ErrorResponse(
-					405, "method_not_allowed", "only POST on /shared/{hash}/verify");
+				return MethodNotAllowed("POST", "only POST on /shared/{hash}/verify");
 			}
 			return HandleSharedVerify(req, caps["hash"]);
 		}
@@ -1184,9 +1371,8 @@ CHttpServer::Response CApiDispatcher::DispatchToHandler(const CHttpServer::Reque
 		std::map<std::string, std::string> caps;
 		if (web_api_path::Match(shared_clients, path_segs, caps)) {
 			if (req.method != "GET" && req.method != "HEAD") {
-				return ErrorResponse(405,
-					"method_not_allowed",
-					"only GET / HEAD on /shared/{hash}/clients");
+				return MethodNotAllowed(
+					"GET, HEAD", "only GET / HEAD on /shared/{hash}/clients");
 			}
 			return HandleFileClients(req, caps["hash"], /*require_downloading=*/false);
 		}
@@ -1203,9 +1389,8 @@ CHttpServer::Response CApiDispatcher::DispatchToHandler(const CHttpServer::Reque
 				return HandleSharedDetail(req, caps["hash"]);
 			}
 			if (req.method != "PATCH") {
-				return ErrorResponse(405,
-					"method_not_allowed",
-					"only GET / HEAD / PATCH on /shared/{hash}");
+				return MethodNotAllowed(
+					"GET, HEAD, PATCH", "only GET / HEAD / PATCH on /shared/{hash}");
 			}
 			return HandleSharedPatch(req, caps["hash"]);
 		}
@@ -1218,7 +1403,7 @@ CHttpServer::Response CApiDispatcher::DispatchToHandler(const CHttpServer::Reque
 		if (req.method == "POST") {
 			return HandleCategoryCreate(req);
 		}
-		return ErrorResponse(405, "method_not_allowed", "only GET / HEAD / POST on /categories");
+		return MethodNotAllowed("GET, HEAD, POST", "only GET / HEAD / POST on /categories");
 	}
 
 	// single-category PATCH/DELETE.
@@ -1227,14 +1412,17 @@ CHttpServer::Response CApiDispatcher::DispatchToHandler(const CHttpServer::Reque
 		const auto path_segs = web_api_path::SplitPath(path);
 		std::map<std::string, std::string> caps;
 		if (web_api_path::Match(category_one, path_segs, caps)) {
+			if (req.method == "GET" || req.method == "HEAD") {
+				return HandleCategoryOne(req, caps["index"]);
+			}
 			if (req.method == "PATCH") {
 				return HandleCategoryUpdate(req, caps["index"]);
 			}
 			if (req.method == "DELETE") {
 				return HandleCategoryDelete(req, caps["index"]);
 			}
-			return ErrorResponse(
-				405, "method_not_allowed", "only PATCH / DELETE on /categories/{index}");
+			return MethodNotAllowed("GET, HEAD, PATCH, DELETE",
+				"only GET / PATCH / DELETE on /categories/{index}");
 		}
 	}
 
@@ -1245,7 +1433,7 @@ CHttpServer::Response CApiDispatcher::DispatchToHandler(const CHttpServer::Reque
 		if (req.method == "PATCH") {
 			return HandlePreferencesPatch(req);
 		}
-		return ErrorResponse(405, "method_not_allowed", "only GET / HEAD / PATCH on /preferences");
+		return MethodNotAllowed("GET, HEAD, PATCH", "only GET / HEAD / PATCH on /preferences");
 	}
 
 	if (path == "/api/v0/logs/amule") {
@@ -1255,7 +1443,7 @@ CHttpServer::Response CApiDispatcher::DispatchToHandler(const CHttpServer::Reque
 		if (req.method == "DELETE") {
 			return HandleLogAmuleReset(req);
 		}
-		return ErrorResponse(405, "method_not_allowed", "only GET / HEAD / DELETE on /logs/amule");
+		return MethodNotAllowed("GET, HEAD, DELETE", "only GET / HEAD / DELETE on /logs/amule");
 	}
 
 	if (path == "/api/v0/logs/serverinfo") {
@@ -1265,13 +1453,12 @@ CHttpServer::Response CApiDispatcher::DispatchToHandler(const CHttpServer::Reque
 		if (req.method == "DELETE") {
 			return HandleLogServerinfoReset(req);
 		}
-		return ErrorResponse(
-			405, "method_not_allowed", "only GET / HEAD / DELETE on /logs/serverinfo");
+		return MethodNotAllowed("GET, HEAD, DELETE", "only GET / HEAD / DELETE on /logs/serverinfo");
 	}
 
 	if (path == "/api/v0/stats/tree") {
 		if (req.method != "GET" && req.method != "HEAD") {
-			return ErrorResponse(405, "method_not_allowed", "only GET on /stats/tree");
+			return MethodNotAllowed("GET, HEAD", "only GET on /stats/tree");
 		}
 		return HandleStatsTree(req);
 	}
@@ -1283,8 +1470,7 @@ CHttpServer::Response CApiDispatcher::DispatchToHandler(const CHttpServer::Reque
 			return HandleSearchList(req);
 		}
 		if (req.method != "POST") {
-			return ErrorResponse(405,
-				"method_not_allowed",
+			return MethodNotAllowed("GET, HEAD, POST",
 				"only GET or POST on /search (GET lists searches, POST starts one; "
 				"read one search at GET /search/{id}/results)");
 		}
@@ -1305,9 +1491,8 @@ CHttpServer::Response CApiDispatcher::DispatchToHandler(const CHttpServer::Reque
 		std::map<std::string, std::string> caps;
 		if (web_api_path::Match(search_download, path_segs, caps)) {
 			if (req.method != "POST") {
-				return ErrorResponse(405,
-					"method_not_allowed",
-					"only POST on /search/results/{hash}/download");
+				return MethodNotAllowed(
+					"POST", "only POST on /search/results/{hash}/download");
 			}
 			return HandleSearchDownload(req, caps["hash"]);
 		}
@@ -1329,27 +1514,11 @@ CHttpServer::Response CApiDispatcher::DispatchToHandler(const CHttpServer::Reque
 				return HandleSearchCommentsKadSearch(req, caps["hash"]);
 			}
 			if (req.method != "GET" && req.method != "HEAD") {
-				return ErrorResponse(405,
-					"method_not_allowed",
+				return MethodNotAllowed("GET, HEAD, POST",
 					"only GET / HEAD / POST on /search/results/{hash}/comments");
 			}
 			return HandleSearchComments(req, caps["hash"]);
 		}
-	}
-
-	// The two retired paths, answered explicitly rather than falling into the
-	// {id} matcher below -- which would capture "results" / "stop" as an id
-	// and report a confusing "not a valid search id". Naming the replacement
-	// is the whole point of keeping these four lines.
-	if (path == "/api/v0/search/results") {
-		return ErrorResponse(404,
-			"not_found",
-			"retired: results are addressed per search at GET /search/{id}/results");
-	}
-	if (path == "/api/v0/search/stop") {
-		return ErrorResponse(404,
-			"not_found",
-			"retired: use POST /search/{id}/stop, or DELETE /search/{id} to also free it");
 	}
 
 	// /search/{id} — DELETE stops the search AND frees it (results included).
@@ -1363,8 +1532,7 @@ CHttpServer::Response CApiDispatcher::DispatchToHandler(const CHttpServer::Reque
 				return ErrorResponse(400, "bad_request", kBadSearchIdMessage);
 			}
 			if (req.method != "DELETE") {
-				return ErrorResponse(405,
-					"method_not_allowed",
+				return MethodNotAllowed("DELETE",
 					"only DELETE on /search/{id} (read its results at "
 					"GET /search/{id}/results)");
 			}
@@ -1385,23 +1553,20 @@ CHttpServer::Response CApiDispatcher::DispatchToHandler(const CHttpServer::Reque
 			const std::string &action = caps["action"];
 			if (action == "results") {
 				if (req.method != "GET" && req.method != "HEAD") {
-					return ErrorResponse(405,
-						"method_not_allowed",
-						"only GET / HEAD on /search/{id}/results");
+					return MethodNotAllowed(
+						"GET, HEAD", "only GET / HEAD on /search/{id}/results");
 				}
 				return HandleSearchResults(req, sid);
 			}
 			if (action == "stop") {
 				if (req.method != "POST") {
-					return ErrorResponse(
-						405, "method_not_allowed", "only POST on /search/{id}/stop");
+					return MethodNotAllowed("POST", "only POST on /search/{id}/stop");
 				}
 				return HandleSearchStop(req, sid);
 			}
 			if (action == "more") {
 				if (req.method != "POST") {
-					return ErrorResponse(
-						405, "method_not_allowed", "only POST on /search/{id}/more");
+					return MethodNotAllowed("POST", "only POST on /search/{id}/more");
 				}
 				return HandleSearchMore(req, sid);
 			}
@@ -1411,15 +1576,15 @@ CHttpServer::Response CApiDispatcher::DispatchToHandler(const CHttpServer::Reque
 	}
 
 	// /stats/graphs/{graph} — path-pattern matches the four allowed
-	// graph names ("download" / "upload" / "connections" / "kad").
+	// graph names ("download_speed" / "upload_speed" / "connections" /
+	// "kad_nodes" -- HandleStatsGraph rejects anything else).
 	{
 		static const auto graph_pattern = web_api_path::ParsePattern("/api/v0/stats/graphs/{graph}");
 		const auto segs = web_api_path::SplitPath(path);
 		std::map<std::string, std::string> caps;
 		if (web_api_path::Match(graph_pattern, segs, caps)) {
 			if (req.method != "GET" && req.method != "HEAD") {
-				return ErrorResponse(
-					405, "method_not_allowed", "only GET on /stats/graphs/{graph}");
+				return MethodNotAllowed("GET, HEAD", "only GET on /stats/graphs/{graph}");
 			}
 			return HandleStatsGraph(req, caps["graph"]);
 		}
@@ -1440,8 +1605,7 @@ CHttpServer::Response CApiDispatcher::DispatchToHandler(const CHttpServer::Reque
 				return HandleDownloadCommentsKadSearch(req, caps["hash"]);
 			}
 			if (req.method != "GET" && req.method != "HEAD") {
-				return ErrorResponse(405,
-					"method_not_allowed",
+				return MethodNotAllowed("GET, HEAD, POST",
 					"only GET / HEAD / POST on /downloads/{hash}/comments");
 			}
 			return HandleDownloadComments(req, caps["hash"]);
@@ -1457,9 +1621,8 @@ CHttpServer::Response CApiDispatcher::DispatchToHandler(const CHttpServer::Reque
 		std::map<std::string, std::string> caps;
 		if (web_api_path::Match(dl_filenames, path_segs, caps)) {
 			if (req.method != "GET" && req.method != "HEAD") {
-				return ErrorResponse(405,
-					"method_not_allowed",
-					"only GET / HEAD on /downloads/{hash}/filenames");
+				return MethodNotAllowed(
+					"GET, HEAD", "only GET / HEAD on /downloads/{hash}/filenames");
 			}
 			return HandleDownloadFilenames(req, caps["hash"]);
 		}
@@ -1475,13 +1638,13 @@ CHttpServer::Response CApiDispatcher::DispatchToHandler(const CHttpServer::Reque
 			if (req.method == "POST") {
 				return HandleDownloadA4afAction(req, caps["hash"]);
 			}
-			// The read half is retired (issue #984): A4AF sources are rows of
-			// /downloads/{hash}/clients now, carrying the whole peer object
-			// rather than a bare ECID, and `a4af_auto` is already on the
-			// download detail object. The POST stays -- the swap actions have
-			// no equivalent there, and its reply is still the A4AF view.
-			return ErrorResponse(
-				405, "method_not_allowed", "only POST on /downloads/{hash}/a4af");
+			// POST only. A4AF sources are rows of /downloads/{hash}/clients,
+			// carrying the whole peer object rather than a bare ECID, and
+			// `a4af_auto` is on the download detail object, so there is
+			// nothing for a GET here to add. The swap actions have no
+			// equivalent on those routes, and this reply is still the A4AF
+			// view.
+			return MethodNotAllowed("POST", "only POST on /downloads/{hash}/a4af");
 		}
 	}
 
@@ -1493,9 +1656,8 @@ CHttpServer::Response CApiDispatcher::DispatchToHandler(const CHttpServer::Reque
 		std::map<std::string, std::string> caps;
 		if (web_api_path::Match(dl_clients, path_segs, caps)) {
 			if (req.method != "GET" && req.method != "HEAD") {
-				return ErrorResponse(405,
-					"method_not_allowed",
-					"only GET / HEAD on /downloads/{hash}/clients");
+				return MethodNotAllowed(
+					"GET, HEAD", "only GET / HEAD on /downloads/{hash}/clients");
 			}
 			return HandleFileClients(req, caps["hash"], /*require_downloading=*/true);
 		}
@@ -1519,8 +1681,7 @@ CHttpServer::Response CApiDispatcher::DispatchToHandler(const CHttpServer::Reque
 			if (req.method == "DELETE") {
 				return HandleDownloadDelete(req, caps["hash"]);
 			}
-			return ErrorResponse(405,
-				"method_not_allowed",
+			return MethodNotAllowed("GET, HEAD, PATCH, DELETE",
 				"only GET / HEAD / PATCH / DELETE on /downloads/{hash}");
 		}
 	}
@@ -1532,8 +1693,7 @@ CHttpServer::Response CApiDispatcher::DispatchToHandler(const CHttpServer::Reque
 	// resource, and it carries no per-installation data.
 	if (path.compare(0, 7, "/flags/") == 0) {
 		if (req.method != "GET" && req.method != "HEAD") {
-			return ErrorResponse(
-				405, "method_not_allowed", "only GET / HEAD on /flags/{code}.png");
+			return MethodNotAllowed("GET, HEAD", "only GET / HEAD on /flags/{code}.png");
 		}
 		return ServeCountryFlag(req, path);
 	}
@@ -1608,19 +1768,94 @@ CHttpServer::Response CApiDispatcher::ServeStaticFile(
 	// Conditional GET: client sent If-None-Match → 304 with no body
 	// when the ETag matches. ETag is mtime+size, so a rebuild of the
 	// frontend invalidates without manual cache-busting.
-	auto inm = req.headers.find("If-None-Match");
-	if (inm != req.headers.end() && inm->second == etag) {
+	// Case-insensitive: Beast preserves the client's wire casing, so a
+	// lowercase `if-none-match` -- what an HTTP/2-shaped client library
+	// produces -- used to miss here and silently lose conditional GET.
+	// Through the shared matcher, not a string compare: the header may be
+	// `*`, a comma-separated list, or a weak `W/"..."` validator (which is
+	// what an nginx in front of us emits once it gzips). The outer layer
+	// used to supply that grammar for the GET path; now that it steps aside
+	// whenever a handler set its own ETag, this path has to speak it.
+	const std::string inm_val = FindHeaderCaseInsensitive(req.headers, "If-None-Match");
+	// A 304 has no body for the transport to compress, so which
+	// representation this validator names is decided here, while the body
+	// is still present to measure -- and the comparison uses that same
+	// value, so a client is only told "unchanged" about the representation
+	// it actually asked for.
+	const bool coded =
+		WillCompressBody(AcceptsGzip(FindHeaderCaseInsensitive(req.headers, "Accept-Encoding")),
+			body.size(),
+			StaticContentType(rel),
+			/*already_encoded=*/false);
+	// Through the shared helper, which takes the quoted form this path
+	// carries as readily as the bare form the API path does. Three separate
+	// hand-rolled spellings of "put the suffix on" is how the transport
+	// ended up with one that could not take it back off again.
+	const std::string wire_static_etag = webcommon::WithCodingSuffix(etag, coded);
+	const std::string wire_static_bare =
+		(wire_static_etag.size() >= 2 && wire_static_etag.front() == '"' &&
+			wire_static_etag.back() == '"')
+			? wire_static_etag.substr(1, wire_static_etag.size() - 2)
+			: wire_static_etag;
+	if (webcommon::IfNoneMatchHits(inm_val, wire_static_bare)) {
 		CHttpServer::Response r;
 		r.status = 304;
-		r.headers["ETag"] = etag;
+		// Response::content_type defaults to application/json, which on a
+		// 304 for an HTML or CSS asset is simply wrong. Cleared rather
+		// than corrected: a 304 carries no content, the transport omits
+		// the header when it is empty, and this matches what the API 304
+		// path already does.
+		r.content_type.clear();
+		r.headers["ETag"] = wire_static_etag;
+		// Same policy the 200 carries, or a cache is told the shell is
+		// private on the very response that confirms its copy is good.
+		r.headers["Cache-Control"] = "public, no-cache";
 		return r;
 	}
 
 	CHttpServer::Response r;
 	r.status = 200;
 	r.content_type = StaticContentType(rel);
-	r.body = (req.method == "HEAD") ? std::string() : std::move(body);
+	// The body is kept for HEAD too. The transport writes headers only,
+	// so nothing reaches the wire, and keeping it is what lets
+	// Content-Length report the real size instead of 0 -- and what stops
+	// HEAD and GET disagreeing about this resource's validator, since the
+	// outer layer skips stamping whenever a handler set its own ETag.
+	r.body = std::move(body);
 	r.headers["ETag"] = etag;
+	// The WebUI shell is the same bytes for everyone, so it carries its own
+	// policy rather than inheriting the authenticated default -- without
+	// this it was stamped private and re-fetched per session.
+	//
+	// no-cache, NOT a max-age. These filenames carry no content hash:
+	// index.html, app.js and app.css keep their names across a rebuild. A
+	// freshness lifetime therefore buys nothing that the ETag does not
+	// already give -- and costs correctness, because must-revalidate only
+	// governs what a cache may do once the entry is ALREADY stale
+	// (RFC 9111 5.2.2.2). Inside the lifetime the browser serves the copy
+	// it has without asking, so an upgraded daemon would keep handing out
+	// the old shell for the rest of the window, and since each asset
+	// expires on its own clock a new shell can be paired with an old
+	// bundle -- breakage that looks like a bug rather than a stale page.
+	//
+	// no-cache means revalidate every time, not "do not store": the copy
+	// stays in the cache and an unchanged bundle costs one conditional GET
+	// answered 304 with no body. Reserve a long max-age for content-hashed
+	// filenames, where the URL changes when the bytes do.
+	//
+	// public is load-bearing alongside it, not decoration. RFC 9111 3.5
+	// bars a shared cache from reusing a response to a request that
+	// carried an AUTHORIZATION HEADER unless the response carries one of
+	// public, must-revalidate or s-maxage, and no-cache is not on that
+	// list. The browser WebUI is not the case that engages it -- it
+	// authenticates by cookie, which is exactly why the credential stamp
+	// above needs Vary: Cookie instead. A bearer-token client fetching the
+	// same shell is: its request does carry the header. Without public, a
+	// proxy in front of the daemon must then hold a per-token copy of a
+	// file identical for every caller. It changes nothing for a client
+	// that is not a shared cache: no-cache still forces revalidation on
+	// every use.
+	r.headers["Cache-Control"] = "public, no-cache";
 	return r;
 }
 
@@ -1666,9 +1901,11 @@ CHttpServer::Response CApiDispatcher::ServeCountryFlag(
 	CHttpServer::Response r;
 	r.status = 200;
 	r.content_type = "image/png";
-	// HEAD body-stripping and the ETag / If-None-Match → 304 swap are
-	// applied to every 200 GET/HEAD by Dispatch(), so this handler only
-	// has to produce the bytes.
+	// The ETag / If-None-Match -> 304 swap is applied to every 200
+	// GET/HEAD by Dispatch(), and a HEAD is written as headers only by the
+	// transport rather than stripped here, so this handler only has to
+	// produce the bytes. (Dispatch no longer strips the body: keeping it
+	// is what lets Content-Length report what a GET would return.)
 	r.body.assign(reinterpret_cast<const char *>(icon->png_data), icon->png_len);
 	// The artwork is compiled in: it can only change with a new build,
 	// and a peer list is a page full of <img> tags pointing here. A day
@@ -1679,8 +1916,49 @@ CHttpServer::Response CApiDispatcher::ServeCountryFlag(
 	return r;
 }
 
-CHttpServer::Response CApiDispatcher::HandleVersion(const CHttpServer::Request &)
+// GET /health. The surface had no liveness probe, so `/version` was being used
+// as one -- a document whose body changes over time, whose name says something
+// else, and which reported the daemon's update state to an unauthenticated
+// caller.
+//
+// Liveness, not readiness: always 200 while the HTTP server is answering, so a
+// container or load-balancer probe never restarts a healthy process just
+// because amuled went away. Readiness is in the body instead, where a caller
+// that wants it can key on the two flags without the status code moving under
+// a caller that does not.
+//
+// No EC roundtrip. amuleapi serialises EC through one worker, so a probe that
+// waited on the daemon could block behind an unrelated slow mutation and time
+// out at the read deadline, reporting the service as down when it is merely
+// busy. Both flags are process-local reads.
+CHttpServer::Response CApiDispatcher::HandleHealth(const CHttpServer::Request &)
 {
+	CHttpServer::Response r;
+	r.status = 200;
+	r.content_type = "application/json";
+	CJsonWriter w;
+	w.BeginObject();
+	w.Key("status");
+	w.ValueString(wxT("ok"));
+	w.Key("ec_connected");
+	w.ValueBool(m_state.EcConnected());
+	w.Key("snapshot");
+	w.ValueBool(m_state.HasFirstSnapshot());
+	w.EndObject();
+	FinalizeJsonBody(w, r);
+	return r;
+}
+
+CHttpServer::Response CApiDispatcher::HandleVersion(const CHttpServer::Request &req)
+{
+	// The identity fields stay unauthenticated: this is the liveness/version
+	// probe, and a probe has to work before anyone holds a token. The `update`
+	// block does not, because it reports whether THIS daemon is running an
+	// outdated build, and that is not something an unauthenticated caller on a
+	// deliberately reachable interface should learn. A client that shows an
+	// "update available" banner is already authenticated when it does.
+	const auto auth = Authenticate(req);
+
 	CHttpServer::Response r;
 	r.status = 200;
 	r.content_type = "application/json";
@@ -1706,7 +1984,7 @@ CHttpServer::Response CApiDispatcher::HandleVersion(const CHttpServer::Request &
 	// daemon that emits none of these tags -- check_enabled is false and a
 	// client should show nothing. update_available / last_checked are null
 	// until a check has completed.
-	{
+	if (auth.ok) {
 		const auto prefs = m_state.Preferences();
 		const auto status = m_state.Status();
 		const bool check_enabled = prefs.version_check_available && prefs.check_new_version;
@@ -1725,18 +2003,14 @@ CHttpServer::Response CApiDispatcher::HandleVersion(const CHttpServer::Request &
 		} else {
 			w.ValueNull();
 		}
-		w.Key("last_checked");
-		if (checked && status.version_check_timestamp > 0) {
-			w.ValueUInt(status.version_check_timestamp);
-		} else {
-			w.ValueNull();
-		}
+		WriteIntOrNull(w,
+			"last_checked",
+			checked && status.version_check_timestamp > 0,
+			static_cast<std::int64_t>(status.version_check_timestamp));
 		w.EndObject();
 	}
 	w.EndObject();
-	const wxString js = w.GetBuffer();
-	const wxScopedCharBuffer ub = js.utf8_str();
-	r.body.assign(ub.data(), ub.length());
+	FinalizeJsonBody(w, r);
 	return r;
 }
 
@@ -1821,9 +2095,7 @@ CHttpServer::Response CApiDispatcher::HandleLogin(const CHttpServer::Request &re
 	w.BeginObject();
 	BeginSession(req, role, r, w);
 	w.EndObject();
-	const wxString js = w.GetBuffer();
-	const wxScopedCharBuffer ub = js.utf8_str();
-	r.body.assign(ub.data(), ub.length());
+	FinalizeJsonBody(w, r);
 	return r;
 }
 
@@ -1970,9 +2242,7 @@ CHttpServer::Response CApiDispatcher::HandleLogout(const CHttpServer::Request &r
 	w.Key("ok");
 	w.ValueBool(true);
 	w.EndObject();
-	const wxString js = w.GetBuffer();
-	const wxScopedCharBuffer ub = js.utf8_str();
-	r.body.assign(ub.data(), ub.length());
+	FinalizeJsonBody(w, r);
 	return r;
 }
 
@@ -2007,9 +2277,11 @@ CHttpServer::Response CApiDispatcher::HandleSession(const CHttpServer::Request &
 	w.Key("exp_unix");
 	w.ValueInt(static_cast<int64_t>(a.verified.exp));
 	w.EndObject();
-	const wxString js = w.GetBuffer();
-	const wxScopedCharBuffer ub = js.utf8_str();
-	r.body.assign(ub.data(), ub.length());
+	// Per-principal document: a shared cache must not hand one caller
+	// another's session. Our own ETag memo excludes this target for the
+	// same reason; this is the half that binds anything in front of us.
+	r.headers["Cache-Control"] = "private, no-store";
+	FinalizeJsonBody(w, r);
 	return r;
 }
 
@@ -2035,9 +2307,7 @@ CHttpServer::Response CApiDispatcher::HandleAuthPasswords(const CHttpServer::Req
 	w.Key("guest_enabled");
 	w.ValueBool(!m_config.GuestCredential().empty());
 	w.EndObject();
-	const wxString js = w.GetBuffer();
-	const wxScopedCharBuffer ub = js.utf8_str();
-	r.body.assign(ub.data(), ub.length());
+	FinalizeJsonBody(w, r);
 	return r;
 }
 
@@ -2185,9 +2455,7 @@ CHttpServer::Response CApiDispatcher::HandleAuthPasswordsPatch(const CHttpServer
 	w.ValueBool(true);
 	BeginSession(req, Role::ADMIN, r, w);
 	w.EndObject();
-	const wxString js = w.GetBuffer();
-	const wxScopedCharBuffer ub = js.utf8_str();
-	r.body.assign(ub.data(), ub.length());
+	FinalizeJsonBody(w, r);
 	return r;
 }
 
@@ -2225,12 +2493,11 @@ CHttpServer::Response CApiDispatcher::HandleStatus(const CHttpServer::Request &r
 
 	CJsonWriter w;
 	w.BeginObject();
-	// snapshot_at + snapshot_at_unix were retired from
-	// every envelope response so the ETag/If-None-Match cache
-	// actually gets cache hits on list endpoints.
-	// `ec_connected` is the dedicated staleness signal — it flips
-	// false when the refresher tick fails. Standard HTTP `Date:`
-	// header carries wall-clock for any consumer that needs it.
+	// No snapshot timestamp in the envelope: a value that moves every tick
+	// changes the body bytes and defeats the ETag, so list endpoints would
+	// never see a cache hit. `ec_connected` is the staleness signal, flipping
+	// false when the refresher tick fails, and the HTTP `Date:` header
+	// carries wall-clock for any consumer that needs it.
 	w.Key("ec_connected");
 	w.ValueBool(ec);
 	(void)ts;
@@ -2314,18 +2581,12 @@ CHttpServer::Response CApiDispatcher::HandleStatus(const CHttpServer::Request &r
 	// same reason.
 	w.Key("disk");
 	w.BeginObject();
-	w.Key("temp_free_bytes");
-	if (s.temp_free_bytes < 0) {
-		w.ValueNull();
-	} else {
-		w.ValueInt(static_cast<int64_t>(s.temp_free_bytes));
-	}
-	w.Key("incoming_free_bytes");
-	if (s.incoming_free_bytes < 0) {
-		w.ValueNull();
-	} else {
-		w.ValueInt(static_cast<int64_t>(s.incoming_free_bytes));
-	}
+	WriteIntOrNull(
+		w, "temp_free_bytes", s.temp_free_bytes >= 0, static_cast<std::int64_t>(s.temp_free_bytes));
+	WriteIntOrNull(w,
+		"incoming_free_bytes",
+		s.incoming_free_bytes >= 0,
+		static_cast<std::int64_t>(s.incoming_free_bytes));
 	w.EndObject();
 
 	w.Key("queue");
@@ -2338,25 +2599,12 @@ CHttpServer::Response CApiDispatcher::HandleStatus(const CHttpServer::Request &r
 	// Nickname is a /preferences field, not a /status one.
 	w.EndObject();
 
-	const wxString js = w.GetBuffer();
-	const wxScopedCharBuffer ub = js.utf8_str();
-	r.body.assign(ub.data(), ub.length());
+	FinalizeJsonBody(w, r);
 	return r;
 }
 
 namespace
 {
-
-// Compact helper — every read endpoint serialises its body the same
-// way (build a wxString via CJsonWriter, then utf8_str into the
-// response body). Hide the boilerplate behind a helper that takes a
-// ready CJsonWriter.
-void FinalizeJsonBody(CJsonWriter &w, CHttpServer::Response &r)
-{
-	const wxString &js = w.GetBuffer();
-	const wxScopedCharBuffer ub = js.utf8_str();
-	r.body.assign(ub.data(), ub.length());
-}
 
 // Write a single download object. Used both inline (in the list
 // endpoint, iterated) and as the body of the detail endpoint (bare,
@@ -2541,10 +2789,15 @@ void WriteDownloadObject(
 		// list. `part_count` and `remaining_time` are computed here from
 		// the snapshot — no EC tag exists for them.
 		const std::int64_t part_count = static_cast<std::int64_t>(webapi::PartCountForSize(f.size));
-		// ETA seconds; -1 when stalled/paused (speed ~0), mirroring the
-		// desktop getTimeRemaining().
-		std::int64_t remaining_time = -1;
+		// ETA seconds, or null when stalled/paused (speed ~0) and there is
+		// nothing to compute from. It was -1, which a client had to know
+		// meant "unknown" while the neighbouring unknowns on this surface
+		// used 0, an omitted key, and null. One rule: nullable field,
+		// unknown is null.
+		bool has_remaining_time = false;
+		std::int64_t remaining_time = 0;
 		if (f.download.speed_bps > 0) {
+			has_remaining_time = true;
 			remaining_time = (f.size > f.download.size_done)
 						 ? static_cast<std::int64_t>((f.size - f.download.size_done) /
 									     f.download.speed_bps)
@@ -2560,8 +2813,7 @@ void WriteDownloadObject(
 		w.ValueInt(static_cast<int64_t>(f.download.available_part_count));
 		w.Key("part_count");
 		w.ValueInt(part_count);
-		w.Key("remaining_time");
-		w.ValueInt(remaining_time);
+		WriteIntOrNull(w, "remaining_time", has_remaining_time, remaining_time);
 		w.Key("lost_to_corruption");
 		w.ValueInt(static_cast<int64_t>(f.download.lost_to_corruption));
 		w.Key("gained_by_compression");
@@ -2864,15 +3116,18 @@ void WriteSharedBaseFields(CJsonWriter &w, const webapi::FileSnapshot &f)
 	w.EndObject();
 	// Live upload activity (issue #466). `upload_speed_bps` + `uploading`
 	// refresh every tick; `last_upload` / `shared_since` are unix seconds,
-	// 0 = unknown (never uploaded / pre-feature known.met entry).
+	// null when unknown -- never uploaded, or a known.met entry that predates
+	// the field. They were 0, which reads as 1970 rather than "no idea".
 	w.Key("upload_speed_bps");
 	w.ValueInt(static_cast<int64_t>(f.shared.upload_speed_bps));
 	w.Key("uploading");
 	w.ValueInt(static_cast<int64_t>(f.shared.uploading_count));
-	w.Key("last_upload");
-	w.ValueInt(static_cast<int64_t>(f.shared.last_upload));
-	w.Key("shared_since");
-	w.ValueInt(static_cast<int64_t>(f.shared.shared_since));
+	WriteIntOrNull(
+		w, "last_upload", f.shared.last_upload != 0, static_cast<std::int64_t>(f.shared.last_upload));
+	WriteIntOrNull(w,
+		"shared_since",
+		f.shared.shared_since != 0,
+		static_cast<std::int64_t>(f.shared.shared_since));
 	// Parts hashed so far by a Verify Local Data or an AICH hashset rebuild
 	// over this share; 0 when idle. Goes through the accessor so a shared
 	// download, which amuled reports as a partfile, still reads correctly.
@@ -2884,6 +3139,14 @@ void WriteSharedObject(CJsonWriter &w, const webapi::FileSnapshot &f)
 {
 	w.BeginObject();
 	WriteSharedBaseFields(w, f);
+	// Media rides the list item, not just the detail endpoint, because the
+	// shared_added / shared_updated payload is documented to match this object
+	// byte-for-byte -- that is what lets a subscriber skip the re-GET. The
+	// event has to carry media (a metadata re-extraction is otherwise
+	// invisible: the refresh endpoints answer 202 with no result), so the list
+	// carries it too or the guarantee stops being true. Six small scalars,
+	// unlike the per-part arrays the list deliberately omits.
+	WriteMediaIfPresent(w, f);
 	w.EndObject();
 }
 
@@ -2972,6 +3235,93 @@ using ListComparators = std::vector<std::pair<std::string, std::function<bool(co
 // Sort keys for peer rows, shared by /clients and by the per-file client
 // routes -- the latter derive theirs from this set, so a key added here shows
 // up on every peer list rather than only the one it was added to.
+// One row of GET /search. The listing is built from a live EC response rather
+// than a snapshot vector, so it needs a materialised row before it can go
+// through the same envelope every other collection uses. Absent values stay
+// absent rather than becoming 0: `started_at` is unknowable for a search this
+// process did not start, and `result_count` is unreported by an older daemon,
+// which has to stay distinguishable from "found nothing".
+struct SearchListRow
+{
+	std::uint32_t search_id = 0;
+	wxString query;
+	std::string kind;
+	std::string state;
+	bool has_client_ecid = false;
+	std::uint32_t client_ecid = 0;
+	std::time_t started_at = 0; // 0 = not started by this process
+	bool has_result_count = false;
+	std::uint32_t result_count = 0;
+};
+
+void WriteSearchListRow(CJsonWriter &w, const SearchListRow &row)
+{
+	w.BeginObject();
+	w.Key("search_id");
+	w.ValueInt(static_cast<int64_t>(row.search_id));
+	w.Key("query");
+	w.ValueString(row.query);
+	w.Key("kind");
+	w.ValueString(wxString::FromUTF8(row.kind.c_str()));
+	w.Key("state");
+	w.ValueString(wxString::FromUTF8(row.state.c_str()));
+	if (row.has_client_ecid) {
+		w.Key("client_ecid");
+		w.ValueInt(static_cast<int64_t>(row.client_ecid));
+	}
+	if (row.started_at != 0) {
+		w.Key("started_at");
+		w.ValueInt(static_cast<int64_t>(row.started_at));
+	}
+	if (row.has_result_count) {
+		w.Key("result_count");
+		w.ValueInt(static_cast<int64_t>(row.result_count));
+	}
+	w.EndObject();
+}
+
+// Sort keys for /search. The daemon hands its searches back id-ascending and id
+// order is not recency (Kad ids carry SEARCH_ID_KAD_MASK and always sort above
+// ed2k ones), so a client had nothing to rank the list by.
+const ListComparators<SearchListRow> &SearchListComparators()
+{
+	static const ListComparators<SearchListRow> kComps = {
+		{ "search_id",
+			[](const SearchListRow &a, const SearchListRow &b) {
+				return a.search_id < b.search_id;
+			} },
+		{ "query", [](const SearchListRow &a, const SearchListRow &b) { return a.query < b.query; } },
+		{ "started_at",
+			[](const SearchListRow &a, const SearchListRow &b) {
+				return a.started_at < b.started_at;
+			} },
+		{ "result_count",
+			[](const SearchListRow &a, const SearchListRow &b) {
+				return a.result_count < b.result_count;
+			} },
+	};
+	return kComps;
+}
+
+// Sort keys for /categories. The tenth list endpoint was also the only one
+// that never parsed ?limit/&offset/&sort/&order, so the same query string was a
+// hard error on /downloads and a silent no-op here -- while the response still
+// carried the page-meta trio a caller could not influence.
+const ListComparators<webapi::CategorySnapshot> &CategoryComparators()
+{
+	static const ListComparators<webapi::CategorySnapshot> kComps = {
+		{ "index",
+			[](const webapi::CategorySnapshot &a, const webapi::CategorySnapshot &b) {
+				return a.index < b.index;
+			} },
+		{ "name",
+			[](const webapi::CategorySnapshot &a, const webapi::CategorySnapshot &b) {
+				return a.name < b.name;
+			} },
+	};
+	return kComps;
+}
+
 const ListComparators<webapi::ClientSnapshot> &ClientComparators()
 {
 	static const ListComparators<webapi::ClientSnapshot> kComps = {
@@ -2992,39 +3342,74 @@ std::unique_ptr<CHttpServer::Response> BadRequestPtr(const char *message)
 	return std::make_unique<CHttpServer::Response>(ErrorResponse(400, "bad_request", message));
 }
 
-// Parse ?limit/&offset/&sort/&order from a raw query string. `limit` is
-// clamped to 500; a non-numeric/oversized limit or offset, and a bad
-// `order`, are 400s. `sort` is validated later against the endpoint's
-// comparator table (BuildListWindow).
+// Optional unsigned query parameter, with an inclusive upper bound.
+//
+// One parser for every count on the surface. The seven written by hand
+// disagreed about the two questions that decide what a client sees -- what an
+// unparseable value does, and what an out-of-range one does -- so a typo was a
+// hard error on `interval` and a silent behaviour change on `width`, on the
+// same endpoint. Rejecting both, here, is the only version of "consistent" a
+// tenth call site cannot quietly opt out of, and the status, the code and the
+// sentence are contract rather than local wording.
+//
+// Absent leaves `out` untouched, so the caller's default stands. `min` and
+// `max` are inclusive; the running value is bounded inside the loop, so a long
+// digit string cannot wrap before the range check sees it.
+std::unique_ptr<CHttpServer::Response> ParseUintParam(const std::map<std::string, std::string> &qmap,
+	const char *name,
+	std::uint64_t min,
+	std::uint64_t max,
+	std::uint64_t &out)
+{
+	const auto it = qmap.find(name);
+	if (it == qmap.end())
+		return nullptr;
+	if (!web_api_path::ParseBoundedUint(it->second, min, max, out)) {
+		const std::string msg = std::string("`") + name + "` must be an integer between " +
+					std::to_string(min) + " and " + std::to_string(max);
+		return BadRequestPtr(msg.c_str());
+	}
+	return nullptr;
+}
+
+// Optional boolean query parameter. Accepts 1/0, true/false and yes/no, and
+// rejects anything else -- `include_completed` used to read every other value
+// as false while its neighbour `include_parts` answered 400, so the same typo
+// was silent on one endpoint and fatal on the next.
+std::unique_ptr<CHttpServer::Response> ParseBoolParam(
+	const std::map<std::string, std::string> &qmap, const char *name, bool &out)
+{
+	const auto it = qmap.find(name);
+	if (it == qmap.end())
+		return nullptr;
+	if (!web_api_path::ParseBoolValue(it->second, out)) {
+		const std::string msg = std::string("`") + name + "` must be 1/0, true/false or yes/no";
+		return BadRequestPtr(msg.c_str());
+	}
+	return nullptr;
+}
+
+// Parse ?limit/&offset/&sort/&order from a raw query string. A non-numeric or
+// out-of-range `limit`/`offset`, and a bad `order`, are 400s. `sort` is
+// validated later against the endpoint's comparator table (BuildListWindow).
 std::unique_ptr<CHttpServer::Response> ParseListParams(const std::string &query, ListParams &out)
 {
 	const auto qmap = web_api_path::ParseQuery(query);
-	auto parseCount = [](const std::string &s, std::size_t &v) -> bool {
-		if (s.empty() || s.size() > 9) // > ~1e9 is nonsense for these lists
-			return false;
-		std::size_t val = 0;
-		for (char c : s) {
-			if (c < '0' || c > '9')
-				return false;
-			val = val * 10 + static_cast<std::size_t>(c - '0');
-		}
-		v = val;
-		return true;
-	};
-	const auto limit_it = qmap.find("limit");
-	if (limit_it != qmap.end()) {
-		std::size_t v = 0;
-		if (!parseCount(limit_it->second, v))
-			return BadRequestPtr("`limit` must be a non-negative integer");
+	// 500 is the window cap and 1e9 is well past anything these lists hold;
+	// both are now rejections rather than silent clamps, so a client that
+	// asks for more learns it did.
+	if (qmap.count("limit")) {
+		std::uint64_t v = 0;
+		if (auto r = ParseUintParam(qmap, "limit", 0, 500, v))
+			return r;
 		out.has_limit = true;
-		out.limit = std::min<std::size_t>(v, 500);
+		out.limit = static_cast<std::size_t>(v);
 	}
-	const auto offset_it = qmap.find("offset");
-	if (offset_it != qmap.end()) {
-		std::size_t v = 0;
-		if (!parseCount(offset_it->second, v))
-			return BadRequestPtr("`offset` must be a non-negative integer");
-		out.offset = v;
+	{
+		std::uint64_t v = 0;
+		if (auto r = ParseUintParam(qmap, "offset", 0, 1000000000ull, v))
+			return r;
+		out.offset = static_cast<std::size_t>(v);
 	}
 	const auto order_it = qmap.find("order");
 	if (order_it != qmap.end()) {
@@ -3206,21 +3591,17 @@ namespace
 // JSON body parser. Returns true on success; false + `err` on
 // failure. Non-object roots are rejected.
 //
-// Pre-parse depth cap. picojson uses unbounded recursive descent for
-// `_parse_array` / `_parse_object` — a `{"a":{"a":...}}` body deep
-// enough blows the worker thread stack. 32 openers is past anything
-// legitimate (bodies are flat lists of scalars). Mirrors CJwt::Verify.
+// Pre-parse depth cap, so a deeply nested body cannot exhaust the
+// handler thread's stack inside picojson's recursive descent. The
+// scanner and the reasoning behind it live in JsonDepthScan.h, which
+// keeps it reachable from JsonDepthScanTest. CJwt::Verify caps its
+// own parses for the same reason, by a cruder count that suits the
+// payloads it sees -- see the note there.
 bool ParseJsonObjectBody(const std::string &body, picojson::value &out, std::string &err)
 {
-	constexpr std::size_t kMaxJsonOpeners = 32;
-	std::size_t openers = 0;
-	for (char c : body) {
-		if (c == '{' || c == '[') {
-			if (++openers > kMaxJsonOpeners) {
-				err = "JSON nesting too deep";
-				return false;
-			}
-		}
+	if (!webapi::JsonNestingWithinLimit(body)) {
+		err = "JSON nesting too deep";
+		return false;
 	}
 	const std::string parse_err = picojson::parse(out, body);
 	if (!parse_err.empty()) {
@@ -3266,22 +3647,72 @@ bool IsEcFailedResponse(const CECPacket *resp, std::string &out_msg)
 // what the daemon can actually hold; the shared side keeps the full
 // set in SharedPriorityToCode.
 // Returns false if the wire string isn't a known download priority.
-bool DownloadPriorityToCode(const std::string &name, std::uint8_t &out)
+// The one place the file-priority vocabulary is declared.
+//
+// /downloads, /shared and /categories all speak the PR_* code space and differ
+// only in which names they accept, which is how three near-identical converters
+// came to exist: adding or renaming a level was a multi-site edit with no
+// compiler help, and each call site additionally spelled its accepted set out
+// again in a rejection string.
+//
+// The differences in what each accepts are deliberate and stay. The .part.met
+// loader clamps anything but PR_LOW/PR_NORMAL/PR_HIGH back to Normal on
+// restart, so very_low and release are upload-side levels only and are refused
+// on the download path on purpose. Categories apply their priority to member
+// files as a download priority, so they inherit the download set.
+//
+// Servers are deliberately NOT in this table. SRV_PR_* is a different code
+// space in which the same word means a different number -- `low` is 0 for a
+// file and 2 for a server -- so folding them together would produce one table
+// that lies about half its rows. ServerPriorityCode stays where it is.
+enum PriorityDomain : unsigned
 {
-	if (name == "low") {
-		out = PR_LOW;
-		return true;
-	} else if (name == "normal") {
-		out = PR_NORMAL;
-		return true;
-	} else if (name == "high") {
-		out = PR_HIGH;
-		return true;
-	} else if (name == "auto") {
-		out = PR_AUTO;
-		return true;
+	kPrioDownload = 1u << 0,
+	kPrioShared = 1u << 1,
+	kPrioCategory = 1u << 2,
+};
+
+struct FilePriorityLevel
+{
+	const char *name;
+	std::uint8_t code;
+	unsigned domains;
+};
+
+const FilePriorityLevel kFilePriorities[] = {
+	{ "very_low", PR_VERY_LOW, kPrioShared },
+	{ "low", PR_LOW, kPrioDownload | kPrioShared | kPrioCategory },
+	{ "normal", PR_NORMAL, kPrioDownload | kPrioShared | kPrioCategory },
+	{ "high", PR_HIGH, kPrioDownload | kPrioShared | kPrioCategory },
+	{ "release", PR_VERYHIGH, kPrioShared },
+	{ "auto", PR_AUTO, kPrioDownload | kPrioShared | kPrioCategory },
+};
+
+bool FilePriorityToCode(const std::string &name, unsigned domain, std::uint8_t &out)
+{
+	for (const FilePriorityLevel &level : kFilePriorities) {
+		if ((level.domains & domain) != 0 && name == level.name) {
+			out = level.code;
+			return true;
+		}
 	}
 	return false;
+}
+
+// The rejection names exactly what this domain accepts, built from the table
+// rather than restated at each call site -- five sites had their own copy, so a
+// new level would have been announced in some of them and not others.
+std::string FilePriorityAccepted(unsigned domain)
+{
+	std::string out;
+	for (const FilePriorityLevel &level : kFilePriorities) {
+		if ((level.domains & domain) == 0)
+			continue;
+		if (!out.empty())
+			out += ", ";
+		out += level.name;
+	}
+	return "`priority` must be one of " + out;
 }
 
 // The three "fetch a list from a URL" endpoints — /servers/update,
@@ -3455,21 +3886,8 @@ CHttpServer::Response CApiDispatcher::HandleDownloads(const CHttpServer::Request
 		if (q != std::string::npos)
 			query = req.target.substr(q + 1);
 		const auto qmap = web_api_path::ParseQuery(query);
-		const auto it = qmap.find("include_completed");
-		if (it != qmap.end()) {
-			const std::string &v = it->second;
-			include_completed = (v == "1" || v == "true" || v == "yes");
-		}
-	}
-
-	std::vector<webapi::FileSnapshot> downloads = m_state.Downloads();
-	if (!include_completed) {
-		downloads.erase(std::remove_if(downloads.begin(),
-					downloads.end(),
-					[](const webapi::FileSnapshot &d) {
-						return d.download.status == "completed";
-					}),
-			downloads.end());
+		if (auto r = ParseBoolParam(qmap, "include_completed", include_completed))
+			return *r;
 	}
 
 	ListParams params;
@@ -3497,18 +3915,35 @@ CHttpServer::Response CApiDispatcher::HandleDownloads(const CHttpServer::Request
 				return a.download.status < b.download.status;
 			} },
 	};
-	return ListResponse(
-		m_state,
-		"downloads",
-		downloads,
-		[](CJsonWriter &w, const webapi::FileSnapshot &d) {
-			// List mode — omit `progress.parts` (Q2 + the per-list
-			// shape: omitting parts keeps the list response compact,
-			// detail endpoint is where parts ship).
-			WriteDownloadObject(w, d, /*include_parts=*/false);
-		},
-		params,
-		kComps);
+	if (auto r = RequireSnapshot(m_state))
+		return *r;
+	// Pointers into the live map rather than copies; see HandleSharedList.
+	CHttpServer::Response resp;
+	// Named captures; see HandleSharedList.
+	m_state.WithFiles([&resp, &params, include_completed](const webapi::FileMap &files) {
+		std::vector<const webapi::FileSnapshot *> ptrs;
+		ptrs.reserve(files.size());
+		for (const auto &entry : files) {
+			const webapi::FileSnapshot &d = entry.second;
+			if (!d.is_downloading)
+				continue;
+			if (!include_completed && d.download.status == "completed")
+				continue;
+			ptrs.push_back(&d);
+		}
+		resp = ListResponseFromPtrsUnlocked(
+			"downloads",
+			ptrs,
+			[](CJsonWriter &w, const webapi::FileSnapshot &d) {
+				// List mode — omit `progress.parts` (Q2 + the per-list
+				// shape: omitting parts keeps the list response compact,
+				// detail endpoint is where parts ship).
+				WriteDownloadObject(w, d, /*include_parts=*/false);
+			},
+			params,
+			kComps);
+	});
+	return resp;
 }
 
 namespace
@@ -3626,14 +4061,8 @@ CHttpServer::Response CApiDispatcher::HandleFileClients(
 	bool include_parts = false;
 	{
 		const auto qmap = web_api_path::ParseQuery(QueryOf(req));
-		const auto it = qmap.find("include_parts");
-		if (it != qmap.end()) {
-			if (it->second != "true" && it->second != "false") {
-				return ErrorResponse(
-					400, "bad_request", "`include_parts` must be \"true\" or \"false\"");
-			}
-			include_parts = (it->second == "true");
-		}
+		if (auto r = ParseBoolParam(qmap, "include_parts", include_parts))
+			return *r;
 	}
 
 	const std::uint64_t part_count = webapi::PartCountForSize(file.size);
@@ -3763,7 +4192,27 @@ CHttpServer::Response CApiDispatcher::HandleSharedList(const CHttpServer::Reques
 				return a.size < b.size;
 			} },
 	};
-	return ListResponse(m_state, "shared", m_state.Shared(), WriteSharedObject, params, kComps);
+	if (auto r = RequireSnapshot(m_state))
+		return *r;
+	// Pointers into the live map rather than copies -- this was the single
+	// biggest allocation the daemon made per request. Serialising inside the
+	// read lock is safe because WriteSharedObject reads only the snapshot it is
+	// handed, so ListResponseFromPtrsUnlocked's "must not re-enter CState"
+	// contract holds.
+	CHttpServer::Response resp;
+	// Named captures rather than [&]: [&] would pull `this` in, putting
+	// m_state within reach of a callback that must not touch it. kComps is
+	// static, so it is in scope without being captured.
+	m_state.WithFiles([&resp, &params](const webapi::FileMap &files) {
+		std::vector<const webapi::FileSnapshot *> ptrs;
+		ptrs.reserve(files.size());
+		for (const auto &entry : files) {
+			if (entry.second.is_shared)
+				ptrs.push_back(&entry.second);
+		}
+		resp = ListResponseFromPtrsUnlocked("shared", ptrs, WriteSharedObject, params, kComps);
+	});
+	return resp;
 }
 
 CHttpServer::Response CApiDispatcher::HandleDownloadDetail(
@@ -4219,6 +4668,16 @@ CHttpServer::Response CApiDispatcher::HandleVersionCheck(const CHttpServer::Requ
 	if (auto rej = RequireAdmin(a))
 		return *rej;
 
+	// Before the first EC snapshot there are no preferences to read, and
+	// version_check_available defaults to false -- so the capability check
+	// below used to answer 409 "disabled or unavailable on the connected
+	// daemon" during the window every client hits at startup, blaming the
+	// daemon's configuration for amuleapi not having read it yet. Every other
+	// handler that reads cached state answers 503 ec_unavailable there, which
+	// is the condition a client can retry.
+	if (auto r = RequireSnapshot(m_state))
+		return *r;
+
 	// The daemon owns the check; amuleapi only triggers it. Reject early
 	// when the daemon can't check, so we never send an EC op that will fail
 	// and never expose the daemon's localized reason (English-only contract).
@@ -4256,9 +4715,7 @@ CHttpServer::Response CApiDispatcher::HandleVersionCheck(const CHttpServer::Requ
 	w.Key("status");
 	w.ValueString("started");
 	w.EndObject();
-	const wxString js = w.GetBuffer();
-	const wxScopedCharBuffer ub = js.utf8_str();
-	r.body.assign(ub.data(), ub.length());
+	FinalizeJsonBody(w, r);
 	return r;
 }
 
@@ -4627,11 +5084,9 @@ CHttpServer::Response CApiDispatcher::HandleDownloadPatch(
 					400, "bad_request", "`priority` must be a wire-string enum");
 			}
 			std::uint8_t code = 0;
-			if (!DownloadPriorityToCode(it->second.get<std::string>(), code)) {
-				return ErrorResponse(400,
-					"bad_request",
-					"`priority` must be one of "
-					"low, normal, high, auto");
+			if (!FilePriorityToCode(it->second.get<std::string>(), kPrioDownload, code)) {
+				return ErrorResponse(
+					400, "bad_request", FilePriorityAccepted(kPrioDownload).c_str());
 			}
 			auto err = send_op(
 				EC_OP_PARTFILE_PRIO_SET, /*has_inner=*/true, EC_TAG_PARTFILE_PRIO, code);
@@ -4855,30 +5310,23 @@ CHttpServer::Response CApiDispatcher::HandleDownloadsClearCompleted(const CHttpS
 		ecids.push_back(d.ecid);
 		hashes_cleared.push_back(d.hash);
 	} else {
-		for (const auto &d : m_state.Downloads()) {
-			if (d.download.status == "completed") {
-				ecids.push_back(d.ecid);
-				hashes_cleared.push_back(d.hash);
+		// Named captures; see HandleSharedList.
+		m_state.WithFiles([&ecids, &hashes_cleared](const webapi::FileMap &files) {
+			for (const auto &entry : files) {
+				const webapi::FileSnapshot &d = entry.second;
+				if (d.is_downloading && d.download.status == "completed") {
+					ecids.push_back(d.ecid);
+					hashes_cleared.push_back(d.hash);
+				}
 			}
-		}
+		});
 	}
 
 	if (ecids.empty()) {
-		// Nothing to do — return 200 with cleared:0 so consumers can
-		// distinguish "no-op" from "amuled rejected" (both end up
-		// with no visible change).
-		CHttpServer::Response r;
-		r.status = 200;
-		r.content_type = "application/json";
-		CJsonWriter w;
-		w.BeginObject();
-		w.Key("ok");
-		w.ValueBool(true);
-		w.Key("cleared");
-		w.ValueInt(0);
-		w.EndObject();
-		FinalizeJsonBody(w, r);
-		return r;
+		// Nothing to do. An empty `results` array is the no-op, and it stays
+		// distinguishable from "amuled rejected" -- which is a 4xx with an
+		// error envelope -- without needing a shape of its own.
+		return BulkResultsResponse({}, 200);
 	}
 
 	// One EC roundtrip with all ECIDs (per amulegui's pattern at
@@ -4902,24 +5350,16 @@ CHttpServer::Response CApiDispatcher::HandleDownloadsClearCompleted(const CHttpS
 	// show the post-clear state.
 	(void)RefresherTick(m_app, m_state);
 
-	CHttpServer::Response r;
-	r.status = 200;
-	r.content_type = "application/json";
-	CJsonWriter w;
-	w.BeginObject();
-	w.Key("ok");
-	w.ValueBool(true);
-	w.Key("cleared");
-	w.ValueInt(static_cast<int64_t>(ecids.size()));
-	w.Key("cleared_hashes");
-	w.BeginArray();
+	// One entry per hash, in the envelope every other multi-item mutation
+	// uses. `cleared` was a count and `cleared_hashes` a bare array, so a
+	// per-entry failure had nowhere to appear; the daemon clears them in one
+	// roundtrip today, but the shape no longer assumes that.
+	std::vector<BulkItem> results;
+	results.reserve(hashes_cleared.size());
 	for (const auto &h : hashes_cleared) {
-		w.ValueString(wxString::FromUTF8(h.c_str()));
+		results.push_back(BulkOk(h));
 	}
-	w.EndArray();
-	w.EndObject();
-	FinalizeJsonBody(w, r);
-	return r;
+	return BulkResultsResponse(results, 200);
 }
 
 // --- /servers, /kad, /categories, /preferences -------------------------
@@ -4987,9 +5427,9 @@ void WriteServerObject(CJsonWriter &w, const webapi::ServerSnapshot &s)
 	// tables so this object and the SSE payload in EventDiff.cpp -- two
 	// different writers, one documented shape -- cannot drift apart.
 	w.Key("tcp_flags");
-	w.ValueRaw(wxString::FromAscii(webapi::ServerTcpFlagsJson(s.tcp_flags).c_str()));
+	w.ValueRaw(webapi::ServerTcpFlagsJson(s.tcp_flags));
 	w.Key("udp_flags");
-	w.ValueRaw(wxString::FromAscii(webapi::ServerUdpFlagsJson(s.udp_flags).c_str()));
+	w.ValueRaw(webapi::ServerUdpFlagsJson(s.udp_flags));
 	w.EndObject();
 }
 
@@ -5100,6 +5540,21 @@ bool ParseEcidPath(const std::string &s, std::uint32_t &out)
 	return true;
 }
 
+// Path-capture counterpart to RequireSnapshot above, used the same way:
+// ` if (auto r = RequireEcidPath(caps["ecid"], ecid)) return *r;`.
+//
+// Nine handlers had spelled out the same parse-and-reject, and the status,
+// the code and the sentence are part of the API contract rather than local
+// wording -- a tenth route inheriting a different one is how a surface stops
+// being predictable.
+std::unique_ptr<CHttpServer::Response> RequireEcidPath(const std::string &s, std::uint32_t &out)
+{
+	if (!ParseEcidPath(s, out)) {
+		return BadRequestPtr("path `{ecid}` must be a non-negative integer");
+	}
+	return nullptr;
+}
+
 // Look up a server in the State cache by ECID. Returns false if
 // no match — the handler then 404s.
 bool FindServerByEcid(const webapi::CState &state, std::uint32_t ecid, webapi::ServerSnapshot &out)
@@ -5131,6 +5586,53 @@ bool FindClientByEcid(const webapi::CState &state, std::uint32_t ecid, webapi::C
 // Same shape again for friends. The EC remove/slot ops are idempotent about
 // unknown ids, but a REST caller who mistypes one should get a 404 rather than
 // a cheerful 200, so every /friends/{ecid} handler looks the id up first.
+// The category set as a client sees it, which is not quite what amuled holds.
+//
+// amuled's EC suppresses the whole `EC_TAG_PREFS_CATEGORIES` block when no
+// custom categories exist, and starts including index 0 once the first custom
+// one is added. Faithful at the wire layer, but a client iterating /categories
+// expecting at least the default has to special-case the empty case, so a
+// synthetic index-0 entry is injected when missing. The defaults mirror what
+// amuled emits for category 0 itself: empty title/path/comment, color 0,
+// priority_code PR_LOW (the amuled default for `defaultcat->prio` in
+// CPreferences::LoadCats).
+//
+// Both read routes go through here. The collection did this inline and the
+// member route added later read the raw snapshot instead, so /categories
+// listed a category 0 that /categories/0 reported as absent. Mutations
+// deliberately do NOT use this: the synthetic entry is a read-shape
+// convenience rather than something the daemon holds, so there is nothing
+// there to PATCH or DELETE.
+std::vector<webapi::CategorySnapshot> CategoriesWithDefault(const webapi::CState &state)
+{
+	std::vector<webapi::CategorySnapshot> cats = state.Categories();
+	for (const auto &c : cats) {
+		if (c.index == 0) {
+			return cats;
+		}
+	}
+	webapi::CategorySnapshot d;
+	d.index = 0;
+	d.priority_code = 0; // PR_LOW (matches amuled default)
+	d.priority = "low";
+	cats.insert(cats.begin(), std::move(d));
+	return cats;
+}
+
+// Category counterpart to the FindXByEcid family above. Three handlers walked
+// m_state.Categories() with the same loop, and the read route added below would
+// have been a fourth.
+bool FindCategoryByIndex(const webapi::CState &state, std::uint8_t index, webapi::CategorySnapshot &out)
+{
+	for (const auto &c : state.Categories()) {
+		if (static_cast<std::uint8_t>(c.index) == index) {
+			out = c;
+			return true;
+		}
+	}
+	return false;
+}
+
 bool FindFriendByEcid(const webapi::CState &state, std::uint32_t ecid, webapi::FriendSnapshot &out)
 {
 	const auto all = state.Friends();
@@ -5366,9 +5868,8 @@ CHttpServer::Response CApiDispatcher::HandleClientDetail(
 		return a.rejection;
 
 	std::uint32_t ecid = 0;
-	if (!ParseEcidPath(ecid_str, ecid)) {
-		return ErrorResponse(400, "bad_request", "path `{ecid}` must be a non-negative integer");
-	}
+	if (auto r = RequireEcidPath(ecid_str, ecid))
+		return *r;
 	if (auto r = RequireSnapshot(m_state))
 		return *r;
 	webapi::ClientSnapshot cli;
@@ -5450,27 +5951,24 @@ CHttpServer::Response CApiDispatcher::HandleChatMessages(
 	// process, so a client never sees a duplicate and never skips one. They
 	// reset when the daemon restarts, which also empties the store.
 	std::uint32_t since_id = 0;
-	std::size_t limit = 0;
+	std::size_t tail = 0;
 	const auto qmap = web_api_path::ParseQuery(QueryOf(req));
 	{
-		const auto it = qmap.find("since_id");
-		if (it != qmap.end()) {
-			if (it->second.find_first_not_of("0123456789") != std::string::npos) {
-				return ErrorResponse(
-					400, "bad_request", "`since_id` must be a non-negative integer");
-			}
-			since_id = static_cast<std::uint32_t>(std::strtoul(it->second.c_str(), nullptr, 10));
-		}
+		std::uint64_t v = since_id;
+		if (auto r = ParseUintParam(qmap, "since_id", 0, 0xFFFFFFFFull, v))
+			return *r;
+		since_id = static_cast<std::uint32_t>(v);
 	}
 	{
-		const auto it = qmap.find("limit");
-		if (it != qmap.end()) {
-			if (it->second.find_first_not_of("0123456789") != std::string::npos) {
-				return ErrorResponse(
-					400, "bad_request", "`limit` must be a non-negative integer");
-			}
-			limit = static_cast<std::size_t>(std::strtoul(it->second.c_str(), nullptr, 10));
-		}
+		// `tail`, not `limit`. This selects the last N of the window
+		// rather than a page of it, which is what the log endpoints
+		// already call `tail` -- naming it `limit` gave the surface two
+		// meanings for one word, and the paginated one is the meaning a
+		// client meets on nine other collections.
+		std::uint64_t v = tail;
+		if (auto r = ParseUintParam(qmap, "tail", 0, 100000, v))
+			return *r;
+		tail = static_cast<std::size_t>(v);
 	}
 
 	std::vector<const webapi::ChatMessageSnapshot *> selected;
@@ -5478,11 +5976,11 @@ CHttpServer::Response CApiDispatcher::HandleChatMessages(
 		if (m.id > since_id)
 			selected.push_back(&m);
 	}
-	// `limit` means the LAST n, matching "show me the tail of this
+	// `tail` means the LAST n, matching "show me the tail of this
 	// conversation"; combined with since_id it trims the same window from the
 	// front, so the newest are always the ones kept.
-	if (limit && selected.size() > limit) {
-		selected.erase(selected.begin(), selected.end() - static_cast<std::ptrdiff_t>(limit));
+	if (tail && selected.size() > tail) {
+		selected.erase(selected.begin(), selected.end() - static_cast<std::ptrdiff_t>(tail));
 	}
 
 	CJsonWriter w;
@@ -5612,9 +6110,8 @@ CHttpServer::Response CApiDispatcher::HandleFriendMessageSend(
 			503, "ec_unsupported", "the connected amuled does not serve chat sessions");
 	}
 	std::uint32_t ecid = 0;
-	if (!ParseEcidPath(ecid_str, ecid)) {
-		return ErrorResponse(400, "bad_request", "path `{ecid}` must be a non-negative integer");
-	}
+	if (auto r = RequireEcidPath(ecid_str, ecid))
+		return *r;
 	return SendChatMessageTo(req, CECTag(EC_TAG_FRIEND, ecid));
 }
 
@@ -5631,9 +6128,8 @@ CHttpServer::Response CApiDispatcher::HandleClientMessageSend(
 			503, "ec_unsupported", "the connected amuled does not serve chat sessions");
 	}
 	std::uint32_t ecid = 0;
-	if (!ParseEcidPath(ecid_str, ecid)) {
-		return ErrorResponse(400, "bad_request", "path `{ecid}` must be a non-negative integer");
-	}
+	if (auto r = RequireEcidPath(ecid_str, ecid))
+		return *r;
 	return SendChatMessageTo(req, CECTag(EC_TAG_CLIENT, ecid));
 }
 
@@ -5876,9 +6372,8 @@ CHttpServer::Response CApiDispatcher::HandleFriendRemove(
 		return *r;
 
 	std::uint32_t ecid = 0;
-	if (!ParseEcidPath(ecid_str, ecid)) {
-		return ErrorResponse(400, "bad_request", "path `{ecid}` must be a non-negative integer");
-	}
+	if (auto r = RequireEcidPath(ecid_str, ecid))
+		return *r;
 	webapi::FriendSnapshot existing;
 	if (!FindFriendByEcid(m_state, ecid, existing)) {
 		return ErrorResponse(404, "not_found", "no friend with that ecid");
@@ -5929,9 +6424,8 @@ CHttpServer::Response CApiDispatcher::HandleFriendPatch(
 		return *r;
 
 	std::uint32_t ecid = 0;
-	if (!ParseEcidPath(ecid_str, ecid)) {
-		return ErrorResponse(400, "bad_request", "path `{ecid}` must be a non-negative integer");
-	}
+	if (auto r = RequireEcidPath(ecid_str, ecid))
+		return *r;
 	webapi::FriendSnapshot existing;
 	if (!FindFriendByEcid(m_state, ecid, existing)) {
 		return ErrorResponse(404, "not_found", "no friend with that ecid");
@@ -6069,9 +6563,8 @@ CHttpServer::Response CApiDispatcher::HandleServerConnect(
 		return *rej;
 
 	std::uint32_t ecid = 0;
-	if (!ParseEcidPath(ecid_str, ecid)) {
-		return ErrorResponse(400, "bad_request", "path `{ecid}` must be a non-negative integer");
-	}
+	if (auto r = RequireEcidPath(ecid_str, ecid))
+		return *r;
 	if (auto r = RequireSnapshot(m_state))
 		return *r;
 	webapi::ServerSnapshot srv;
@@ -6125,9 +6618,8 @@ CHttpServer::Response CApiDispatcher::HandleServerDelete(
 		return *rej;
 
 	std::uint32_t ecid = 0;
-	if (!ParseEcidPath(ecid_str, ecid)) {
-		return ErrorResponse(400, "bad_request", "path `{ecid}` must be a non-negative integer");
-	}
+	if (auto r = RequireEcidPath(ecid_str, ecid))
+		return *r;
 	if (auto r = RequireSnapshot(m_state))
 		return *r;
 	webapi::ServerSnapshot srv;
@@ -6322,9 +6814,8 @@ CHttpServer::Response CApiDispatcher::HandleServerPatch(
 		return *rej;
 
 	std::uint32_t ecid = 0;
-	if (!ParseEcidPath(ecid_str, ecid)) {
-		return ErrorResponse(400, "bad_request", "path `{ecid}` must be a non-negative integer");
-	}
+	if (auto r = RequireEcidPath(ecid_str, ecid))
+		return *r;
 
 	picojson::value root;
 	std::string parse_err;
@@ -6458,22 +6949,11 @@ CHttpServer::Response CApiDispatcher::HandleCategories(const CHttpServer::Reques
 	// amuled emits for category 0 itself: empty title/path/comment,
 	// color 0, priority_code PR_LOW (the amuled default for
 	// `defaultcat->prio` in CPreferences::LoadCats).
-	std::vector<webapi::CategorySnapshot> cats = m_state.Categories();
-	bool has_zero = false;
-	for (const auto &c : cats) {
-		if (c.index == 0) {
-			has_zero = true;
-			break;
-		}
-	}
-	if (!has_zero) {
-		webapi::CategorySnapshot d;
-		d.index = 0;
-		d.priority_code = 0; // PR_LOW (matches amuled default)
-		d.priority = "low";
-		cats.insert(cats.begin(), std::move(d));
-	}
-	return ListResponse(m_state, "categories", cats, WriteCategoryObject);
+	std::vector<webapi::CategorySnapshot> cats = CategoriesWithDefault(m_state);
+	ListParams params;
+	if (auto r = ParseListParams(QueryOf(req), params))
+		return *r;
+	return ListResponse(m_state, "categories", cats, WriteCategoryObject, params, CategoryComparators());
 }
 
 CHttpServer::Response CApiDispatcher::HandleKad(const CHttpServer::Request &req)
@@ -6552,19 +7032,18 @@ namespace
 // `?tail=N` parser. Returns 0 if the query is absent / unparseable;
 // the caller's contract is "0 means return everything". Negative or
 // non-numeric values clamp to 0.
-std::size_t ParseTailParam(const std::string &query)
+// 100k lines is the cap: a bogus `?tail=2147483647` would otherwise try to
+// serialise the entire wxString through the JSON escaper. It used to clamp
+// silently, which meant a client asking for more got fewer with nothing saying
+// so; it is a 400 now, like every other out-of-range count.
+std::unique_ptr<CHttpServer::Response> ParseTailParam(const std::string &query, std::size_t &out)
 {
 	const auto qmap = web_api_path::ParseQuery(query);
-	const auto it = qmap.find("tail");
-	if (it == qmap.end())
-		return 0;
-	const long n = std::atol(it->second.c_str());
-	if (n <= 0)
-		return 0;
-	// Cap at 100k lines so a bogus `?tail=2147483647` doesn't try to
-	// serialise the entire wxString through the JSON escaper.
-	const long capped = std::min<long>(n, 100000);
-	return static_cast<std::size_t>(capped);
+	std::uint64_t v = 0;
+	if (auto r = ParseUintParam(qmap, "tail", 0, 100000, v))
+		return r;
+	out = static_cast<std::size_t>(v);
+	return nullptr;
 }
 
 // Return a copy of `all` containing at most `tail` trailing lines.
@@ -6818,17 +7297,10 @@ CHttpServer::Response CApiDispatcher::HandleStatsTree(const CHttpServer::Request
 		if (q != std::string::npos)
 			query = req.target.substr(q + 1);
 		const auto qmap = web_api_path::ParseQuery(query);
-		const auto it = qmap.find("max_client_versions");
-		if (it != qmap.end()) {
-			char *end = nullptr;
-			const long n = std::strtol(it->second.c_str(), &end, 10);
-			if (end == it->second.c_str() || *end != '\0' || n < 0 || n > 255) {
-				return ErrorResponse(400,
-					"bad_request",
-					"max_client_versions must be an integer between 0 and 255");
-			}
-			max_client_versions = static_cast<std::uint8_t>(n);
-		}
+		std::uint64_t v = max_client_versions;
+		if (auto r = ParseUintParam(qmap, "max_client_versions", 0, 255, v))
+			return *r;
+		max_client_versions = static_cast<std::uint8_t>(v);
 	}
 
 	// lazy-fetch with 1 s TTL coalescing. The fetcher runs
@@ -6868,7 +7340,7 @@ CHttpServer::Response CApiDispatcher::HandleStatsTree(const CHttpServer::Request
 	CHttpServer::Response r;
 	r.status = 200;
 	r.content_type = "application/json";
-	// snapshot_at retired in favour of the ETag
+	// No snapshot_at: the ETag is the cache validator
 	// as the cache validator. The TtlPair_StatsTree still tracks the
 	// fetched-at time internally (drives the 1 s TTL coalescer) — it
 	// just isn't surfaced any more.
@@ -6924,16 +7396,10 @@ CHttpServer::Response CApiDispatcher::HandleStatsGraph(
 	// total) — besides, SCALE is a uint16 on the wire.
 	std::uint32_t interval = 1;
 	{
-		const auto it = qmap.find("interval");
-		if (it != qmap.end()) {
-			char *end = nullptr;
-			const long n = std::strtol(it->second.c_str(), &end, 10);
-			if (end == it->second.c_str() || *end != '\0' || n < 1 || n > 3600) {
-				return ErrorResponse(
-					400, "bad_request", "interval must be an integer between 1 and 3600");
-			}
-			interval = static_cast<std::uint32_t>(n);
-		}
+		std::uint64_t v = interval;
+		if (auto r = ParseUintParam(qmap, "interval", 1, 3600, v))
+			return *r;
+		interval = static_cast<std::uint32_t>(v);
 	}
 
 	// Lazy-fetch the full graph bundle (one EC call serves all four named
@@ -6983,12 +7449,10 @@ CHttpServer::Response CApiDispatcher::HandleStatsGraph(
 	// answers every (graph, width) combination.
 	std::size_t width = 0;
 	{
-		const auto it = qmap.find("width");
-		if (it != qmap.end()) {
-			const long n = std::atol(it->second.c_str());
-			if (n > 0)
-				width = static_cast<std::size_t>(std::min<long>(n, 1800));
-		}
+		std::uint64_t v = 0;
+		if (auto r = ParseUintParam(qmap, "width", 0, 1800, v))
+			return *r;
+		width = static_cast<std::size_t>(v);
 	}
 
 	const std::time_t ts = pair.second;
@@ -7007,7 +7471,7 @@ CHttpServer::Response CApiDispatcher::HandleStatsGraph(
 	// repeating records. `points` is never longer than this.
 	w.Key("max_points");
 	w.ValueInt(static_cast<int64_t>(g.max_points));
-	// snapshot_at retired from the response. WritePointArray
+	// No snapshot_at in the response. WritePointArray
 	// still consumes `ts` to compute per-point timestamps (anchoring
 	// the time-series backwards from the fetch wall-clock).
 	//
@@ -7242,78 +7706,50 @@ CHttpServer::Response CApiDispatcher::HandleSearchList(const CHttpServer::Reques
 	if (!a.ok)
 		return a.rejection;
 
+	ListParams params;
+	if (auto r = ParseListParams(QueryOf(req), params))
+		return *r;
+
 	std::unique_ptr<CECPacket> ec_req(new CECPacket(EC_OP_SEARCH_LIST));
 	const CECPacket *ec_resp = m_app.SendRecvSerialized(ec_req.get());
 	if (!ec_resp) {
 		return ErrorResponse(503, "ec_unavailable", "EC roundtrip failed for SEARCH_LIST");
 	}
 
-	CHttpServer::Response r;
-	r.status = 200;
-	r.content_type = "application/json";
-	CJsonWriter w;
-	w.BeginObject();
-	w.Key("searches");
-	w.BeginArray();
+	std::vector<SearchListRow> rows;
 	for (const CECTag &entry : *ec_resp) {
-		w.BeginObject();
-		const std::uint32_t sid = static_cast<std::uint32_t>(entry.GetInt());
-		w.Key("search_id");
-		w.ValueInt(static_cast<int64_t>(sid));
+		SearchListRow row;
+		row.search_id = static_cast<std::uint32_t>(entry.GetInt());
 		const CECTag *nameTag = entry.GetTagByName(EC_TAG_SEARCH_NAME);
-		w.Key("query");
-		w.ValueString(nameTag ? nameTag->GetStringData() : wxString());
+		row.query = nameTag ? nameTag->GetStringData() : wxString();
 		const CECTag *kindTag = entry.GetTagByName(EC_TAG_SEARCH_LIFECYCLE_KIND);
-		w.Key("kind");
-		w.ValueString(SearchKindToString(
-			kindTag ? static_cast<std::uint8_t>(kindTag->GetInt()) : EC_SEARCH_GLOBAL));
+		row.kind = SearchKindToString(kindTag ? static_cast<std::uint8_t>(kindTag->GetInt()) : 0);
 		const CECTag *stateTag = entry.GetTagByName(EC_TAG_SEARCH_LIFECYCLE_STATE);
-		const std::uint8_t state_val = stateTag ? static_cast<std::uint8_t>(stateTag->GetInt()) : 0;
-		w.Key("state");
-		w.ValueString(SearchLifecycleStateToString(state_val));
+		row.state = SearchLifecycleStateToString(
+			stateTag ? static_cast<std::uint8_t>(stateTag->GetInt()) : 0);
 		// Browse ("View Files") entries carry the browsed peer's ecid. Without
 		// it a consumer sees `kind: "browse"` with no way to tell WHOSE share
-		// it is listing -- which is exactly what amulegui uses the tag for when
-		// it rebuilds a browse tab. Omitted entirely on an ordinary search,
-		// which never carries it. `client_` keeps its prefix because this
-		// names a DIFFERENT object than the one being described, unlike the
-		// entry's own `search_id`.
+		// it is listing. Absent on an ordinary search, which never carries it.
 		if (const CECTag *clientTag = entry.GetTagByName(EC_TAG_CLIENT)) {
-			w.Key("client_ecid");
-			w.ValueInt(static_cast<int64_t>(clientTag->GetInt()));
+			row.has_client_ecid = true;
+			row.client_ecid = static_cast<std::uint32_t>(clientTag->GetInt());
 		}
-		// When THIS amuleapi started the search. The daemon ships no
-		// timestamp and hands its searches back id-ascending (the listing
-		// walks a std::map), and id order is not recency -- Kad ids carry
-		// SEARCH_ID_KAD_MASK and always sort above ed2k ones -- so without
-		// this a client has nothing to rank the list by. Omitted, not zeroed,
-		// for a search this process did not start: another client's, or one
-		// the daemon restored from disk. Those are unknowable here, and a 0
-		// would read as 1970 rather than "no idea".
-		if (const std::time_t started = m_state.SearchStartedAt(sid); started != 0) {
-			w.Key("started_at");
-			w.ValueInt(static_cast<int64_t>(started));
-		}
-		// How many hits the daemon holds for this search -- the same number
-		// GET /search/{id}/results reports as `total`. A client that adopts
-		// the listing and fetches results lazily per tab has nothing else to
-		// label an unopened tab with.
-		//
-		// Omitted, not zeroed, when the tag is absent: a daemon older than
-		// this change reports no counts, and "does not report" has to stay
-		// distinguishable from "found nothing". Same rule client_ecid and
-		// started_at already follow above.
+		// When THIS amuleapi started the search. Absent for one this process
+		// did not start -- another client's, or one the daemon restored from
+		// disk -- because a 0 would read as 1970 rather than "no idea".
+		row.started_at = m_state.SearchStartedAt(row.search_id);
+		// The same number GET /search/{id}/results reports as `total`. Absent
+		// when the daemon is older than the tag, so that "does not report"
+		// stays distinguishable from "found nothing".
 		if (const CECTag *countTag = entry.GetTagByName(EC_TAG_SEARCH_RESULT_COUNT)) {
-			w.Key("result_count");
-			w.ValueInt(static_cast<int64_t>(countTag->GetInt()));
+			row.has_result_count = true;
+			row.result_count = static_cast<std::uint32_t>(countTag->GetInt());
 		}
-		w.EndObject();
+		rows.push_back(std::move(row));
 	}
-	w.EndArray();
-	w.EndObject();
-	FinalizeJsonBody(w, r);
 	delete ec_resp;
-	return r;
+
+	return ListResponse(m_state, "searches", rows, WriteSearchListRow, params, SearchListComparators());
 }
 
 CHttpServer::Response CApiDispatcher::HandleLogAmule(const CHttpServer::Request &req)
@@ -7329,7 +7765,9 @@ CHttpServer::Response CApiDispatcher::HandleLogAmule(const CHttpServer::Request 
 	if (q != std::string::npos) {
 		query = req.target.substr(q + 1);
 	}
-	const std::size_t tail = ParseTailParam(query);
+	std::size_t tail = 0;
+	if (auto r = ParseTailParam(query, tail))
+		return *r;
 	const auto all = m_state.AmuleLog();
 	const auto sliced = SliceTail(all, tail);
 
@@ -7377,11 +7815,11 @@ CHttpServer::Response CApiDispatcher::HandleLogAmuleReset(const CHttpServer::Req
 	delete ec_resp;
 
 	// Drop the in-process mirror. The refresher's append-only path
-	// (AppendAmuleLog) can't shrink the cache, and EmitDiffsAndUpdate
-	// already treats a size decrease as a silent truncation
-	// (EventDiff.cpp's `amule_log.size() < prev.amule_log_count`
-	// branch), so no spurious log_appended event fires on the next
-	// tick.
+	// (AppendAmuleLog) can't shrink the cache, and EmitDiffsAndUpdate treats a
+	// size decrease as a silent truncation (its `log_size <
+	// prev.amule_log_count` branch), so no spurious log_appended event fires on
+	// the next tick -- and, as noted there, no event at all for whatever was
+	// appended before that tick.
 	m_state.ClearAmuleLog();
 
 	CHttpServer::Response r;
@@ -7401,7 +7839,9 @@ CHttpServer::Response CApiDispatcher::HandleLogServerinfo(const CHttpServer::Req
 	if (q != std::string::npos) {
 		query = req.target.substr(q + 1);
 	}
-	const std::size_t tail = ParseTailParam(query);
+	std::size_t tail = 0;
+	if (auto r = ParseTailParam(query, tail))
+		return *r;
 
 	// Lazy-fetch via TtlCache. EC_OP_GET_SERVERINFO ships one
 	// EC_TAG_STRING with the whole accumulated text — amuled rotates
@@ -8373,29 +8813,6 @@ namespace
 // combined "*_auto" strings are intentionally NOT accepted as input --
 // "auto" is the level the daemon computes, so a caller can't pin it.
 // Returns false on unknown enum.
-bool SharedPriorityToCode(const std::string &name, std::uint8_t &out)
-{
-	if (name == "very_low") {
-		out = PR_VERY_LOW;
-		return true;
-	} else if (name == "low") {
-		out = PR_LOW;
-		return true;
-	} else if (name == "normal") {
-		out = PR_NORMAL;
-		return true;
-	} else if (name == "high") {
-		out = PR_HIGH;
-		return true;
-	} else if (name == "release") {
-		out = PR_VERYHIGH;
-		return true;
-	} else if (name == "auto") {
-		out = PR_AUTO;
-		return true;
-	}
-	return false;
-}
 
 } // namespace
 
@@ -8432,11 +8849,8 @@ CHttpServer::Response CApiDispatcher::HandleSharedPatch(
 			return ErrorResponse(400, "bad_request", "`priority` must be a wire-string enum");
 		}
 		std::uint8_t code = 0;
-		if (!SharedPriorityToCode(pit->second.get<std::string>(), code)) {
-			return ErrorResponse(400,
-				"bad_request",
-				"`priority` must be one of "
-				"very_low, low, normal, high, release, auto");
+		if (!FilePriorityToCode(pit->second.get<std::string>(), kPrioShared, code)) {
+			return ErrorResponse(400, "bad_request", FilePriorityAccepted(kPrioShared).c_str());
 		}
 		CMD4Hash file_hash;
 		if (!HashFromHex(s.hash, file_hash)) {
@@ -8575,10 +8989,9 @@ CHttpServer::Response CApiDispatcher::HandleDownloadsBulkPatch(const CHttpServer
 				return ErrorResponse(
 					400, "bad_request", "`priority` must be a wire-string enum");
 			std::uint8_t code = 0;
-			if (!DownloadPriorityToCode(it->second.get<std::string>(), code))
-				return ErrorResponse(400,
-					"bad_request",
-					"`priority` must be one of low, normal, high, auto");
+			if (!FilePriorityToCode(it->second.get<std::string>(), kPrioDownload, code))
+				return ErrorResponse(
+					400, "bad_request", FilePriorityAccepted(kPrioDownload).c_str());
 			ops.push_back({ EC_OP_PARTFILE_PRIO_SET, true, EC_TAG_PARTFILE_PRIO, code });
 		}
 	}
@@ -8741,10 +9154,8 @@ CHttpServer::Response CApiDispatcher::HandleSharedBulkPatch(const CHttpServer::R
 	if (!pit->second.is<std::string>())
 		return ErrorResponse(400, "bad_request", "`priority` must be a wire-string enum");
 	std::uint8_t code = 0;
-	if (!SharedPriorityToCode(pit->second.get<std::string>(), code))
-		return ErrorResponse(400,
-			"bad_request",
-			"`priority` must be one of very_low, low, normal, high, release, auto");
+	if (!FilePriorityToCode(pit->second.get<std::string>(), kPrioShared, code))
+		return ErrorResponse(400, "bad_request", FilePriorityAccepted(kPrioShared).c_str());
 
 	std::vector<BulkItem> results;
 	results.reserve(hashes.size());
@@ -8917,35 +9328,36 @@ CHttpServer::Response ApplySharedDirs(CamuleapiApp &app, const std::vector<Share
 		return ErrorResponse(502, "amuled_rejected", ec_err_msg.c_str());
 	}
 
-	CHttpServer::Response r;
-	r.status = 200;
-	r.content_type = "application/json";
-	CJsonWriter w;
-	w.BeginObject();
-	w.Key("ok");
-	w.ValueBool(true);
-	// Paths the core would not take. Empty when everything applied; the reasons
-	// are rendered here rather than shipped as text from a core whose locale is
-	// not the caller's.
-	w.Key("rejected");
-	w.BeginArray();
+	// One entry per submitted path, in the envelope every other multi-item
+	// mutation uses. It reported only the rejects, in a shape of its own, so a
+	// caller could not tell an applied path from one the response simply did
+	// not mention. The reasons are still rendered here rather than shipped as
+	// text from a core whose locale is not the caller's.
+	std::map<std::string, std::string> rejected; // path -> reason code
 	for (const CECTag &tag : *ec_resp) {
 		if (tag.GetTagName() != EC_TAG_SHAREDDIR_REJECTED) {
 			continue;
 		}
 		const CECTag *err_tag = tag.GetTagByName(EC_TAG_SHAREDDIR_ERROR);
-		w.BeginObject();
-		w.Key("path");
-		w.ValueString(tag.GetStringData());
-		w.Key("reason");
-		w.ValueString((err_tag != nullptr && err_tag->GetInt() == 2) ? "not_readable" : "not_found");
-		w.EndObject();
+		rejected[std::string(tag.GetStringData().utf8_str())] =
+			(err_tag != nullptr && err_tag->GetInt() == 2) ? "not_readable" : "not_found";
 	}
-	w.EndArray();
-	w.EndObject();
 	delete ec_resp;
-	FinalizeJsonBody(w, r);
-	return r;
+
+	std::vector<BulkItem> results;
+	results.reserve(dirs.size());
+	for (const SharedDirEntry &entry : dirs) {
+		const std::string path(entry.path.utf8_str());
+		const auto it = rejected.find(path);
+		if (it == rejected.end()) {
+			results.push_back(BulkOk(path));
+		} else if (it->second == "not_readable") {
+			results.push_back(BulkErr(path, 403, "not_readable", "amuled cannot read that path"));
+		} else {
+			results.push_back(BulkErr(path, 404, "not_found", "no such directory"));
+		}
+	}
+	return BulkResultsResponse(results, 200);
 }
 } // namespace
 
@@ -9148,6 +9560,115 @@ CHttpServer::Response CApiDispatcher::HandleSharedDirectoriesDelete(const CHttpS
 	return ApplySharedDirs(m_app, dirs);
 }
 
+namespace
+{
+
+// Send EC_OP_REFRESH_MEDIA_METADATA and turn the reply into a response.
+// `hashTag` is null for the whole-share form.
+//
+// The op is deliberately not behind a capability tag, so a daemon that
+// predates it answers EC_OP_FAILED rather than being detectable in advance.
+// That is reported as 501, not 400: the request was well-formed and the
+// server simply does not implement it, and a client that gets 501 knows to
+// stop offering the action rather than to fix its input.
+CHttpServer::Response SendMediaRefresh(CamuleapiApp &app, const CECTag *hashTag, const char *what)
+{
+	auto ec_req = std::make_unique<CECPacket>(EC_OP_REFRESH_MEDIA_METADATA);
+	if (hashTag) {
+		ec_req->AddTag(*hashTag);
+	}
+	const CECPacket *ec_resp = app.SendRecvSerialized(ec_req.get());
+	if (!ec_resp) {
+		return ErrorResponse(503, "ec_unavailable", "EC roundtrip failed for media refresh");
+	}
+	std::string ec_err_msg;
+	if (IsEcFailedResponse(ec_resp, ec_err_msg)) {
+		const bool unknown_op = ec_err_msg.find("Invalid opcode") != std::string::npos;
+		delete ec_resp;
+		if (unknown_op) {
+			// 503, matching every other ec_unsupported site in this file and
+			// the rule stated in App.cpp. 501 is arguably the better literal
+			// answer for "server does not implement it", but one endpoint
+			// disagreeing with seven is worse than either choice.
+			return ErrorResponse(503,
+				"ec_unsupported",
+				"the connected amuled does not implement media metadata refresh");
+		}
+		return ErrorResponse(400, "amuled_rejected", ec_err_msg.c_str());
+	}
+	std::uint32_t queued = 0;
+	if (const CECTag *t = ec_resp->GetTagByName(EC_TAG_KNOWNFILE_MEDIA_QUEUED)) {
+		queued = static_cast<std::uint32_t>(t->GetInt());
+	}
+	delete ec_resp;
+
+	// 202, not 200: amuled queues the probes on its media-probe worker and
+	// answers immediately, so nothing has been re-extracted yet. `queued` is
+	// how many files were accepted for probing -- files the scheduler dropped
+	// (not audio/video, an incomplete download, missing on disk) are not
+	// counted. Progress is observable through the amule log and, as each
+	// probe lands, the shared_updated SSE events.
+	CHttpServer::Response r;
+	r.status = 202;
+	r.content_type = "application/json";
+	CJsonWriter w;
+	w.BeginObject();
+	w.Key("ok");
+	w.ValueBool(true);
+	w.Key("scope");
+	w.ValueString(wxString::FromAscii(what));
+	w.Key("queued");
+	w.ValueInt(static_cast<int64_t>(queued));
+	w.EndObject();
+	FinalizeJsonBody(w, r);
+	return r;
+}
+
+} // namespace
+
+CHttpServer::Response CApiDispatcher::HandleSharedMediaRefresh(const CHttpServer::Request &req)
+{
+	auto a = Authenticate(req);
+	if (!a.ok)
+		return a.rejection;
+	if (auto rej = RequireAdmin(a))
+		return *rej;
+	return SendMediaRefresh(m_app, nullptr, "all");
+}
+
+CHttpServer::Response CApiDispatcher::HandleSharedMediaRefreshOne(
+	const CHttpServer::Request &req, const std::string &key)
+{
+	auto a = Authenticate(req);
+	if (!a.ok)
+		return a.rejection;
+	if (auto rej = RequireAdmin(a))
+		return *rej;
+
+	if (auto r = RequireSnapshot(m_state))
+		return *r;
+
+	webapi::FileSnapshot s;
+	if (!FindSharedByKey(m_state, key, s)) {
+		return ErrorResponse(404, "not_found", "no shared file with that hash");
+	}
+	// Same exclusion the daemon's Refresh mode applies: an in-progress
+	// download has no complete file to read. Rejected here so the caller is
+	// told why, rather than getting a 202 for a probe that was silently
+	// dropped.
+	if (s.IsIncompletePartfile()) {
+		return ErrorResponse(409,
+			"partfile_unsupported",
+			"media metadata cannot be extracted from an incomplete download");
+	}
+	CMD4Hash file_hash;
+	if (!HashFromHex(s.hash, file_hash)) {
+		return ErrorResponse(500, "internal_error", "failed to decode file hash");
+	}
+	const CECTag hashTag(EC_TAG_KNOWNFILE, file_hash);
+	return SendMediaRefresh(m_app, &hashTag, "file");
+}
+
 CHttpServer::Response CApiDispatcher::HandleSharedReload(const CHttpServer::Request &req)
 {
 	auto a = Authenticate(req);
@@ -9207,23 +9728,6 @@ bool ParseCategoryIndex(const std::string &s, std::uint8_t &out)
 // loader clamps anything but PR_LOW/PR_NORMAL/PR_HIGH back to Normal on the
 // next restart -- so accepting them here would be the same silent downgrade
 // #396 fixed for the direct download PATCH path (issue #384).
-bool CategoryPriorityToCode(const std::string &name, std::uint8_t &out)
-{
-	if (name == "low") {
-		out = PR_LOW;
-		return true;
-	} else if (name == "normal") {
-		out = PR_NORMAL;
-		return true;
-	} else if (name == "high") {
-		out = PR_HIGH;
-		return true;
-	} else if (name == "auto") {
-		out = PR_AUTO;
-		return true;
-	}
-	return false;
-}
 
 // Build the CEC_Category_Tag-shaped tag amuled expects. The shape is:
 //  parent tag EC_TAG_CATEGORY with the index as the int payload,
@@ -9321,10 +9825,9 @@ CHttpServer::Response ParseCategoryFields(const picojson::object &obj, CategoryF
 				return ErrorResponse(
 					400, "bad_request", "`priority` must be a wire-string enum");
 			}
-			if (!CategoryPriorityToCode(it->second.get<std::string>(), out.prio)) {
-				return ErrorResponse(400,
-					"bad_request",
-					"`priority` must be one of low, normal, high, auto");
+			if (!FilePriorityToCode(it->second.get<std::string>(), kPrioCategory, out.prio)) {
+				return ErrorResponse(
+					400, "bad_request", FilePriorityAccepted(kPrioCategory).c_str());
 			}
 			out.has_prio = true;
 		}
@@ -9407,6 +9910,48 @@ CHttpServer::Response CApiDispatcher::HandleCategoryCreate(const CHttpServer::Re
 	return r;
 }
 
+// GET /categories/{index}. Every other resource with a member path has a member
+// GET; this one had PATCH and DELETE only, so a client that had just created a
+// category and wanted the stored result had to re-fetch the whole collection
+// and search it by index. GUEST, matching the collection read.
+CHttpServer::Response CApiDispatcher::HandleCategoryOne(
+	const CHttpServer::Request &req, const std::string &index_str)
+{
+	auto a = Authenticate(req);
+	if (!a.ok)
+		return a.rejection;
+
+	std::uint8_t idx = 0;
+	if (!ParseCategoryIndex(index_str, idx)) {
+		return ErrorResponse(400, "bad_request", "path `{index}` must be a uint8 in [0, 255]");
+	}
+	if (auto r = RequireSnapshot(m_state))
+		return *r;
+
+	// The same set the collection lists, synthetic default included, so the
+	// two routes cannot disagree about which categories exist.
+	bool found = false;
+	webapi::CategorySnapshot cat;
+	for (const auto &c : CategoriesWithDefault(m_state)) {
+		if (static_cast<std::uint8_t>(c.index) == idx) {
+			cat = c;
+			found = true;
+			break;
+		}
+	}
+	if (!found) {
+		return ErrorResponse(404, "not_found", "no category with that index");
+	}
+
+	CHttpServer::Response r;
+	r.status = 200;
+	r.content_type = "application/json";
+	CJsonWriter w;
+	WriteCategoryObject(w, cat);
+	FinalizeJsonBody(w, r);
+	return r;
+}
+
 CHttpServer::Response CApiDispatcher::HandleCategoryUpdate(
 	const CHttpServer::Request &req, const std::string &index_str)
 {
@@ -9427,15 +9972,7 @@ CHttpServer::Response CApiDispatcher::HandleCategoryUpdate(
 	// field the PATCH body doesn't override (CEC_Category_Tag is
 	// not delta-friendly; we always send the full tag).
 	webapi::CategorySnapshot current;
-	bool found = false;
-	for (const auto &c : m_state.Categories()) {
-		if (static_cast<std::uint8_t>(c.index) == idx) {
-			current = c;
-			found = true;
-			break;
-		}
-	}
-	if (!found) {
+	if (!FindCategoryByIndex(m_state, idx, current)) {
 		return ErrorResponse(404, "not_found", "no category with that index");
 	}
 
@@ -9475,12 +10012,7 @@ CHttpServer::Response CApiDispatcher::HandleCategoryUpdate(
 
 	// Return the post-mutation category object.
 	webapi::CategorySnapshot after = current;
-	for (const auto &c : m_state.Categories()) {
-		if (static_cast<std::uint8_t>(c.index) == idx) {
-			after = c;
-			break;
-		}
-	}
+	(void)FindCategoryByIndex(m_state, idx, after);
 
 	CHttpServer::Response r;
 	r.status = 200;
@@ -9511,14 +10043,8 @@ CHttpServer::Response CApiDispatcher::HandleCategoryDelete(
 	if (idx == 0) {
 		return ErrorResponse(400, "bad_request", "cannot delete the default (index=0) category");
 	}
-	bool found = false;
-	for (const auto &c : m_state.Categories()) {
-		if (static_cast<std::uint8_t>(c.index) == idx) {
-			found = true;
-			break;
-		}
-	}
-	if (!found) {
+	webapi::CategorySnapshot existing;
+	if (!FindCategoryByIndex(m_state, idx, existing)) {
 		return ErrorResponse(404, "not_found", "no category with that index");
 	}
 
@@ -9629,9 +10155,8 @@ CHttpServer::Response CApiDispatcher::HandleBrowse(
 		return *rej;
 
 	std::uint32_t ecid = 0;
-	if (!ParseEcidPath(ecid_str, ecid)) {
-		return ErrorResponse(400, "bad_request", "path `{ecid}` must be a non-negative integer");
-	}
+	if (auto r = RequireEcidPath(ecid_str, ecid))
+		return *r;
 
 	// Ask amuled to browse this peer's shared file list. In multi-search mode
 	// (amuleapi always is) the daemon allocates a browse search_id, echoes it in
@@ -10278,6 +10803,20 @@ CHttpServer::Response CApiDispatcher::HandleSearchCommentsKadSearch(
 //
 // DispatchStreaming reads head out-params ONCE before writing, so
 // one function here sets the head AND runs the drain loop.
+// CORS for the replies the transport builds without a parsed request: the
+// read-side limits and the request timeout. Takes the raw Origin header
+// because at that point there is no Request to resolve one from.
+void CApiDispatcher::StampCorsForTransport(
+	std::map<std::string, std::string> &headers, const std::string &origin_header)
+{
+	CHttpServer::Request synthetic;
+	if (!origin_header.empty()) {
+		synthetic.headers.emplace("Origin", origin_header);
+	}
+	const std::string cors_org = ResolveCorsOrigin(synthetic, m_config);
+	ApplyCorsHeaders(headers, cors_org, m_config.ServerCfg().allow_cors);
+}
+
 boost::optional<CHttpServer::Response> CApiDispatcher::PreflightEvents(const CHttpServer::Request &req)
 {
 	// Same bearer/cookie check the live handler used to do, but run
@@ -10288,7 +10827,46 @@ boost::optional<CHttpServer::Response> CApiDispatcher::PreflightEvents(const CHt
 	// subscribers.
 	auto a = Authenticate(req);
 	if (!a.ok) {
+		// CORS on the rejection too. The HEAD probe below was moved
+		// into this function to pick the bundle up, and leaving the
+		// 401/403/429 without it means a cross-origin SSE client sees
+		// an opaque fetch failure exactly when it most needs to read
+		// why it was turned away.
+		{
+			const std::string cors_org = ResolveCorsOrigin(req, m_config);
+			ApplyCorsHeaders(a.rejection.headers, cors_org, m_config.ServerCfg().allow_cors);
+		}
 		return a.rejection;
+	}
+	// A HEAD here asks what a GET would answer with, not for the stream.
+	// Answered in the dispatcher rather than in the transport so it picks
+	// up the same CORS bundle the stream itself carries -- built in the
+	// transport it had none, and a credentialed cross-origin HEAD was
+	// blocked by the browser while the GET succeeded.
+	if (req.method == "HEAD") {
+		CHttpServer::Response probe;
+		probe.status = 200;
+		probe.content_type = "text/event-stream";
+		probe.headers["Cache-Control"] = "no-cache";
+		probe.headers["X-Accel-Buffering"] = "no";
+		// Mirror the encoding the GET would negotiate. The probe body
+		// is empty, so nothing downstream will compress it and the
+		// header has to be stated: without it a HEAD says identity
+		// while the stream it stands for arrives gzipped, which is the
+		// same divergence that makes a HEAD on any other route unsafe
+		// to cache against.
+		if (AcceptsGzip(FindHeaderCaseInsensitive(req.headers, "Accept-Encoding"))) {
+			probe.headers["Content-Encoding"] = "gzip";
+		}
+		// NOT keep-alive: this connection is answered and closed, and
+		// advertising reuse makes a pooling client fail its next
+		// request on a socket we already shut down.
+		probe.headers["Connection"] = "close";
+		{
+			const std::string cors_org = ResolveCorsOrigin(req, m_config);
+			ApplyCorsHeaders(probe.headers, cors_org, m_config.ServerCfg().allow_cors);
+		}
+		return probe;
 	}
 	return boost::none;
 }
@@ -10397,11 +10975,12 @@ void CApiDispatcher::DispatchEvents(const CHttpServer::Request &req,
 	auto event_channel = [](const std::string &name) -> std::string {
 		// Event naming convention: every bus event MUST contain at
 		// least one underscore — the prefix before the first `_`
-		// identifies the channel. The only no-underscore name on
-		// the wire is `resync`, which bypasses this filter entirely
-		// (synthetic per-subscriber, never via EventBus::Publish).
-		// Future bare-token events need explicit channel mapping or
-		// must always bypass like `resync`.
+		// identifies the channel. The only no-underscore name is
+		// `resync`, which the caller bypasses by name: it reaches the
+		// wire both synthesised per subscriber and published on the
+		// bus, and a cache invalidation is not opt-out-able either
+		// way. Future bare-token events need explicit channel mapping
+		// or must always bypass like `resync`.
 		const auto us = name.find('_');
 		if (us == std::string::npos)
 			return name;
@@ -10432,6 +11011,11 @@ void CApiDispatcher::DispatchEvents(const CHttpServer::Request &req,
 	auto event_passes_filter = [&](const std::string &name) {
 		if (!channels_set)
 			return true;
+		// A cache invalidation is not opt-out-able, and this one arrives over
+		// the bus rather than synthesised per subscriber, so it has to bypass
+		// here as well as in the reconnect path.
+		if (name == "resync")
+			return true;
 		return channel_filter.count(event_channel(name)) > 0;
 	};
 
@@ -10450,11 +11034,16 @@ void CApiDispatcher::DispatchEvents(const CHttpServer::Request &req,
 	//  - parsed > NewestId → stale id from a prior daemon process
 	//    (ids reset to 1 on restart); emit `resync` (reason=restart)
 	//    and start from NewestId.
+	// Registers this session for the life of the stream, so the refresher knows
+	// to resume diffing.
+	webapi::CEventBus::Subscription subscription(m_app.EventBus());
+
 	std::uint64_t since_id;
 	const std::string lei = FindHeaderCaseInsensitive(req.headers, "Last-Event-ID");
 	const std::uint64_t newest = m_app.EventBus().NewestId();
 	const std::uint64_t oldest = m_app.EventBus().OldestId();
 	if (lei.empty()) {
+		// No cursor to invalidate: the client GETs the collections itself.
 		since_id = newest;
 	} else {
 		char *end = nullptr;

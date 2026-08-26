@@ -40,12 +40,21 @@ using namespace webapi;
 
 DECLARE_SIMPLE(EventDiff)
 
+// Drain `bus` non-blockingly and return every event newer than `since` in id
+// order. Drain is a replay from a cursor, not a consume: draining from 0 twice
+// yields the same events twice, so a test asserting that a later tick emitted
+// *nothing* has to carry the cursor forward.
+static std::vector<Event> DrainSince(CEventBus &bus, std::uint64_t since)
+{
+	std::vector<Event> out;
+	bus.Drain(since, std::chrono::milliseconds(0), out);
+	return out;
+}
+
 // Drain `bus` non-blockingly and return all events in id order.
 static std::vector<Event> DrainAll(CEventBus &bus)
 {
-	std::vector<Event> out;
-	bus.Drain(0, std::chrono::milliseconds(0), out);
-	return out;
+	return DrainSince(bus, 0);
 }
 
 // log_appended cold-start: the first tick must not emit log_appended
@@ -800,4 +809,337 @@ TEST(EventDiff, DownloadUpdatedFiresWhenOnlyHashingProgressMoved)
 	}
 	ASSERT_TRUE(!payload.empty());
 	ASSERT_TRUE(payload.find("\"hashing_progress\":5") != std::string::npos);
+}
+
+// A file leaving the map fires download_removed carrying its hash, and drops
+// out of the baseline — the `gone` erase. Without it the baseline would grow
+// without bound across a session and keep re-firing the removal every tick.
+TEST(EventDiff, DownloadRemovedFiresWhenTheFileLeavesTheMap)
+{
+	CState state;
+	state.MutateDownloads([](FileMap &files) {
+		FileSnapshot f;
+		f.ecid = 21;
+		f.hash = "3333333333333333333333333333cccc";
+		f.name = "gone.iso";
+		f.size = kPartSizeBytes * 2;
+		f.is_downloading = true;
+		files.emplace(f.ecid, f);
+	});
+
+	CEventBus bus;
+	LastSeenState prev;
+	EmitDiffsAndUpdate(bus, prev, state); // baseline: download_added
+	DrainAll(bus);
+	ASSERT_EQUALS(static_cast<std::size_t>(1), prev.files.size());
+
+	// FileMap::erase is iterator-only — it keeps the hash index in step.
+	state.MutateDownloads([](FileMap &files) { files.erase(files.find(21)); });
+	EmitDiffsAndUpdate(bus, prev, state);
+
+	int removed_events = 0;
+	std::string payload;
+	for (const auto &e : DrainAll(bus)) {
+		if (e.name == "download_removed") {
+			++removed_events;
+			payload = e.data;
+		}
+	}
+	ASSERT_EQUALS(1, removed_events);
+	ASSERT_TRUE(payload.find("3333333333333333333333333333cccc") != std::string::npos);
+	// Baseline entry erased, so a third tick stays silent.
+	ASSERT_TRUE(prev.files.empty());
+	const std::uint64_t cursor = bus.NewestId();
+	EmitDiffsAndUpdate(bus, prev, state);
+	ASSERT_TRUE(DrainSince(bus, cursor).empty());
+}
+
+// The share flag clearing on a file that stays in the map fires shared_removed
+// without erasing the baseline entry: the ECID is still live, only that role
+// ended.
+TEST(EventDiff, SharedRemovedFiresWhenOnlyTheRoleFlagClears)
+{
+	CState state;
+	state.MutateShared([](FileMap &files) {
+		FileSnapshot f;
+		f.ecid = 22;
+		f.hash = "4444444444444444444444444444dddd";
+		f.name = "unshared.iso";
+		f.size = kPartSizeBytes * 2;
+		f.is_shared = true;
+		f.is_downloading = true;
+		files.emplace(f.ecid, f);
+	});
+
+	CEventBus bus;
+	LastSeenState prev;
+	EmitDiffsAndUpdate(bus, prev, state);
+	DrainAll(bus);
+
+	state.MutateShared([](FileMap &files) { files.find(22)->second.is_shared = false; });
+	EmitDiffsAndUpdate(bus, prev, state);
+
+	int shared_removed = 0, download_removed = 0;
+	for (const auto &e : DrainAll(bus)) {
+		if (e.name == "shared_removed")
+			++shared_removed;
+		if (e.name == "download_removed")
+			++download_removed;
+	}
+	ASSERT_EQUALS(1, shared_removed);
+	// The download role is untouched, so nothing tears down that side.
+	ASSERT_EQUALS(0, download_removed);
+	// Entry stays in the baseline, with the cleared flag written back.
+	ASSERT_EQUALS(static_cast<std::size_t>(1), prev.files.size());
+	ASSERT_TRUE(!prev.files.find(22)->second.is_shared);
+}
+
+// One ECID swapping roles in a single tick emits both families, removed first:
+// a client tearing down its download slot must not see the shared_added for
+// the same file arrive before the download_removed.
+TEST(EventDiff, RoleFlipEmitsRemovedBeforeAdded)
+{
+	CState state;
+	state.MutateDownloads([](FileMap &files) {
+		FileSnapshot f;
+		f.ecid = 23;
+		f.hash = "5555555555555555555555555555eeee";
+		f.name = "completed.iso";
+		f.size = kPartSizeBytes * 2;
+		f.is_downloading = true;
+		files.emplace(f.ecid, f);
+	});
+
+	CEventBus bus;
+	LastSeenState prev;
+	EmitDiffsAndUpdate(bus, prev, state);
+	DrainAll(bus);
+
+	// The download finished: it stops being a download and starts being shared.
+	state.MutateDownloads([](FileMap &files) {
+		FileSnapshot &f = files.find(23)->second;
+		f.is_downloading = false;
+		f.is_shared = true;
+	});
+	EmitDiffsAndUpdate(bus, prev, state);
+
+	int removed_at = -1, added_at = -1, i = 0;
+	for (const auto &e : DrainAll(bus)) {
+		if (e.name == "download_removed")
+			removed_at = i;
+		if (e.name == "shared_added")
+			added_at = i;
+		++i;
+	}
+	ASSERT_TRUE(removed_at >= 0);
+	ASSERT_TRUE(added_at >= 0);
+	ASSERT_TRUE(removed_at < added_at);
+}
+
+// The write-back trap: a role flag flipping is itself enough to refresh the
+// whole baseline entry, so fields the *other* role's predicate never compared
+// cannot reach the payload stale. Here the download sub-block moves during the
+// same tick that is_downloading goes false→true; the download_added must carry
+// the new value, not the one the entry was parked with while it was shared-only.
+TEST(EventDiff, RoleFlipRefreshesFieldsTheOtherRoleNeverCompared)
+{
+	CState state;
+	state.MutateShared([](FileMap &files) {
+		FileSnapshot f;
+		f.ecid = 24;
+		f.hash = "6666666666666666666666666666ffff";
+		f.name = "reshared.iso";
+		f.size = kPartSizeBytes * 4;
+		f.is_shared = true;
+		f.download.size_done = 111;
+		files.emplace(f.ecid, f);
+	});
+
+	CEventBus bus;
+	LastSeenState prev;
+	EmitDiffsAndUpdate(bus, prev, state); // shared_added; download side never compared
+	DrainAll(bus);
+
+	state.MutateShared([](FileMap &files) {
+		FileSnapshot &f = files.find(24)->second;
+		f.is_downloading = true;
+		f.download.size_done = 999;
+	});
+	EmitDiffsAndUpdate(bus, prev, state);
+
+	std::string payload;
+	for (const auto &e : DrainAll(bus)) {
+		if (e.name == "download_added")
+			payload = e.data;
+	}
+	ASSERT_TRUE(!payload.empty());
+	ASSERT_TRUE(payload.find("999") != std::string::npos);
+	ASSERT_TRUE(payload.find("111") == std::string::npos);
+	// And the baseline now carries it, so the next tick is silent.
+	ASSERT_EQUALS(static_cast<std::uint64_t>(999), prev.files.find(24)->second.download.size_done);
+}
+
+// --- comments_updated payload ---------------------------------------
+//
+// EVENTS.md promises the payload is the GET /downloads/{hash}/comments body
+// plus `hash`. It used to carry `hash` but NOT `kad_comment_search_running`,
+// so a client that followed the document and fed the event into the view it
+// built from the endpoint silently lost the in-flight-lookup flag -- exactly
+// the flag it needs while a POST /downloads/{hash}/comments Kad lookup runs.
+TEST(EventDiff, CommentsUpdatedIsASupersetOfTheRestBody)
+{
+	CState state;
+	state.MutateDownloads([](FileMap &files) {
+		FileSnapshot f;
+		f.ecid = 41;
+		f.hash = "5555555555555555555555555555eeee";
+		f.name = "commented.iso";
+		f.size = kPartSizeBytes * 2;
+		f.is_downloading = true;
+		files.emplace(f.ecid, f);
+	});
+
+	CEventBus bus;
+	LastSeenState prev;
+	EmitDiffsAndUpdate(bus, prev, state); // cold start: download_added
+	DrainAll(bus);
+
+	// A Kad lookup is in flight AND a note has landed, so the event fires
+	// with the flag still true -- the state a client is most likely to
+	// render, and the one the missing key made unrepresentable.
+	state.MutateDownloads([](FileMap &files) {
+		FileSnapshot &f = files.find(41)->second;
+		f.download.kad_comment_searching = true;
+		FileSnapshot::DownloadSide::SourceComment c;
+		c.username = "alice";
+		c.filename = "commented.iso";
+		c.rating = 5;
+		c.comment = "great quality";
+		f.download.source_comments.push_back(c);
+	});
+	EmitDiffsAndUpdate(bus, prev, state);
+
+	std::string payload;
+	for (const auto &e : DrainAll(bus)) {
+		if (e.name == "comments_updated")
+			payload = e.data;
+	}
+	ASSERT_TRUE(!payload.empty());
+	// The endpoint's three keys...
+	ASSERT_TRUE(payload.find("\"count\":1") != std::string::npos);
+	ASSERT_TRUE(payload.find("\"kad_comment_search_running\":true") != std::string::npos);
+	ASSERT_TRUE(payload.find("\"comments\":[") != std::string::npos);
+	// ...plus the one the event adds, because nothing else in the frame
+	// identifies the file.
+	ASSERT_TRUE(payload.find("\"hash\":\"5555555555555555555555555555eeee\"") != std::string::npos);
+	ASSERT_TRUE(payload.find("\"username\":\"alice\"") != std::string::npos);
+}
+
+// And the flag tracks false, so a client can see the lookup finish.
+TEST(EventDiff, CommentsUpdatedReportsAnIdleKadLookup)
+{
+	CState state;
+	state.MutateDownloads([](FileMap &files) {
+		FileSnapshot f;
+		f.ecid = 42;
+		f.hash = "6666666666666666666666666666ffff";
+		f.name = "quiet.iso";
+		f.size = kPartSizeBytes;
+		f.is_downloading = true;
+		files.emplace(f.ecid, f);
+	});
+
+	CEventBus bus;
+	LastSeenState prev;
+	EmitDiffsAndUpdate(bus, prev, state);
+	DrainAll(bus);
+
+	state.MutateDownloads([](FileMap &files) {
+		FileSnapshot &f = files.find(42)->second;
+		FileSnapshot::DownloadSide::SourceComment c;
+		c.username = "Kad user";
+		c.rating = 4;
+		f.download.source_comments.push_back(c);
+	});
+	EmitDiffsAndUpdate(bus, prev, state);
+
+	std::string payload;
+	for (const auto &e : DrainAll(bus)) {
+		if (e.name == "comments_updated")
+			payload = e.data;
+	}
+	ASSERT_TRUE(!payload.empty());
+	ASSERT_TRUE(payload.find("\"kad_comment_search_running\":false") != std::string::npos);
+}
+
+// The Kad lookup finishing is a comments_updated in its own right. The flag
+// rides in the payload, so if EqualComments ignores it the true->false edge
+// produces no event and a ?channels=comments subscriber's in-flight
+// indicator never clears.
+TEST(EventDiff, CommentsUpdatedFiresWhenOnlyTheKadFlagClears)
+{
+	CState state;
+	state.MutateDownloads([](FileMap &files) {
+		FileSnapshot f;
+		f.ecid = 43;
+		f.hash = "7777777777777777777777777777aaaa";
+		f.name = "searching.iso";
+		f.size = kPartSizeBytes;
+		f.is_downloading = true;
+		f.download.kad_comment_searching = true;
+		files.emplace(f.ecid, f);
+	});
+
+	CEventBus bus;
+	LastSeenState prev;
+	EmitDiffsAndUpdate(bus, prev, state); // cold start
+	DrainAll(bus);
+
+	// The lookup ends. No comment arrived, so source_comments is untouched
+	// and ONLY the flag moves.
+	state.MutateDownloads(
+		[](FileMap &files) { files.find(43)->second.download.kad_comment_searching = false; });
+	EmitDiffsAndUpdate(bus, prev, state);
+
+	std::string payload;
+	for (const auto &e : DrainAll(bus)) {
+		if (e.name == "comments_updated")
+			payload = e.data;
+	}
+	ASSERT_TRUE(!payload.empty());
+	ASSERT_TRUE(payload.find("\"kad_comment_search_running\":false") != std::string::npos);
+}
+
+// Cold start with a lookup already running. The mirror of
+// CommentsUpdatedFiresWhenOnlyTheKadFlagClears: there the finished edge never
+// arrived, here the starting state never arrives, and a ?channels=comments
+// subscriber that joined after the download appeared would never learn a
+// lookup was in flight.
+TEST(EventDiff, CommentsUpdatedFiresWhenAFileArrivesMidKadLookup)
+{
+	CState state;
+	state.MutateDownloads([](FileMap &files) {
+		FileSnapshot f;
+		f.ecid = 44;
+		f.hash = "8888888888888888888888888888bbbb";
+		f.name = "arrived-searching.iso";
+		f.size = kPartSizeBytes;
+		f.is_downloading = true;
+		// No comments yet -- only the in-flight flag.
+		f.download.kad_comment_searching = true;
+		files.emplace(f.ecid, f);
+	});
+
+	CEventBus bus;
+	LastSeenState prev;
+	EmitDiffsAndUpdate(bus, prev, state);
+
+	std::string payload;
+	for (const auto &e : DrainAll(bus)) {
+		if (e.name == "comments_updated")
+			payload = e.data;
+	}
+	ASSERT_TRUE(!payload.empty());
+	ASSERT_TRUE(payload.find("\"kad_comment_search_running\":true") != std::string::npos);
+	ASSERT_TRUE(payload.find("\"count\":0") != std::string::npos);
 }

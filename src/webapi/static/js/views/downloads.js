@@ -6,7 +6,7 @@
 import { api, bulkFailures } from "../api.js";
 import { data } from "../events.js";
 import { html, useState, useEffect, useStore } from "../dom.js";
-import { ProgressBar, Badge, Placeholder, Tabs, toast, confirmDialog, PRIORITIES, prioValue, prioLabel } from "../components.js";
+import { ProgressBar, Badge, listPlaceholder, Tabs, toast, confirmDialog, PRIORITIES, prioValue, prioLabel } from "../components.js";
 import { VirtualTable, sortRows, textMatcher, useTablePrefs, ColumnPicker } from "../table.js";
 import { formatBytes, formatFreeSpace, formatSpeed } from "../format.js";
 import { Icon } from "../icons.js";
@@ -19,7 +19,11 @@ const STATUS_FILTERS = ["all", "downloading", "waiting", "paused", "stopped", "c
   .map((v) => [v, t("downloads_status_" + v)]);
 
 export default function Downloads({ isGuest }) {
-  const downloads = useStore("downloads") || [];
+  // undefined until the first snapshot lands, [] once the queue is known
+  // empty; listPlaceholder tells the two apart.
+  const rawDownloads = useStore("downloads");
+  const downloads = rawDownloads || [];
+  const loading = rawDownloads === undefined;
   // Not bound as `status`: bulk() below already uses that name for a partfile state.
   const disk = (useStore("status") || {}).disk || {};
   const [categories, setCategories] = useState([]);
@@ -122,12 +126,20 @@ export default function Downloads({ isGuest }) {
   // Apply the same field change (priority/category) to every selected row.
   const bulkPatch = (patch) => runBulk((h) => api.patch("downloads", { hashes: h, ...patch }));
 
+  // Clears every completed entry, so it reports per entry: a refusal is a
+  // 207 row, not a throw.
   const clearCompleted = async () => {
     if (!(await confirmDialog(t("downloads_confirm_clear_completed")))) return;
-    mutate(() => api.post("downloads/clear_completed"));
+    mutate(async () => {
+      const res = await api.post("downloads_clear_completed");
+      const failed = bulkFailures(res);
+      if (failed.length)
+        toast(t("common_bulk_partial", { failed: failed.length, total: res.results.length,
+                message: terr(failed[0].error) }), "warn");
+    });
   };
   // Same endpoint scoped to one hash, for the detail panel's Clear button.
-  const clearOne = (h) => mutate(() => api.post("downloads/clear_completed", { hash: h }));
+  const clearOne = (h) => mutate(() => api.post("downloads_clear_completed", { hash: h }));
 
   // --- derived ----------------------------------------------------------
   let list = downloads.slice();
@@ -262,7 +274,7 @@ export default function Downloads({ isGuest }) {
         </div>
         <div class="spacer"></div>
         <div class="toolbar">
-          <select class="input input-sm" value=${filterStatus} onChange=${(e) => setFilterStatus(e.target.value)}>
+          <select class="input input-sm" title=${t("downloads_status_label")} value=${filterStatus} onChange=${(e) => setFilterStatus(e.target.value)}>
             ${STATUS_FILTERS.map(([v, l]) => html`<option value=${v}>${l}</option>`)}
           </select>
           <input class="input input-sm" type="text" placeholder=${t("downloads_filter")} value=${filterText} onInput=${(e) => setFilterText(e.target.value)} />
@@ -274,10 +286,11 @@ export default function Downloads({ isGuest }) {
                          sortKey=${sortKey} sortDir=${sortDir} onSort=${toggleSort} onRowClick=${onRowClick}
                          widths=${widths} onResize=${setWidth}
                          maxHeight="none"
-                         empty=${html`<${Placeholder} kind="info">${t("downloads_empty")}<//>`} />
+                         empty=${listPlaceholder(loading, t("downloads_empty"))} />
+        ${loading ? null : html`
         <div class="totals-line">
           <span>${tn("downloads_files_count", list.length)}</span>${" · "}<span>${t("downloads_size")} ${formatBytes(size)}</span>${" · "}<span>${t("downloads_col_done")} ${formatBytes(done)}</span>${" · "}<span>${t("downloads_speed")} ${formatSpeed(speed)}</span>${freeSpace ? html`${" · "}<span>${t("common_free_space")} ${freeSpace}</span>` : ""}
-        </div>
+        </div>`}
       </div>
     </section>`}>
         <${DownloadDetail} hash=${detailHash} isGuest=${isGuest} categories=${categories}
