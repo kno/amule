@@ -61,7 +61,7 @@ _fail() {
 }
 
 if ! command -v jq >/dev/null 2>&1; then _die "jq is required."; fi
-if ! curl -s -o /dev/null --max-time 2 "$HOST/api/v0/version" 2>/dev/null; then
+if ! curl -s -o /dev/null --max-time 2 "$HOST/api/v0/health" 2>/dev/null; then
 	_die "amuleapi at $HOST is not reachable."
 fi
 
@@ -96,7 +96,7 @@ EOF
 	--host="$EC_HOST" --port="$EC_PORT" \
 	> "$LOG" 2>&1 &
 for _ in 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15; do
-	if curl -s -o /dev/null --max-time 1 "$HOST/api/v0/version" 2>/dev/null; then
+	if curl -s -o /dev/null --max-time 1 "$HOST/api/v0/health" 2>/dev/null; then
 		break
 	fi
 	sleep 0.5
@@ -131,7 +131,7 @@ sleep 1
 for _ in 1 2 3 4; do
 	curl -s -o /dev/null -X POST -H "Authorization: Bearer $ADMIN_TOKEN" \
 		-H "Content-Type: application/json" \
-		-d "{\"ed2k_link\":\"$FILL_LINK\"}" "$HOST/api/v0/downloads"
+		-d "{\"links\":[\"$FILL_LINK\"]}" "$HOST/api/v0/downloads"
 	sleep 2
 	curl -s -o /dev/null -X DELETE -H "Authorization: Bearer $ADMIN_TOKEN" \
 		"$HOST/api/v0/downloads/$FILL_HASH"
@@ -262,7 +262,7 @@ PID=$!
 sleep 2
 curl -s -X POST -H "Authorization: Bearer $ADMIN_TOKEN" \
 	-H "Content-Type: application/json" \
-	-d "{\"ed2k_link\":\"$TEST_LINK\"}" \
+	-d "{\"links\":[\"$TEST_LINK\"]}" \
 	"$HOST/api/v0/downloads" > /dev/null
 sleep 11
 kill $PID 2>/dev/null

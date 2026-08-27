@@ -81,7 +81,7 @@ _assert_json_eq() {
 if ! command -v jq >/dev/null 2>&1; then
 	_die "jq is required. brew install jq."
 fi
-if ! curl -s -o /dev/null --max-time 2 "$HOST/api/v0/version" 2>/dev/null; then
+if ! curl -s -o /dev/null --max-time 2 "$HOST/api/v0/health" 2>/dev/null; then
 	_die "amuleapi at $HOST is not reachable. Start amuleapi first."
 fi
 
@@ -103,7 +103,7 @@ TOKEN=$(curl -s -X POST -H "Content-Type: application/json" \
 # Wait for the refresher to land its first snapshot. On a fast
 # Linux host the first tick is sub-second; on the Windows VM the
 # 503 ec_unavailable window can stretch a few seconds under load.
-# Poll up to 15 s, same shape run-all.sh uses for /version, so
+# Poll up to 15 s, same shape run-all.sh uses for /health, so
 # the test doesn't drift to "disconnected" under runner pressure.
 for _ in $(seq 1 30); do
 	probe=$(curl -s -o /dev/null -w "%{http_code}" \
@@ -126,8 +126,12 @@ _assert_json_eq '.ed2k.state | test("^(connected|connecting|disconnected)$")' \
 	true 'ed2k.state is a known enum value'
 _assert_json_eq '.ed2k.high_id | type' boolean \
 	'ed2k.high_id is boolean'
-_assert_json_eq '.ed2k.id | type' number \
-	'ed2k.id is numeric'
+_assert_json_eq '.ed2k.user_id | type' number \
+	'ed2k.user_id is numeric'
+# The old spelling was a bare `id`, which read as a local handle rather than
+# the server-assigned identity it actually is.
+_assert_json_eq '.ed2k | has("id")' false \
+	'ed2k.id is gone, replaced by ed2k.user_id'
 _assert_json_eq '.ed2k.public_ip | type' string \
 	'ed2k.public_ip is string'
 # A public address exists exactly when we hold a HighID on a live connection;
@@ -135,16 +139,20 @@ _assert_json_eq '.ed2k.public_ip | type' string \
 _assert_json_eq '(.ed2k.public_ip != "") == (.ed2k.high_id and .ed2k.state == "connected")' \
 	true 'ed2k.public_ip is non-empty exactly when high_id and connected'
 # The 0xffffffff "connect in flight" sentinel must never surface.
-_assert_json_eq '.ed2k.id != 4294967295' true \
-	'ed2k.id never reports the connecting sentinel'
+_assert_json_eq '.ed2k.user_id != 4294967295' true \
+	'ed2k.user_id never reports the connecting sentinel'
 _assert_json_eq '.ed2k.server_name | type' string \
 	'ed2k.server_name is string'
 
 # kad subtree.
 _assert_json_eq '.kad.state | test("^(connected|connecting|disabled)$")' \
 	true 'kad.state is a known enum value'
-_assert_json_eq '.kad.firewalled | type' boolean \
-	'kad.firewalled is boolean'
+# Named for the transport: this is the TCP half of the pair GET /kad reports,
+# not an overall verdict refined by firewalled_udp.
+_assert_json_eq '.kad.firewalled_tcp | type' boolean \
+	'kad.firewalled_tcp is boolean'
+_assert_json_eq '.kad | has("firewalled")' false \
+	'kad.firewalled is gone, replaced by kad.firewalled_tcp'
 
 # speeds + queue subtrees.
 _assert_json_eq '.speeds.download_bps | type' number \

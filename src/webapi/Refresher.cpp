@@ -199,13 +199,13 @@ void ParseStatusFromPacket(const CECPacket *resp, StatusSnapshot &out)
 		// reads 0, and HasLowID() is "id < HIGHEST_LOWID_ED2K_KAD", so a
 		// disconnected daemon would otherwise be reported as a LowID.
 		out.ed2k_high_id = conn->IsConnectedED2K() && !conn->HasLowID();
-		out.kad_firewalled = conn->IsKadFirewalled();
+		out.kad_firewalled_tcp = conn->IsKadFirewalled();
 		if (conn->IsConnectedED2K()) {
 			// 0xffffffff is the "connect in flight, no id yet" sentinel
 			// (ECSpecialCoreTags.cpp) and must not reach a consumer.
 			const std::uint32_t id = static_cast<std::uint32_t>(conn->GetEd2kId());
 			if (id != 0xffffffffu) {
-				out.ed2k_id = id;
+				out.ed2k_user_id = id;
 				// A HighID *is* our public address, LSB-first, the same
 				// layout EC_TAG_CLIENT_USER_IP uses. A LowID is a small
 				// number the server picked and carries no address.
@@ -1296,7 +1296,7 @@ void ApplyGetUpdateToDownloads(
 			const std::uint32_t ecid = static_cast<std::uint32_t>(t->GetInt());
 			auto fit = cache.find(ecid);
 			if (fit != cache.end()) {
-				fit->second.is_downloading = false;
+				cache.SetDownloading(fit, false);
 				// Reset the download sub-block so a future role-true
 				// transition (or even a stale FindDownload lookup
 				// after the role flag was checked) can't surface
@@ -1327,7 +1327,7 @@ void ApplyGetUpdateToDownloads(
 			DecodeRleBlobsForPartFile(pf, f, rle_state);
 			cache.emplace(ecid, std::move(f));
 		} else {
-			map_it->second.is_downloading = true;
+			cache.SetDownloading(map_it, true);
 			MergePartFileTag(pf, map_it->second, /*is_new=*/false);
 			DecodeRleBlobsForPartFile(pf, map_it->second, rle_state);
 		}
@@ -1363,7 +1363,7 @@ void ApplyGetUpdateToShared(
 			const std::uint32_t ecid = static_cast<std::uint32_t>(t->GetInt());
 			auto fit = cache.find(ecid);
 			if (fit != cache.end()) {
-				fit->second.is_shared = false;
+				cache.SetShared(fit, false);
 				if (!fit->second.is_downloading)
 					cache.erase(fit);
 				else
@@ -1391,7 +1391,7 @@ void ApplyGetUpdateToShared(
 					// preserved (persistent file attribute).
 					auto fit = cache.find(ecid);
 					if (fit != cache.end()) {
-						fit->second.is_shared = false;
+						cache.SetShared(fit, false);
 						ClearSharedRoleKeepPriority(fit->second);
 					}
 					continue;
@@ -1427,9 +1427,9 @@ void ApplyGetUpdateToShared(
 			if (map_it->second.hash.empty()) {
 				const std::string h = TagHashLower(sf);
 				if (!h.empty())
-					map_it->second.hash = h;
+					cache.SetHash(map_it, h);
 			}
-			map_it->second.is_shared = true;
+			cache.SetShared(map_it, true);
 			MergeSharedTag(sf, map_it->second);
 			// PARTFILE tags are decoded by the downloads walker, which
 			// already ran on this same response; decoding them again
@@ -1556,7 +1556,7 @@ void ParseKadFromPacket(const CECPacket *resp, KadSnapshot &out)
 
 	out.state = KadStateString(conn);
 	if (conn) {
-		out.firewalled = conn->IsKadFirewalled();
+		out.firewalled_tcp = conn->IsKadFirewalled();
 		// Our own node id. amuled ships EC_TAG_KAD_ID only while Kad
 		// is running, which is the same condition KadStateString()
 		// reports as anything other than "disabled" -- so an absent
@@ -1602,7 +1602,7 @@ void ParseKadFromPacket(const CECPacket *resp, KadSnapshot &out)
 		out.public_ip = IPv4ToDotted(static_cast<std::uint32_t>(t->GetInt()));
 	}
 	if (const CECTag *t = resp->GetTagByName(EC_TAG_STATS_KAD_IN_LAN_MODE)) {
-		out.in_lan_mode = (t->GetInt() != 0);
+		out.lan_mode = (t->GetInt() != 0);
 	}
 	if (const CECTag *t = resp->GetTagByName(EC_TAG_STATS_BUDDY_STATUS)) {
 		out.buddy_status = KadBuddyStatusName(static_cast<std::uint32_t>(t->GetInt()));
@@ -2355,10 +2355,11 @@ const char *SearchStatusName(std::uint32_t code)
 	}
 }
 
-// Locale-independent file-type token from the filename, mirroring the
-// desktop's GetFiletypeByName (untranslated) lowercased — same tokens as
-// the shared-detail `file_type`.
-std::string SearchTypeToken(const std::string &name)
+} // namespace
+
+// Definition of the shared token helper declared in Refresher.h; see there
+// for why there is only one.
+std::string FileTypeToken(const std::string &name)
 {
 	const wxString desc =
 		GetFiletypeByName(CPath(wxString::FromUTF8(name.c_str())), /*translated=*/false);
@@ -2368,7 +2369,6 @@ std::string SearchTypeToken(const std::string &name)
 	});
 	return s;
 }
-} // namespace
 
 void ApplySearchFull(const CECPacket *resp, std::map<std::uint32_t, SearchResult> &cache)
 {
@@ -2424,7 +2424,7 @@ void ApplySearchFull(const CECPacket *resp, std::map<std::uint32_t, SearchResult
 			r.status = SearchStatusName(sf->AssignIfExist(EC_TAG_PARTFILE_STATUS, v) ? v : 0);
 		}
 		// File type, computed from the filename (no EC data needed).
-		r.type = SearchTypeToken(r.name);
+		r.type = FileTypeToken(r.name);
 		// Browse-only: the folder this file sits in inside the peer's
 		// share. The core attaches it to results filed from a shared-file
 		// listing and to nothing else, so an ordinary server/Kad hit
@@ -2730,9 +2730,16 @@ void ApplyPrefFieldFromTag(const PrefField &f, const CECTag *group, PreferencesS
 	case PrefType::Uint16:
 		*static_cast<std::uint16_t *>(f.member(out)) = static_cast<std::uint16_t>(t->GetInt());
 		break;
-	case PrefType::Uint32:
-		*static_cast<std::uint32_t *>(f.member(out)) = static_cast<std::uint32_t>(t->GetInt());
+	case PrefType::Uint32: {
+		// ec_scale != 0 means EC and the API use different units; see
+		// PrefField::ec_scale. Division is exact for the three rows that
+		// use it -- the core stores whole minutes and multiplies on the
+		// way out -- so nothing is lost here.
+		const std::uint64_t raw = static_cast<std::uint64_t>(t->GetInt());
+		*static_cast<std::uint32_t *>(f.member(out)) =
+			static_cast<std::uint32_t>(f.ec_scale ? raw / f.ec_scale : raw);
 		break;
+	}
 	case PrefType::String:
 		*static_cast<std::string *>(f.member(out)) = std::string(t->GetStringData().utf8_str());
 		break;

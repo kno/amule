@@ -60,7 +60,7 @@ _assert_json_eq() {
 }
 
 command -v jq >/dev/null 2>&1 || _die "jq is required."
-curl -s -o /dev/null --max-time 2 "$HOST/api/v0/version" 2>/dev/null \
+curl -s -o /dev/null --max-time 2 "$HOST/api/v0/health" 2>/dev/null \
 	|| _die "amuleapi at $HOST is not reachable."
 
 echo "amuleapi 39-shared-media-refresh smoke @ $HOST"
@@ -97,7 +97,9 @@ if [ "$CURL_STATUS" = "503" ]; then
 	exit 1
 fi
 _assert_status 202 "POST /shared/media/refresh → 202 Accepted"
-_assert_json_eq '.ok'            true  'whole-share refresh reports ok'
+# `scope` and `queued` stay: `queued` is a real count of what the scheduler
+# accepted, which no later read reports. `ok` is gone; the 202 carried it.
+_assert_json_eq '. | has("ok")' false 'whole-share refresh has no constant ok field'
 _assert_json_eq '.scope'         all   'whole-share refresh reports scope=all'
 _assert_json_eq '.queued | type' number 'queued is numeric'
 
@@ -154,7 +156,8 @@ if [ -n "$HASH" ]; then
 			'incomplete download → 409 partfile_unsupported'
 	else
 		_assert_status 202 "POST /shared/{hash}/media/refresh → 202"
-		_assert_json_eq '.ok'    true 'single-file refresh reports ok'
+		_assert_json_eq '. | has("ok")' false \
+			'single-file refresh has no constant ok field'
 		_assert_json_eq '.scope' file 'single-file refresh reports scope=file'
 	fi
 

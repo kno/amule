@@ -75,6 +75,8 @@ If the daemon restarts between steps 1 and 2, or the ring buffer overflows on a 
 
 `GET /api/v0/events` opens the stream. Auth runs synchronously BEFORE the worker thread is spawned and before the 32-slot streaming budget is touched, so an unauthenticated peer can't tie up a slot for the read-timeout window.
 
+`HEAD` returns the stream's headers and no body. Any other method is `405` with `Allow: GET, HEAD`, like every other route — it used to be a `404` here, which read as "the endpoint does not exist" to a client probing the surface. A trailing slash is stripped first, so `/api/v0/events/` opens the same stream.
+
 ```sh
 TOKEN=$(curl -s -X POST -H "Content-Type: application/json" \
   -d '{"password":"adminpass"}' \
@@ -466,7 +468,7 @@ Identical to the REST [`/api/v0/clients`](REFERENCE.md#get-apiv0clients) list-it
 ```
 Carries the same field set as the [`/clients`](REFERENCE.md#get-apiv0clients) list row, including `source_origin`, `available_parts`, `mod_version` and `view_shared_disabled`.
 
-`part_progress_percent` follows the same rule as on the REST row: it is how much of the file we are downloading **from** this peer the peer already holds, and the key is **omitted entirely** when there is no such file, rather than sent as a negative sentinel. It is derived from `available_parts` and the linked download's part count, so it moves when `available_parts` does, and drops out if that download goes away.
+`part_progress_percent` follows the same rule as on the REST row: it is how much of the file we are downloading **from** this peer the peer already holds, and it is `null` when there is no such file, rather than sent as a negative sentinel. It is derived from `available_parts` and the linked download's part count, so it moves when `available_parts` does, and goes back to `null` if that download goes away. The key is always present -- see [REFERENCE.md's unknown-value rule](REFERENCE.md#unknown-values), under which `null` means "no value" and an absent key means "not reported".
 
 It never carries a `parts` bitmap — those are opt-in on the per-file client routes only, being one boolean per chunk per peer.
 
@@ -493,7 +495,7 @@ Rate impact is small: the overhead rates move about as often as the speeds alrea
   "ed2k": {
     "state":       "connected",
     "high_id":     true,
-    "id":          1234567890,
+    "user_id":     1234567890,
     "public_ip":   "210.2.150.73",
     "connected_since": 1751000000,
     "server_name": "eMule Server",
@@ -503,7 +505,7 @@ Rate impact is small: the overhead rates move about as often as the speeds alrea
   },
   "kad": {
     "state":      "connected",
-    "firewalled": false,
+    "firewalled_tcp": false,
     "connected_since": 1751000000,
     "network":    { "users": 5400000, "files": 1400000000, "nodes": 2400 }
   },
@@ -554,7 +556,7 @@ Emitted per new result that appears in the results map between refresher ticks.
 }
 ```
 
-`search_id` routes the result to the search that produced it — amuleapi runs several searches at once (see [REFERENCE.md](REFERENCE.md#post-apiv0search)), so demux on it. Key results by `(search_id, hash)`. Aside from the leading `search_id`, the payload is byte-for-byte identical to a `/search/{id}/results` array entry — the two are emitted by the same writer, so the promise holds by construction. That includes `status`, `type`, `directory` (the folder inside a browsed peer's share, `""` on ordinary hits), `kad_comment_search_running`, `comments[]` and the `children[]` grouping array — see [REFERENCE.md](REFERENCE.md#get-apiv0searchidresults); `sources` is the nested `{total, complete}` object, `media` — the audio/video metadata object — is present only for locally-known/probed hits and omitted otherwise, and `children` holds the same-hash/different-name alternatives (empty for a single-name hit), same as the REST endpoint. Only parent results fire this event — children are folded into their parent's `children[]`, never emitted as their own `search_result_added`. Each `search_id` is an independent result space — a new `POST /search` starts a fresh one without disturbing the others.
+`search_id` routes the result to the search that produced it — amuleapi runs several searches at once (see [REFERENCE.md](REFERENCE.md#post-apiv0search)), so demux on it. Key results by `(search_id, hash)`. Aside from the leading `search_id`, the payload is byte-for-byte identical to a `/search/{id}/results` array entry — the two are emitted by the same writer, so the promise holds by construction. That includes `status`, `type`, `directory` (the folder inside a browsed peer's share, `""` on ordinary hits), `kad_comment_search_running`, `comments[]` and the `children[]` grouping array — see [REFERENCE.md](REFERENCE.md#get-apiv0searchidresults); `sources` is the nested `{total, complete}` object, `media` — the audio/video metadata object — is present for locally-known/probed hits and `null` otherwise (the one place the unknown-value rule reaches an object rather than a scalar, so test `media === null` before reaching into it), and `children` holds the same-hash/different-name alternatives (empty for a single-name hit), same as the REST endpoint. Only parent results fire this event — children are folded into their parent's `children[]`, never emitted as their own `search_result_added`. Each `search_id` is an independent result space — a new `POST /search` starts a fresh one without disturbing the others.
 
 #### `search_progress`
 

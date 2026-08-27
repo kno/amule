@@ -46,7 +46,7 @@ _fail() {
 }
 
 if ! command -v jq >/dev/null 2>&1; then _die "jq is required."; fi
-if ! curl -s -o /dev/null --max-time 2 "$HOST/api/v0/version" 2>/dev/null; then
+if ! curl -s -o /dev/null --max-time 2 "$HOST/api/v0/health" 2>/dev/null; then
 	_die "amuleapi at $HOST is not reachable."
 fi
 
@@ -78,7 +78,7 @@ sleep 1
 echo "    info: POST Ubuntu ISO..."
 curl -s -X POST -H "Authorization: Bearer $ADMIN_TOKEN" \
 	-H "Content-Type: application/json" \
-	-d "{\"ed2k_link\":\"$TEST_LINK\"}" \
+	-d "{\"links\":[\"$TEST_LINK\"]}" \
 	"$HOST/api/v0/downloads" > /dev/null
 # Wait for the download_added so we have at least one ratcheted id.
 for _ in 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20 \

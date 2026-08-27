@@ -12,6 +12,7 @@ import { ProgressBar, Placeholder, PiecesBar, PiecesLegend, toast, confirmDialog
 import { formatBytes, formatSpeed, formatDuration, formatInt, formatPercent, formatTimestamp } from "../format.js";
 import { Icon } from "../icons.js";
 import { FileClients, HIDDEN_EVERYWHERE } from "./client-table.js";
+import { categoryName, categoryOptions } from "./categories.js";
 import { t, tn, terr } from "../i18n.js";
 
 // Peers of a download: show the download-side columns, keep the upload ones
@@ -58,9 +59,16 @@ export function DownloadDetail({ hash, isGuest, categories = [], onPatch, onDele
     .then(() => toast(t("downloads_detail_copied"), "success"))
     .catch(() => toast(t("downloads_detail_copy_failed"), "error"));
 
-  // `a4af_auto` is not part of EqualDownload (EventDiff.cpp), so toggling it emits
+  // `a4af_auto` is not part of EqualDownload (EventDiff.cpp), so changing it emits
   // no download_updated and the tick-driven re-fetch never sees it — bump `reload`.
   const a4af = (action) => api.post("downloads/" + hash + "/a4af", { action })
+    .then(() => { toast(t("downloads_a4af_done"), "success"); setReload((n) => n + 1); })
+    .catch((e) => toast(terr(e), "error"));
+
+  // The auto flag is set, not toggled: send the value the button is moving to
+  // rather than asking the daemon to flip whatever it currently holds. A retry
+  // then lands on the same value instead of undoing the press.
+  const setA4afAuto = (value) => api.patch("downloads/" + hash, { a4af_auto: value })
     .then(() => { toast(t("downloads_a4af_done"), "success"); setReload((n) => n + 1); })
     .catch((e) => toast(terr(e), "error"));
 
@@ -146,7 +154,7 @@ export function DownloadDetail({ hash, isGuest, categories = [], onPatch, onDele
             </button>
             <button class=${"btn btn-sm admin-only" + (d.a4af_auto ? " btn-primary" : "")} type="button"
                     title=${t("downloads_a4af_tip_auto")}
-                    aria-pressed=${!!d.a4af_auto} onClick=${() => a4af("swap_this_auto")}>
+                    aria-pressed=${!!d.a4af_auto} onClick=${() => setA4afAuto(!d.a4af_auto)}>
               ${t("downloads_a4af_auto")}
             </button>`)}
         ${IdentityLine({ file: d, copy, titleKey: "downloads_detail_group_identity", extra: [
@@ -165,12 +173,6 @@ function DetailActions({ d, isGuest, categories, onPatch, onDelete, onClear }) {
   const canStop = d.status !== "stopped" && d.status !== "completed" && d.status !== "completing";
   // Completed rejects DELETE (409 completed_use_clear_completed): offer Clear.
   const done = d.status === "completed";
-
-  const categoryName = (idx) => {
-    if (!idx) return "—"; // category 0 = no category assigned
-    const c = categories.find((c) => c.index === idx);
-    return c ? (c.name || "#" + c.index) : String(idx);
-  };
 
   const clear = async () => {
     if (!(await confirmDialog(t("downloads_confirm_clear_this", { name: d.name })))) return;
@@ -205,11 +207,10 @@ function DetailActions({ d, isGuest, categories, onPatch, onDelete, onClear }) {
       </div>
       <div class="field field-inline" title=${t("downloads_detail_tip_category")}>
         <label>${t("downloads_category")}</label>
-        ${isGuest ? html`<b>${categoryName(d.category)}</b>` : html`
+        ${isGuest ? html`<b>${categoryName(categories, d.category)}</b>` : html`
           <select class="input input-sm" value=${d.category}
                   onChange=${(e) => onPatch(d.hash, { category: Number(e.target.value) })}>
-            <option value=${0}>${t("downloads_category_none")}</option>
-            ${categories.filter((c) => c.index !== 0).map((c) => html`<option value=${c.index}>${c.name || ("#" + c.index)}</option>`)}
+            ${categoryOptions(categories)}
           </select>`}
       </div>
     </div>`;

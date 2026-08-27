@@ -344,6 +344,12 @@ struct KnownClientSnapshot
 	bool online = false;
 };
 
+//! amuled substitutes this for the queue position when the peer's queue is
+//! full (ECSpecialCoreTags.cpp: `IsRemoteQueueFull() ? 0xffff : rank`). It is a
+//! sentinel, not a position: relayed as a number it reads as "position 65535",
+//! so the REST and SSE writers emit null for it instead.
+constexpr std::uint16_t kRemoteQueueFullSentinel = 0xffffu;
+
 struct ClientSnapshot
 {
 	std::uint32_t ecid = 0;
@@ -408,6 +414,8 @@ struct ClientSnapshot
 	// Remote queue rank — our position in THE PEER's upload queue
 	// (i.e. how many other ed2k clients they're going to upload to
 	// before us). 0xFFFF when their queue is full.
+	//! Carries amuled's queue-full sentinel as well as a real position; see
+	//! kRemoteQueueFullSentinel.
 	std::uint16_t remote_queue_rank = 0;
 
 	std::uint32_t score = 0; // EC_TAG_CLIENT_SCORE
@@ -430,7 +438,7 @@ struct ClientSnapshot
 	std::uint16_t kad_port = 0;        // 0 => Kad not connected for this peer
 	std::string source_origin;         // "server" | "kad" | "source_exchange" | "passive" | "link" | ...
 	std::uint32_t available_parts = 0; // count of parts the peer has (EC_TAG_CLIENT_AVAILABLE_PARTS)
-	bool has_available_parts = false;  // false => tag absent, omit the field
+	bool has_available_parts = false;  // false => tag absent, emitted as null
 	std::string mod_version;           // EC_TAG_CLIENT_MOD_VERSION
 	bool view_shared_disabled = false; // peer forbids viewing its shared files
 	// Completeness of the linked download for this peer, as a percent
@@ -645,9 +653,9 @@ struct KadSnapshot
 	// id, this one is persisted (preferencesKad.dat) and survives
 	// daemon restarts.
 	std::string node_id;
-	bool firewalled = false;
+	bool firewalled_tcp = false;
 	bool firewalled_udp = false;
-	bool in_lan_mode = false;
+	bool lan_mode = false;
 	std::uint32_t users = 0;
 	std::uint32_t files = 0;
 	std::uint32_t nodes = 0;
@@ -1252,10 +1260,10 @@ struct PreferencesSnapshot
 		bool verbose_logging = false;
 		std::uint32_t file_buffer_bytes = 0;
 		std::uint32_t max_upload_queue_clients = 0;
-		std::uint32_t server_keepalive_timeout_ms = 0;
+		std::uint32_t server_keepalive_timeout_minutes = 0;
 		std::uint32_t kad_max_source_searches = 0;
-		std::uint32_t kad_reask_ms = 0;
-		std::uint32_t source_reask_ms = 0;
+		std::uint32_t kad_reask_minutes = 0;
+		std::uint32_t source_reask_minutes = 0;
 	} core_tweaks;
 
 	// [Kademlia] EC_TAG_PREFS_KADEMLIA
@@ -1321,16 +1329,20 @@ struct StatusSnapshot
 
 	// Our eD2k id as assigned by the connected server. 0 when not
 	// connected; the 0xffffffff "connect in flight" sentinel is normalized
-	// to 0 rather than surfaced.
-	std::uint32_t ed2k_id = 0;
+	// to 0 rather than surfaced. Packed LSB-first, unlike the peer-side
+	// user_id_hybrid on CUpDownClient, which byte-swaps a HighID.
+	std::uint32_t ed2k_user_id = 0;
 
-	// Our public IPv4 in dotted-quad form, derived from ed2k_id when that
+	// Our public IPv4 in dotted-quad form, derived from ed2k_user_id when that
 	// is a HighID -- a HighID *is* the address. Empty for a LowID or while
 	// disconnected, where no address exists. Formatted here rather than in
 	// the handler, matching every other address in these snapshots.
 	std::string ed2k_public_ip;
-	// True when Kad is running but firewalled.
-	bool kad_firewalled = false;
+	// True when Kad is running but firewalled for TCP. The verdict is a
+	// vote: two peers must confirm reachability over an incoming TCP
+	// connection before it clears. Distinct from the UDP test, which is
+	// a different mechanism -- see KadSnapshot::firewalled_udp.
+	bool kad_firewalled_tcp = false;
 
 	// Unix timestamp of the most recent connect (amule-org/amule#174),
 	// from EC_TAG_CONNSTATE's optional {ED2K,KAD}_CONNECTED_SINCE
@@ -1392,16 +1404,28 @@ struct StatusSnapshot
 // maintained inline on every emplace/erase so the obvious lookup
 // directions both stay O(1) avg without a per-tick rebuild pass:
 //  * ECID → entry via std::unordered_map::find (file_map[]).
-//  * 32-char hex MD4 hash → ECID via FindEcidByHash (index[]).
+//  * 32-char hex MD4 hash + role → ECID via FindDownloadEcidByHash /
+//    FindSharedEcidByHash (one index per role).
+//
+// One index per role, not one overall, because a hash does NOT name a single
+// file here. A part file and the completed copy someone dropped into a shared
+// folder are two amuled objects with two ECIDs and the same hash, and this map
+// holds both. aMule keeps them apart by having a list per role
+// (CKnownFileList and CSharedFileList are each hash-keyed and de-duplicate on
+// insert, so neither ever holds two files under one hash); this map merges the
+// roles, so it has to carry the role in the key instead. With a single index
+// whichever entry was filed last won the slot and the other became
+// unreachable while still sitting in the map (#1161, reported as #1157).
 //
 // Walkers reach in via find()/emplace()/erase()/begin()/end() — the
 // same surface they had when this was a raw std::map<uint32_t,
 // FileSnapshot>&. The wrapper intercepts the two mutations that move
 // hashes around and keeps the index consistent.
 //
-// Invariant: a FileSnapshot's `hash` is content-derived and never
-// changes once set. Walkers MUST NOT reassign `hash` via the iterator
-// (the index would desync). Set hash before emplace, never after.
+// Invariant: `hash`, `is_downloading` and `is_shared` are what the indexes are
+// built from, so they are not assigned through the iterator -- go through
+// SetHash() / SetDownloading() / SetShared(), which re-file the entry. A raw
+// assignment compiles and silently desyncs the index.
 //
 // Invariant: an entry's key IS its FileSnapshot::ecid, enforced by emplace()
 // rather than left to the caller. A snapshot filed under one id but carrying
@@ -1431,44 +1455,115 @@ public:
 		// The key wins -- readers resolve by it. See the invariant above.
 		f.ecid = ecid;
 		auto r = m_files.emplace(ecid, std::move(f));
-		if (r.second && !r.first->second.hash.empty()) {
-			m_hash_to_ecid[r.first->second.hash] = ecid;
+		if (r.second) {
+			Reindex(r.first);
 		}
 		return r;
 	}
 
+	//! Assign `hash` on an existing entry and re-file it. The refresher can
+	//! learn a hash after the insert (a partfile frame with HASH suppressed,
+	//! then a knownfile frame carrying it), and the index has to follow.
+	void SetHash(iterator it, std::string hash)
+	{
+		if (it == m_files.end() || it->second.hash == hash)
+			return;
+		DropRows(it->first, it->second.hash);
+		it->second.hash = std::move(hash);
+		Reindex(it);
+	}
+
+	//! Add or remove the downloading role, keeping that role's index in step.
+	void SetDownloading(iterator it, bool on)
+	{
+		if (it == m_files.end() || it->second.is_downloading == on)
+			return;
+		it->second.is_downloading = on;
+		Reindex(it);
+	}
+
+	//! Add or remove the shared role, keeping that role's index in step.
+	void SetShared(iterator it, bool on)
+	{
+		if (it == m_files.end() || it->second.is_shared == on)
+			return;
+		it->second.is_shared = on;
+		Reindex(it);
+	}
+
 	iterator erase(iterator it)
 	{
-		if (!it->second.hash.empty()) {
-			auto hit = m_hash_to_ecid.find(it->second.hash);
-			// Defence: only clear the index slot if it still points at
-			// this ECID. A later emplace with the same hash but a
-			// different ECID could have rewired the slot already.
-			if (hit != m_hash_to_ecid.end() && hit->second == it->first) {
-				m_hash_to_ecid.erase(hit);
-			}
-		}
+		DropRows(it->first, it->second.hash);
 		return m_files.erase(it);
 	}
 
 	void clear()
 	{
 		m_files.clear();
-		m_hash_to_ecid.clear();
+		m_download_by_hash.clear();
+		m_shared_by_hash.clear();
 	}
 
-	bool FindEcidByHash(const std::string &hash, std::uint32_t &out) const
+	//! Resolve a hash to the entry carrying the DOWNLOADING role, ignoring a
+	//! share that happens to have the same content.
+	bool FindDownloadEcidByHash(const std::string &hash, std::uint32_t &out) const
 	{
-		auto it = m_hash_to_ecid.find(hash);
-		if (it == m_hash_to_ecid.end())
+		return Lookup(m_download_by_hash, hash, out);
+	}
+
+	//! Resolve a hash to the entry carrying the SHARED role.
+	bool FindSharedEcidByHash(const std::string &hash, std::uint32_t &out) const
+	{
+		return Lookup(m_shared_by_hash, hash, out);
+	}
+
+private:
+	using index_type = std::unordered_map<std::string, std::uint32_t>;
+
+	static bool Lookup(const index_type &idx, const std::string &hash, std::uint32_t &out)
+	{
+		auto it = idx.find(hash);
+		if (it == idx.end())
 			return false;
 		out = it->second;
 		return true;
 	}
 
-private:
+	//! Point `idx[hash]` at `ecid` when the role applies, and clear the row
+	//! when it no longer does -- but only if it still names this entry, since
+	//! the other entry sharing this hash may own the row.
+	static void FileRow(index_type &idx, const std::string &hash, std::uint32_t ecid, bool applies)
+	{
+		auto it = idx.find(hash);
+		if (applies) {
+			idx[hash] = ecid;
+		} else if (it != idx.end() && it->second == ecid) {
+			idx.erase(it);
+		}
+	}
+
+	//! Re-file one entry into whichever role indexes its current flags call
+	//! for. Cheap and idempotent, so callers can just call it after a change.
+	void Reindex(iterator it)
+	{
+		if (it->second.hash.empty())
+			return;
+		FileRow(m_download_by_hash, it->second.hash, it->first, it->second.is_downloading);
+		FileRow(m_shared_by_hash, it->second.hash, it->first, it->second.is_shared);
+	}
+
+	//! Remove every row naming `ecid` under `hash`, in both roles.
+	void DropRows(std::uint32_t ecid, const std::string &hash)
+	{
+		if (hash.empty())
+			return;
+		FileRow(m_download_by_hash, hash, ecid, false);
+		FileRow(m_shared_by_hash, hash, ecid, false);
+	}
+
 	map_type m_files;
-	std::unordered_map<std::string, std::uint32_t> m_hash_to_ecid;
+	index_type m_download_by_hash;
+	index_type m_shared_by_hash;
 };
 
 // One State instance per amuleapi process. The mutex protects every

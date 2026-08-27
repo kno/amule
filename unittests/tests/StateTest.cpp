@@ -112,13 +112,13 @@ TEST(State, WriteStatusRoundtrip)
 	in.ed2k_state = "connected";
 	in.kad_state = "connecting";
 	in.ed2k_high_id = true;
-	in.ed2k_id = 1234567890u; // 210.2.150.73 packed LSB-first
+	in.ed2k_user_id = 1234567890u; // 210.2.150.73 packed LSB-first
 	in.ed2k_public_ip = "210.2.150.73";
 	in.download_overhead_bps = 8700;
 	in.upload_overhead_bps = 1100;
 	in.temp_free_bytes = 48318382080LL;
 	in.incoming_free_bytes = -1; // unknown
-	in.kad_firewalled = false;
+	in.kad_firewalled_tcp = false;
 	in.server_name = "Some Server";
 	in.server_ip = "192.0.2.42";
 	in.server_port = 4242;
@@ -132,7 +132,7 @@ TEST(State, WriteStatusRoundtrip)
 	ASSERT_EQUALS(std::string("connected"), out.ed2k_state);
 	ASSERT_EQUALS(std::string("connecting"), out.kad_state);
 	ASSERT_TRUE(out.ed2k_high_id);
-	ASSERT_EQUALS(static_cast<std::uint32_t>(1234567890u), out.ed2k_id);
+	ASSERT_EQUALS(static_cast<std::uint32_t>(1234567890u), out.ed2k_user_id);
 	ASSERT_EQUALS(std::string("210.2.150.73"), out.ed2k_public_ip);
 	ASSERT_EQUALS(static_cast<std::uint64_t>(8700), out.download_overhead_bps);
 	ASSERT_EQUALS(static_cast<std::uint64_t>(1100), out.upload_overhead_bps);
@@ -140,7 +140,7 @@ TEST(State, WriteStatusRoundtrip)
 	// -1 must survive the round trip as -1: it is what the handler turns
 	// into JSON null, and an unsigned slot would make it 1.8e19.
 	ASSERT_EQUALS(static_cast<std::int64_t>(-1), out.incoming_free_bytes);
-	ASSERT_FALSE(out.kad_firewalled);
+	ASSERT_FALSE(out.kad_firewalled_tcp);
 	ASSERT_EQUALS(std::string("Some Server"), out.server_name);
 	ASSERT_EQUALS(std::string("192.0.2.42"), out.server_ip);
 	ASSERT_EQUALS(static_cast<std::uint32_t>(4242), out.server_port);
@@ -169,10 +169,13 @@ TEST(State, FileMapEmplaceFilesTheSnapshotUnderItsKey)
 		ASSERT_TRUE(it != files.end());
 		ASSERT_EQUALS(static_cast<std::uint32_t>(42), it->second.ecid);
 		ASSERT_TRUE(files.find(999) == files.end());
-		// The hash index is keyed off the same insert, so it agrees too.
+		// The role index is keyed off the same insert, so it agrees too.
 		std::uint32_t by_hash = 0;
-		ASSERT_TRUE(files.FindEcidByHash("cccc2222cccc2222cccc2222cccc2222", by_hash));
+		ASSERT_TRUE(files.FindDownloadEcidByHash("cccc2222cccc2222cccc2222cccc2222", by_hash));
 		ASSERT_EQUALS(static_cast<std::uint32_t>(42), by_hash);
+		// ...and only under the role the entry actually carries.
+		std::uint32_t as_shared = 0;
+		ASSERT_FALSE(files.FindSharedEcidByHash("cccc2222cccc2222cccc2222cccc2222", as_shared));
 	});
 }
 
@@ -224,6 +227,241 @@ TEST(State, MutateDownloadsRoundtripAndFind)
 
 	FileSnapshot miss;
 	ASSERT_FALSE(s.FindDownload("0000000000000000000000000000000c", miss));
+}
+
+// #1161 -- a part file and its shared copy are two amuled objects with two
+// ECIDs and one hash. aMule keeps them apart because it has a list per role
+// (CKnownFileList and CSharedFileList are both hash-keyed and de-duplicate on
+// insert); amuleapi merges the roles into one map, so both land here.
+//
+// Whichever is emplaced last used to win the single hash->ECID slot, and the
+// other became unreachable: FindDownload() resolved the hash to the shared
+// entry, saw is_downloading == false and reported "no download with that
+// hash" for a download that was in the map and being refreshed the whole time
+// (#1157). Order must not decide the answer -- each role resolves to its own
+// entry.
+TEST(State, AHashSharedByADownloadAndAShareResolvesToBoth)
+{
+	const std::string kHash = "abcd1234abcd1234abcd1234abcd1234";
+	CState s;
+	s.MutateDownloads([&](FileMap &cache) {
+		FileSnapshot dl;
+		dl.ecid = 11;
+		dl.hash = kHash;
+		dl.name = "movie.part";
+		dl.is_downloading = true;
+		cache.emplace(dl.ecid, dl);
+
+		// The completed copy, obtained elsewhere and dropped into a
+		// shared folder: same content, so the same hash, but a
+		// different amuled object and therefore a different ECID.
+		FileSnapshot sh;
+		sh.ecid = 22;
+		sh.hash = kHash;
+		sh.name = "movie.mkv";
+		sh.is_shared = true;
+		cache.emplace(sh.ecid, sh);
+	});
+
+	FileSnapshot d;
+	ASSERT_TRUE(s.FindDownload(kHash, d));
+	ASSERT_EQUALS(static_cast<std::uint32_t>(11), d.ecid);
+	ASSERT_EQUALS(std::string("movie.part"), d.name);
+
+	FileSnapshot sh;
+	ASSERT_TRUE(s.FindShared(kHash, sh));
+	ASSERT_EQUALS(static_cast<std::uint32_t>(22), sh.ecid);
+	ASSERT_EQUALS(std::string("movie.mkv"), sh.name);
+}
+
+// Same pair, inserted the other way round. The bug was order-dependent, so a
+// test that only covers one order passes at 50%.
+TEST(State, ASharedFirstHashStillResolvesTheDownload)
+{
+	const std::string kHash = "beef0000beef0000beef0000beef0000";
+	CState s;
+	s.MutateDownloads([&](FileMap &cache) {
+		FileSnapshot sh;
+		sh.ecid = 22;
+		sh.hash = kHash;
+		sh.is_shared = true;
+		cache.emplace(sh.ecid, sh);
+
+		FileSnapshot dl;
+		dl.ecid = 11;
+		dl.hash = kHash;
+		dl.is_downloading = true;
+		cache.emplace(dl.ecid, dl);
+	});
+
+	FileSnapshot d;
+	ASSERT_TRUE(s.FindDownload(kHash, d));
+	ASSERT_EQUALS(static_cast<std::uint32_t>(11), d.ecid);
+
+	FileSnapshot sh;
+	ASSERT_TRUE(s.FindShared(kHash, sh));
+	ASSERT_EQUALS(static_cast<std::uint32_t>(22), sh.ecid);
+}
+
+// Erasing one role must not take the other's lookup down with it. This is the
+// half users hit as "deleting the shared file did not help": erasing the
+// shared entry cleared the one index row, so the download stopped resolving
+// too.
+TEST(State, ErasingTheShareLeavesTheDownloadResolvable)
+{
+	const std::string kHash = "feed9999feed9999feed9999feed9999";
+	CState s;
+	s.MutateDownloads([&](FileMap &cache) {
+		FileSnapshot dl;
+		dl.ecid = 11;
+		dl.hash = kHash;
+		dl.is_downloading = true;
+		cache.emplace(dl.ecid, dl);
+
+		FileSnapshot sh;
+		sh.ecid = 22;
+		sh.hash = kHash;
+		sh.is_shared = true;
+		cache.emplace(sh.ecid, sh);
+	});
+	s.MutateDownloads([&](FileMap &cache) {
+		const auto it = cache.find(22);
+		ASSERT_TRUE(it != cache.end());
+		cache.erase(it);
+	});
+
+	FileSnapshot d;
+	ASSERT_TRUE(s.FindDownload(kHash, d));
+	ASSERT_EQUALS(static_cast<std::uint32_t>(11), d.ecid);
+
+	FileSnapshot gone;
+	ASSERT_FALSE(s.FindShared(kHash, gone));
+}
+
+// The share slot changes owner. aMule keeps same-hash variants on
+// CKnownFileList::m_duplicateFileList, and Append() promotes one of them to
+// the live record (m_knownFileMap[hash] = Record) when the previous owner is
+// displaced or its file disappears -- so the ECID behind a hash's share is not
+// stable even though the hash is. Both orderings, because a tick can deliver
+// the arrival and the departure either way round.
+TEST(State, ShareHandoverToANewEcidKeepsTheHashResolvable)
+{
+	const std::string kHash = "0a0a11110a0a11110a0a11110a0a1111";
+	CState s;
+	s.MutateDownloads([&](FileMap &cache) {
+		FileSnapshot b;
+		b.ecid = 22;
+		b.hash = kHash;
+		b.name = "old-copy.mkv";
+		b.is_shared = true;
+		cache.emplace(b.ecid, b);
+	});
+	// Departure first, then the replacement.
+	s.MutateDownloads([&](FileMap &cache) {
+		cache.erase(cache.find(22));
+		FileSnapshot c;
+		c.ecid = 33;
+		c.hash = kHash;
+		c.name = "new-copy.mkv";
+		c.is_shared = true;
+		cache.emplace(c.ecid, c);
+	});
+
+	FileSnapshot sh;
+	ASSERT_TRUE(s.FindShared(kHash, sh));
+	ASSERT_EQUALS(static_cast<std::uint32_t>(33), sh.ecid);
+	ASSERT_EQUALS(std::string("new-copy.mkv"), sh.name);
+}
+
+TEST(State, ShareHandoverSurvivesTheReplacementArrivingFirst)
+{
+	const std::string kHash = "0b0b22220b0b22220b0b22220b0b2222";
+	CState s;
+	s.MutateDownloads([&](FileMap &cache) {
+		FileSnapshot b;
+		b.ecid = 22;
+		b.hash = kHash;
+		b.is_shared = true;
+		cache.emplace(b.ecid, b);
+	});
+	// Replacement lands before the old entry is dropped. The stale erase
+	// must not take the new owner's row with it.
+	s.MutateDownloads([&](FileMap &cache) {
+		FileSnapshot c;
+		c.ecid = 33;
+		c.hash = kHash;
+		c.is_shared = true;
+		cache.emplace(c.ecid, c);
+		cache.erase(cache.find(22));
+	});
+
+	FileSnapshot sh;
+	ASSERT_TRUE(s.FindShared(kHash, sh));
+	ASSERT_EQUALS(static_cast<std::uint32_t>(33), sh.ecid);
+}
+
+// The refresher clears a role rather than erasing the entry when a file stops
+// being shared but is still known. The index has to follow that too, and must
+// not take the other role down with it.
+TEST(State, ClearingOneRoleLeavesTheOtherResolvable)
+{
+	const std::string kHash = "0c0c33330c0c33330c0c33330c0c3333";
+	CState s;
+	s.MutateDownloads([&](FileMap &cache) {
+		// A part file is itself shared while it downloads, so one entry
+		// legitimately carries both roles and holds a row in each index.
+		FileSnapshot f;
+		f.ecid = 44;
+		f.hash = kHash;
+		f.is_downloading = true;
+		f.is_shared = true;
+		cache.emplace(f.ecid, f);
+	});
+	FileSnapshot both;
+	ASSERT_TRUE(s.FindDownload(kHash, both));
+	ASSERT_TRUE(s.FindShared(kHash, both));
+
+	s.MutateDownloads([&](FileMap &cache) { cache.SetShared(cache.find(44), false); });
+
+	FileSnapshot d;
+	ASSERT_TRUE(s.FindDownload(kHash, d));
+	ASSERT_EQUALS(static_cast<std::uint32_t>(44), d.ecid);
+	FileSnapshot gone;
+	ASSERT_FALSE(s.FindShared(kHash, gone));
+	// Asserted against the index itself, not only through FindShared(): the
+	// resolvers re-check the role after resolving, so a stale row degrades to
+	// "not found" and a test that only went through them would pass with the
+	// row still there. This is the one that actually watches the index.
+	s.WithFiles([&](const FileMap &files) {
+		std::uint32_t ecid = 0;
+		ASSERT_FALSE(files.FindSharedEcidByHash(kHash, ecid));
+		ASSERT_TRUE(files.FindDownloadEcidByHash(kHash, ecid));
+		ASSERT_EQUALS(static_cast<std::uint32_t>(44), ecid);
+	});
+}
+
+// A hash can arrive after the insert: a partfile frame with HASH suppressed
+// files the entry with an empty hash, and a later knownfile frame carries it.
+// SetHash() exists so that late arrival still reaches the index -- assigning
+// the field through the iterator would leave the entry unreachable by hash.
+TEST(State, AHashLearnedAfterTheInsertStillResolves)
+{
+	const std::string kHash = "0d0d44440d0d44440d0d44440d0d4444";
+	CState s;
+	s.MutateDownloads([&](FileMap &cache) {
+		FileSnapshot f;
+		f.ecid = 55;
+		f.is_downloading = true; // no hash yet
+		cache.emplace(f.ecid, f);
+	});
+	FileSnapshot before;
+	ASSERT_FALSE(s.FindDownload(kHash, before));
+
+	s.MutateDownloads([&](FileMap &cache) { cache.SetHash(cache.find(55), kHash); });
+
+	FileSnapshot after;
+	ASSERT_TRUE(s.FindDownload(kHash, after));
+	ASSERT_EQUALS(static_cast<std::uint32_t>(55), after.ecid);
 }
 
 TEST(State, MutateDownloadsDecodedRleFieldsRoundtrip)
@@ -397,7 +635,7 @@ TEST(State, WriteKadAndPreferencesRoundtrip)
 	KadSnapshot k;
 	k.state = "connected";
 	k.users = 12345;
-	k.firewalled = true;
+	k.firewalled_tcp = true;
 	k.public_ip = "1.2.3.4";
 	k.node_id = "8f3a1c07d94b2e5a6018bb4c7f209d3e";
 	s.WriteKad(k);
@@ -431,7 +669,7 @@ TEST(State, WriteKadAndPreferencesRoundtrip)
 	const auto k_out = s.Kad();
 	ASSERT_EQUALS(std::string("connected"), k_out.state);
 	ASSERT_EQUALS(static_cast<std::uint32_t>(12345), k_out.users);
-	ASSERT_TRUE(k_out.firewalled);
+	ASSERT_TRUE(k_out.firewalled_tcp);
 	// The two string fields were written but never read back, so a
 	// rename could pass this test while dropping the value.
 	ASSERT_EQUALS(std::string("1.2.3.4"), k_out.public_ip);
@@ -1218,14 +1456,15 @@ TEST(State, MemoizableTargetExcludesEverythingElse)
 }
 
 // A sub-resource of an eligible collection is NOT itself eligible: it is a
-// different body, and /shared/directories in particular is a live EC read
-// that an "everything under /shared" rule would have swept back in.
+// different body, so an "everything under /downloads" or "everything under
+// /shared" rule would sweep back in exactly what the opt-in set leaves out.
+// (/share_directories used to be listed here as /shared/directories; it is no
+// longer under /shared at all, and the excluded-set test above covers it.)
 TEST(State, MemoizableTargetDoesNotExtendToSubResources)
 {
 	ASSERT_TRUE(!MemoizableTarget("/api/v0/downloads/8b54a3c2"));
 	ASSERT_TRUE(!MemoizableTarget("/api/v0/downloads/8b54a3c2/clients"));
 	ASSERT_TRUE(!MemoizableTarget("/api/v0/shared/8b54a3c2"));
-	ASSERT_TRUE(!MemoizableTarget("/api/v0/share_directories"));
 	// and no prefix bleed onto a neighbour that merely starts the same
 	ASSERT_TRUE(!MemoizableTarget("/api/v0/downloads_archive"));
 	ASSERT_TRUE(!MemoizableTarget("/api/v0/sharedfiles"));
