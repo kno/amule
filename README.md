@@ -32,9 +32,9 @@ belongs [upstream](https://github.com/amule-org/amule/issues).
 | Upstream aMule | [amule-org/amule](https://github.com/amule-org/amule) |
 | Upstream documentation, FAQ and forum | linked throughout this file |
 
-The distribution packages listed below are **upstream aMule**, not this fork.
-Installing `amule` from a distribution gets you upstream, without the parity
-work.
+Distribution packages named `amule` are **upstream aMule**, not this fork, and
+they lag badly: Debian 13 still ships 2.3.3 (2021), five years behind the 3.0.1
+this tree is built on. Use the releases or the container image above.
 
 ## Overview
 
@@ -48,19 +48,6 @@ Windows (MSYS2 / mingw-w64), on both x86_64 and ARM64.
 aMule aims to stay close to eMule in look-and-feel so users moving between
 the two have minimal friction. New eMule protocol-level features are
 generally adopted into aMule shortly after.
-
----
-
-| | Distributions | |
-| --- | --- | --- |
-| [![Arch Linux](https://repology.org/badge/version-for-repo/arch/amule.svg)](https://archlinux.org/packages/extra/x86_64/amule/) | [![AUR](https://repology.org/badge/version-for-repo/aur/amule.svg?allow_ignored=1)](https://aur.archlinux.org/packages/amule) | [![Debian 11](https://repology.org/badge/version-for-repo/debian_11/amule.svg)](https://repology.org/project/amule/versions) |
-| [![Debian 12](https://repology.org/badge/version-for-repo/debian_12/amule.svg)](https://repology.org/project/amule/versions) | [![Debian 13](https://repology.org/badge/version-for-repo/debian_13/amule.svg)](https://repology.org/project/amule/versions) | [![Debian 14](https://repology.org/badge/version-for-repo/debian_14/amule.svg)](https://repology.org/project/amule/versions) |
-| [![Debian Unstable](https://repology.org/badge/version-for-repo/debian_unstable/amule.svg)](https://repology.org/project/amule/versions) | [![Fedora 44 package](https://repology.org/badge/version-for-repo/fedora_44/amule.svg)](https://repology.org/project/amule/versions) | [![Fedora Rawhide package](https://repology.org/badge/version-for-repo/fedora_rawhide/amule.svg)](https://repology.org/project/amule/versions) |
-| [![FreeBSD](https://repology.org/badge/version-for-repo/freebsd/amule.svg)](https://www.freshports.org/net-p2p/amule/) | [![Gentoo](https://repology.org/badge/version-for-repo/gentoo/amule.svg)](https://packages.gentoo.org/packages/net-p2p/amule) | [![Kali Linux](https://repology.org/badge/version-for-repo/kali_rolling/amule.svg)](https://pkg.kali.org/pkg/amule) |
-| [![Manjaro](https://repology.org/badge/version-for-repo/manjaro_stable/amule.svg)](https://repology.org/project/amule/versions) | [![NixOS 25.05](https://repology.org/badge/version-for-repo/nix_stable_25_05/amule.svg)](https://search.nixos.org/packages?channel=25.05&query=amule) | [![OpenBSD](https://repology.org/badge/version-for-repo/openbsd/amule.svg)](https://openports.pl/path/net/amule) |
-| [![openSUSE Tumbleweed (Packman)](https://repology.org/badge/version-for-repo/packman_opensuse_tumbleweed/amule.svg)](http://packman.links2linux.org/package/aMule) | [![Slackware](https://repology.org/badge/version-for-repo/slackbuilds/amule.svg)](https://slackbuilds.org/result/?search=amule) | [![Solus](https://repology.org/badge/version-for-repo/solus/amule.svg)](https://repology.org/project/amule/versions) |
-| [![Ubuntu 22.04 LTS](https://repology.org/badge/version-for-repo/ubuntu_22_04/amule.svg)](https://repology.org/project/amule/versions) | [![Ubuntu 24.04 LTS](https://repology.org/badge/version-for-repo/ubuntu_24_04/amule.svg)](https://packages.ubuntu.com/noble/amule) | [![Ubuntu 25.04](https://repology.org/badge/version-for-repo/ubuntu_25_04/amule.svg)](https://packages.ubuntu.com/plucky/amule) |
-| [![Ubuntu 25.10](https://repology.org/badge/version-for-repo/ubuntu_25_10/amule.svg)](https://repology.org/project/amule/versions) | [![Ubuntu 26.04 LTS](https://repology.org/badge/version-for-repo/ubuntu_26_04/amule.svg)](https://repology.org/project/amule/versions) | [![Ubuntu 26.10](https://repology.org/badge/version-for-repo/ubuntu_26_10/amule.svg)](https://repology.org/project/amule/versions) |
 
 ---
 
