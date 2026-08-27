@@ -267,18 +267,39 @@ TEST(EventDiff, StatusEventCarriesIdentityFields)
 	StatusSnapshot s;
 	s.ed2k_state = "connected";
 	s.ed2k_high_id = true;
-	s.ed2k_id = 1234567890u;
+	s.ed2k_user_id = 1234567890u;
 	s.ed2k_public_ip = "210.2.150.73";
 	s.download_overhead_bps = 8700;
 
 	const std::string payload = EmitStatusAndGetPayload(s);
 
 	ASSERT_TRUE(payload.find("\"high_id\":true") != std::string::npos);
-	ASSERT_TRUE(payload.find("\"id\":1234567890") != std::string::npos);
+	ASSERT_TRUE(payload.find("\"user_id\":1234567890") != std::string::npos);
 	ASSERT_TRUE(payload.find("\"public_ip\":\"210.2.150.73\"") != std::string::npos);
 	ASSERT_TRUE(payload.find("\"download_overhead_bps\":8700") != std::string::npos);
-	// The retired spelling must not linger anywhere in the payload.
+	// The retired spellings must not linger anywhere in the payload. A bare
+	// "id" would also match inside "user_id", so the quoted key is the test.
 	ASSERT_TRUE(payload.find("low_id") == std::string::npos);
+	ASSERT_TRUE(payload.find("\"id\":") == std::string::npos);
+}
+
+// The Kad firewall verdict is the one field on this payload a subscriber is
+// most likely to be watching for, and Equal(StatusSnapshot) is what decides
+// whether the event is published at all. Drop it from that comparator and a
+// firewall flip stops reaching subscribers entirely -- silently, since the
+// REST body keeps reporting the new value. Pinned here so a future edit to
+// the comparator cannot quietly lose it.
+TEST(EventDiff, StatusEventFiresWhenOnlyKadFirewalledTcpMoved)
+{
+	StatusSnapshot s;
+	s.kad_firewalled_tcp = true;
+
+	const std::string payload = EmitStatusAndGetPayload(s);
+
+	ASSERT_TRUE(!payload.empty());
+	ASSERT_TRUE(payload.find("\"firewalled_tcp\":true") != std::string::npos);
+	// The pre-rename spelling must not survive anywhere in the payload.
+	ASSERT_TRUE(payload.find("\"firewalled\":") == std::string::npos);
 }
 
 // A tick where only the overhead moved still has to fire: the field is in the
@@ -613,6 +634,133 @@ TEST(EventDiff, SearchClosedFiresOnceWhenTheSlotIsFreed)
 // resource: it is derived rather than refreshed (it needs the part count of
 // the linked download, which lives in a different snapshot), so the diff pass
 // never computed it and the payload silently lacked a key the REST row had.
+// #1159 section 1. ClientSnapshot carries has_available_parts precisely so a
+// peer that never reported its part map can be told apart from one reporting
+// zero -- and zero is a real answer, being what a fresh source looks like
+// before its map arrives. The field was emitted unconditionally, so nothing
+// read the flag and both cases went out as 0.
+TEST(EventDiff, ClientEventEmitsNullAvailablePartsWhenTheMapIsUnreported)
+{
+	CState state;
+	state.MutateClients([](std::map<std::uint32_t, ClientSnapshot> &clients) {
+		ClientSnapshot c;
+		c.ecid = 71;
+		c.client_name = "no-map";
+		// has_available_parts stays false: the tag never arrived.
+		clients.emplace(c.ecid, c);
+	});
+
+	CEventBus bus;
+	LastSeenState prev;
+	EmitDiffsAndUpdate(bus, prev, state);
+
+	std::string payload;
+	for (const auto &e : DrainAll(bus)) {
+		if (e.name == "client_added")
+			payload = e.data;
+	}
+	ASSERT_TRUE(!payload.empty());
+	ASSERT_TRUE(payload.find("\"available_parts\":null") != std::string::npos);
+}
+
+// ...and a peer that did report zero still says zero.
+TEST(EventDiff, ClientEventEmitsZeroAvailablePartsWhenTheMapSaysZero)
+{
+	CState state;
+	state.MutateClients([](std::map<std::uint32_t, ClientSnapshot> &clients) {
+		ClientSnapshot c;
+		c.ecid = 72;
+		c.client_name = "empty-map";
+		c.available_parts = 0;
+		c.has_available_parts = true;
+		clients.emplace(c.ecid, c);
+	});
+
+	CEventBus bus;
+	LastSeenState prev;
+	EmitDiffsAndUpdate(bus, prev, state);
+
+	std::string payload;
+	for (const auto &e : DrainAll(bus)) {
+		if (e.name == "client_added")
+			payload = e.data;
+	}
+	ASSERT_TRUE(!payload.empty());
+	ASSERT_TRUE(payload.find("\"available_parts\":0") != std::string::npos);
+	ASSERT_TRUE(payload.find("\"available_parts\":null") == std::string::npos);
+}
+
+// The comparator has to see the flag too. null -> 0 is a visible change; with
+// only the value compared it reads as equal and the row never updates.
+TEST(EventDiff, ClientUpdateFiresWhenThePartMapFinallyArrivesReportingZero)
+{
+	CState state;
+	state.MutateClients([](std::map<std::uint32_t, ClientSnapshot> &clients) {
+		ClientSnapshot c;
+		c.ecid = 73;
+		c.client_name = "late-map";
+		clients.emplace(c.ecid, c);
+	});
+	CEventBus bus;
+	LastSeenState prev;
+	EmitDiffsAndUpdate(bus, prev, state);
+	DrainAll(bus);
+
+	state.MutateClients([](std::map<std::uint32_t, ClientSnapshot> &clients) {
+		auto it = clients.find(73);
+		it->second.available_parts = 0;
+		it->second.has_available_parts = true;
+	});
+	EmitDiffsAndUpdate(bus, prev, state);
+
+	bool updated = false;
+	for (const auto &e : DrainAll(bus)) {
+		if (e.name == "client_updated")
+			updated = true;
+	}
+	ASSERT_TRUE(updated);
+}
+
+// #1159 section 9. amuled sends 0xffff for "that peer's queue is full" rather
+// than a position, so relaying it verbatim rendered "position 65535" and sorted
+// full queues to the far end as if they were merely very distant.
+TEST(EventDiff, ClientEventEmitsNullRemoteQueueRankWhenTheQueueIsFull)
+{
+	CState state;
+	state.MutateClients([](std::map<std::uint32_t, ClientSnapshot> &clients) {
+		ClientSnapshot full;
+		full.ecid = 74;
+		full.client_name = "full-queue";
+		full.remote_queue_rank = kRemoteQueueFullSentinel;
+		clients.emplace(full.ecid, full);
+
+		ClientSnapshot ranked;
+		ranked.ecid = 75;
+		ranked.client_name = "ranked";
+		ranked.remote_queue_rank = 12;
+		clients.emplace(ranked.ecid, ranked);
+	});
+
+	CEventBus bus;
+	LastSeenState prev;
+	EmitDiffsAndUpdate(bus, prev, state);
+
+	std::string full_payload, ranked_payload;
+	for (const auto &e : DrainAll(bus)) {
+		if (e.name != "client_added")
+			continue;
+		if (e.data.find("full-queue") != std::string::npos)
+			full_payload = e.data;
+		if (e.data.find("ranked") != std::string::npos)
+			ranked_payload = e.data;
+	}
+	ASSERT_TRUE(!full_payload.empty());
+	ASSERT_TRUE(full_payload.find("\"remote_queue_rank\":null") != std::string::npos);
+	// A real position is still a number.
+	ASSERT_TRUE(!ranked_payload.empty());
+	ASSERT_TRUE(ranked_payload.find("\"remote_queue_rank\":12") != std::string::npos);
+}
+
 TEST(EventDiff, ClientEventCarriesPartProgressPercent)
 {
 	CState state;
@@ -652,11 +800,12 @@ TEST(EventDiff, ClientEventCarriesPartProgressPercent)
 	ASSERT_TRUE(payload.find("\"part_progress_percent\":75") != std::string::npos);
 }
 
-TEST(EventDiff, ClientEventOmitsPartProgressPercentWithNoLinkedFile)
+TEST(EventDiff, ClientEventNullsPartProgressPercentWithNoLinkedFile)
 {
 	// A peer that only downloads FROM us has no meaningful denominator, so
-	// the field stays at its sentinel and the key is omitted -- the same rule
-	// the REST row follows. A negative percent must never reach the wire.
+	// the field is null -- the same rule the REST row follows since #1160
+	// section 1, where an unknown value is null rather than an absent key.
+	// The -1 sentinel is in-process only and must never reach the wire.
 	CState state;
 	state.MutateClients([](std::map<std::uint32_t, ClientSnapshot> &clients) {
 		ClientSnapshot c;
@@ -675,8 +824,73 @@ TEST(EventDiff, ClientEventOmitsPartProgressPercentWithNoLinkedFile)
 			payload = e.data;
 	}
 	ASSERT_TRUE(!payload.empty());
-	ASSERT_TRUE(payload.find("part_progress_percent") == std::string::npos);
+	ASSERT_TRUE(payload.find("\"part_progress_percent\":null") != std::string::npos);
 	ASSERT_TRUE(payload.find("-1") == std::string::npos);
+}
+
+// `media` is null, never absent, on a shared event whose file has no metadata.
+// The event promises key parity with the /shared row, and that row reports the
+// key unconditionally -- a subscriber diffing the two must not find `media` on
+// one side only. This drifted once already: the REST writer moved to null while
+// this one kept skipping the key, and only a live parity check caught it.
+TEST(EventDiff, SharedEventNullsMediaWithNoMetadata)
+{
+	CState state;
+	state.MutateShared([](FileMap &files) {
+		FileSnapshot f;
+		f.ecid = 12;
+		f.hash = "1212121212121212121212121212bbbb";
+		f.name = "no-metadata.bin";
+		f.size = kPartSizeBytes;
+		f.is_shared = true;
+		f.has_media = false;
+		files.emplace(f.ecid, f);
+	});
+
+	CEventBus bus;
+	LastSeenState prev;
+	EmitDiffsAndUpdate(bus, prev, state);
+
+	std::string payload;
+	for (const auto &e : DrainAll(bus)) {
+		if (e.name == "shared_added")
+			payload = e.data;
+	}
+	ASSERT_TRUE(!payload.empty());
+	ASSERT_TRUE(payload.find("\"media\":null") != std::string::npos);
+}
+
+// ...and the object itself when there is one, so the null above is the
+// no-value answer rather than the writer having lost the field.
+TEST(EventDiff, SharedEventCarriesMediaWhenPresent)
+{
+	CState state;
+	state.MutateShared([](FileMap &files) {
+		FileSnapshot f;
+		f.ecid = 13;
+		f.hash = "1313131313131313131313131313cccc";
+		f.name = "clip.mkv";
+		f.size = kPartSizeBytes;
+		f.is_shared = true;
+		f.has_media = true;
+		f.media.length_s = 5400;
+		f.media.bitrate = 1500;
+		f.media.codec = "h264";
+		files.emplace(f.ecid, f);
+	});
+
+	CEventBus bus;
+	LastSeenState prev;
+	EmitDiffsAndUpdate(bus, prev, state);
+
+	std::string payload;
+	for (const auto &e : DrainAll(bus)) {
+		if (e.name == "shared_added")
+			payload = e.data;
+	}
+	ASSERT_TRUE(!payload.empty());
+	ASSERT_TRUE(payload.find("\"media\":{\"length_s\":5400") != std::string::npos);
+	ASSERT_TRUE(payload.find("\"codec\":\"h264\"") != std::string::npos);
 }
 
 // Hashing progress on the shared side (issue #1054). amuled emits one tag kind

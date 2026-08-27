@@ -108,6 +108,38 @@ struct PrefField
 	// core serializes into [General], but the API surfaces it next to the other
 	// UPnP settings under `connection`.
 	ec_tagname_t read_group;
+	// Divisor between the EC value and the API value, when the two use
+	// different units. 0 means "same unit", which is every row but three.
+	//
+	// The core stores these three as whole minutes and its accessors
+	// multiply by 60000 on the way out (Preferences.h:
+	// `s_sourceReaskMins * 60000`), so EC carries milliseconds that are
+	// always a multiple of 60000. Exposing that verbatim meant a client
+	// writing 90000 read back 60000 and one writing 30000 read back 0 --
+	// accepted, reported as success, changed underneath. The API therefore
+	// speaks the unit the daemon can actually hold, and converts here.
+	std::uint32_t ec_scale;
+	// Inclusive lower bound for Uint16 / Uint32, checked with `max` against the
+	// value the caller sent. 0 for a row with no floor, which is most of them.
+	//
+	// `max` alone is not a domain. A core member narrower than the declared
+	// ceiling wraps, and a setter that divides truncates, so a value inside
+	// [0, max] can still be rewritten on the way in -- and three of these
+	// fields are clamped by CPreferences::LoadAllItems() at the NEXT daemon
+	// start, which no amount of read-back checking after the PATCH can see.
+	// The bound belongs here, declaratively, where it cannot race a snapshot.
+	std::uint32_t min;
+	// Granularity the core can actually store, when its setter divides. A value
+	// that is not a multiple is a 400 naming the step, rather than a silent
+	// truncation: SetFileBufferSize() is `val / 15000` into a uint8, so 20000
+	// becomes 15000 and 14999 becomes 0. 0 means the row is not quantised.
+	//
+	// Rejecting rather than renaming the field to its stored unit is deliberate
+	// and is the opposite of what #1159 chose for the three `_minutes` rows.
+	// Those quantised to a unit a user already thinks in, so the rename cost
+	// nothing; nobody thinks in 15000-byte blocks, and `file_buffer_blocks`
+	// would push an implementation detail into the API's vocabulary.
+	std::uint32_t step;
 };
 
 // EC group tag each category packs into. Two categories intentionally share

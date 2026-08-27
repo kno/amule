@@ -6,12 +6,12 @@
 import { api, bulkFailures } from "../api.js";
 import { data } from "../events.js";
 import { html, useState, useEffect, useStore } from "../dom.js";
-import { ProgressBar, Badge, listPlaceholder, Tabs, toast, confirmDialog, PRIORITIES, prioValue, prioLabel } from "../components.js";
+import { ProgressBar, Badge, checkCell, listPlaceholder, Tabs, toast, confirmDialog, PRIORITIES, prioValue, prioLabel } from "../components.js";
 import { VirtualTable, sortRows, textMatcher, useTablePrefs, ColumnPicker } from "../table.js";
 import { formatBytes, formatFreeSpace, formatSpeed } from "../format.js";
 import { Icon } from "../icons.js";
 import { t, tn, terr } from "../i18n.js";
-import { CategoriesPanel } from "./categories.js";
+import { CategoriesPanel, categoryName, categoryOptions } from "./categories.js";
 import { DownloadDetail } from "./download-detail.js";
 import { SplitDetail } from "./split-detail.js";
 
@@ -39,7 +39,7 @@ export default function Downloads({ isGuest }) {
   // Open (or toggle closed) the detail panel; ignore clicks landing on a row's
   // own controls (checkbox / priority / category / action buttons).
   const onRowClick = (d, e) => {
-    if (e.target.closest("input,select,button,a")) return;
+    if (e.target.closest("input,select,button,a,label")) return;
     setDetailHash((h) => (h === d.hash ? null : d.hash));
   };
 
@@ -48,7 +48,7 @@ export default function Downloads({ isGuest }) {
 
   useEffect(() => {
     data.register({ key: "downloads", eventPrefix: "download", id: "hash",
-      list: () => api.get("downloads?include_completed=1").then((r) => r.downloads || []) });
+      list: () => api.get("downloads?status=all").then((r) => r.downloads || []) });
     loadCategories();
     data.ensure("downloads");
   }, []);
@@ -66,12 +66,6 @@ export default function Downloads({ isGuest }) {
   useEffect(() => {
     if (detailHash && !downloads.some((d) => d.hash === detailHash)) setDetailHash(null);
   }, [downloads]);
-
-  const categoryName = (idx) => {
-    if (idx === 0) return "—"; // category 0 = no category assigned
-    const c = categories.find((c) => c.index === idx);
-    return c ? c.name : String(idx);
-  };
 
   const toggleRow = (hash, checked) => {
     const next = new Set(selection);
@@ -126,17 +120,11 @@ export default function Downloads({ isGuest }) {
   // Apply the same field change (priority/category) to every selected row.
   const bulkPatch = (patch) => runBulk((h) => api.patch("downloads", { hashes: h, ...patch }));
 
-  // Clears every completed entry, so it reports per entry: a refusal is a
-  // 207 row, not a throw.
+  // The handler clears in one EC roundtrip: every row it returns is an ok,
+  // and any refusal is a whole-request error `mutate` already reports.
   const clearCompleted = async () => {
     if (!(await confirmDialog(t("downloads_confirm_clear_completed")))) return;
-    mutate(async () => {
-      const res = await api.post("downloads_clear_completed");
-      const failed = bulkFailures(res);
-      if (failed.length)
-        toast(t("common_bulk_partial", { failed: failed.length, total: res.results.length,
-                message: terr(failed[0].error) }), "warn");
-    });
+    mutate(() => api.post("downloads_clear_completed"));
   };
   // Same endpoint scoped to one hash, for the detail panel's Clear button.
   const clearOne = (h) => mutate(() => api.post("downloads_clear_completed", { hash: h }));
@@ -160,9 +148,9 @@ export default function Downloads({ isGuest }) {
   }, [filterStatus, filterCategory, filterText]);
 
   const columns = [
-    { always: true, label: html`<input type="checkbox" title=${t("downloads_select_all")} checked=${allSelected}
-                         onChange=${(e) => toggleAll(e.target.checked)} />`, width: "40px",
-      cell: (d) => html`<input type="checkbox" checked=${selection.has(d.hash)} onChange=${(e) => toggleRow(d.hash, e.target.checked)} />` },
+    { always: true, cls: "check", width: "40px",
+      label: checkCell(allSelected, toggleAll, t("downloads_select_all")),
+      cell: (d) => checkCell(selection.has(d.hash), (v) => toggleRow(d.hash, v)) },
     { key: "name", always: true, label: t("downloads_name"), cls: "name", sortable: true,
       sortVal: (d) => (d.name || "").toLowerCase(),
       cell: (d) => html`<span title=${d.name}>${d.name}</span>` },
@@ -189,14 +177,13 @@ export default function Downloads({ isGuest }) {
               ${PRIORITIES.map(([v, l]) => html`<option value=${v}>${v === "auto" && d.priority_auto ? prioLabel(d) : l}</option>`)}
             </select>` },
     { key: "category", label: t("downloads_category"), width: "150px", sortable: true,
-      sortVal: (d) => categoryName(d.category).toLowerCase(),
+      sortVal: (d) => categoryName(categories, d.category).toLowerCase(),
       cell: (d) => isGuest
-        ? categoryName(d.category)
+        ? categoryName(categories, d.category)
         : html`
             <select class="input input-sm admin-only" value=${d.category}
                     onChange=${(e) => setCategory(d.hash, Number(e.target.value))}>
-              <option value=${0}>${t("downloads_category_none")}</option>
-              ${categories.filter((c) => c.index !== 0).map((c) => html`<option value=${c.index}>${c.name || ("#" + c.index)}</option>`)}
+              ${categoryOptions(categories)}
             </select>` },
     { key: "actions", label: t("downloads_actions"), cls: "row-actions admin-only", width: "90px", cell: (d) => {
         const inactive = d.status === "paused" || d.status === "stopped";
@@ -267,8 +254,7 @@ export default function Downloads({ isGuest }) {
           <select class="input input-sm" value=""
                   onChange=${(e) => { const v = e.target.value; e.target.value = ""; if (v !== "") bulkPatch({ category: Number(v) }); }}>
             <option value="">${t("downloads_category")}…</option>
-            <option value=${0}>${t("downloads_category_none")}</option>
-            ${categories.filter((c) => c.index !== 0).map((c) => html`<option value=${c.index}>${c.name || ("#" + c.index)}</option>`)}
+            ${categoryOptions(categories)}
           </select>
           <span class="selected-count">${t("downloads_selected")} ${selectedCount}</span>
         </div>

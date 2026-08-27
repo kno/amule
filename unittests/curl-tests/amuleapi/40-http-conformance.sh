@@ -76,7 +76,7 @@ _has_hdr() {
 }
 
 if ! command -v jq >/dev/null 2>&1; then _die "jq is required."; fi
-if ! curl -s -o /dev/null --max-time 2 "$HOST/api/v0/version" 2>/dev/null; then
+if ! curl -s -o /dev/null --max-time 2 "$HOST/api/v0/health" 2>/dev/null; then
 	_die "amuleapi at $HOST is not reachable. Start it first."
 fi
 
@@ -193,10 +193,15 @@ _qp() {
 		"${AUTH[@]}" "$HOST/api/v0/$1")" "$3"
 }
 
-# Booleans: one vocabulary, and anything outside it is answerable.
-_qp "downloads?include_completed=1"     200 "include_completed=1 -> 200"
-_qp "downloads?include_completed=false" 200 "include_completed=false -> 200"
-_qp "downloads?include_completed=maybe" 400 "include_completed=maybe -> 400 (was a silent false)"
+# Enumerations: one vocabulary, and anything outside it is answerable.
+_qp "downloads?status=active"    200 "status=active -> 200"
+_qp "downloads?status=all"       200 "status=all -> 200"
+_qp "downloads?status=completed" 200 "status=completed -> 200"
+_qp "downloads?status=maybe"     400 "status=maybe -> 400, not a silent default"
+
+# The boolean `status` replaced is refused, not ignored: a caller left on the
+# old spelling is told so instead of silently getting the default slice.
+_qp "downloads?include_completed=1" 400 "include_completed=1 -> 400 (replaced by status=)"
 
 # Counts: garbage and out-of-range are the same answer.
 _qp "downloads?limit=abc"   400 "limit=abc -> 400"
@@ -444,8 +449,8 @@ curl -s -o "$BODY_FILE" -D "$HDR_FILE" --max-time 10 \
 ALLOW_DIRS=$(_hdr Allow)
 for m in GET HEAD POST PUT DELETE; do
 	case "$ALLOW_DIRS" in
-	*"$m"*) _pass "Allow on /shared/directories names $m" ;;
-	*) _fail "Allow on /shared/directories names $m" "got [$ALLOW_DIRS]" ;;
+	*"$m"*) _pass "Allow on /share_directories names $m" ;;
+	*) _fail "Allow on /share_directories names $m" "got [$ALLOW_DIRS]" ;;
 	esac
 done
 
@@ -904,7 +909,7 @@ done
 
 # ...and an unauthenticated public probe stays cacheable, or it loses the
 # conditional GET the ETag exists for.
-curl -s -o /dev/null -D "$HDR_FILE" --max-time 10 "$HOST/api/v0/version" >/dev/null
+curl -s -o /dev/null -D "$HDR_FILE" --max-time 10 "$HOST/api/v0/health" >/dev/null
 if [ -z "$(_hdr Cache-Control)" ]; then
 	_pass "an unauthenticated probe is left cacheable"
 else

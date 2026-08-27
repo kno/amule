@@ -58,7 +58,7 @@ _fail() {
 }
 
 if ! command -v jq >/dev/null 2>&1; then _die "jq is required."; fi
-if ! curl -s -o /dev/null --max-time 2 "$HOST/api/v0/version" 2>/dev/null; then
+if ! curl -s -o /dev/null --max-time 2 "$HOST/api/v0/health" 2>/dev/null; then
 	_die "amuleapi at $HOST is not reachable."
 fi
 
@@ -115,7 +115,7 @@ sleep 1
 echo "    info: POST Ubuntu ISO..."
 curl -s -X POST -H "Authorization: Bearer $ADMIN_TOKEN" \
 	-H "Content-Type: application/json" \
-	-d "{\"ed2k_link\":\"$TEST_LINK\"}" \
+	-d "{\"links\":[\"$TEST_LINK\"]}" \
 	"$HOST/api/v0/downloads" > /dev/null
 
 # Wait for the download_added event. Poll the stream file every
@@ -240,7 +240,7 @@ sleep 2
 # Add ISO again — emit download_added.
 curl -s -X POST -H "Authorization: Bearer $ADMIN_TOKEN" \
 	-H "Content-Type: application/json" \
-	-d "{\"ed2k_link\":\"$TEST_LINK\"}" \
+	-d "{\"links\":[\"$TEST_LINK\"]}" \
 	"$HOST/api/v0/downloads" > /dev/null
 sleep 5
 # Then delete to clean up.
@@ -445,7 +445,9 @@ CLIENT_JSON=$(grep -A2 -E "^event: client_(added|updated)$" "$SSE_OUT" \
 	| grep "^data: " | sed 's/^data: //' | head -1)
 if [ -n "$CLIENT_JSON" ]; then
 	if echo "$CLIENT_JSON" | jq -e \
-		'(.source_origin|type=="string") and (.available_parts|type=="number")
+		'(.source_origin|type=="string")
+		 and has("available_parts")
+		 and ((.available_parts|type)=="number" or (.available_parts|type)=="null")
 		 and (.mod_version|type=="string") and (.view_shared_disabled|type=="boolean")' \
 		>/dev/null 2>&1; then
 		_pass "client_added/updated carries the promoted peer fields (#984)"
@@ -458,11 +460,12 @@ if [ -n "$CLIENT_JSON" ]; then
 		_fail "client payload parts bitmap" "SSE must never carry parts: $CLIENT_JSON"
 	fi
 	if echo "$CLIENT_JSON" | jq -e \
-		'(has("part_progress_percent") | not) or (.part_progress_percent|type=="number")' \
+		'has("part_progress_percent")
+		 and ((.part_progress_percent|type)=="number" or (.part_progress_percent|type)=="null")' \
 		>/dev/null 2>&1; then
-		_pass "client_added/updated part_progress_percent is numeric when present"
+		_pass "client_added/updated part_progress_percent is present, number or null"
 	else
-		_fail "client payload part_progress_percent" "not numeric in: $CLIENT_JSON"
+		_fail "client payload part_progress_percent" "absent or wrong type in: $CLIENT_JSON"
 	fi
 else
 	_pass "no client frame this run (no peer changed; shape asserted when one fires)"

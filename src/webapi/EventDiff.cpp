@@ -183,12 +183,19 @@ std::string ToJsonSharedEvent(const FileSnapshot &f)
 	// otherwise invisible to a subscriber: the refresh endpoints answer 202
 	// with no result, so this is how a client learns a probe landed. Six
 	// small scalars, unlike the per-part arrays the list endpoints omit.
+	//
+	// null rather than absent when the file has none, matching the REST row
+	// this event promises key parity with -- a subscriber diffing the two
+	// must not find a key on one side only.
+	o << ",\"media\":";
 	if (f.has_media) {
-		o << ",\"media\":{\"length_s\":" << f.media.length_s << ",\"bitrate\":" << f.media.bitrate
+		o << "{\"length_s\":" << f.media.length_s << ",\"bitrate\":" << f.media.bitrate
 		  << ",\"codec\":\"" << EscJson(f.media.codec) << "\""
 		  << ",\"artist\":\"" << EscJson(f.media.artist) << "\""
 		  << ",\"album\":\"" << EscJson(f.media.album) << "\""
 		  << ",\"title\":\"" << EscJson(f.media.title) << "\"}";
+	} else {
+		o << "null";
 	}
 	o << "}";
 	return o.str();
@@ -251,23 +258,26 @@ std::string ToJson(const ClientSnapshot &c)
 	  << ",\"up_total\":" << c.xfer_up_total << ",\"down_total\":" << c.xfer_down_total << "}"
 	  << ",\"upload_speed_bps\":" << c.upload_speed_bps
 	  << ",\"download_speed_bps\":" << c.download_speed_bps
-	  << ",\"queue_waiting_position\":" << c.queue_waiting_position
-	  << ",\"remote_queue_rank\":" << c.remote_queue_rank << ",\"score\":" << c.score
-	  << ",\"obfuscation_status\":\"" << EscJson(c.obfuscation_status) << "\""
+	  << ",\"queue_waiting_position\":" << c.queue_waiting_position << ",\"remote_queue_rank\":"
+	  << (c.remote_queue_rank == kRemoteQueueFullSentinel ? std::string("null")
+							      : std::to_string(c.remote_queue_rank))
+	  << ",\"score\":" << c.score << ",\"obfuscation_status\":\"" << EscJson(c.obfuscation_status) << "\""
 	  << ",\"friend_slot\":" << (c.friend_slot ? "true" : "false") << ",\"source_origin\":\""
 	  << EscJson(c.source_origin) << "\""
-	  << ",\"available_parts\":" << c.available_parts << ",\"mod_version\":\"" << EscJson(c.mod_version)
-	  << "\""
+	  << ",\"available_parts\":"
+	  << (c.has_available_parts ? std::to_string(c.available_parts) : std::string("null"))
+	  << ",\"mod_version\":\"" << EscJson(c.mod_version) << "\""
 	  << ",\"view_shared_disabled\":" << (c.view_shared_disabled ? "true" : "false");
-	// Omitted, not sent as the negative sentinel, exactly as the REST row
-	// does it: the field only exists for a peer we are downloading from.
-	// Formatted through the shared writer, not `<<`: the stream default is 6
+	// null, not omitted, matching the REST row: the field only means
+	// something for a peer we are downloading from, and -1 is the
+	// in-process sentinel that must never reach the wire. Formatted
+	// through the shared writer rather than `<<`: the stream default is 6
 	// significant digits (so SSE read 33.3333 where REST read
 	// 33.333333333333336) and it honours LC_NUMERIC, which on an it/de/fr
 	// locale would emit a comma and break the frame's JSON outright.
-	if (c.part_progress_percent >= 0.0) {
-		o << ",\"part_progress_percent\":" << JsonDoubleToString(c.part_progress_percent);
-	}
+	o << ",\"part_progress_percent\":"
+	  << (c.part_progress_percent >= 0.0 ? JsonDoubleToString(c.part_progress_percent)
+					     : std::string("null"));
 	o << "}";
 	return o.str();
 }
@@ -296,7 +306,7 @@ std::string ToJsonStatusEvent(const StatusSnapshot &s, const KadSnapshot &k, boo
 	o << "{"
 	  << "\"ec_connected\":" << (ec_connected ? "true" : "false") << ",\"ed2k\":{"
 	  << "\"state\":\"" << EscJson(s.ed2k_state) << "\""
-	  << ",\"high_id\":" << (s.ed2k_high_id ? "true" : "false") << ",\"id\":" << s.ed2k_id
+	  << ",\"high_id\":" << (s.ed2k_high_id ? "true" : "false") << ",\"user_id\":" << s.ed2k_user_id
 	  << ",\"public_ip\":\"" << EscJson(s.ed2k_public_ip) << "\""
 	  << ",\"connected_since\":" << s.ed2k_connected_since << ",\"server_name\":\""
 	  << EscJson(s.server_name) << "\""
@@ -305,7 +315,7 @@ std::string ToJsonStatusEvent(const StatusSnapshot &s, const KadSnapshot &k, boo
 	  << "\"users\":" << s.ed2k_users << ",\"files\":" << s.ed2k_files << "}}"
 	  << ",\"kad\":{"
 	  << "\"state\":\"" << EscJson(s.kad_state) << "\""
-	  << ",\"firewalled\":" << (s.kad_firewalled ? "true" : "false")
+	  << ",\"firewalled_tcp\":" << (s.kad_firewalled_tcp ? "true" : "false")
 	  << ",\"connected_since\":" << s.kad_connected_since << ",\"network\":{"
 	  << "\"users\":" << k.users << ",\"files\":" << k.files << ",\"nodes\":" << k.nodes << "}"
 	  << "}"
@@ -443,7 +453,10 @@ bool Equal(const ClientSnapshot &a, const ClientSnapshot &b)
 	       a.remote_queue_rank == b.remote_queue_rank && a.score == b.score &&
 	       a.obfuscation_status == b.obfuscation_status && a.friend_slot == b.friend_slot &&
 	       a.source_origin == b.source_origin && a.available_parts == b.available_parts &&
-	       a.mod_version == b.mod_version && a.view_shared_disabled == b.view_shared_disabled &&
+	       // Without the flag, null -> 0 (the part map arriving and reporting
+	       // zero) compares equal and the row never updates.
+	       a.has_available_parts == b.has_available_parts && a.mod_version == b.mod_version &&
+	       a.view_shared_disabled == b.view_shared_disabled &&
 	       // Derived from available_parts and the linked file's part count,
 	       // so it normally moves only when a compared field does. The case
 	       // that needs it in its own right is the file going away: the
@@ -453,14 +466,15 @@ bool Equal(const ClientSnapshot &a, const ClientSnapshot &b)
 }
 bool Equal(const StatusSnapshot &a, const StatusSnapshot &b)
 {
-	// public_ip is derived from ed2k_id, so comparing the id covers it.
+	// public_ip is derived from ed2k_user_id, so comparing the id covers it.
 	return a.ed2k_state == b.ed2k_state && a.kad_state == b.kad_state &&
-	       a.ed2k_high_id == b.ed2k_high_id && a.ed2k_id == b.ed2k_id &&
+	       a.ed2k_high_id == b.ed2k_high_id && a.ed2k_user_id == b.ed2k_user_id &&
 	       a.ed2k_connected_since == b.ed2k_connected_since &&
-	       a.kad_connected_since == b.kad_connected_since && a.kad_firewalled == b.kad_firewalled &&
-	       a.server_name == b.server_name && a.server_ip == b.server_ip &&
-	       a.server_port == b.server_port && a.download_bps == b.download_bps &&
-	       a.upload_bps == b.upload_bps && a.download_overhead_bps == b.download_overhead_bps &&
+	       a.kad_connected_since == b.kad_connected_since &&
+	       a.kad_firewalled_tcp == b.kad_firewalled_tcp && a.server_name == b.server_name &&
+	       a.server_ip == b.server_ip && a.server_port == b.server_port &&
+	       a.download_bps == b.download_bps && a.upload_bps == b.upload_bps &&
+	       a.download_overhead_bps == b.download_overhead_bps &&
 	       a.upload_overhead_bps == b.upload_overhead_bps && a.temp_free_bytes == b.temp_free_bytes &&
 	       a.incoming_free_bytes == b.incoming_free_bytes && a.ul_queue_len == b.ul_queue_len &&
 	       a.total_src_count == b.total_src_count && a.ed2k_users == b.ed2k_users &&

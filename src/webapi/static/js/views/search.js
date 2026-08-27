@@ -5,11 +5,12 @@
 
 import { api } from "../api.js";
 import { html, useState, useEffect, useStore } from "../dom.js";
-import { Badge, Placeholder, listPlaceholder, Tabs, CommentsList, ratingLabel, toast } from "../components.js";
+import { Badge, checkCell, listPlaceholder, Tabs, CommentsList, ratingLabel, toast } from "../components.js";
 import { VirtualTable, sortRows, textMatcher, useTablePrefs, ColumnPicker } from "../table.js";
 import { formatBytes, formatDuration, formatInt } from "../format.js";
 import { Icon } from "../icons.js";
 import { searches } from "../searches.js";
+import { categoryOptions } from "./categories.js";
 import { t, tn, terr } from "../i18n.js";
 
 const SIZE_UNITS = { B: 1, KiB: 1024, MiB: 1048576, GiB: 1073741824 };
@@ -117,6 +118,7 @@ export default function Search({ isGuest }) {
       ${isGuest ? html`<p class="hint">${t("search_guest_readonly")}</p>` : null}
     </form>
 
+    ${active ? html`
     <section class="net-pane pane-fill">
       <${Tabs} cls="search-tabs" tabs=${tabItems} active=${String(reg.activeId)}
                onSelect=${(k) => searches.setActive(Number(k))}
@@ -125,11 +127,9 @@ export default function Search({ isGuest }) {
                  <button class="btn btn-sm admin-only" type="button"
                          onClick=${() => searches.closeAll()}>${t("search_close_all")}</button>` : null} />
       <div class="net-pane-body">
-        ${active
-          ? html`<${ResultsPane} key=${active.id} tab=${active} categories=${categories} />`
-          : html`<${Placeholder} kind="info">${t("search_no_tabs")}<//>`}
+        <${ResultsPane} key=${active.id} tab=${active} categories=${categories} />
       </div>
-    </section>
+    </section>` : null}
     </div>`;
 }
 
@@ -223,14 +223,10 @@ function ResultsPane({ tab, categories }) {
     catch (e) { toast(terr(e) || t("search_error"), "error"); }
   };
 
-  const catOptions = () => html`
-    <option value=${0}>${t("search_category_none")}</option>
-    ${categories.filter((c) => c.index !== 0).map((c) => html`<option value=${c.index}>${c.name || ("#" + c.index)}</option>`)}`;
-
   const columns = [
-    { always: true, label: html`<input type="checkbox" title=${t("search_select_all")} checked=${allSelected}
-                         onChange=${(e) => toggleAll(e.target.checked)} />`, width: "40px",
-      cell: (r) => html`<input type="checkbox" checked=${ui.selection.has(r.hash)} onChange=${(e) => toggleRow(r.hash, e.target.checked)} />` },
+    { always: true, cls: "check", width: "40px",
+      label: checkCell(allSelected, toggleAll, t("search_select_all")),
+      cell: (r) => checkCell(ui.selection.has(r.hash), (v) => toggleRow(r.hash, v)) },
     { key: "name", always: true, label: t("search_name"), cls: "name", sortable: true,
       sortVal: (r) => (r.name || "").toLowerCase(),
       // already_have is signalled by the row background (.row-have), not a badge.
@@ -294,7 +290,7 @@ function ResultsPane({ tab, categories }) {
         <span class="admin-only">
           <select class="input input-sm" value=${catFor(r.hash)}
                   onChange=${(e) => setUi({ rowCat: { ...ui.rowCat, [r.hash]: Number(e.target.value) } })}>
-            ${catOptions()}
+            ${categoryOptions(categories)}
           </select>
           <button class="btn btn-icon btn-sm" type="button" title=${t("search_download")} onClick=${() => downloadOne(r.hash)}>
             <${Icon} name="downloads" />
@@ -332,7 +328,7 @@ function ResultsPane({ tab, categories }) {
     <div class="toolbar pane-toolbar">
       <select class="input input-sm admin-only" value=${Number(ui.cat) || 0}
               onChange=${(e) => setUi({ cat: Number(e.target.value) })}>
-        ${catOptions()}
+        ${categoryOptions(categories)}
       </select>
       <button class="btn btn-sm admin-only" type="button" onClick=${downloadSelected}>${t("search_download")}</button>
       <button class="btn btn-sm admin-only" type="button" onClick=${relatedSearch}

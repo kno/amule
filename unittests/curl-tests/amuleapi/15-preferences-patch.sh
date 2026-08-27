@@ -76,7 +76,7 @@ _assert_json_eq() {
 }
 
 if ! command -v jq >/dev/null 2>&1; then _die "jq is required."; fi
-if ! curl -s -o /dev/null --max-time 2 "$HOST/api/v0/version" 2>/dev/null; then
+if ! curl -s -o /dev/null --max-time 2 "$HOST/api/v0/health" 2>/dev/null; then
 	_die "amuleapi at $HOST is not reachable."
 fi
 
@@ -174,10 +174,30 @@ _curl -X PATCH -H "Authorization: Bearer $ADMIN_TOKEN" \
 	-d '{"connection":{"max_upload_kbps":"forty-two"}}' "$HOST/api/v0/preferences"
 _assert_status 400 "PATCH max_upload_kbps as string → 400"
 
+# Saved because the 65532 probe below is a real write: leaving the daemon's
+# ed2k port on the ceiling would outlive the script.
+_curl -H "Authorization: Bearer $ADMIN_TOKEN" "$HOST/api/v0/preferences"
+SAVED_TCPPORT=$(printf '%s' "$CURL_BODY" | jq -r '.connection.tcp_port')
+
 _curl -X PATCH -H "Authorization: Bearer $ADMIN_TOKEN" \
 	-H "Content-Type: application/json" \
 	-d '{"connection":{"tcp_port":99999}}' "$HOST/api/v0/preferences"
-_assert_status 400 "PATCH tcp_port out of range (>65535) → 400"
+_assert_status 400 "PATCH tcp_port out of range (>65532) → 400"
+
+# 65533..65535 parse as a port but the core cannot use them: SetPort()
+# substitutes DEFAULT_TCP_PORT when val + 3 exceeds 65535, because the server
+# UDP socket is TCP+3. A 200 here meant the daemon listened on 4662 instead
+# (#1174).
+_curl -X PATCH -H "Authorization: Bearer $ADMIN_TOKEN" \
+	-H "Content-Type: application/json" \
+	-d '{"connection":{"tcp_port":65534}}' "$HOST/api/v0/preferences"
+_assert_status 400 "PATCH tcp_port=65534 → 400 (TCP+3 would overflow)"
+_curl -X PATCH -H "Authorization: Bearer $ADMIN_TOKEN" \
+	-H "Content-Type: application/json" \
+	-d '{"connection":{"tcp_port":65532}}' "$HOST/api/v0/preferences"
+_assert_status 200 "PATCH tcp_port=65532 → 200 (the real ceiling)"
+_curl -H "Authorization: Bearer $ADMIN_TOKEN" "$HOST/api/v0/preferences"
+_assert_json_eq '.connection.tcp_port' 65532 "tcp_port=65532 reads back unchanged"
 
 _curl -X PATCH -H "Authorization: Bearer $ADMIN_TOKEN" \
 	-H "Content-Type: application/json" \
@@ -252,6 +272,8 @@ SAVED_FFPROBE=$(printf '%s' "$CURL_BODY" | jq -r '.files.ffprobe_path')
 SAVED_PARANOID=$(printf '%s' "$CURL_BODY" | jq -r '.security.reject_spoofed_source_ips')
 SAVED_OSFREQ=$(printf '%s' "$CURL_BODY" | jq -r '.online_signature.update_frequency_seconds')
 SAVED_IFACE=$(printf '%s' "$CURL_BODY" | jq -r '.connection.bind_interface')
+SAVED_KADREASK=$(printf '%s' "$CURL_BODY" | jq -r '.core_tweaks.kad_reask_minutes')
+SAVED_SRCREASK=$(printf '%s' "$CURL_BODY" | jq -r '.core_tweaks.source_reask_minutes')
 
 # Round-trip a bool (files) + string (files) + bool (security) + int (onlinesig)
 # + string (connection.bind_interface).
@@ -476,6 +498,157 @@ _assert_json_eq '.connection.max_upload_kbps' "$SAVED_MAX_UPLOAD" \
 	'restored max_upload_kbps to saved value'
 _assert_json_eq '.connection.autoconnect' "$SAVED_AUTOCONNECT" \
 	'restored autoconnect to saved value'
+
+# --- core_tweaks intervals round-trip exactly (#1159 section 5). ---------
+#
+# The core stores whole minutes and its accessors multiply by 60000, so EC
+# carries milliseconds that are always a multiple of 60000. The API used to
+# expose that raw: a client writing 90000 read back 60000, and one writing
+# 30000 read back 0 -- accepted, reported as success, changed underneath. The
+# fields speak minutes now, so what goes in comes back.
+# The probe values sit INSIDE each field's supported range and are not the
+# range's own endpoints, so they prove the value is carried rather than snapped
+# to a bound: LoadAllItems() clamps kad_reask to 30..60 and source_reask to
+# 15..60 at the next daemon start, and 7 -- what this loop used to send -- is
+# below both (#1174).
+for FIELD_PROBE in "kad_reask_minutes 31" "source_reask_minutes 16"; do
+	set -- $FIELD_PROBE
+	FIELD=$1
+	VALUE=$2
+	_curl -X PATCH -H "Authorization: Bearer $ADMIN_TOKEN" \
+		-H "Content-Type: application/json" \
+		-d "{\"core_tweaks\":{\"$FIELD\":$VALUE}}" "$HOST/api/v0/preferences"
+	_assert_status 200 "PATCH core_tweaks.$FIELD=$VALUE -> 200"
+	_curl -H "Authorization: Bearer $ADMIN_TOKEN" "$HOST/api/v0/preferences"
+	_assert_json_eq ".core_tweaks.$FIELD" "$VALUE" "core_tweaks.$FIELD reads back what was written"
+done
+
+# One minute used to be a 200 that the daemon threw away at the next start --
+# LoadAllItems() clamps this field up to 30. The old assertion here checked the
+# right property (a small value is not truncated to 0 by the ms->minutes
+# conversion) with a probe outside the core's range, so it passed on a value
+# the daemon would not keep. Below the floor is a 400 now (#1174).
+_curl -X PATCH -H "Authorization: Bearer $ADMIN_TOKEN" \
+	-H "Content-Type: application/json" \
+	-d '{"core_tweaks":{"kad_reask_minutes":1}}' "$HOST/api/v0/preferences"
+_assert_status 400 "PATCH core_tweaks.kad_reask_minutes=1 -> 400 (below the 30 floor)"
+_curl -H "Authorization: Bearer $ADMIN_TOKEN" "$HOST/api/v0/preferences"
+_assert_json_eq '.core_tweaks.kad_reask_minutes' 31 "the rejected write left the previous value alone"
+
+# --- online_signature.update_frequency_seconds is bounded (#1159 section 4).
+#
+# The schema declared the full uint32 range while CPreferences::SetOSUpdate
+# takes a uint16, so anything above 65535 wrapped on the way in: 86400 (daily)
+# became 20864, the PATCH reported success, and the following GET showed the
+# rewritten value. A rejected write is recoverable; a silently rewritten one is
+# not, because the client has no way to know it happened.
+_curl -X PATCH -H "Authorization: Bearer $ADMIN_TOKEN" \
+	-H "Content-Type: application/json" \
+	-d '{"online_signature":{"update_frequency_seconds":86400}}' \
+	"$HOST/api/v0/preferences"
+_assert_status 400 "PATCH online_signature.update_frequency_seconds=86400 -> 400 (would wrap to 20864)"
+
+# The boundary itself is still accepted.
+_curl -X PATCH -H "Authorization: Bearer $ADMIN_TOKEN" \
+	-H "Content-Type: application/json" \
+	-d '{"online_signature":{"update_frequency_seconds":65535}}' \
+	"$HOST/api/v0/preferences"
+_assert_status 200 "PATCH online_signature.update_frequency_seconds=65535 -> 200"
+
+# Saved before the boundary sweep below, which leaves every field it touches on
+# an endpoint. Restored with the rest at the end of the file.
+_curl -H "Authorization: Bearer $ADMIN_TOKEN" "$HOST/api/v0/preferences"
+SAVED_FILEBUF=$(printf '%s' "$CURL_BODY" | jq -r '.core_tweaks.file_buffer_bytes')
+SAVED_ULQUEUE=$(printf '%s' "$CURL_BODY" | jq -r '.core_tweaks.max_upload_queue_clients')
+SAVED_CONN5=$(printf '%s' "$CURL_BODY" | jq -r '.core_tweaks.max_new_connections_per_5s')
+SAVED_KADSEARCH=$(printf '%s' "$CURL_BODY" | jq -r '.core_tweaks.kad_max_source_searches')
+SAVED_MAXUL=$(printf '%s' "$CURL_BODY" | jq -r '.connection.max_upload_kbps')
+SAVED_MAXDL=$(printf '%s' "$CURL_BODY" | jq -r '.connection.max_download_kbps')
+
+# --- #1174: every numeric domain that is narrower than its type. ---
+#
+# Each row was measured against a live daemon before the bounds landed: the
+# write was a 200 and the value came back changed, by integer division, by a
+# uint8/uint16 wrap, or by a clamp that does not run until the next start.
+# Appended at the end of the file on purpose -- the sections here share one
+# daemon, and these leave preferences at their boundary values.
+#
+# reject: the value, and what the daemon used to turn it into.
+for CASE in \
+	"core_tweaks file_buffer_bytes 4000000 150000_uint8_wrap" \
+	"core_tweaks file_buffer_bytes 14999 0_divided_away" \
+	"core_tweaks file_buffer_bytes 20000 15000_truncated_to_the_step" \
+	"core_tweaks max_upload_queue_clients 30000 4400_uint8_wrap" \
+	"core_tweaks max_upload_queue_clients 250 200_truncated_to_the_step" \
+	"core_tweaks max_new_connections_per_5s 70000 4464_uint16_wrap" \
+	"core_tweaks kad_max_source_searches 100000 34464_uint16_wrap" \
+	"core_tweaks kad_max_source_searches 1 5_clamped_at_next_start" \
+	"core_tweaks source_reask_minutes 7 15_clamped_at_next_start" \
+	; do
+	set -- $CASE
+	_curl -X PATCH -H "Authorization: Bearer $ADMIN_TOKEN" \
+		-H "Content-Type: application/json" \
+		-d "{\"$1\":{\"$2\":$3}}" "$HOST/api/v0/preferences"
+	_assert_status 400 "PATCH $1.$2=$3 -> 400 (was silently $4)"
+done
+
+# accept: the domain's own endpoints, which must round-trip untouched. A bound
+# that rejects its own boundary is the failure mode this half guards.
+for CASE in \
+	"core_tweaks file_buffer_bytes 3825000" \
+	"core_tweaks file_buffer_bytes 15000" \
+	"core_tweaks file_buffer_bytes 0" \
+	"core_tweaks max_upload_queue_clients 25500" \
+	"core_tweaks max_upload_queue_clients 100" \
+	"core_tweaks max_new_connections_per_5s 65535" \
+	"core_tweaks kad_max_source_searches 5" \
+	"core_tweaks kad_max_source_searches 50" \
+	"core_tweaks source_reask_minutes 15" \
+	"core_tweaks source_reask_minutes 60" \
+	"core_tweaks kad_reask_minutes 30" \
+	"core_tweaks kad_reask_minutes 60" \
+	; do
+	set -- $CASE
+	_curl -X PATCH -H "Authorization: Bearer $ADMIN_TOKEN" \
+		-H "Content-Type: application/json" \
+		-d "{\"$1\":{\"$2\":$3}}" "$HOST/api/v0/preferences"
+	_assert_status 200 "PATCH $1.$2=$3 -> 200 (domain boundary)"
+	_curl -H "Authorization: Bearer $ADMIN_TOKEN" "$HOST/api/v0/preferences"
+	_assert_json_eq ".$1.$2" "$3" "$1.$2=$3 reads back unchanged"
+done
+
+# The cross-field rewrite is documented rather than rejected: a low upload cap
+# forces the download cap to 3x (below 4 kB/s) or 4x (below 10). Asserted so
+# the documented behaviour has a test, and so a future change to CheckUlDlRatio
+# cannot alter it silently.
+_curl -X PATCH -H "Authorization: Bearer $ADMIN_TOKEN" \
+	-H "Content-Type: application/json" \
+	-d '{"connection":{"max_upload_kbps":3,"max_download_kbps":100}}' \
+	"$HOST/api/v0/preferences"
+_assert_status 200 "PATCH max_upload_kbps=3 -> 200"
+_assert_json_eq '.connection.max_download_kbps' 9 \
+	"a sub-4 kB/s upload cap forces max_download_kbps to 3x, echoed in the PATCH reply"
+# --- Restore what the two #1159 probes above changed. --------------
+#
+# Section 6 restores before those probes run, so the last writes of the script
+# used to be its own probe values -- 7 and 1 minutes and a 65535-second
+# online-signature interval, left on whatever daemon the suite was pointed at.
+# This has to stay the last mutation in the file.
+_curl -X PATCH -H "Authorization: Bearer $ADMIN_TOKEN" \
+	-H "Content-Type: application/json" \
+	-d "{\"core_tweaks\":{\"kad_reask_minutes\":$SAVED_KADREASK,\"source_reask_minutes\":$SAVED_SRCREASK,\"file_buffer_bytes\":$SAVED_FILEBUF,\"max_upload_queue_clients\":$SAVED_ULQUEUE,\"max_new_connections_per_5s\":$SAVED_CONN5,\"kad_max_source_searches\":$SAVED_KADSEARCH},\"connection\":{\"tcp_port\":$SAVED_TCPPORT,\"max_upload_kbps\":$SAVED_MAXUL,\"max_download_kbps\":$SAVED_MAXDL},\"online_signature\":{\"update_frequency_seconds\":$SAVED_OSFREQ}}" \
+	"$HOST/api/v0/preferences"
+_assert_status 200 "PATCH (restore core_tweaks + connection + onlinesig) -> 200"
+_curl -H "Authorization: Bearer $ADMIN_TOKEN" "$HOST/api/v0/preferences"
+_assert_json_eq '.connection.tcp_port' "$SAVED_TCPPORT" \
+	'restored connection.tcp_port to the saved value'
+_curl -H "Authorization: Bearer $ADMIN_TOKEN" "$HOST/api/v0/preferences"
+_assert_json_eq '.core_tweaks.kad_reask_minutes' "$SAVED_KADREASK" \
+	'restored core_tweaks.kad_reask_minutes to the saved value'
+_assert_json_eq '.core_tweaks.source_reask_minutes' "$SAVED_SRCREASK" \
+	'restored core_tweaks.source_reask_minutes to the saved value'
+_assert_json_eq '.online_signature.update_frequency_seconds' "$SAVED_OSFREQ" \
+	'restored online_signature.update_frequency_seconds to the saved value'
 
 # --- Summary. -----------------------------------------------------
 echo

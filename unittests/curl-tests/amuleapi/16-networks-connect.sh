@@ -16,7 +16,10 @@
 #       body: {nodes_url: "https://.../nodes.dat"}
 #
 # amuled's CONNECT/DISCONNECT return EC_OP_STRINGS with status
-# messages — the handler relays those into `response.message`.
+# messages — the handler relays those into `response.message`. That
+# message is the whole body: `ok` was dropped because the status code
+# already carried it, while the daemon's own explanation of what it did
+# is not recoverable from any later read.
 
 set -u
 set -o pipefail
@@ -71,7 +74,7 @@ _assert_json_eq() {
 }
 
 if ! command -v jq >/dev/null 2>&1; then _die "jq is required."; fi
-if ! curl -s -o /dev/null --max-time 2 "$HOST/api/v0/version" 2>/dev/null; then
+if ! curl -s -o /dev/null --max-time 2 "$HOST/api/v0/health" 2>/dev/null; then
 	_die "amuleapi at $HOST is not reachable."
 fi
 
@@ -102,13 +105,13 @@ fi
 _curl -X POST -H "Authorization: Bearer $ADMIN_TOKEN" \
 	"$HOST/api/v0/networks/disconnect"
 _assert_status 200 "POST /networks/disconnect → 200"
-_assert_json_eq '.ok' true 'disconnect response.ok==true'
+_assert_json_eq '. | has("ok")' false 'disconnect response has no constant ok field'
 
 # --- 3. networks/connect → 202 + message. --------------------------
 _curl -X POST -H "Authorization: Bearer $ADMIN_TOKEN" \
 	"$HOST/api/v0/networks/connect"
 _assert_status 202 "POST /networks/connect → 202"
-_assert_json_eq '.ok' true 'connect response.ok==true'
+_assert_json_eq '. | has("ok")' false 'connect response has no constant ok field'
 _assert_json_eq '.message | type' string 'connect response carries .message'
 
 # --- 4. networks/{disconnect,connect} (Kad-only via selector). ----
@@ -119,14 +122,16 @@ _curl -X POST -H "Authorization: Bearer $ADMIN_TOKEN" \
 	-d '{"network":"kad"}' \
 	"$HOST/api/v0/networks/disconnect"
 _assert_status 200 "POST /networks/disconnect {network:kad} → 200"
-_assert_json_eq '.ok' true 'networks/disconnect(kad) response.ok==true'
+_assert_json_eq '. | has("ok")' false \
+	'networks/disconnect(kad) response has no constant ok field'
 
 _curl -X POST -H "Authorization: Bearer $ADMIN_TOKEN" \
 	-H "Content-Type: application/json" \
 	-d '{"network":"kad"}' \
 	"$HOST/api/v0/networks/connect"
 _assert_status 202 "POST /networks/connect {network:kad} → 202"
-_assert_json_eq '.ok' true 'networks/connect(kad) response.ok==true'
+_assert_json_eq '. | has("ok")' false \
+	'networks/connect(kad) response has no constant ok field'
 
 # ed2k-only selector should also round-trip via the network field.
 _curl -X POST -H "Authorization: Bearer $ADMIN_TOKEN" \
@@ -152,15 +157,25 @@ _curl -X POST -H "Authorization: Bearer $ADMIN_TOKEN" \
 	-d '{"ip":"127.0.0.1","port":4672}' \
 	"$HOST/api/v0/kad/bootstrap"
 _assert_status 202 "POST /kad/bootstrap (dotted-quad) → 202"
-_assert_json_eq '.ok'   true   'kad/bootstrap response.ok==true'
+# `ip`/`port` are the documented exception to the no-body rule for actions:
+# the echo reports which address the daemon actually parsed, which the caller
+# cannot read back anywhere else. `ok` is gone; the 202 carried it.
+_assert_json_eq '. | has("ok")' false 'kad/bootstrap response has no constant ok field'
 _assert_json_eq '.port' 4672   'kad/bootstrap response echoes port'
 
-# Uint32 IP form should also work.
+# The uint32 form is refused. It was accepted alongside the quad and the two
+# disagreed about byte order: ParseIpv4Dotted() packs a.b.c.d least-significant
+# byte first, while the integer was taken verbatim, so 2130706433 (0x7F000001,
+# what a client computing an IPv4 integer the conventional way writes for
+# 127.0.0.1) bootstrapped 1.0.0.127. Every IP on this surface is a quad now, in
+# both directions, so the question does not arise.
 _curl -X POST -H "Authorization: Bearer $ADMIN_TOKEN" \
 	-H "Content-Type: application/json" \
 	-d '{"ip":2130706433,"port":4672}' \
 	"$HOST/api/v0/kad/bootstrap"
-_assert_status 202 "POST /kad/bootstrap (uint32 IP) → 202"
+_assert_status 400 "POST /kad/bootstrap (uint32 IP) → 400 (quad only)"
+_assert_json_eq '.error.message | test("dotted-quad")' true \
+	'the uint32 400 says a dotted quad is wanted'
 
 # Error: missing port.
 _curl -X POST -H "Authorization: Bearer $ADMIN_TOKEN" \
@@ -234,6 +249,30 @@ done
 
 _curl -X GET -H "Authorization: Bearer $ADMIN_TOKEN" "$HOST/api/v0/kad/update"
 _assert_status 405 "GET /kad/update → 405"
+
+# --- 7. kad/bootstrap echoes the IP as a dotted quad (#1159 section 2). ---
+#
+# The handler answers with the address it parsed, and that echo is a quad --
+# the same spelling the request used, and the one every other IP on this
+# surface uses. It used to answer with the host-order integer, so a client that
+# posted "1.2.3.4" and stored the reply held 16909060, which it could not post
+# back without converting and which no other field on this surface produces.
+_curl -X POST -H "Authorization: Bearer $ADMIN_TOKEN" \
+	-H "Content-Type: application/json" \
+	-d '{"ip":"127.0.0.1","port":4672}' \
+	"$HOST/api/v0/kad/bootstrap"
+_assert_status 202 "POST /kad/bootstrap (dotted-quad) -> 202"
+_assert_json_eq '.ip' '127.0.0.1' 'kad/bootstrap echoes the IP as a dotted quad'
+
+# The echo round-trips: what came back can be posted straight back in, which
+# is what "one notation, both directions" has to mean to be worth anything.
+ECHOED=$(printf '%s' "$CURL_BODY" | jq -r '.ip')
+_curl -X POST -H "Authorization: Bearer $ADMIN_TOKEN" \
+	-H "Content-Type: application/json" \
+	-d "{\"ip\":\"$ECHOED\",\"port\":4672}" \
+	"$HOST/api/v0/kad/bootstrap"
+_assert_status 202 'the echoed ip is accepted verbatim on a second request'
+_assert_json_eq '.ip' "$ECHOED" 'and echoes the same quad again'
 
 # --- Summary. -----------------------------------------------------
 echo
