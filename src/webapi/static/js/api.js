@@ -13,6 +13,15 @@ import { t } from "./i18n.js";
 
 const BASE = window.location.pathname.replace(/\/?$/, "/") + "api/v0";
 
+// Absolute URL for an /api/v0 path, for the one case that must NOT go through
+// fetch(): a plain browser navigation (<a href> / window.location) to a
+// streaming endpoint. The session cookie is HttpOnly and same-origin, so a
+// navigation carries the credential on its own — no token in the URL, ever.
+// Shares BASE with request(), so the subpath derivation lives in one place.
+export function apiUrl(path) {
+  return BASE + "/" + path.replace(/^\//, "");
+}
+
 export class ApiError extends Error {
   constructor(status, code, message) {
     super(message || code || ("HTTP " + status));
