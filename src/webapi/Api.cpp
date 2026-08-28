@@ -4049,6 +4049,14 @@ struct FileClientRow
 	bool a4af = false;
 	std::vector<bool> parts;
 	bool has_parts = false;
+	// Set from `include_parts`: the two part indices ride the same switch as
+	// the bitmap because they are indices INTO it (see WriteFileClientRow).
+	bool want_part_indices = false;
+	// Whether each index actually addresses a chunk of THIS file. Resolved in
+	// the handler, which is the only place that knows part_count; false here
+	// means the key goes out as null.
+	bool next_requested_part_known = false;
+	bool last_downloading_part_known = false;
 };
 
 // Sort keys, derived from the /clients set rather than restated, so the two
@@ -4091,7 +4099,68 @@ void WriteFileClientRow(CJsonWriter &w, const FileClientRow &row)
 		}
 		w.EndArray();
 	}
+	// The two chunks the desktop's source bar paints on top of the bitmap:
+	// the one in flight and the one queued behind it
+	// (GenericClientListCtrl.cpp: crPending and crNextPending). They live on
+	// the row rather than in WriteClientBaseFields for the same reason
+	// `parts` does -- they describe a peer's relation to ONE file, not the
+	// peer -- which also keeps them out of the shared SSE client payload,
+	// where a value that moves every tick would be noise no listener renders.
+	//
+	// Gated on include_parts because an index is meaningless without the
+	// bitmap it indexes: a caller that did not ask for `parts` does not know
+	// the file's part count and has no bar to paint the stripe on. Under the
+	// flag both keys are always present -- null, never omitted, on a row
+	// where the index does not apply -- so one query yields one row shape.
+	// Unlike `parts`, whose absence is the only way to say "no bitmap of the
+	// right length exists", these have a null to say it with.
+	if (row.want_part_indices) {
+		WriteIntOrNull(w,
+			"next_requested_part",
+			row.next_requested_part_known,
+			static_cast<int64_t>(row.client.next_requested_part));
+		WriteIntOrNull(w,
+			"last_downloading_part",
+			row.last_downloading_part_known,
+			static_cast<int64_t>(row.client.last_downloading_part));
+	}
 	w.EndObject();
+}
+
+// True when a reported part index can actually address a chunk of a file with
+// `part_count` chunks. Two things make it unusable: 0xffff, which is the core's
+// "no block pending" answer for next_requested_part (DownloadClient.cpp:
+// GetNextRequestedPart) rather than part 65535, and any index left over from a
+// peer whose request file is not this one. Relayed raw either would draw a
+// stripe on a chunk nothing is happening to, so both become null -- the same
+// treatment remote_queue_rank's 0xffff gets above.
+bool UsablePartIndex(bool present, std::uint16_t part, std::uint64_t part_count)
+{
+	return present && static_cast<std::uint64_t>(part) < part_count;
+}
+
+// last_downloading_part needs a download-state guard on top of that bounds
+// check, which cannot supply one: the core initialises m_lastDownloadingPart to
+// 0 (BaseClient.cpp: CUpDownClient::Init) and ECSpecialCoreTags.cpp ships it
+// with AddTag rather than AddDiffTag, so it arrives on every frame whether or
+// not the peer is transferring. A connected-but-queued source therefore reports
+// a perfectly in-range 0, indistinguishable from one actually feeding chunk 0 --
+// and since most sources in a list are queued rather than transferring, a
+// renderer would mark chunk 0 as "downloading now" on nearly every row. The
+// desktop guards it the same way (GenericClientListCtrl.cpp: lastDownloadingPart
+// is forced to 0xffff unless GetDownloadState() == DS_DOWNLOADING); doing it in
+// the serializer instead means every API client gets it right once rather than
+// each rediscovering the rule. The state string is the same source of truth
+// /clients?filter=downloads uses, and maps 1:1 to DS_DOWNLOADING (Refresher.cpp:
+// ClientDownloadStateName).
+//
+// Deliberately NOT applied to next_requested_part, exactly as the desktop does
+// not apply it either: 0xffff is that field's own "no block pending" answer, so
+// an idle peer already falls out through the bounds check.
+bool UsableLastDownloadingPart(const webapi::ClientSnapshot &c, std::uint64_t part_count)
+{
+	return c.download_state == "downloading" &&
+	       UsablePartIndex(c.has_last_downloading_part, c.last_downloading_part, part_count);
 }
 
 // Resolve one peer's bitmap for `part_count` chunks of the file this row is
@@ -4175,6 +4244,7 @@ CHttpServer::Response CApiDispatcher::HandleFileClients(
 			is_source && is_peer ? "both" : (is_source ? "source" : (is_peer ? "peer" : "none"));
 		row.a4af = is_a4af;
 		ComputePartProgressPercent(m_state, client);
+		row.want_part_indices = include_parts;
 		if (include_parts) {
 			// Which bitmap belongs to this row follows its direction: the
 			// download map describes the file we pull from the peer, the
@@ -4187,6 +4257,18 @@ CHttpServer::Response CApiDispatcher::HandleFileClients(
 					client.has_part_status,
 					part_count,
 					row.parts);
+				// The two part indices are indices into that download
+				// map, so they address this file only on a source row.
+				// On a pure "peer" or A4AF row they belong to whatever
+				// else the peer is pulling and must not be relayed as
+				// though they described this one -- left false, they go
+				// out as null.
+				row.next_requested_part_known =
+					UsablePartIndex(client.has_next_requested_part,
+						client.next_requested_part,
+						part_count);
+				row.last_downloading_part_known =
+					UsableLastDownloadingPart(client, part_count);
 			} else if (is_peer) {
 				row.has_parts = ResolvePartBitmap(client.upload_part_status,
 					client.upload_part_status_all,

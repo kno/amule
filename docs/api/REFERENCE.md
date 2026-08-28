@@ -946,17 +946,21 @@ curl -s -H "Authorization: Bearer $TOKEN" \
 
 The peers of one file: sources serving it to us, peers pulling it from us, and — on the downloads side — A4AF sources parked on another file. Replaces the client-side join of the global `/clients` list against `download_file_hash` / `upload_file_hash`, which could never produce the A4AF rows.
 
-Each entry is the [`/clients`](#get-apiv0clients) list object plus three keys:
+Each entry is the [`/clients`](#get-apiv0clients) list object plus five keys:
 
 | Key | Meaning |
 |---|---|
 | `role` | this peer's live relation to **this** file: `"source"` (serves it to us, including queued), `"peer"` (pulls it from us), `"both"`, `"none"` |
 | `a4af` | `true` for a source parked on another file — the desktop's A4AF row |
 | `parts` | the peer's per-part bitmap, **only** when `?include_parts=true` |
+| `next_requested_part` | index of the chunk queued next from this peer, or `null`; **only** when `?include_parts=true` |
+| `last_downloading_part` | index of the chunk currently in flight from this peer, or `null`; **only** when `?include_parts=true` |
 
 `role` and `a4af` are orthogonal: a pure A4AF row is `role: "none"`, `a4af: true`, but a peer can be parked on another file *and* be pulling this one from us (`role: "peer"`, `a4af: true`).
 
 `parts` is opt-in because it is one boolean per chunk per peer — a multi-TiB file is 100k+ entries each. It is exactly `part_count` entries, and it describes the file this row is about: the download bitmap for a `source`, the upload bitmap for a `peer`. A peer the core reports as holding every part comes back all-`true`. A pure A4AF row has no bitmap for this file and omits the key. **`parts` never appears in SSE payloads.**
+
+`next_requested_part` and `last_downloading_part` are the two extra states the desktop paints on top of that bitmap — the chunk in flight in amber, the one queued behind it in pale yellow — turning a three-state bar into the desktop's five-state one. Both are `0`-based indices into `parts`, and both ride `include_parts` for the same reason: an index is meaningless without the bitmap it indexes, and a caller that did not ask for `parts` does not know the file's `part_count`. Under the flag both keys are always present, `null` rather than omitted whenever the index does not apply, so one query returns one row shape. `null` covers every such case: the peer never reported the value, it reported the `0xffff` "nothing pending" answer, the index does not address a chunk of this file, or the row is not a source for this file at all (`role: "peer"` or a pure A4AF row, whose indices belong to whatever else that peer is downloading). `last_downloading_part` carries one further rule: it is `null` unless the peer's `download_state` is `"downloading"`, because the daemon reports a stale `0` for a source that is merely connected or queued — treat a number here as "this chunk is arriving right now", which is what makes it safe to paint. Note that `0` is a real chunk index, never a stand-in for unknown — see [`Unknown values`](#unknown-values). Neither key ever appears in SSE payloads.
 
 The file's own five-state part view is on [`GET /downloads/{hash}`](#get-apiv0downloadshash); combine it with this bitmap to render the desktop's per-source bar.
 
