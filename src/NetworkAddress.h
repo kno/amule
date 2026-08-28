@@ -428,6 +428,81 @@ public:
 	}
 
 	/**
+	 * Whether this is an IPv4 address that can stand for this host on the
+	 * public internet: present, IPv4 (or the mapped form of one), and outside
+	 * every range the address itself declares unroutable -- the unspecified
+	 * address, loopback, the three RFC1918 private blocks, link-local,
+	 * carrier-grade NAT, the documentation and benchmark blocks, multicast and
+	 * the reserved top of the space.
+	 *
+	 * The IPv6 sibling below exists so an address is never advertised to a peer
+	 * that cannot reach it. This one exists for a second reason, and it is the
+	 * sharper of the two: aMule's UDP obfuscation bakes the *sender's* own
+	 * public address into the key -- EncryptedDatagramSocket.cpp derives it as
+	 * MD5(<receiver user hash 16><sender IP 4><0x5B><random 2>) -- while the
+	 * receiver derives its half from the source address of the datagram it
+	 * actually got. The two only agree when the sender's idea of its own
+	 * address is the one the peer sees. Encrypt with 127.0.1.1 in that field
+	 * and every frame decrypts to noise at the far end, with nothing logged on
+	 * either side, because a failed obfuscation looks exactly like a peer that
+	 * never obfuscated. So "do I have an address a stranger could reply to" has
+	 * to be answered before the key is derived, not assumed from non-zero.
+	 */
+	bool IsGloballyRoutableIPv4() const noexcept
+	{
+		const CNetworkAddress plain = Unmapped();
+		if (!plain.IsIPv4() || plain.IsUnspecified()) {
+			return false;
+		}
+		const std::uint8_t a = plain.m_octets[0];
+		const std::uint8_t b = plain.m_octets[1];
+
+		if (a == 0) {
+			return false; // 0.0.0.0/8, "this network" (RFC 1122).
+		}
+		if (a == 10) {
+			return false; // 10.0.0.0/8, private (RFC 1918).
+		}
+		if (a == 100 && (b & 0xC0) == 0x40) {
+			return false; // 100.64.0.0/10, carrier-grade NAT (RFC 6598).
+		}
+		if (a == 127) {
+			// 127.0.0.0/8. The whole block, not just 127.0.0.1: a Debian host
+			// names itself 127.0.1.1 in /etc/hosts, and that is precisely the
+			// value CamuleApp::GetPublicIP() hands back when it falls through
+			// to m_localip.
+			return false;
+		}
+		if (a == 169 && b == 254) {
+			return false; // 169.254.0.0/16, link-local (RFC 3927).
+		}
+		if (a == 172 && (b & 0xF0) == 16) {
+			return false; // 172.16.0.0/12, private (RFC 1918).
+		}
+		if (a == 192 && b == 0 && plain.m_octets[2] == 0) {
+			return false; // 192.0.0.0/24, IETF protocol assignments.
+		}
+		if (a == 192 && b == 0 && plain.m_octets[2] == 2) {
+			return false; // 192.0.2.0/24, TEST-NET-1 documentation (RFC 5737).
+		}
+		if (a == 192 && b == 168) {
+			return false; // 192.168.0.0/16, private (RFC 1918).
+		}
+		if (a == 198 && (b & 0xFE) == 18) {
+			return false; // 198.18.0.0/15, benchmarking (RFC 2544).
+		}
+		if (a == 198 && b == 51 && plain.m_octets[2] == 100) {
+			return false; // 198.51.100.0/24, TEST-NET-2 (RFC 5737).
+		}
+		if (a == 203 && b == 0 && plain.m_octets[2] == 113) {
+			return false; // 203.0.113.0/24, TEST-NET-3 (RFC 5737).
+		}
+		// 224.0.0.0/4 multicast and 240.0.0.0/4 reserved, which together are
+		// everything from 224 up. Neither is a unicast source address.
+		return a < 224;
+	}
+
+	/**
 	 * Whether this is an IPv6 address worth telling a peer about: present,
 	 * IPv6, not mapped, and globally routable as far as the address itself can
 	 * say -- so not the unspecified address, not loopback, not link-local and

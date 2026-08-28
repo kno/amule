@@ -76,6 +76,26 @@
 //! The two framing bytes in front of every uTP datagram on the shared port.
 constexpr std::size_t UTP_FRAME_HEADER_LENGTH = 2;
 
+/**
+ * The bytes aMule's eD2k UDP obfuscation prepends when a frame goes out
+ * obfuscated: @c CRYPT_HEADER_WITHOUTPADDING in EncryptedDatagramSocket.cpp,
+ * restated here because that name is a @c \#define private to the .cpp and this
+ * header must stay free of it.
+ *
+ * Reserved on every datagram, not only the obfuscated ones. Whether a given
+ * frame is obfuscated is decided per peer and per moment
+ * (UtpEncryptionPolicy.h), long after libutp has been told how large a datagram
+ * it may build, so a figure that assumed plaintext would put every obfuscated
+ * datagram eight bytes over the path MTU -- and libutp would read the resulting
+ * loss as congestion and throttle itself, which is the failure that looks like
+ * a slow peer rather than like a bug. Eight bytes of a ~1400 byte payload is
+ * the price of never having to explain that.
+ *
+ * Padding is not counted: the UDP obfuscation sets @c padLen to zero, and
+ * always has.
+ */
+constexpr std::size_t UDP_OBFUSCATION_HEADER_LENGTH = 8;
+
 //! Write the uTP frame header. `out` must have room for
 //! UTP_FRAME_HEADER_LENGTH bytes.
 inline void WriteUtpFrameHeader(std::uint8_t *out)

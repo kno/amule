@@ -285,25 +285,30 @@ std::uint64_t OnGetRandom(utp_callback_arguments *)
 /**
  * The usable payload of one datagram, and the per-datagram overhead.
  *
- * Both are two bytes tighter than a plain UDP socket's, because every uTP
- * datagram on this port carries the OP_UDPRESERVEDPROT2 / OP_NATT_FRAME_UTP
- * frame header that lets uTP and ed2k UDP share it
- * (UtpDatagramRouting.h). Reporting the untightened figures would have libutp
- * build datagrams two bytes over the path MTU and blame the fragmentation on
- * congestion.
+ * Both are ten bytes tighter than a plain UDP socket's. Two of them are the
+ * OP_UDPRESERVEDPROT2 / OP_NATT_FRAME_UTP frame header that lets uTP and ed2k
+ * UDP share this port (UtpDatagramRouting.h). The other eight are the eD2k UDP
+ * obfuscation header, reserved whether or not a given datagram turns out to be
+ * obfuscated -- that is decided per peer and per moment, well after libutp has
+ * been told how large a datagram it may build. Reporting the untightened
+ * figures would have libutp build datagrams over the path MTU and read the
+ * resulting loss as congestion.
  */
 std::uint64_t OnGetUdpMtu(utp_callback_arguments *)
 {
 	// 1500 Ethernet, less IPv4 (20), UDP (8), and upstream's allowance for
 	// GRE/PPPoE/MPPE tunnelling plus the fudge for observed small-MTU paths
-	// (24 + 8 + 2 + 36) -- then the two shared-port framing bytes.
-	return 1500u - 20u - 8u - 24u - 8u - 2u - 36u - UTP_FRAME_HEADER_LENGTH;
+	// (24 + 8 + 2 + 36) -- then the shared-port framing and the obfuscation
+	// header.
+	return 1500u - 20u - 8u - 24u - 8u - 2u - 36u - UTP_FRAME_HEADER_LENGTH -
+	       UDP_OBFUSCATION_HEADER_LENGTH;
 }
 
 std::uint64_t OnGetUdpOverhead(utp_callback_arguments *)
 {
-	// IPv4 header, UDP header, and the two shared-port framing bytes.
-	return 20u + 8u + UTP_FRAME_HEADER_LENGTH;
+	// IPv4 header, UDP header, the two shared-port framing bytes and the
+	// obfuscation header.
+	return 20u + 8u + UTP_FRAME_HEADER_LENGTH + UDP_OBFUSCATION_HEADER_LENGTH;
 }
 
 } // namespace

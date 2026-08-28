@@ -56,6 +56,7 @@
 #include "NetworkAddress.h"        // Needed for CNetworkAddress
 #include "QuicNattProtocol.h"      // Needed for the QUIC frame header
 #include "UtpDatagramRouting.h"    // Needed for RouteInboundDatagram
+#include "UtpEncryptionPolicy.h"   // Needed for DecideNattFrameObfuscation
 
 //
 // CClientUDPSocket -- Extended eMule UDP socket
@@ -89,6 +90,87 @@ CClientUDPSocket::CClientUDPSocket(const amuleIPV4Address &address, const CProxy
 #endif
 }
 
+namespace
+{
+
+//! The obfuscation decision for one outbound NAT traversal frame, together
+//! with the key it is obfuscated with. The reasoning behind the decision, and
+//! its tests, live in UtpEncryptionPolicy.h.
+struct SFrameObfuscation
+{
+	bool obfuscate = false;
+	/**
+	 * The peer's user hash, or NULL. Borrowed from the CUpDownClient and only
+	 * valid for the duration of the call that produced it, which is enough:
+	 * CMuleUDPSocket::SendPacket() md4cpy()s it into the queued item before
+	 * returning, so nothing outlives the client.
+	 */
+	const uint8_t *key = NULL;
+};
+
+/**
+ * Gather the inputs DecideNattFrameObfuscation() reads and apply it.
+ *
+ * All that is left here is the gathering. It reads theApp and thePrefs, so it
+ * cannot be reached from a unit test at all; everything that is a judgement
+ * rather than a lookup therefore lives in the policy header, where it can be.
+ *
+ * @param frameType The byte after OP_UDPRESERVEDPROT2.
+ * @param to        The datagram's destination.
+ * @param port      Its destination port, which for a peer sharing this socket
+ *                  is that peer's ed2k UDP port -- hence
+ *                  FindClientByUDPEndpoint() rather than FindClientByIP(),
+ *                  which compares the TCP port. Two lookups with the same
+ *                  signature meaning different ports is how the rendezvous
+ *                  handlers came to identify no peer at all.
+ */
+SFrameObfuscation DecideFrameObfuscation(uint8_t frameType, const CNetworkAddress &to, uint16_t port)
+{
+	SNattFrameObfuscationInputs inputs;
+	inputs.frameType = frameType;
+
+	// GetPublicIP(true), never the bare form. The default argument is false,
+	// and on the path this client is usually on -- no address from a server,
+	// Kad not connected -- false answers with m_localip, which amule.cpp fills
+	// from the machine's own hostname and which resolves to 127.0.1.1 on a
+	// Debian host. That address would then be baked into the obfuscation key
+	// while the peer derives its half from the address it actually saw, and
+	// every frame would arrive as noise with nothing logged at either end.
+	// See the header comment on UtpEncryptionPolicy.h before simplifying this.
+	inputs.publicIpIgnoringLocal = theApp->GetPublicIP(true);
+	inputs.cryptLayerSupportedLocally = thePrefs::IsClientCryptLayerSupported();
+
+	// The lookup is skipped for a frame type the policy refuses on the frame
+	// type alone -- QUIC, above all -- so a per-datagram walk of the client
+	// list is not paid for an answer that cannot change.
+	const CUpDownClient *peer = (frameType == OP_NATT_FRAME_UTP)
+					    ? theApp->clientlist->FindClientByUDPEndpoint(to, port)
+					    : NULL;
+	if (peer != NULL) {
+		inputs.peerIdentified = true;
+		inputs.peerHashKnown = peer->HasValidHash();
+		inputs.peerSupportsCryptLayer = peer->SupportsCryptLayer();
+		// The same disjunction CUpDownClient::ShouldReceiveCryptUDPPackets()
+		// applies to eD2k UDP, so a peer pair that obfuscates its eD2k
+		// datagrams obfuscates its NAT traversal frames on the same terms.
+		inputs.cryptLayerRequestedByEitherEnd =
+			thePrefs::IsClientCryptLayerRequested() || peer->RequestsCryptLayer();
+	}
+
+	const SNattFrameObfuscationDecision decision = DecideNattFrameObfuscation(inputs);
+
+	SFrameObfuscation result;
+	result.obfuscate = decision.obfuscate;
+	if (decision.obfuscate) {
+		// Only reachable with peerIdentified and peerHashKnown both true, so
+		// the client and its hash are both there.
+		result.key = peer->GetUserHash().GetHash();
+	}
+	return result;
+}
+
+} // namespace
+
 void CClientUDPSocket::SendUtpDatagram(
 	const uint8_t *payload, size_t length, const CNetworkAddress &to, uint16_t port)
 {
@@ -104,9 +186,17 @@ void CClientUDPSocket::SendUtpDatagram(
 	packet->CopyToDataBuffer(0, payload, length);
 	theStats::AddUpOverheadOther(packet->GetPacketSize());
 
-	// Never obfuscated and never a Kad packet: uTP carries its own framing
-	// and the peer recognises it by the two header bytes.
-	SendPacket(packet, ip, port, false, NULL, false, 0);
+	// Obfuscated when both ends can and this client knows an address a peer
+	// could reply to; plaintext otherwise. Opportunistic in both directions and
+	// deliberately so: the receive path has always run every datagram through
+	// DecryptReceivedClient(), which passes an OP_UDPRESERVEDPROT2 first byte
+	// straight through, so a plaintext frame still reaches a peer that would
+	// have decrypted one. Refusing to send when the gate is shut would turn a
+	// privacy improvement into a connectivity regression.
+	//
+	// Never a Kad packet: the key is the peer's ed2k user hash, not a node ID.
+	const SFrameObfuscation obfuscation = DecideFrameObfuscation(OP_NATT_FRAME_UTP, to, port);
+	SendPacket(packet, ip, port, obfuscation.obfuscate, obfuscation.key, false, 0);
 }
 
 void CClientUDPSocket::SendQuicDatagram(
@@ -128,7 +218,14 @@ void CClientUDPSocket::SendQuicDatagram(
 	// and its own encryption, and the peer recognises it by the two header
 	// bytes. Obfuscating it would encrypt ciphertext to no end and make the
 	// frame type unreadable to the peer.
-	SendPacket(packet, ip, port, false, NULL, false, 0);
+	//
+	// Routed through the same decision as the uTP frame above rather than
+	// passing a literal false, so that "QUIC is not obfuscated" is one branch
+	// of one function with a test on it, and cannot be lost the next time this
+	// path is edited.
+	const SFrameObfuscation obfuscation = DecideFrameObfuscation(OP_NATT_FRAME_QUIC, to, port);
+	wxASSERT(!obfuscation.obfuscate);
+	SendPacket(packet, ip, port, obfuscation.obfuscate, obfuscation.key, false, 0);
 }
 
 void CClientUDPSocket::OnQuicConnectionOutcome(EQuicConnectionOutcome outcome,
@@ -476,8 +573,19 @@ void CClientUDPSocket::SendNattControlMessage(
 	packet->CopyToDataBuffer(0, payload, length);
 	theStats::AddUpOverheadOther(packet->GetPacketSize());
 
-	// Never obfuscated and never a Kad packet, exactly as a uTP datagram is
-	// not: the peer recognises this by the two header bytes.
+	// Never obfuscated, and here that is no longer "the same as a uTP
+	// datagram": SendUtpDatagram() above obfuscates opportunistically now, and
+	// this path deliberately does not follow it.
+	//
+	// A punch is sent to open a NAT mapping with a peer this end has usually
+	// not identified yet -- that is the situation the punch exists to get out
+	// of -- so the obfuscation gate would answer "no user hash to key with"
+	// and fall back to plaintext for nearly all of them anyway. What is left
+	// is the handful where the peer is known, and for those the trade is bad:
+	// the payload is a control opcode and an endpoint, nothing worth hiding,
+	// while a punch that fails to deobfuscate is indistinguishable from a
+	// punch that never arrived, and the punch is the step everything else
+	// depends on. Never a Kad packet either.
 	SendPacket(packet, ip, port, false, NULL, false, 0);
 }
 
