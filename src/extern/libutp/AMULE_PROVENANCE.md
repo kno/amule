@@ -16,6 +16,20 @@ makes this note less true.
 | License | MIT — "Copyright (c) 2010-2013 BitTorrent, Inc.", see `LICENSE` |
 | Vendored size | 5143 lines of C/C++ across the sources and headers below |
 
+### Why `transmission/libutp` and not `bittorrent/libutp`
+
+Two forks of the same code exist and the choice is not obvious, so it is recorded
+rather than left to be re-derived. `bittorrent/libutp` is the original and is the
+one other ports of this work pin, but it has seen no maintenance in years.
+`transmission/libutp` is the fork Transmission actually ships and keeps building:
+it carries the CMake packaging this vendoring relies on, the `libutp/` include
+prefix used throughout, and fixes the original never received. The licence is the
+same MIT and the copyright line still names BitTorrent, Inc., so nothing about
+attribution changes with the choice.
+
+Anyone comparing this tree against a port that pins `bittorrent/libutp` should
+expect the sources to differ, and should not treat that as drift in either copy.
+
 MIT code inside a GPL-2-or-later project is fine, but only for as long as the
 notice travels with the code. `LICENSE` is copied verbatim and must stay that
 way. `docs/THIRDPARTY.md` records the same attribution at the repository level.
