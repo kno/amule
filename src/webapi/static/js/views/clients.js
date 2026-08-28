@@ -11,12 +11,18 @@ import { ClientFilters, ClientTable, HIDDEN_EVERYWHERE, fileNameOf, isDown, isUp
 import { textMatcher } from "../table.js";
 import { t } from "../i18n.js";
 
+// "Available Parts" leads with a per-part bar in the detail panels' Clients
+// tab, which fetches the bitmap per file. This view has no file in hand, so all
+// it could ever draw is the scalar `available_parts` with no denominator --
+// still in the picker, just not worth 180px by default.
+const CLIENTS_HIDDEN = [...HIDDEN_EVERYWHERE, "parts"];
+
 // Every tab lists the full column set in the picker; these are the ones each
 // starts with hidden, so its default view stays focused on that direction.
 const TAB_HIDDEN = {
-  all: [...HIDDEN_EVERYWHERE, "dl_session", "remote_rank", "ul_session", "queue_pos", "score"],
-  downloads: [...HIDDEN_EVERYWHERE, "ul_state", "ul_speed", "uploaded", "ul_session", "queue_pos", "score"],
-  uploads: [...HIDDEN_EVERYWHERE, "dl_state", "dl_speed", "downloaded", "dl_session", "remote_rank"],
+  all: [...CLIENTS_HIDDEN, "dl_session", "remote_rank", "ul_session", "queue_pos", "score"],
+  downloads: [...CLIENTS_HIDDEN, "ul_state", "ul_speed", "uploaded", "ul_session", "queue_pos", "score"],
+  uploads: [...CLIENTS_HIDDEN, "dl_state", "dl_speed", "downloaded", "dl_session", "remote_rank"],
 };
 // Default sort per tab: most transferred first, in the tab's own direction.
 const TAB_SORT = { all: "downloaded", downloads: "downloaded", uploads: "uploaded" };

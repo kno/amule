@@ -21,6 +21,12 @@ const PRIORITIES = ["very_low", "low", "normal", "high", "release"];
 
 // Peers of a shared file: show the upload-side columns, keep the download ones
 // (and the redundant per-row file name) one click away in the column picker.
+// The Clients tab gets no `localParts`, and `scope="shared"` also drops the two
+// in-flight/next-requested stripes: a shared file is 100% local, so a "we hold
+// this chunk too" axis would be constant across every part of every row, and
+// those two indices belong to a download this panel is not about. That leaves
+// the two-state bar the desktop's own shared-side column draws (see FileClients
+// in client-table.js).
 const SH_HIDDEN = [...HIDDEN_EVERYWHERE, "file", "dl_state", "dl_speed", "downloaded", "dl_session", "remote_rank"];
 
 // Human upload-priority label, matching the shared list (auto shows the
@@ -96,7 +102,8 @@ export function SharedDetail({ hash }) {
 
       <div class="detail-body">
       ${tab === "clients" ? html`
-        <${FileClients} hash=${s.hash} prefsKey="shared_clients" defaultHidden=${SH_HIDDEN}
+        <${FileClients} hash=${s.hash} scope="shared" partCount=${s.part_count}
+                        prefsKey="shared_clients" defaultHidden=${SH_HIDDEN}
                         defaultSort="uploaded" />
       ` : tab === "comments" ? html`
         <div class="detail-comments">
