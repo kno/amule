@@ -1418,6 +1418,34 @@ target_link_libraries (UtpDialPolicyTest
 	${Boost_LIBRARIES}
 )
 
+# The obfuscation gate for outbound NAT traversal frames. Header-only and
+# wx-free for the same reason as the dial policy above, and linked against
+# NetworkAddress.cpp because the routability predicate the gate delegates to
+# lives on CNetworkAddress -- whose FromString() is still the one part of the
+# type that compiles Boost.Asio.
+add_executable (UtpEncryptionPolicyTest
+	UtpEncryptionPolicyTest.cpp
+	${CMAKE_SOURCE_DIR}/src/NetworkAddress.cpp
+)
+
+add_test (NAME UtpEncryptionPolicyTest
+	COMMAND UtpEncryptionPolicyTest
+)
+
+target_include_directories (UtpEncryptionPolicyTest
+	PRIVATE ${CMAKE_BINARY_DIR}
+	PRIVATE ${CMAKE_SOURCE_DIR}/src
+	PRIVATE ${CMAKE_SOURCE_DIR}/src/include
+	# CNetworkAddress is a boost::asio::ip::address.
+	PRIVATE ${Boost_INCLUDE_DIR}
+)
+
+target_link_libraries (UtpEncryptionPolicyTest
+	muleunit
+	mulecommon
+	${Boost_LIBRARIES}
+)
+
 add_executable (UtpSocketTransportTest
 	UtpSocketTransportTest.cpp
 	# CNetworkAddress::FromString/ToString live in NetworkAddress.cpp: they are
