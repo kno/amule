@@ -8,7 +8,7 @@
 import { api } from "../api.js";
 import { store } from "../store.js";
 import { html, useState, useEffect, useStore } from "../dom.js";
-import { ProgressBar, Placeholder, PiecesBar, PiecesLegend, toast, confirmDialog, Section, statRow, IdentityLine, copyText, Tabs, CommentEditor, CommentsList, RenameForm, PRIORITIES, prioValue, prioLabel } from "../components.js";
+import { ProgressBar, Placeholder, PiecesBar, PiecesLegend, toast, confirmDialog, Section, statRow, IdentityLine, copyText, Tabs, CommentEditor, CommentsList, RenameForm, DownloadLink, PRIORITIES, prioValue, prioLabel } from "../components.js";
 import { formatBytes, formatSpeed, formatDuration, formatInt, formatPercent, formatTimestamp } from "../format.js";
 import { Icon } from "../icons.js";
 import { FileClients, HIDDEN_EVERYWHERE } from "./client-table.js";
@@ -26,10 +26,13 @@ export function DownloadDetail({ hash, isGuest, categories = [], onPatch, onDele
   const [tab, setTab] = useState("details");
   const [reload, setReload] = useState(0); // bumped after a rename to refresh the name
 
-  // The live re-fetch feeds the Details tab (%, speed, ETA, pieces). The
-  // Comments tab needs none of that, so only tick there — elsewhere the detail
-  // loads once per file (and once more when returning to Details).
-  const liveTick = tab === "details" ? downloads : 0;
+  // The live re-fetch feeds the Details tab (%, speed, ETA, pieces) and, since
+  // issue #984, the Clients tab too: its per-source bars paint a chunk green
+  // once WE hold it, which comes off this object's progress.parts. Without the
+  // tick that stayed frozen at tab-open time, so a part completing while the
+  // tab was open never turned green until the user left and came back. The
+  // Comments and Filename tabs need none of it, so the detail loads once there.
+  const liveTick = tab === "details" || tab === "clients" ? downloads : 0;
   useEffect(() => {
     if (!hash) { setDetail(null); return; }
     let alive = true;
@@ -54,6 +57,11 @@ export function DownloadDetail({ hash, isGuest, categories = [], onPatch, onDele
   // completeness.
   const parts = (d.progress && d.progress.parts) || [];
   const eta = d.remaining_time == null ? "—" : formatDuration(d.remaining_time);
+  // Which chunks we already hold, for the Clients tab's per-source bars: a part
+  // a source has AND we have is nothing left to gain from it, which the desktop
+  // paints green too. Null when the daemon has sent no chunk map, so the bars
+  // fall back to "held by this peer" alone rather than claiming we hold none.
+  const localParts = parts.length ? parts.map((p) => p.state === "complete") : null;
 
   const copy = (text) => copyText(text)
     .then(() => toast(t("downloads_detail_copied"), "success"))
@@ -91,8 +99,10 @@ export function DownloadDetail({ hash, isGuest, categories = [], onPatch, onDele
 
       <div class="detail-body">
       ${tab === "clients" ? html`
-        <${FileClients} hash=${d.hash} prefsKey="download_clients" defaultHidden=${DL_HIDDEN}
-                        defaultSort="downloaded" />
+        <${FileClients} hash=${d.hash} scope="downloads" partCount=${d.part_count}
+                        localParts=${localParts} stopped=${d.status === "stopped"}
+                        prefsKey="download_clients"
+                        defaultHidden=${DL_HIDDEN} defaultSort="downloaded" />
       ` : tab === "comments" ? html`
         <${DownloadComments} hash=${d.hash} comment=${d.comment} rating=${d.rating}
                              running=${!!(downloads.find((x) => x.hash === d.hash) || {}).kad_comment_search_running}
@@ -172,6 +182,10 @@ function DetailActions({ d, isGuest, categories, onPatch, onDelete, onClear }) {
   const inactive = d.status === "paused" || d.status === "stopped";
   const canStop = d.status !== "stopped" && d.status !== "completed" && d.status !== "completing";
   // Completed rejects DELETE (409 completed_use_clear_completed): offer Clear.
+  // `done` also gates the download-to-device link: only a completed file has
+  // been moved into Incoming, which is shared, so only then does this same hash
+  // resolve under shared/{hash}/content. Anything earlier is still a partfile
+  // and the endpoint has nothing servable for it.
   const done = d.status === "completed";
 
   const clear = async () => {
@@ -191,6 +205,7 @@ function DetailActions({ d, isGuest, categories, onPatch, onDelete, onClear }) {
           <${Icon} name="stop" /> ${t("downloads_stop")}
         </button>` : null}
       ${done ? html`
+        <${DownloadLink} hash=${d.hash} tipKey="downloads_download_tip" />
         <button class="btn btn-sm admin-only" type="button" onClick=${clear}>
           <${Icon} name="cancel" /> ${t("downloads_clear_this")}
         </button>` : html`

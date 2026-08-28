@@ -28,6 +28,10 @@
      to show availability, like the desktop GUI's blue gradient. */
   --piece-avail: #2f8fd0;
   --piece-avail-lo: #a6d4ee;
+  /* per-source bar only: the chunk queued next from that peer (desktop
+     crNextPending). Paler than --warn, which paints the one in flight, so the
+     two read as a pair the way GenericClientListCtrl.cpp draws them. */
+  --piece-next: #f5d76e;
   --sel: rgba(22, 100, 192, .2);
   --stripe: rgba(0, 0, 0, .025);
   --radius: 7px;
@@ -55,6 +59,7 @@
     --low: #e0a13a;
     --piece-avail: #4bb4e6;
     --piece-avail-lo: #2d6f96;
+    --piece-next: #f7dd8a;
     --sel: rgba(75, 155, 255, .16);
     --stripe: rgba(255, 255, 255, .03);
     --shadow: 0 1px 3px rgba(0, 0, 0, .4);
@@ -78,6 +83,7 @@
   --low: #e0a13a;
   --piece-avail: #4bb4e6;
   --piece-avail-lo: #2d6f96;
+  --piece-next: #f7dd8a;
   --sel: rgba(75, 155, 255, .16);
   --stripe: rgba(255, 255, 255, .03);
   --shadow: 0 1px 3px rgba(0, 0, 0, .4);
@@ -514,6 +520,31 @@ table.data.virtual td.name .name-select { width: 100%; max-width: 100%; }
 .row-actions .btn { vertical-align: middle; }
 .peer-flags { white-space: nowrap; }
 .peer-flags .icon { vertical-align: middle; margin-right: 3px; color: var(--text-dim); }
+/* "Available Parts". A hard-stop linear-gradient rather than the detail panel's
+   canvas PiecesBar: this is a virtual-table cell, so a canvas would mean three
+   observers per visible row, remounted on every scroll (see partsCell). The
+   gradient's stops are var(--token), so a theme switch recolours it with no JS
+   at all. */
+.peer-parts { white-space: nowrap; }
+.peer-parts-bar {
+  display: block; width: 100%; height: 14px; border-radius: 2px;
+  border: 1px solid var(--border);
+}
+/* A stopped file: the desktop blends every span by 50 (GenericClientListCtrl),
+   which on a themed page is what dropping the whole strip's opacity reads as. */
+.peer-parts-bar.is-dim { opacity: .45; }
+/* Bar on/off toggle, the Web UI's ShowProgBar equivalent. */
+.peer-bar-toggle {
+  display: inline-flex; align-items: center; gap: 5px;
+  font-size: 12px; color: var(--text-dim); white-space: nowrap;
+}
+/* A4AF badge, replacing the bar for a source parked on another file --
+   bordered like the desktop's, and text so it does not lean on colour. */
+.peer-a4af {
+  display: inline-block; max-width: 100%; overflow: hidden; text-overflow: ellipsis;
+  padding: 1px 5px; border: 1px solid var(--border); border-radius: 3px;
+  font-size: 11px; font-weight: 600; color: var(--text-dim);
+}
 .row-actions .btn + .btn { margin-left: 4px; }
 .row-actions select + .btn { margin-left: 6px; }
 /* A select sizes itself to its longest option, so a long category name would

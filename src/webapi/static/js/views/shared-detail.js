@@ -12,7 +12,7 @@
 
 import { api } from "../api.js";
 import { html, useState, useEffect, useStore } from "../dom.js";
-import { Placeholder, PiecesBar, PiecesLegend, toast, confirmDialog, Section, statRow, IdentityLine, copyText, Tabs, CommentEditor, RenameForm } from "../components.js";
+import { Placeholder, PiecesBar, PiecesLegend, toast, confirmDialog, Section, statRow, IdentityLine, copyText, Tabs, CommentEditor, RenameForm, DownloadLink } from "../components.js";
 import { formatBytes, formatInt, formatDuration, formatSpeed, formatTimestamp, twin } from "../format.js";
 import { FileClients, HIDDEN_EVERYWHERE } from "./client-table.js";
 import { t, terr } from "../i18n.js";
@@ -21,6 +21,12 @@ const PRIORITIES = ["very_low", "low", "normal", "high", "release"];
 
 // Peers of a shared file: show the upload-side columns, keep the download ones
 // (and the redundant per-row file name) one click away in the column picker.
+// The Clients tab gets no `localParts`, and `scope="shared"` also drops the two
+// in-flight/next-requested stripes: a shared file is 100% local, so a "we hold
+// this chunk too" axis would be constant across every part of every row, and
+// those two indices belong to a download this panel is not about. That leaves
+// the two-state bar the desktop's own shared-side column draws (see FileClients
+// in client-table.js).
 const SH_HIDDEN = [...HIDDEN_EVERYWHERE, "file", "dl_state", "dl_speed", "downloaded", "dl_session", "remote_rank"];
 
 // Human upload-priority label, matching the shared list (auto shows the
@@ -96,7 +102,8 @@ export function SharedDetail({ hash }) {
 
       <div class="detail-body">
       ${tab === "clients" ? html`
-        <${FileClients} hash=${s.hash} prefsKey="shared_clients" defaultHidden=${SH_HIDDEN}
+        <${FileClients} hash=${s.hash} scope="shared" partCount=${s.part_count}
+                        prefsKey="shared_clients" defaultHidden=${SH_HIDDEN}
                         defaultSort="uploaded" />
       ` : tab === "comments" ? html`
         <div class="detail-comments">
@@ -134,6 +141,7 @@ export function SharedDetail({ hash }) {
           statRow("downloads_detail_queued", formatInt(s.queued_count), "downloads_detail_tip_queued"),
           statRow("shared_detail_file_type", s.file_type || "—", "shared_detail_tip_file_type"),
         ], "shared_detail_group_file", html`
+          <${DownloadLink} hash=${s.hash} incomplete=${!!s.incomplete} />
           <button class="btn btn-sm admin-only" type="button" disabled=${!!s.incomplete}
                   title=${t(s.incomplete ? "shared_verify_tip_partfile" : "shared_verify_tip")}
                   onClick=${verify}>
