@@ -113,18 +113,20 @@ std::string ToJsonDownloadEvent(const FileSnapshot &f)
 	  << "\"hash\":\"" << EscJson(f.hash) << "\""
 	  << ",\"name\":\"" << EscJson(f.name) << "\""
 	  << ",\"ed2k_link\":\"" << EscJson(f.ed2k_link) << "\""
-	  << ",\"size\":" << f.size << ",\"size_done\":" << f.download.size_done
-	  << ",\"size_xfer\":" << f.download.size_xfer << ",\"speed_bps\":" << f.download.speed_bps
-	  << ",\"status\":\"" << EscJson(f.download.status) << "\""
+	  << ",\"size_bytes\":" << f.size << ",\"completed_bytes\":" << f.download.completed_bytes
+	  << ",\"transferred_bytes\":" << f.download.transferred_bytes
+	  << ",\"speed_bytes_per_second\":" << f.download.speed_bytes_per_second << ",\"status\":\""
+	  << EscJson(f.download.status) << "\""
 	  << ",\"priority\":\"" << EscJson(f.download.priority) << "\""
 	  << ",\"priority_auto\":" << (f.download.priority_auto ? "true" : "false")
-	  << ",\"category\":" << f.download.category << ",\"sources\":{"
-	  << "\"total\":" << f.download.sources_total << ",\"not_current\":" << f.download.sources_not_current
+	  << ",\"category_index\":" << f.download.category << ",\"sources\":{"
+	  << "\"total\":" << f.download.sources_total << ",\"unavailable\":" << f.download.sources_unavailable
 	  << ",\"transferring\":" << f.download.sources_transferring
 	  << ",\"a4af\":" << f.download.sources_a4af << "}"
 	  << ",\"progress\":{\"percent\":" << JsonDoubleToString(f.download.percent) << "}"
-	  << ",\"kad_comment_search_running\":" << (f.download.kad_comment_searching ? "true" : "false")
-	  << ",\"hashing_progress\":" << f.download.hashing_progress << "}";
+	  << ",\"kad_comment_lookup_running\":" << (f.download.kad_comment_searching ? "true" : "false")
+	  << ",\"hashed_part_count\":" << f.download.hashed_part_count
+	  << ",\"parts_total_count\":" << webapi::PartCountForSize(f.size) << "}";
 	return o.str();
 }
 
@@ -134,7 +136,7 @@ std::string ToJsonDownloadEvent(const FileSnapshot &f)
 //
 // A strict superset of the endpoint, deliberately: the event needs `hash`
 // because nothing else in the frame identifies the file, and it needs
-// `kad_comment_search_running` because that flag is exactly what a client
+// `kad_comment_lookup_running` because that flag is exactly what a client
 // wants while a POST /downloads/{hash}/comments lookup is in flight. It used
 // to carry the first and not the second, so a client that followed the docs
 // and fed the event into the view it built from the endpoint silently lost
@@ -143,8 +145,8 @@ std::string ToJsonCommentsEvent(const FileSnapshot &f)
 {
 	std::ostringstream o;
 	o << "{\"hash\":\"" << EscJson(f.hash) << "\""
-	  << ",\"kad_comment_search_running\":" << (f.download.kad_comment_searching ? "true" : "false")
-	  << ",\"count\":" << f.download.source_comments.size() << ",\"comments\":[";
+	  << ",\"kad_comment_lookup_running\":" << (f.download.kad_comment_searching ? "true" : "false")
+	  << ",\"total\":" << f.download.source_comments.size() << ",\"comments\":[";
 	bool first = true;
 	for (const auto &c : f.download.source_comments) {
 		if (!first)
@@ -167,18 +169,43 @@ std::string ToJsonSharedEvent(const FileSnapshot &f)
 	  << "\"hash\":\"" << EscJson(f.hash) << "\""
 	  << ",\"name\":\"" << EscJson(f.name) << "\""
 	  << ",\"ed2k_link\":\"" << EscJson(f.ed2k_link) << "\""
-	  << ",\"size\":" << f.size << ",\"priority\":\"" << EscJson(f.shared.priority) << "\""
-	  << ",\"priority_auto\":" << (f.shared.priority_auto ? "true" : "false")
-	  << ",\"complete_sources\":" << f.shared.complete_sources
-	  << ",\"xfer\":{\"session\":" << f.shared.xfer_session << ",\"total\":" << f.shared.xfer_total << "}"
-	  << ",\"requests\":{\"session\":" << f.shared.requests_session
-	  << ",\"total\":" << f.shared.requests_total << "}"
-	  << ",\"accepts\":{\"session\":" << f.shared.accepts_session
-	  << ",\"total\":" << f.shared.accepts_total << "}"
-	  << ",\"upload_speed_bps\":" << f.shared.upload_speed_bps
-	  << ",\"uploading\":" << f.shared.uploading_count << ",\"last_upload\":" << f.shared.last_upload
-	  << ",\"shared_since\":" << f.shared.shared_since
-	  << ",\"hashing_progress\":" << SharedHashingProgress(f);
+	  << ",\"size_bytes\":" << f.size << ",\"priority\":\"" << EscJson(f.shared.priority) << "\""
+	  << ",\"priority_auto\":"
+	  << (f.shared.priority_auto ? "true" : "false")
+	  // Nested to match the REST row: a stated exception to R11, so that
+	  // `sources.complete` is one access path across every endpoint that has
+	  // the concept. The list shape carries `complete` only; the range is
+	  // detail-only and does not ride the event.
+	  << ",\"sources\":{\"complete\":" << f.shared.complete_sources
+	  << "}"
+	  // Flattened (R11), same as the REST row this promises key parity with.
+	  << ",\"uploaded_bytes_session\":" << f.shared.uploaded_bytes_session
+	  << ",\"uploaded_bytes_total\":" << f.shared.uploaded_bytes_total
+	  << ",\"request_count_session\":" << f.shared.request_count_session
+	  << ",\"request_count_total\":" << f.shared.request_count_total
+	  << ",\"accepted_request_count_session\":" << f.shared.accepted_request_count_session
+	  << ",\"accepted_request_count_total\":" << f.shared.accepted_request_count_total
+	  << ",\"upload_speed_bytes_per_second\":" << f.shared.upload_speed_bytes_per_second
+	  << ",\"uploading_client_count\":"
+	  << f.shared.uploading_client_count
+	  // Unix seconds, null when unknown -- never uploaded, or a known.met entry
+	  // that predates the field. 0 reads as 1970 rather than "no idea", and the
+	  // REST row this event promises key parity with has always sent null here
+	  // (WriteIntOrNull in the shared list writer). A subscriber that hydrates
+	  // from REST and live-updates from this saw its null flip to 0 on the
+	  // first tick the file changed. Never-uploaded is the common case, so this
+	  // was the routine reading, not an edge one.
+	  << ",\"last_upload_at\":";
+	if (f.shared.last_upload != 0)
+		o << f.shared.last_upload;
+	else
+		o << "null";
+	o << ",\"shared_since_at\":";
+	if (f.shared.shared_since != 0)
+		o << f.shared.shared_since;
+	else
+		o << "null";
+	o << ",\"hashed_part_count\":" << SharedHashingProgress(f);
 	// Media metadata rides the event because a metadata re-extraction is
 	// otherwise invisible to a subscriber: the refresh endpoints answer 202
 	// with no result, so this is how a client learns a probe landed. Six
@@ -189,7 +216,8 @@ std::string ToJsonSharedEvent(const FileSnapshot &f)
 	// must not find a key on one side only.
 	o << ",\"media\":";
 	if (f.has_media) {
-		o << "{\"length_s\":" << f.media.length_s << ",\"bitrate\":" << f.media.bitrate
+		o << "{\"duration_seconds\":" << f.media.duration_seconds
+		  << ",\"bitrate_kilobits_per_second\":" << f.media.bitrate_kilobits_per_second
 		  << ",\"codec\":\"" << EscJson(f.media.codec) << "\""
 		  << ",\"artist\":\"" << EscJson(f.media.artist) << "\""
 		  << ",\"album\":\"" << EscJson(f.media.album) << "\""
@@ -208,12 +236,16 @@ std::string ToJson(const ServerSnapshot &s)
 	  << "\"ecid\":" << s.ecid << ",\"name\":\"" << EscJson(s.name) << "\""
 	  << ",\"description\":\"" << EscJson(s.description) << "\""
 	  << ",\"version\":\"" << EscJson(s.version) << "\""
-	  << ",\"address\":\"" << EscJson(s.address) << "\""
-	  << ",\"country_code\":\"" << EscJson(s.country_code) << "\""
-	  << ",\"port\":" << s.port << ",\"users\":" << s.users << ",\"max_users\":" << s.max_users
-	  << ",\"files\":" << s.files << ",\"soft_file_limit\":" << s.soft_file_limit
+	  << ",\"address\":\"" << EscJson(s.address)
+	  << "\""
+	  // The bare IP beside the "ip:port" form, matching the REST row.
+	  << ",\"ip\":\"" << EscJson(s.address.substr(0, s.address.rfind(':'))) << "\""
+	  << ",\"country_code\":"
+	  << (s.country_code.empty() ? std::string("null") : "\"" + EscJson(s.country_code) + "\"")
+	  << ",\"port\":" << s.port << ",\"user_count\":" << s.users << ",\"max_user_count\":" << s.max_users
+	  << ",\"file_count\":" << s.files << ",\"soft_file_limit\":" << s.soft_file_limit
 	  << ",\"hard_file_limit\":" << s.hard_file_limit << ",\"priority\":\"" << EscJson(s.priority) << "\""
-	  << ",\"ping_ms\":" << s.ping_ms << ",\"failed_count\":" << s.failed_count << ",\"static\":"
+	  << ",\"ping_ms\":" << s.ping_ms << ",\"failed_count\":" << s.failed_count << ",\"permanent\":"
 	  << (s.is_static ? "true" : "false")
 	  // Same fragment builder WriteServerObject uses, so the event payload and
 	  // the REST object stay byte-identical here by construction.
@@ -242,32 +274,40 @@ std::string ToJson(const ClientSnapshot &c)
 	  << "\"ecid\":" << c.ecid << ",\"name\":\"" << EscJson(c.client_name) << "\""
 	  << ",\"user_hash\":\"" << EscJson(c.user_hash) << "\""
 	  << ",\"ip\":\"" << EscJson(c.ip) << "\""
-	  << ",\"country_code\":\"" << EscJson(c.country_code) << "\""
+	  << ",\"country_code\":"
+	  // null, not "", when the lookup has not resolved -- the REST row this
+	  // event promises key parity with emits null here.
+	  << (c.country_code.empty() ? std::string("null") : "\"" + EscJson(c.country_code) + "\"")
 	  << ",\"port\":" << c.port << ",\"software\":\"" << EscJson(c.software) << "\""
 	  << ",\"software_version\":\"" << EscJson(c.software_version) << "\""
-	  << ",\"os_info\":\"" << EscJson(c.os_info) << "\""
+	  << ",\"reported_os\":\"" << EscJson(c.reported_os) << "\""
 	  << ",\"upload_state\":\"" << EscJson(c.upload_state) << "\""
 	  << ",\"download_state\":\"" << EscJson(c.download_state) << "\""
 	  << ",\"ident_state\":\"" << EscJson(c.ident_state) << "\""
 	  << ",\"download_file_name\":\"" << EscJson(c.download_file_name) << "\""
 	  << ",\"upload_file_name\":\"" << EscJson(c.upload_file_name) << "\""
 	  << ",\"upload_file_hash\":\"" << EscJson(c.upload_file_hash) << "\""
-	  << ",\"download_file_hash\":\"" << EscJson(c.download_file_hash) << "\""
-	  << ",\"xfer\":{"
-	  << "\"up_session\":" << c.xfer_up_session << ",\"down_session\":" << c.xfer_down_session
-	  << ",\"up_total\":" << c.xfer_up_total << ",\"down_total\":" << c.xfer_down_total << "}"
-	  << ",\"upload_speed_bps\":" << c.upload_speed_bps
-	  << ",\"download_speed_bps\":" << c.download_speed_bps
-	  << ",\"queue_waiting_position\":" << c.queue_waiting_position << ",\"remote_queue_rank\":"
-	  << (c.remote_queue_rank == kRemoteQueueFullSentinel ? std::string("null")
-							      : std::to_string(c.remote_queue_rank))
-	  << ",\"score\":" << c.score << ",\"obfuscation_status\":\"" << EscJson(c.obfuscation_status) << "\""
+	  << ",\"download_file_hash\":\"" << EscJson(c.download_file_hash)
+	  << "\""
+	  // Flattened out of the old `xfer` wrapper (R11), same as the REST row
+	  // this payload promises key parity with.
+	  << ",\"uploaded_bytes_session\":" << c.uploaded_bytes_session
+	  << ",\"downloaded_bytes_session\":" << c.downloaded_bytes_session
+	  << ",\"uploaded_bytes_total\":" << c.uploaded_bytes_total
+	  << ",\"downloaded_bytes_total\":" << c.downloaded_bytes_total
+	  << ",\"upload_speed_bytes_per_second\":" << c.upload_speed_bytes_per_second
+	  << ",\"download_speed_bytes_per_second\":" << c.download_speed_bytes_per_second
+	  << ",\"upload_queue_position\":" << c.upload_queue_position << ",\"remote_queue_position\":"
+	  << (c.remote_queue_position == kRemoteQueueFullSentinel ? std::string("null")
+								  : std::to_string(c.remote_queue_position))
+	  << ",\"upload_queue_score\":" << c.score << ",\"obfuscation_state\":\""
+	  << EscJson(c.obfuscation_state) << "\""
 	  << ",\"friend_slot\":" << (c.friend_slot ? "true" : "false") << ",\"source_origin\":\""
 	  << EscJson(c.source_origin) << "\""
-	  << ",\"available_parts\":"
-	  << (c.has_available_parts ? std::to_string(c.available_parts) : std::string("null"))
-	  << ",\"mod_version\":\"" << EscJson(c.mod_version) << "\""
-	  << ",\"view_shared_disabled\":" << (c.view_shared_disabled ? "true" : "false");
+	  << ",\"parts_offered_count\":"
+	  << (c.has_parts_offered_count ? std::to_string(c.parts_offered_count) : std::string("null"))
+	  << ",\"client_mod_name\":\"" << EscJson(c.client_mod_name) << "\""
+	  << ",\"shared_files_browsable\":" << (c.view_shared_disabled ? "false" : "true");
 	// null, not omitted, matching the REST row: the field only means
 	// something for a peer we are downloading from, and -1 is the
 	// in-process sentinel that must never reach the wire. Formatted
@@ -296,9 +336,24 @@ std::string JsonFreeSpace(std::int64_t v)
 	return v < 0 ? std::string("null") : std::to_string(v);
 }
 
+// `null` when the value was never measured, matching WriteIntOrNull /
+// WriteBoolOrNull on the REST side. The two bodies are promised to be
+// byte-identical, so the disconnected fields have to print `null` here too --
+// and the comparators below have to treat null<->value as a change, or the
+// event stops firing on the very edge that flips them.
+std::string JsonNumOrNull(bool known, std::uint64_t v)
+{
+	return known ? std::to_string(v) : std::string("null");
+}
+
+std::string JsonBoolOrNull(bool known, bool v)
+{
+	return known ? std::string(v ? "true" : "false") : std::string("null");
+}
+
 // Mirrors HandleStatus key for key -- EVENTS.md promises this payload is
 // identical to the REST /status envelope, and 22-sse-diff-emission.sh asserts
-// it. Both connected_since values are 0 while not connected, same rule as
+// it. Both connected_since_at values are 0 while not connected, same rule as
 // there: gate on state rather than trusting a 0 timestamp.
 std::string ToJsonStatusEvent(const StatusSnapshot &s, const KadSnapshot &k, bool ec_connected)
 {
@@ -308,21 +363,25 @@ std::string ToJsonStatusEvent(const StatusSnapshot &s, const KadSnapshot &k, boo
 	  << "\"state\":\"" << EscJson(s.ed2k_state) << "\""
 	  << ",\"high_id\":" << (s.ed2k_high_id ? "true" : "false") << ",\"user_id\":" << s.ed2k_user_id
 	  << ",\"public_ip\":\"" << EscJson(s.ed2k_public_ip) << "\""
-	  << ",\"connected_since\":" << s.ed2k_connected_since << ",\"server_name\":\""
+	  << ",\"connected_since_at\":" << s.ed2k_connected_since << ",\"server_name\":\""
 	  << EscJson(s.server_name) << "\""
 	  << ",\"server_ip\":\"" << EscJson(s.server_ip) << "\""
 	  << ",\"server_port\":" << s.server_port << ",\"network\":{"
-	  << "\"users\":" << s.ed2k_users << ",\"files\":" << s.ed2k_files << "}}"
+	  << "\"user_count\":" << JsonNumOrNull(s.has_ed2k_network, s.ed2k_users)
+	  << ",\"file_count\":" << JsonNumOrNull(s.has_ed2k_network, s.ed2k_files) << "}}"
 	  << ",\"kad\":{"
 	  << "\"state\":\"" << EscJson(s.kad_state) << "\""
-	  << ",\"firewalled_tcp\":" << (s.kad_firewalled_tcp ? "true" : "false")
-	  << ",\"connected_since\":" << s.kad_connected_since << ",\"network\":{"
-	  << "\"users\":" << k.users << ",\"files\":" << k.files << ",\"nodes\":" << k.nodes << "}"
+	  << ",\"firewalled_tcp\":" << JsonBoolOrNull(s.has_kad_firewalled_tcp, s.kad_firewalled_tcp)
+	  << ",\"connected_since_at\":" << s.kad_connected_since << ",\"network\":{"
+	  << "\"user_count\":" << JsonNumOrNull(k.has_network, k.users)
+	  << ",\"file_count\":" << JsonNumOrNull(k.has_network, k.files)
+	  << ",\"node_count\":" << JsonNumOrNull(k.has_network, k.nodes) << "}"
 	  << "}"
 	  << ",\"speeds\":{"
-	  << "\"download_bps\":" << s.download_bps << ",\"upload_bps\":" << s.upload_bps
-	  << ",\"download_overhead_bps\":" << s.download_overhead_bps
-	  << ",\"upload_overhead_bps\":" << s.upload_overhead_bps << "}"
+	  << "\"download_bytes_per_second\":" << s.download_bytes_per_second
+	  << ",\"upload_bytes_per_second\":" << s.upload_bytes_per_second
+	  << ",\"download_overhead_bytes_per_second\":" << s.download_overhead_bytes_per_second
+	  << ",\"upload_overhead_bytes_per_second\":" << s.upload_overhead_bytes_per_second << "}"
 	  << ",\"disk\":{"
 	  // null, not the -1 sentinel and not 0 -- same reasoning as the REST body.
 	  << "\"temp_free_bytes\":" << JsonFreeSpace(s.temp_free_bytes)
@@ -355,17 +414,19 @@ bool EqualDownload(const FileSnapshot &a, const FileSnapshot &b)
 {
 	return a.ecid == b.ecid && a.hash == b.hash && a.name == b.name && a.ed2k_link == b.ed2k_link &&
 	       a.size == b.size && a.download.priority == b.download.priority &&
-	       a.download.size_done == b.download.size_done && a.download.size_xfer == b.download.size_xfer &&
-	       a.download.speed_bps == b.download.speed_bps && a.download.status == b.download.status &&
+	       a.download.completed_bytes == b.download.completed_bytes &&
+	       a.download.transferred_bytes == b.download.transferred_bytes &&
+	       a.download.speed_bytes_per_second == b.download.speed_bytes_per_second &&
+	       a.download.status == b.download.status &&
 	       a.download.priority_auto == b.download.priority_auto &&
 	       a.download.category == b.download.category &&
 	       a.download.sources_total == b.download.sources_total &&
-	       a.download.sources_not_current == b.download.sources_not_current &&
+	       a.download.sources_unavailable == b.download.sources_unavailable &&
 	       a.download.sources_transferring == b.download.sources_transferring &&
 	       a.download.sources_a4af == b.download.sources_a4af &&
 	       a.download.percent == b.download.percent &&
 	       a.download.kad_comment_searching == b.download.kad_comment_searching &&
-	       a.download.hashing_progress == b.download.hashing_progress;
+	       a.download.hashed_part_count == b.download.hashed_part_count;
 }
 
 // Comment list equality (deliberately NOT part of EqualDownload — a comment
@@ -396,13 +457,14 @@ bool EqualShared(const FileSnapshot &a, const FileSnapshot &b)
 	       a.size == b.size && a.shared.priority == b.shared.priority &&
 	       a.shared.priority_auto == b.shared.priority_auto &&
 	       a.shared.complete_sources == b.shared.complete_sources &&
-	       a.shared.xfer_session == b.shared.xfer_session && a.shared.xfer_total == b.shared.xfer_total &&
-	       a.shared.requests_session == b.shared.requests_session &&
-	       a.shared.requests_total == b.shared.requests_total &&
-	       a.shared.accepts_session == b.shared.accepts_session &&
-	       a.shared.accepts_total == b.shared.accepts_total &&
-	       a.shared.upload_speed_bps == b.shared.upload_speed_bps &&
-	       a.shared.uploading_count == b.shared.uploading_count &&
+	       a.shared.uploaded_bytes_session == b.shared.uploaded_bytes_session &&
+	       a.shared.uploaded_bytes_total == b.shared.uploaded_bytes_total &&
+	       a.shared.request_count_session == b.shared.request_count_session &&
+	       a.shared.request_count_total == b.shared.request_count_total &&
+	       a.shared.accepted_request_count_session == b.shared.accepted_request_count_session &&
+	       a.shared.accepted_request_count_total == b.shared.accepted_request_count_total &&
+	       a.shared.upload_speed_bytes_per_second == b.shared.upload_speed_bytes_per_second &&
+	       a.shared.uploading_client_count == b.shared.uploading_client_count &&
 	       a.shared.last_upload == b.shared.last_upload &&
 	       a.shared.shared_since == b.shared.shared_since &&
 	       // Media metadata, so a re-extraction emits shared_updated at all.
@@ -411,10 +473,10 @@ bool EqualShared(const FileSnapshot &a, const FileSnapshot &b)
 	       // only progress signal the 202-returning refresh endpoints have.
 	       // These change once per probe, not per tick, so they cost nothing
 	       // in event volume.
-	       a.has_media == b.has_media && a.media.length_s == b.media.length_s &&
-	       a.media.bitrate == b.media.bitrate && a.media.codec == b.media.codec &&
-	       a.media.artist == b.media.artist && a.media.album == b.media.album &&
-	       a.media.title == b.media.title &&
+	       a.has_media == b.has_media && a.media.duration_seconds == b.media.duration_seconds &&
+	       a.media.bitrate_kilobits_per_second == b.media.bitrate_kilobits_per_second &&
+	       a.media.codec == b.media.codec && a.media.artist == b.media.artist &&
+	       a.media.album == b.media.album && a.media.title == b.media.title &&
 	       // Through the accessor, not the raw field: a shared download's
 	       // progress lives on the download side, and comparing the raw
 	       // field would hold every tick of it back from shared_updated.
@@ -441,23 +503,26 @@ bool Equal(const ClientSnapshot &a, const ClientSnapshot &b)
 {
 	return a.client_name == b.client_name && a.user_hash == b.user_hash && a.ip == b.ip &&
 	       a.country_code == b.country_code && a.port == b.port && a.software == b.software &&
-	       a.software_version == b.software_version && a.os_info == b.os_info &&
+	       a.software_version == b.software_version && a.reported_os == b.reported_os &&
 	       a.upload_state == b.upload_state && a.download_state == b.download_state &&
 	       a.ident_state == b.ident_state && a.download_file_name == b.download_file_name &&
 	       a.upload_file_name == b.upload_file_name && a.upload_file_hash == b.upload_file_hash &&
-	       a.download_file_hash == b.download_file_hash && a.xfer_up_session == b.xfer_up_session &&
-	       a.xfer_down_session == b.xfer_down_session && a.xfer_up_total == b.xfer_up_total &&
-	       a.xfer_down_total == b.xfer_down_total && a.upload_speed_bps == b.upload_speed_bps &&
-	       a.download_speed_bps == b.download_speed_bps &&
-	       a.queue_waiting_position == b.queue_waiting_position &&
-	       a.remote_queue_rank == b.remote_queue_rank && a.score == b.score &&
-	       a.obfuscation_status == b.obfuscation_status && a.friend_slot == b.friend_slot &&
-	       a.source_origin == b.source_origin && a.available_parts == b.available_parts &&
+	       a.download_file_hash == b.download_file_hash &&
+	       a.uploaded_bytes_session == b.uploaded_bytes_session &&
+	       a.downloaded_bytes_session == b.downloaded_bytes_session &&
+	       a.uploaded_bytes_total == b.uploaded_bytes_total &&
+	       a.downloaded_bytes_total == b.downloaded_bytes_total &&
+	       a.upload_speed_bytes_per_second == b.upload_speed_bytes_per_second &&
+	       a.download_speed_bytes_per_second == b.download_speed_bytes_per_second &&
+	       a.upload_queue_position == b.upload_queue_position &&
+	       a.remote_queue_position == b.remote_queue_position && a.score == b.score &&
+	       a.obfuscation_state == b.obfuscation_state && a.friend_slot == b.friend_slot &&
+	       a.source_origin == b.source_origin && a.parts_offered_count == b.parts_offered_count &&
 	       // Without the flag, null -> 0 (the part map arriving and reporting
 	       // zero) compares equal and the row never updates.
-	       a.has_available_parts == b.has_available_parts && a.mod_version == b.mod_version &&
-	       a.view_shared_disabled == b.view_shared_disabled &&
-	       // Derived from available_parts and the linked file's part count,
+	       a.has_parts_offered_count == b.has_parts_offered_count &&
+	       a.client_mod_name == b.client_mod_name && a.view_shared_disabled == b.view_shared_disabled &&
+	       // Derived from parts_offered_count and the linked file's part count,
 	       // so it normally moves only when a compared field does. The case
 	       // that needs it in its own right is the file going away: the
 	       // percent drops back to its sentinel while every other field
@@ -473,16 +538,27 @@ bool Equal(const StatusSnapshot &a, const StatusSnapshot &b)
 	       a.kad_connected_since == b.kad_connected_since &&
 	       a.kad_firewalled_tcp == b.kad_firewalled_tcp && a.server_name == b.server_name &&
 	       a.server_ip == b.server_ip && a.server_port == b.server_port &&
-	       a.download_bps == b.download_bps && a.upload_bps == b.upload_bps &&
-	       a.download_overhead_bps == b.download_overhead_bps &&
-	       a.upload_overhead_bps == b.upload_overhead_bps && a.temp_free_bytes == b.temp_free_bytes &&
-	       a.incoming_free_bytes == b.incoming_free_bytes && a.ul_queue_len == b.ul_queue_len &&
-	       a.total_src_count == b.total_src_count && a.ed2k_users == b.ed2k_users &&
-	       a.ed2k_files == b.ed2k_files;
+	       a.download_bytes_per_second == b.download_bytes_per_second &&
+	       a.upload_bytes_per_second == b.upload_bytes_per_second &&
+	       a.download_overhead_bytes_per_second == b.download_overhead_bytes_per_second &&
+	       a.upload_overhead_bytes_per_second == b.upload_overhead_bytes_per_second &&
+	       a.temp_free_bytes == b.temp_free_bytes && a.incoming_free_bytes == b.incoming_free_bytes &&
+	       a.ul_queue_len == b.ul_queue_len && a.total_src_count == b.total_src_count &&
+	       // The has_ flags are part of the comparison, not just the values: a
+	       // disconnect flips these to null while the underlying ints keep
+	       // their last reading, so comparing the ints alone would miss the
+	       // edge and the event would stop firing exactly when it matters.
+	       a.has_ed2k_network == b.has_ed2k_network && a.ed2k_users == b.ed2k_users &&
+	       a.ed2k_files == b.ed2k_files && a.has_kad_firewalled_tcp == b.has_kad_firewalled_tcp;
 }
 bool Equal(const KadSnapshot &a, const KadSnapshot &b)
 {
-	return a.users == b.users && a.files == b.files && a.nodes == b.nodes;
+	// This is the SEPARATE gate for the kad half of status_changed -- the
+	// status comparator above does not cover these. has_network is compared
+	// first because it is the field that changes on a connect/disconnect edge
+	// while users/files/nodes keep their last values underneath.
+	return a.has_network == b.has_network && a.users == b.users && a.files == b.files &&
+	       a.nodes == b.nodes;
 }
 
 // Generic map-diff helper. Walks both old and new, emitting:
@@ -613,14 +689,13 @@ void EnforceSinglePublisher()
 } // namespace
 
 // One chat message as the `message` object both the SSE payload and
-// GET /chats/{peer}/messages expose. Written here in the same string-building
+// GET /chats/{client_address}/messages expose. Written here in the same string-building
 // style as the other event payloads in this file; the REST side renders the
 // identical shape through CJsonWriter.
 std::string ChatMessageJson(const ChatMessageSnapshot &msg)
 {
 	return "{\"id\":" + std::to_string(msg.id) + ",\"direction\":\"" + (msg.outgoing ? "out" : "in") +
-	       "\",\"text\":\"" + EscJson(msg.text) + "\",\"timestamp\":" + std::to_string(msg.timestamp) +
-	       "}";
+	       "\",\"text\":\"" + EscJson(msg.text) + "\",\"sent_at\":" + std::to_string(msg.timestamp) + "}";
 }
 
 void PublishChatEvents(CEventBus &bus,
@@ -634,19 +709,25 @@ void PublishChatEvents(CEventBus &bus,
 	for (const ChatSessionSnapshot &session : new_messages) {
 		const std::string peer = session.PeerKey();
 		for (const ChatMessageSnapshot &msg : session.messages) {
-			std::string payload = "{\"peer\":\"" + EscJson(peer) + "\",\"ip\":\"" +
+			std::string payload = "{\"client_address\":\"" + EscJson(peer) + "\",\"ip\":\"" +
 					      EscJson(session.ip) +
 					      "\",\"port\":" + std::to_string(session.port) + ",\"name\":\"" +
 					      EscJson(session.DisplayName()) +
-					      "\",\"client_ecid\":" + std::to_string(session.client_ecid) +
-					      ",\"friend_ecid\":" + std::to_string(session.friend_ecid) +
+					      // client_ecid / friend_ecid are null rather than the 0
+					      // sentinel, matching the REST row (R10).
+					      "\",\"client_ecid\":" +
+					      (session.client_ecid ? std::to_string(session.client_ecid)
+								   : std::string("null")) +
+					      ",\"friend_ecid\":" +
+					      (session.friend_ecid ? std::to_string(session.friend_ecid)
+								   : std::string("null")) +
 					      ",\"message\":" + ChatMessageJson(msg) + "}";
 			batch.emplace_back("chat_message", std::move(payload));
 		}
 	}
 	for (std::uint64_t gui_id : closed) {
 		const std::string peer = ChatPeerKeyFromGuiId(gui_id);
-		batch.emplace_back("chat_session_closed", "{\"peer\":\"" + EscJson(peer) + "\"}");
+		batch.emplace_back("chat_session_closed", "{\"client_address\":\"" + EscJson(peer) + "\"}");
 	}
 	bus.PublishBatch(batch);
 }
@@ -869,8 +950,35 @@ void EmitDiffsAndUpdate(CEventBus &bus, LastSeenState &prev, const CState &state
 	prev.kad = new_kad;
 	prev.ec_connected = new_ec;
 
+	// The stable-but-mutable field set for `search_result_updated`. A hit's
+	// identity fields (hash, name, size, type, directory, media, children)
+	// never change for a given ECID, and its source counts churn every tick
+	// while the search runs -- where `search_progress` is already the re-read
+	// cue. What is left is the set that can change AFTER a search finishes,
+	// when no other signal exists: download state (`status` /
+	// `already_downloaded`), and the Kad-notes cluster (`comments[]`, the
+	// in-flight flag, and `rating`, which aggregates from the comments).
+	// Comparing only these keeps the search channel quiet on a running
+	// search instead of firing per-result frames on source-count churn.
+	const auto result_mutated = [](const SearchResult &a, const SearchResult &b) {
+		if (a.status != b.status || a.already_downloaded != b.already_downloaded ||
+			a.rating != b.rating || a.kad_comment_searching != b.kad_comment_searching ||
+			a.comments.size() != b.comments.size())
+			return true;
+		for (std::size_t i = 0; i < a.comments.size(); ++i) {
+			const auto &ca = a.comments[i];
+			const auto &cb = b.comments[i];
+			if (ca.username != cb.username || ca.filename != cb.filename ||
+				ca.rating != cb.rating || ca.comment != cb.comment)
+				return true;
+		}
+		return false;
+	};
+
 	// Search events. `search_result_added` per new ECID in the results
-	// map; `search_progress` on any percent change while running and on
+	// map; `search_result_updated` when one of a held result's
+	// stable-but-mutable fields changes (see result_mutated above);
+	// `search_progress` on any percent change while running and on
 	// the running→finished edge. The finished frame (state="finished",
 	// percent=100) is just the terminal search_progress — there is no
 	// separate search_finished event. The refresher's state machine
@@ -902,23 +1010,38 @@ void EmitDiffsAndUpdate(CEventBus &bus, LastSeenState &prev, const CState &state
 			}
 
 			auto &pstate = prev.searches[sid];
-			// New result entries for this search.
+			// New and mutated result entries for this search.
 			for (const auto &kv : search_now) {
-				if (pstate.results.find(kv.first) == pstate.results.end()) {
-					// `search_id` routes the event to a tab/view; every
-					// field after it comes from the same writer
-					// GET /search/{id}/results uses, which is what makes
-					// the documented "byte-for-byte identical to a
-					// results-list entry" promise hold by construction
-					// rather than by review.
-					CJsonWriter w;
-					w.BeginObject();
-					w.Key("search_id");
-					w.ValueInt(static_cast<int64_t>(sid));
-					WriteSearchResultFields(w, kv.second);
-					w.EndObject();
-					bus.Publish("search_result_added", w.TakeBuffer());
-				}
+				const auto pit = pstate.results.find(kv.first);
+				const bool is_new = pit == pstate.results.end();
+				if (!is_new && !result_mutated(pit->second, kv.second))
+					continue;
+				// `search_id` routes the event to a tab/view; every
+				// field after it comes from the same writer
+				// GET /search/{id}/results uses, which is what makes
+				// the documented "byte-for-byte identical to a
+				// results-list entry" promise hold by construction
+				// rather than by review.
+				//
+				// `search_result_updated` carries the identical payload
+				// under its own name, rather than re-firing _added with
+				// upsert semantics: a consumer that only handles _added
+				// keeps exactly the behaviour it had, and one that wants
+				// live rows opts in by handling the new event. It is the
+				// close of the one window where a client could not know:
+				// a finished search stops emitting search_progress, yet a
+				// hit downloaded from it flips status / already_downloaded, and
+				// a Kad notes lookup lands comments / rating after the
+				// fact. (Those fields are polled at all because the union
+				// keeps finished searches in the per-tick poll set.)
+				CJsonWriter w;
+				w.BeginObject();
+				w.Key("search_id");
+				w.ValueInt(static_cast<int64_t>(sid));
+				WriteSearchResultFields(w, kv.second);
+				w.EndObject();
+				bus.Publish(is_new ? "search_result_added" : "search_result_updated",
+					w.TakeBuffer());
 			}
 			// search_progress: a percent change while running, the
 			// running→finished edge (complete false→true), or a
@@ -934,8 +1057,12 @@ void EmitDiffsAndUpdate(CEventBus &bus, LastSeenState &prev, const CState &state
 				std::ostringstream payload;
 				payload << "{\"search_id\":" << sid << ",\"state\":\""
 					<< (progress_now.complete ? "finished" : "running") << "\""
-					<< ",\"percent\":" << progress_now.percent
-					<< ",\"results\":" << search_now.size() << ",\"kind\":\""
+					<< ",\"percent\":"
+					<< progress_now.percent
+					// `result_count`: a plural key held an integer while `results` is an
+					// array everywhere else, and GET /search already calls this number
+					// result_count.
+					<< ",\"result_count\":" << search_now.size() << ",\"type\":\""
 					<< EscJson(progress_now.kind) << "\""
 					<< "}";
 				bus.Publish("search_progress", payload.str());

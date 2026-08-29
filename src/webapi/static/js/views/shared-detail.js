@@ -35,7 +35,8 @@ function prioLabel(s) {
 // bound is still 0, "low" once both bounds agree, else the "low – high"
 // estimate range.
 function completeSources(s) {
-  const r = s.complete_sources_range || { low: 0, high: 0 };
+  const src = s.sources || {};
+  const r = { low: src.complete_min || 0, high: src.complete_max || 0 };
   if (r.low === 0) return r.high ? "< " + formatInt(r.high) : "0";
   if (r.low === r.high) return formatInt(r.low);
   return formatInt(r.low) + " – " + formatInt(r.high);
@@ -62,6 +63,9 @@ export function SharedDetail({ hash }) {
 
   const s = detail;
   const media = s.media;
+  // "audio"/"video" are the file_type tokens the daemon's
+  // IsMediaProbeCandidate accepts, so the button matches what the core probes.
+  const isMedia = s.file_type === "audio" || s.file_type === "video";
 
   const copy = (text) => copyText(text)
     .then(() => toast(t("downloads_detail_copied"), "success"))
@@ -76,6 +80,15 @@ export function SharedDetail({ hash }) {
     try {
       await api.post("shared/" + s.hash + "/verify");
       toast(t("shared_verify_started"), "info");
+    } catch (e) { toast(terr(e), "error"); }
+  };
+
+  // Single file: no confirmation (cheap, non-destructive). 202 is async, so the
+  // toast only says it started; new values arrive on the next shared tick.
+  const refreshMedia = async () => {
+    try {
+      await api.post("shared/" + s.hash + "/media/refresh");
+      toast(t("shared_media_refresh_started"), "info");
     } catch (e) { toast(terr(e), "error"); }
   };
 
@@ -100,7 +113,7 @@ export function SharedDetail({ hash }) {
                         defaultSort="uploaded" />
       ` : tab === "comments" ? html`
         <div class="detail-comments">
-          <${CommentEditor} key=${s.hash} hash=${s.hash} kind="shared" comment=${s.comment} rating=${s.rating} />
+          <${CommentEditor} key=${s.hash} hash=${s.hash} kind="shared" comment=${s.my_comment} rating=${s.my_rating} />
         </div>
       ` : tab === "filename" ? html`
         <div class="detail-comments">
@@ -108,48 +121,54 @@ export function SharedDetail({ hash }) {
         </div>
       ` : html`
       <div class="detail-sections">
-        ${s.hashing_progress > 0 && s.part_count ? html`
+        ${s.hashed_part_count > 0 && s.parts_total_count ? html`
         <div class="detail-progress">
-          <${PiecesBar} mode="hashing" total=${s.part_count} hashed=${s.hashing_progress} />
-          <${PiecesLegend} mode="hashing" total=${s.part_count} hashed=${s.hashing_progress} />
+          <${PiecesBar} mode="hashing" total=${s.parts_total_count} hashed=${s.hashed_part_count} />
+          <${PiecesLegend} mode="hashing" total=${s.parts_total_count} hashed=${s.hashed_part_count} />
         </div>` : s.parts && s.parts.length ? html`
         <div class="detail-progress">
           <${PiecesBar} mode="availability" parts=${s.parts} />
           <${PiecesLegend} mode="availability" parts=${s.parts} />
         </div>` : null}
         ${Section([
-          statRow("shared_size", formatBytes(s.size), "shared_detail_tip_size"),
-          statRow("shared_detail_uploaded", twin(s.xfer, "session", "total", formatBytes), "shared_detail_tip_uploaded"),
-          statRow("shared_detail_upload_speed", formatSpeed(s.upload_speed_bps), "shared_detail_tip_upload_speed"),
-          statRow("shared_detail_uploading", formatInt(s.uploading), "shared_detail_tip_uploading"),
-          statRow("shared_detail_last_upload", formatTimestamp(s.last_upload), "shared_detail_tip_last_upload"),
-          statRow("shared_detail_shared_since", formatTimestamp(s.shared_since), "shared_detail_tip_shared_since"),
-          statRow("shared_detail_requested", twin(s.requests, "session", "total", formatInt), "shared_detail_tip_requested"),
-          statRow("shared_detail_accepted", twin(s.accepts, "session", "total", formatInt), "shared_detail_tip_accepted"),
-          statRow("shared_detail_share_ratio", (Number(s.share_ratio) || 0).toFixed(2), "shared_detail_tip_share_ratio"),
+          statRow("shared_size", formatBytes(s.size_bytes), "shared_detail_tip_size"),
+          statRow("shared_detail_uploaded", twin(s, "uploaded_bytes_session", "uploaded_bytes_total", formatBytes), "shared_detail_tip_uploaded"),
+          statRow("shared_detail_upload_speed", formatSpeed(s.upload_speed_bytes_per_second), "shared_detail_tip_upload_speed"),
+          statRow("shared_detail_uploading", formatInt(s.uploading_client_count), "shared_detail_tip_uploading"),
+          statRow("shared_detail_last_upload", formatTimestamp(s.last_upload_at), "shared_detail_tip_last_upload"),
+          statRow("shared_detail_shared_since", formatTimestamp(s.shared_since_at), "shared_detail_tip_shared_since"),
+          statRow("shared_detail_requested", twin(s, "request_count_session", "request_count_total", formatInt), "shared_detail_tip_requested"),
+          statRow("shared_detail_accepted", twin(s, "accepted_request_count_session", "accepted_request_count_total", formatInt), "shared_detail_tip_accepted"),
+          statRow("shared_detail_upload_ratio", (Number(s.upload_ratio) || 0).toFixed(2), "shared_detail_tip_upload_ratio"),
           statRow("shared_detail_complete_src", completeSources(s), "shared_detail_tip_complete_src"),
         ], "shared_detail_group_sharing")}
         ${Section([
           statRow("shared_priority", prioLabel(s), "shared_detail_tip_priority"),
-          statRow("downloads_detail_queued", formatInt(s.queued_count), "downloads_detail_tip_queued"),
+          statRow("downloads_detail_queued", formatInt(s.upload_queue_count), "downloads_detail_tip_queued"),
           statRow("shared_detail_file_type", s.file_type || "—", "shared_detail_tip_file_type"),
         ], "shared_detail_group_file", html`
           <button class="btn btn-sm admin-only" type="button" disabled=${!!s.incomplete}
                   title=${t(s.incomplete ? "shared_verify_tip_partfile" : "shared_verify_tip")}
                   onClick=${verify}>
             ${t("shared_verify")}
-          </button>`)}
+          </button>
+          ${isMedia ? html`
+          <button class="btn btn-sm admin-only" type="button" disabled=${!!s.incomplete}
+                  title=${t(s.incomplete ? "shared_media_refresh_tip_partfile" : "shared_media_refresh_tip")}
+                  onClick=${refreshMedia}>
+            ${t("shared_media_refresh")}
+          </button>` : null}`)}
         ${media ? Section([
           media.title ? statRow("downloads_detail_media_title", media.title, "downloads_detail_tip_media_title") : null,
           media.artist ? statRow("downloads_detail_media_artist", media.artist, "downloads_detail_tip_media_artist") : null,
           media.album ? statRow("downloads_detail_media_album", media.album, "downloads_detail_tip_media_album") : null,
-          media.length_s ? statRow("downloads_detail_media_length", formatDuration(media.length_s), "downloads_detail_tip_media_length") : null,
-          media.bitrate ? statRow("downloads_detail_media_bitrate", formatInt(media.bitrate), "downloads_detail_tip_media_bitrate") : null,
+          media.duration_seconds ? statRow("downloads_detail_media_length", formatDuration(media.duration_seconds), "downloads_detail_tip_media_length") : null,
+          media.bitrate_kilobits_per_second ? statRow("downloads_detail_media_bitrate", formatInt(media.bitrate_kilobits_per_second), "downloads_detail_tip_media_bitrate") : null,
           media.codec ? statRow("downloads_detail_media_codec", media.codec, "downloads_detail_tip_media_codec") : null,
         ].filter(Boolean), "downloads_detail_group_media") : null}
         ${IdentityLine({ file: s, copy, titleKey: "downloads_detail_group_identity", extra: [
-          statRow("shared_detail_path", s.path || "—", "shared_detail_tip_path"),
-          statRow("shared_detail_parts", formatInt(s.part_count), "shared_detail_tip_parts"),
+          statRow("shared_detail_directory", s.directory || "—", "shared_detail_tip_directory"),
+          statRow("shared_detail_parts", formatInt(s.parts_total_count), "shared_detail_tip_parts"),
         ] })}
       </div>`}
       </div>

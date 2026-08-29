@@ -76,7 +76,7 @@ echo "amuleapi 05-read-servers-kad-categories-prefs smoke @ $HOST"
 # Log in.
 TOKEN=$(curl -s -X POST -H "Content-Type: application/json" \
 	-d "{\"password\":\"$ADMIN_PASS\"}" \
-	"$HOST/api/v0/auth/login?type=bearer" | jq -r .token)
+	"$HOST/api/v0/auth/login?include_token=true" | jq -r .token)
 [ -n "$TOKEN" ] && [ "$TOKEN" != "null" ] || _die "login failed"
 
 # Wait for the first full refresher tick (servers + prefs land at the
@@ -95,14 +95,20 @@ if [ "$COUNT" -gt 0 ]; then
 	echo "  --- /servers has $COUNT entry/entries; per-item shape ---"
 	_assert_json_eq '.servers[0].name     | type' string  '/servers[0].name is string'
 	_assert_json_eq '.servers[0].address  | type' string  '/servers[0].address is string'
+	# Added beside `address`: every client had to re-parse the ip:port form.
+	_assert_json_eq '.servers[0].ip       | type' string  '/servers[0].ip is string'
+	_assert_json_eq '.servers[0] as $s | ($s.address | startswith($s.ip))' true \
+		'/servers[0].address begins with the bare ip'
 	_assert_json_eq '.servers[0].port     | type' number  '/servers[0].port is numeric'
-	_assert_json_eq '.servers[0].users    | type' number  '/servers[0].users is numeric'
+	_assert_json_eq '.servers[0].user_count | type' number  '/servers[0].user_count is numeric'
 	_assert_json_eq '.servers[0].priority | test("^(low|normal|high)$")' \
 		true '/servers[0].priority is a known enum value'
-	_assert_json_eq '.servers[0].static   | type' boolean '/servers[0].static is boolean'
+	_assert_json_eq '.servers[0].permanent | type' boolean '/servers[0].permanent is boolean'
 	# #440 server country: always-present ISO 3166-1 alpha-2 string,
 	# empty when GeoIP is off/unresolved (never absent/null).
-	_assert_json_eq '.servers[0].country_code | type' string '/servers[0].country_code is string (#440)'
+	# Nullable since the R10 pass, same as the client row.
+	_assert_json_eq '(.servers[0].country_code == null or (.servers[0].country_code | type) == "string")' \
+		true '/servers[0].country_code is a string or null'
 	# Consecutive failed connection attempts -- a counter, not a boolean,
 	# which is why the key is not just "failed".
 	_assert_json_eq '.servers[0].failed_count | type' number '/servers[0].failed_count is numeric'
@@ -141,9 +147,15 @@ _assert_json_eq '.state | test("^(disabled|connecting|connected)$")' \
 # verdict and a refinement -- which is what the unqualified `firewalled` used
 # to imply. The TCP one is a vote (two peers must confirm reachability over an
 # incoming connection); the UDP one is a directed test with its own timeout.
-_assert_json_eq '.firewalled_tcp   | type' boolean '/kad.firewalled_tcp is boolean'
-_assert_json_eq '.firewalled_udp   | type' boolean '/kad.firewalled_udp is boolean'
-_assert_json_eq '.lan_mode         | type' boolean '/kad.lan_mode is boolean'
+# Typed by connection state now: a measured bool while connected, null while
+# not. `false` used to mean both "measured open" and "never measured", and for
+# firewalled_udp specifically that read as "UDP is open" on a stopped Kad.
+for F in firewalled_tcp firewalled_udp lan_mode; do
+	_assert_json_eq "(.state == \"connected\") or (.$F == null)" true \
+		"/kad.$F is null while Kad is not connected"
+	_assert_json_eq "(.state != \"connected\") or ((.$F | type) == \"boolean\")" true \
+		"/kad.$F is boolean while Kad is connected"
+done
 # The pre-rename spellings must be gone, not merely shadowed by the new ones.
 _assert_json_eq 'has("firewalled")'   false '/kad.firewalled is gone'
 _assert_json_eq 'has("in_lan_mode")'  false '/kad.in_lan_mode is gone'
@@ -154,9 +166,9 @@ _assert_json_eq '(.lan_mode | not) or ((.firewalled_tcp | not) and (.firewalled_
 # amuled sends the UDP test result only while Kad is connected, so a false
 # there is the absence of a measurement rather than "UDP is open". The TCP
 # side defaults the other way: true until two peers vouch for us.
-_assert_json_eq '(.state == "connected") or (.firewalled_udp | not)' \
-	true '/kad.firewalled_udp reads false while Kad is not connected'
-_assert_json_eq '.connected_since  | type' number  '/kad.connected_since is numeric'
+# Was: "reads false while not connected". That false was the absence of a
+# measurement wearing the costume of one, and it is null now.
+_assert_json_eq '.connected_since_at | type' number  '/kad.connected_since_ate is numeric'
 # Ours. Named apart from the buddy's address, which the rename must not touch.
 _assert_json_eq '.public_ip        | type' string  '/kad.public_ip is string'
 _assert_json_eq '.ip               | type' null    '/kad has no bare top-level ip'
@@ -166,25 +178,36 @@ _assert_json_eq '(.state == "disabled") or (.node_id | test("^[0-9a-f]{32}$"))' 
 	true '/kad.node_id is 32 lowercase hex chars while Kad runs'
 _assert_json_eq '(.state != "disabled") or (.node_id == "")' \
 	true '/kad.node_id is empty while Kad is not running'
-_assert_json_eq '.network.users    | type' number  '/kad.network.users is numeric'
-_assert_json_eq '.network.files    | type' number  '/kad.network.files is numeric'
-_assert_json_eq '.network.nodes    | type' number  '/kad.network.nodes is numeric'
-_assert_json_eq '.indexed.sources  | type' number  '/kad.indexed.sources is numeric'
-_assert_json_eq '.indexed.keywords | type' number  '/kad.indexed.keywords is numeric'
-_assert_json_eq '.indexed.notes    | type' number  '/kad.indexed.notes is numeric'
-# A load figure, not a count, despite sitting beside three counts.
-_assert_json_eq '.indexed.load     | type' number  '/kad.indexed.load is numeric'
-# The store counters ride on a tag amuled sends only while connected.
-_assert_json_eq '(.state == "connected") or (.indexed.sources == 0)' \
-	true '/kad.indexed.sources is 0 while Kad is not connected'
+# The network rollup and the store counters, both gated on being connected.
+# `nodes` is the sharp one: it is this node's OWN routing-table size, and
+# contacts outlive a disconnect, so it was measured at 2 on a fully stopped Kad
+# -- a non-zero figure for a network the daemon was not on.
+for F in network.user_count network.file_count network.node_count \
+	indexed.sources indexed.keywords indexed.notes indexed.load_percent; do
+	_assert_json_eq "(.state == \"connected\") or (.$F == null)" true \
+		"/kad.$F is null while Kad is not connected"
+	_assert_json_eq "(.state != \"connected\") or ((.$F | type) == \"number\")" true \
+		"/kad.$F is numeric while Kad is connected"
+done
+# indexed.load_percent is a load figure rather than a count, despite sitting beside
+# three counts -- covered by the loop above.
 # Two distinct "unknown" sentinels: "" while Kad is not connected, and a
 # syntactically valid 0.0.0.0 while connected but not yet told our address.
 _assert_json_eq '(.state == "connected") or (.public_ip == "")' \
 	true '/kad.public_ip is empty while Kad is not connected'
-_assert_json_eq '.buddy.port       | type' number  '/kad.buddy.port is numeric'
-_assert_json_eq '.buddy.status     | test("^(no_buddy|connecting|connected|unknown)$")' \
-	true '/kad.buddy.status is a known enum value'
-_assert_json_eq '.buddy.ip         | type' string  '/kad.buddy.ip survives the ip rename'
+# Gated with the rest: `no_buddy` is a real state, so reporting it on a stopped
+# Kad claimed we had looked and found none. Null when not connected; the enum
+# and the types still hold while connected.
+for F in buddy.state buddy.ip buddy.port; do
+	_assert_json_eq "(.state == \"connected\") or (.$F == null)" true \
+		"/kad.$F is null while Kad is not connected"
+done
+_assert_json_eq '(.state != "connected") or ((.buddy.port | type) == "number")' \
+	true '/kad.buddy.port is numeric while Kad is connected'
+_assert_json_eq '(.state != "connected") or ((.buddy.ip | type) == "string")' \
+	true '/kad.buddy.ip survives the ip rename'
+_assert_json_eq '(.state != "connected") or (.buddy.state | test("^(no_buddy|connecting|connected|unknown)$"))' \
+	true '/kad.buddy.state is a known enum value while Kad is connected'
 
 # --- 3. /categories -----------------------------------------------
 _curl "$HOST/api/v0/categories"
@@ -214,15 +237,15 @@ _assert_json_eq '.snapshot_at | type' null \
 
 _assert_json_eq '.general.nickname             | type' string  '/preferences.general.nickname is string'
 _assert_json_eq '.general.user_hash | length'                          32   '/preferences.general.user_hash is 32-char hex'
-_assert_json_eq '.general.check_new_version    | type' boolean '/preferences.general.check_new_version is boolean'
+_assert_json_eq '.general.version_check_enabled    | type' boolean '/preferences.general.version_check_enabled is boolean'
 
 _assert_json_eq '.connection.tcp_port          | type' number  '/preferences.connection.tcp_port is numeric'
 _assert_json_eq '.connection.udp_port          | type' number  '/preferences.connection.udp_port is numeric'
 _assert_json_eq '.connection.extended_udp_port_enabled | type' boolean '/preferences.connection.extended_udp_port_enabled is boolean (#596)'
-_assert_json_eq '.connection.network_ed2k      | type' boolean '/preferences.connection.network_ed2k is boolean'
-_assert_json_eq '.connection.network_kad       | type' boolean '/preferences.connection.network_kad is boolean'
+_assert_json_eq '.connection.ed2k_enabled      | type' boolean '/preferences.connection.ed2k_enabled is boolean'
+_assert_json_eq '.connection.kad_enabled       | type' boolean '/preferences.connection.kad_enabled is boolean'
 _assert_json_eq '.connection.autoconnect       | type' boolean '/preferences.connection.autoconnect is boolean'
-_assert_json_eq '.connection.max_sources_per_file | type' number '/preferences.connection.max_sources_per_file is numeric'
+_assert_json_eq '.connection.max_sources_per_file_count | type' number '/preferences.connection.max_sources_per_file_count is numeric'
 # Statistics graph-scale caps were dropped from /preferences (#596).
 _assert_json_eq '.connection.max_upload_cap_kbps   | type' null '/preferences.connection.max_upload_cap_kbps removed (#596)'
 _assert_json_eq '.connection.max_download_cap_kbps | type' null '/preferences.connection.max_download_cap_kbps removed (#596)'
@@ -231,31 +254,31 @@ _assert_json_eq '.connection.max_download_cap_kbps | type' null '/preferences.co
 # endgame newly exposed (#596).
 _assert_json_eq '.security.shared_files_visibility | test("^(everybody|friends|nobody)$")' \
 	true '/preferences.security.shared_files_visibility is a known 3-state enum value (#655)'
-_assert_json_eq '.files.endgame_enabled        | type' boolean '/preferences.files.endgame_enabled is boolean (#596)'
+_assert_json_eq '.files.endgame_mode_enabled        | type' boolean '/preferences.files.endgame_mode_enabled is boolean (#596)'
 # Old names must be gone, not merely shadowed by the new ones (#655).
 _assert_json_eq '.security.can_see_shares      | type' null    '/preferences.security.can_see_shares removed (#655)'
 _assert_json_eq '.files.endgame                | type' null    '/preferences.files.endgame removed (#655)'
 
 # message_filter show-in-log + comment filter, wired over EC (#596).
-_assert_json_eq '.message_filter.show_in_log      | type' boolean '/preferences.message_filter.show_in_log is boolean (#596)'
+_assert_json_eq '.message_filter.log_filtered_messages      | type' boolean '/preferences.message_filter.log_filtered_messages is boolean (#596)'
 _assert_json_eq '.message_filter.filter_comments  | type' boolean '/preferences.message_filter.filter_comments is boolean (#596)'
 _assert_json_eq '.message_filter.comment_keywords | type' string  '/preferences.message_filter.comment_keywords is string (#596)'
 
-# ip2country config category (#440). Field types are always present even
+# geoip config category (#440). Field types are always present even
 # on a GeoIP-less daemon (supported=false, strings empty); source is one
 # of the known enum values.
-_assert_json_eq '.ip2country.supported       | type' boolean '/preferences.ip2country.supported is boolean'
-_assert_json_eq '.ip2country.enabled         | type' boolean '/preferences.ip2country.enabled is boolean'
-_assert_json_eq '.ip2country.source | test("^(dbip|maxmind|custom)$")' \
-	true '/preferences.ip2country.source is a known enum value'
-_assert_json_eq '.ip2country.custom_url      | type' string  '/preferences.ip2country.custom_url is string'
-_assert_json_eq '.ip2country.maxmind_license | type' string  '/preferences.ip2country.maxmind_license is string'
-_assert_json_eq '.ip2country.auto_update     | type' boolean '/preferences.ip2country.auto_update is boolean'
-_assert_json_eq '.ip2country.loaded_source   | type' string  '/preferences.ip2country.loaded_source is string'
-_assert_json_eq '.ip2country.db_path         | type' string  '/preferences.ip2country.db_path is string'
-_assert_json_eq '.ip2country.db_loaded       | type' boolean '/preferences.ip2country.db_loaded is boolean'
-_assert_json_eq '.ip2country.download_in_progress | type' boolean '/preferences.ip2country.download_in_progress is boolean'
-_assert_json_eq '.ip2country.last_update_result  | type' string  '/preferences.ip2country.last_update_result is string'
+_assert_json_eq '.geoip.supported       | type' boolean '/preferences.geoip.supported is boolean'
+_assert_json_eq '.geoip.enabled         | type' boolean '/preferences.geoip.enabled is boolean'
+_assert_json_eq '.geoip.source | test("^(dbip|maxmind|custom)$")' \
+	true '/preferences.geoip.source is a known enum value'
+_assert_json_eq '.geoip.custom_update_url      | type' string  '/preferences.geoip.custom_update_url is string'
+_assert_json_eq '.geoip.maxmind_license | type' string  '/preferences.geoip.maxmind_license is string'
+_assert_json_eq '.geoip.auto_update     | type' boolean '/preferences.geoip.auto_update is boolean'
+_assert_json_eq '.geoip.loaded_source   | type' string  '/preferences.geoip.loaded_source is string'
+_assert_json_eq '.geoip.db_path         | type' string  '/preferences.geoip.db_path is string'
+_assert_json_eq '.geoip.db_loaded       | type' boolean '/preferences.geoip.db_loaded is boolean'
+_assert_json_eq '.geoip.download_in_progress | type' boolean '/preferences.geoip.download_in_progress is boolean'
+_assert_json_eq '.geoip.last_update_status  | type' string  '/preferences.geoip.last_update_status is string'
 
 # --- Nested remote_controls (#655). ----------------------------
 # The two subsystems are sub-objects, not webserver_* / amuleapi_* prefixes.
@@ -264,7 +287,7 @@ _assert_json_eq '.remote_controls.amuleapi         | type' object  '/preferences
 _assert_json_eq '.remote_controls.webserver.enabled         | type' boolean '/preferences.remote_controls.webserver.enabled is boolean'
 _assert_json_eq '.remote_controls.webserver.port            | type' number  '/preferences.remote_controls.webserver.port is numeric'
 _assert_json_eq '.remote_controls.webserver.refresh_seconds | type' number  '/preferences.remote_controls.webserver.refresh_seconds is numeric'
-_assert_json_eq '.remote_controls.webserver.template        | type' string  '/preferences.remote_controls.webserver.template is string'
+_assert_json_eq '.remote_controls.webserver.template_name        | type' string  '/preferences.remote_controls.webserver.template_name is string'
 _assert_json_eq '.remote_controls.amuleapi.enabled          | type' boolean '/preferences.remote_controls.amuleapi.enabled is boolean'
 _assert_json_eq '.remote_controls.amuleapi.port             | type' number  '/preferences.remote_controls.amuleapi.port is numeric'
 _assert_json_eq '.remote_controls.amuleapi.bind_address     | type' string  '/preferences.remote_controls.amuleapi.bind_address is string'

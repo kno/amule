@@ -88,7 +88,7 @@ echo "amuleapi 34-friends @ $HOST"
 # --- 0. Log in. ----------------------------------------------------
 TOKEN=$(curl -s -X POST -H "Content-Type: application/json" \
 	-d "{\"password\":\"$ADMIN_PASS\"}" \
-	"$HOST/api/v0/auth/login?type=bearer" | jq -r .token)
+	"$HOST/api/v0/auth/login?include_token=true" | jq -r .token)
 [ -n "$TOKEN" ] && [ "$TOKEN" != "null" ] || _die "could not log in for friends tests"
 AUTH=(-H "Authorization: Bearer $TOKEN")
 
@@ -121,8 +121,8 @@ _assert_status 200 "GET /friends?limit=1"
 # Over the cap is a rejection, not a silent clamp. It used to answer 200 with a
 # quietly reduced window, so a client asking for 99999 got 500 rows with nothing
 # in the response saying the request had been altered.
-_curl "$HOST/api/v0/friends?limit=99999"
-_assert_status 400 "GET /friends?limit=99999 is rejected, not clamped"
+_curl "$HOST/api/v0/friends?limit=1000000001"
+_assert_status 400 "GET /friends?limit=1000000001 is rejected, not clamped"
 
 # The cap itself is still valid.
 _curl "$HOST/api/v0/friends?limit=500"
@@ -178,6 +178,12 @@ NEW=$(echo "$CURL_BODY" | jq -r --argjson e "$NEW_ECID" \
 [ "$(echo "$NEW" | jq -r .online)" = "false" ] \
 	&& _pass "a friend with no linked peer is offline" \
 	|| _fail "online" "expected false, got $(echo "$NEW" | jq -r .online)"
+# ...and reports that as null, not as the 0 sentinel it used to send. 0 is not
+# how this surface spells "no value" anywhere else, and a client joining
+# naively on the raw number was building GET /clients/0 and taking a 404.
+[ "$(echo "$NEW" | jq -r '.client_ecid')" = "null" ] \
+	&& _pass "an offline friend reports client_ecid null, not a 0 sentinel" \
+	|| _fail "client_ecid" "expected null, got $(echo "$NEW" | jq -r .client_ecid)"
 if [ "$AFTER" -gt "$BEFORE" ] 2>/dev/null; then
 	_pass "the list grew ($BEFORE -> $AFTER)"
 else
@@ -246,7 +252,7 @@ _assert_status 405 "POST /friends/{ecid} is 405"
 # --- 7. Guests read but cannot mutate. ------------------------------
 GUEST_TOKEN=$(curl -s -X POST -H "Content-Type: application/json" \
 	-d "{\"password\":\"$GUEST_PASS\"}" \
-	"$HOST/api/v0/auth/login?type=bearer" | jq -r .token)
+	"$HOST/api/v0/auth/login?include_token=true" | jq -r .token)
 if [ -n "$GUEST_TOKEN" ] && [ "$GUEST_TOKEN" != "null" ]; then
 	SAVED=("${AUTH[@]}")
 	AUTH=(-H "Authorization: Bearer $GUEST_TOKEN")

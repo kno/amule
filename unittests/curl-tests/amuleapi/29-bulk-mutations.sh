@@ -45,7 +45,7 @@ curl -s -o /dev/null --max-time 2 "$HOST/api/v0/health" || _die "amuleapi at $HO
 
 echo "amuleapi 29-bulk-mutations @ $HOST"
 TOKEN=$(curl -s -X POST -H "Content-Type: application/json" -d "{\"password\":\"$ADMIN_PASS\"}" \
-	"$HOST/api/v0/auth/login?type=bearer" | jq -r .token)
+	"$HOST/api/v0/auth/login?include_token=true" | jq -r .token)
 [ -n "$TOKEN" ] && [ "$TOKEN" != "null" ] || _die "login failed"
 sleep 2
 
@@ -66,12 +66,12 @@ _jq '.results[0].id'    "$H0"            "  results[0].id echoes the hash"
 _jq '.results[0].ok'    false            "  results[0].ok is false"
 _jq '.results[0].error.code' not_found   "  results[0].error.code is not_found"
 
-# status:"stopped" is a recognized bulk value — it reaches the per-hash
+# action:"stop" is a recognized bulk value — it reaches the per-hash
 # loop (bogus hash → not_found), proving the parse accepts it, unlike a
 # bad enum (see the 400 section).
-_req PATCH /api/v0/downloads "{\"hashes\":[\"$H0\"],\"status\":\"stopped\"}"
-_status 207 "PATCH /downloads status=stopped [bogus hash]"
-_jq '.results[0].error.code' not_found   "  bulk status=stopped results[0] not_found (value accepted)"
+_req PATCH /api/v0/downloads "{\"hashes\":[\"$H0\"],\"action\":\"stop\"}"
+_status 207 "PATCH /downloads action=stop [bogus hash]"
+_jq '.results[0].error.code' not_found   "  bulk action=stop results[0] not_found (value accepted)"
 
 _req DELETE /api/v0/downloads "{\"hashes\":[\"$H0\"]}"
 _status 207 "DELETE /downloads [bogus hash]"

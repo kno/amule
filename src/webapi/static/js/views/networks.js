@@ -141,7 +141,7 @@ function ServersPanel({ isGuest }) {
 
   useEffect(() => {
     data.register({ key: "servers", eventPrefix: "server", id: "ecid",
-      list: () => api.get("servers").then((r) => r.servers || []) });
+      list: () => api.list("servers").then((r) => r.servers || []) });
     data.ensure("servers");
   }, []);
 
@@ -201,11 +201,11 @@ function ServersPanel({ isGuest }) {
     { key: "description", label: t("networks_server_description"), sortable: true,
       sortVal: (s) => (s.description || "").toLowerCase(), cell: (s) => s.description || "" },
     { key: "users", label: t("networks_server_users"), num: true, width: "130px", sortable: true,
-      sortVal: (s) => s.users || 0,
-      cell: (s) => formatInt(s.users) + (s.max_users ? " / " + formatInt(s.max_users) : "") },
+      sortVal: (s) => s.user_count || 0,
+      cell: (s) => formatInt(s.user_count) + (s.max_user_count ? " / " + formatInt(s.max_user_count) : "") },
     { key: "files", label: t("networks_server_files"), num: true, width: "110px", sortable: true,
-      sortVal: (s) => s.files || 0, cell: (s) => formatInt(s.files) },
-    // Per-user publishing limits the server advertises, not subsets of `files`.
+      sortVal: (s) => s.file_count || 0, cell: (s) => formatInt(s.file_count) },
+    // Per-user publishing limits the server advertises, not subsets of `file_count`.
     // 0 means "the server has not told us yet" — blank, not "0", exactly as the
     // desktop's Soft/Hard Files columns and the API docs say.
     { key: "soft_files", label: t("networks_server_soft_limit"), num: true, width: "110px", sortable: true,
@@ -233,12 +233,12 @@ function ServersPanel({ isGuest }) {
     // Static and priority are both PATCH /servers/{ecid} fields, so both cells are
     // selects for an admin and plain labels for a guest (as in downloads/shared).
     { key: "static", label: t("networks_server_static"), width: "90px", sortable: true,
-      sortVal: (s) => (s.static ? 1 : 0),
+      sortVal: (s) => (s.permanent ? 1 : 0),
       cell: (s) => isGuest
-        ? (s.static ? t("networks_server_static_yes") : t("networks_server_static_no"))
+        ? (s.permanent ? t("networks_server_static_yes") : t("networks_server_static_no"))
         : html`
-            <select class="input input-sm admin-only" value=${s.static ? "yes" : "no"}
-                    onChange=${(e) => patchServer(s.ecid, { static: e.target.value === "yes" })}>
+            <select class="input input-sm admin-only" value=${s.permanent ? "yes" : "no"}
+                    onChange=${(e) => patchServer(s.ecid, { permanent: e.target.value === "yes" })}>
               <option value="yes">${t("networks_server_static_yes")}</option>
               <option value="no">${t("networks_server_static_no")}</option>
             </select>` },
@@ -296,7 +296,7 @@ function KadPanel() {
       try {
         const r = await api.get("stats/graphs/" + KAD_GRAPH.name + "?width=" + GRAPH_WIDTH);
         const pts = r.points || [];
-        if (alive) setGraphData([pts.map((p) => p.t_unix), pts.map((p) => p.value)]);
+        if (alive) setGraphData([pts.map((p) => p.at), pts.map((p) => p.value)]);
       } catch (_) { /* leave previous data */ }
     };
     tick();
@@ -407,7 +407,7 @@ function ServerInfoPanel() {
 
   const load = async () => {
     try {
-      const r = await api.get("logs/serverinfo");
+      const r = await api.get("logs/server_info");
       if (!boxRef.current) return;
       setText(boxRef.current, r.text || "");
       boxRef.current.scrollTop = boxRef.current.scrollHeight;
@@ -415,11 +415,11 @@ function ServerInfoPanel() {
   };
   const clear = async () => {
     if (!(await confirmDialog(t("networks_log_confirm_clear_serverinfo")))) return;
-    try { await api.del("logs/serverinfo"); if (boxRef.current) setText(boxRef.current, ""); toast(t("networks_log_toast_cleared"), "success"); }
+    try { await api.del("logs/server_info"); if (boxRef.current) setText(boxRef.current, ""); toast(t("networks_log_toast_cleared"), "success"); }
     catch (e) { toast(terr(e) || t("networks_log_error"), "error"); }
   };
   const save = async () => {
-    try { const r = await api.get("logs/serverinfo"); saveText("server-info.txt", r.text || ""); }
+    try { const r = await api.get("logs/server_info"); saveText("server-info.txt", r.text || ""); }
     catch (e) { toast(terr(e) || t("networks_log_error"), "error"); }
   };
 
@@ -443,7 +443,7 @@ function yesno(b) { return html`<span class=${"status-chip " + (b ? "warn" : "ok
 // with are stale, so the row goes blank instead (the desktop hides it outright).
 function buddyText(kad_state, buddy, firewalled_tcp, firewalled_udp) {
   if (kad_state !== "connected") return "—";
-  switch (buddy.status) {
+  switch (buddy.state) {
     case "connected": return t("networks_kad_buddy_at", { addr: buddy.ip + ":" + buddy.port });
     case "connecting": return t("networks_kad_buddy_connecting");
     case "no_buddy":
@@ -488,13 +488,15 @@ function Ed2kInfoPanel() {
     <div class="detail-sections">
       ${Section([
         statRow("networks_ed2k_status", html`
-          <span class=${"status-chip " + (connected ? "ok" : "off")}>
-            ${connected ? t("networks_ed2k_connected") : t("networks_ed2k_not_connected")}
+          <span class=${"status-chip " + (connected ? "ok" : "bad")}>
+            ${connected ? t("networks_ed2k_connected") : t("networks_ed2k_disconnected")}
           </span>`),
         statRow("networks_ed2k_server", server),
         statRow("networks_ed2k_connection_type",
-          connected ? (ed2k.high_id ? t("networks_ed2k_high_id") : t("networks_ed2k_low_id")) : "—"),
-        statRow("networks_ed2k_connected_since", formatTimestamp(ed2k.connected_since)),
+          connected
+            ? html`<span class=${"status-chip " + (ed2k.high_id ? "ok" : "warn")}>${ed2k.high_id ? t("networks_ed2k_high_id") : t("networks_ed2k_low_id")}</span>`
+            : "—"),
+        statRow("networks_ed2k_connected_since", formatTimestamp(ed2k.connected_since_at)),
       ], "networks_ed2k_group_connection")}
       ${Section([
         // An identifier, not a quantity -- no thousands separators.
@@ -502,8 +504,8 @@ function Ed2kInfoPanel() {
         statRow("networks_ed2k_ip_port", ipPort),
       ], "networks_ed2k_group_identity")}
       ${Section([
-        statRow("networks_ed2k_users", formatInt(net.users)),
-        statRow("networks_ed2k_files", formatInt(net.files)),
+        statRow("networks_ed2k_users", connected ? formatInt(net.user_count) : "—"),
+        statRow("networks_ed2k_files", connected ? formatInt(net.file_count) : "—"),
       ], "networks_ed2k_group_network")}
     </div>`;
 }
@@ -530,17 +532,20 @@ function KadInfoPanel() {
   const d = detail || {};
   const buddy = d.buddy || {};
   const idx = d.indexed || {};
+  const connected = kad.state === "connected";
 
   if (error) return html`<p>${error}</p>`;
 
   return html`
     <div class="detail-sections">
       ${Section([
-        statRow("networks_kad_state", html`<span class=${"status-chip " + (kad.state === "connected" ? "ok" : "off")}>${kad.state ? t("networks_kad_conn_" + kad.state) : "—"}</span>`),
-        statRow("networks_kad_firewalled_tcp", yesno(kad.firewalled_tcp)),
-        statRow("networks_kad_firewalled_udp", yesno(d.firewalled_udp)),
-        statRow("networks_kad_in_lan_mode", yesno(d.lan_mode)),
-        statRow("networks_kad_connected_since", formatTimestamp(d.connected_since)),
+        statRow("networks_kad_state", kad.state
+          ? html`<span class=${"status-chip " + (connected ? "ok" : kad.state === "connecting" ? "warn" : "bad")}>${t("networks_kad_conn_" + kad.state)}</span>`
+          : "—"),
+        statRow("networks_kad_firewalled_tcp", connected ? yesno(kad.firewalled_tcp) : "—"),
+        statRow("networks_kad_firewalled_udp", connected ? yesno(d.firewalled_udp) : "—"),
+        statRow("networks_kad_in_lan_mode", connected ? yesno(d.lan_mode) : "—"),
+        statRow("networks_kad_connected_since", connected ? formatTimestamp(d.connected_since_at) : "—"),
       ], "networks_kad_group_connection")}
       ${Section([
         statRow("networks_kad_node_id", d.node_id || "—"),
@@ -548,15 +553,15 @@ function KadInfoPanel() {
         statRow("networks_kad_buddy", buddyText(kad.state, buddy, kad.firewalled_tcp, d.firewalled_udp)),
       ], "networks_kad_group_identity")}
       ${Section([
-        statRow("networks_kad_users", formatInt(net.users)),
-        statRow("networks_kad_files", formatInt(net.files)),
-        statRow("networks_kad_contacts_nodes", formatInt(net.nodes)),
+        statRow("networks_kad_users", connected ? formatInt(net.user_count) : "—"),
+        statRow("networks_kad_files", connected ? formatInt(net.file_count) : "—"),
+        statRow("networks_kad_contacts_nodes", connected ? formatInt(net.node_count) : "—"),
       ], "networks_kad_group_network")}
       ${Section([
-        statRow("networks_kad_indexed_sources", formatInt(idx.sources)),
-        statRow("networks_kad_indexed_keywords", formatInt(idx.keywords)),
-        statRow("networks_kad_indexed_notes", formatInt(idx.notes)),
-        statRow("networks_kad_indexed_load", formatInt(idx.load)),
+        statRow("networks_kad_indexed_sources", connected ? formatInt(idx.sources) : "—"),
+        statRow("networks_kad_indexed_keywords", connected ? formatInt(idx.keywords) : "—"),
+        statRow("networks_kad_indexed_notes", connected ? formatInt(idx.notes) : "—"),
+        statRow("networks_kad_indexed_load", connected ? formatInt(idx.load_percent) : "—"),
       ], "networks_kad_group_index")}
     </div>`;
 }

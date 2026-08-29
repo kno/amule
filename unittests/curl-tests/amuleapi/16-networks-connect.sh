@@ -13,7 +13,7 @@
 #   POST /api/v0/kad/bootstrap          — EC_OP_KAD_BOOTSTRAP_FROM_IP
 #       body: {ip: "1.2.3.4" | uint32, port: uint16}
 #   POST /api/v0/kad/update             — EC_OP_KAD_UPDATE_FROM_URL
-#       body: {nodes_url: "https://.../nodes.dat"}
+#       body: {url: "https://.../nodes.dat"}
 #
 # amuled's CONNECT/DISCONNECT return EC_OP_STRINGS with status
 # messages — the handler relays those into `response.message`. That
@@ -81,11 +81,11 @@ fi
 echo "amuleapi 16-networks-connect smoke @ $HOST"
 
 ADMIN_TOKEN=$(curl -s -X POST -H "Content-Type: application/json" \
-	-d "{\"password\":\"$ADMIN_PASS\"}" "$HOST/api/v0/auth/login?type=bearer" | jq -r .token)
+	-d "{\"password\":\"$ADMIN_PASS\"}" "$HOST/api/v0/auth/login?include_token=true" | jq -r .token)
 [ -n "$ADMIN_TOKEN" ] && [ "$ADMIN_TOKEN" != "null" ] || _die "admin login failed"
 
 GUEST_TOKEN=$(curl -s -X POST -H "Content-Type: application/json" \
-	-d "{\"password\":\"$GUEST_PASS\"}" "$HOST/api/v0/auth/login?type=bearer" | jq -r .token)
+	-d "{\"password\":\"$GUEST_PASS\"}" "$HOST/api/v0/auth/login?include_token=true" | jq -r .token)
 HAVE_GUEST=0
 [ -n "$GUEST_TOKEN" ] && [ "$GUEST_TOKEN" != "null" ] && HAVE_GUEST=1
 
@@ -101,10 +101,11 @@ if [ "$HAVE_GUEST" = "1" ]; then
 	_assert_status 403 "POST /networks/disconnect (guest) → 403"
 fi
 
-# --- 2. networks/disconnect → 200 + message. -----------------------
+# --- 2. networks/disconnect → 202 + message. -----------------------
 _curl -X POST -H "Authorization: Bearer $ADMIN_TOKEN" \
 	"$HOST/api/v0/networks/disconnect"
-_assert_status 200 "POST /networks/disconnect → 200"
+_assert_status 202 "POST /networks/disconnect → 202"
+_assert_json_eq '.message | type' string 'disconnect response carries .message'
 _assert_json_eq '. | has("ok")' false 'disconnect response has no constant ok field'
 
 # --- 3. networks/connect → 202 + message. --------------------------
@@ -121,7 +122,7 @@ _curl -X POST -H "Authorization: Bearer $ADMIN_TOKEN" \
 	-H "Content-Type: application/json" \
 	-d '{"network":"kad"}' \
 	"$HOST/api/v0/networks/disconnect"
-_assert_status 200 "POST /networks/disconnect {network:kad} → 200"
+_assert_status 202 "POST /networks/disconnect {network:kad} → 202"
 _assert_json_eq '. | has("ok")' false \
 	'networks/disconnect(kad) response has no constant ok field'
 
@@ -213,29 +214,29 @@ _assert_status 405 "DELETE /kad/bootstrap → 405"
 # instead; what is pinned here is everything that must be rejected
 # before any of that can happen.
 _curl -X POST -H "Content-Type: application/json" \
-	-d '{"nodes_url":"https://example.com/nodes.dat"}' "$HOST/api/v0/kad/update"
+	-d '{"url":"https://example.com/nodes.dat"}' "$HOST/api/v0/kad/update"
 _assert_status 401 "POST /kad/update (no token) → 401"
 
 if [ "$HAVE_GUEST" = "1" ]; then
 	_curl -X POST -H "Authorization: Bearer $GUEST_TOKEN" \
 		-H "Content-Type: application/json" \
-		-d '{"nodes_url":"https://example.com/nodes.dat"}' "$HOST/api/v0/kad/update"
+		-d '{"url":"https://example.com/nodes.dat"}' "$HOST/api/v0/kad/update"
 	_assert_status 403 "POST /kad/update (guest) → 403"
 fi
 
 _curl -X POST -H "Authorization: Bearer $ADMIN_TOKEN" \
 	-H "Content-Type: application/json" -d '{}' "$HOST/api/v0/kad/update"
-_assert_status 400 "POST /kad/update missing nodes_url → 400"
+_assert_status 400 "POST /kad/update missing url → 400"
 
 _curl -X POST -H "Authorization: Bearer $ADMIN_TOKEN" \
 	-H "Content-Type: application/json" \
-	-d '{"nodes_url":""}' "$HOST/api/v0/kad/update"
-_assert_status 400 "POST /kad/update empty nodes_url → 400"
+	-d '{"url":""}' "$HOST/api/v0/kad/update"
+_assert_status 400 "POST /kad/update empty url → 400"
 
 _curl -X POST -H "Authorization: Bearer $ADMIN_TOKEN" \
 	-H "Content-Type: application/json" \
-	-d '{"nodes_url":123}' "$HOST/api/v0/kad/update"
-_assert_status 400 "POST /kad/update non-string nodes_url → 400"
+	-d '{"url":123}' "$HOST/api/v0/kad/update"
+_assert_status 400 "POST /kad/update non-string url → 400"
 
 # Scheme gate: amuled hands the string to libcurl, so a non-http(s)
 # scheme has to be rejected here or it fails asynchronously with no
@@ -243,7 +244,7 @@ _assert_status 400 "POST /kad/update non-string nodes_url → 400"
 for BAD in "ftp://example.com/nodes.dat" "file:///etc/passwd" "example.com/nodes.dat"; do
 	_curl -X POST -H "Authorization: Bearer $ADMIN_TOKEN" \
 		-H "Content-Type: application/json" \
-		-d "{\"nodes_url\":\"$BAD\"}" "$HOST/api/v0/kad/update"
+		-d "{\"url\":\"$BAD\"}" "$HOST/api/v0/kad/update"
 	_assert_status 400 "POST /kad/update rejects scheme: $BAD → 400"
 done
 

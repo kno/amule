@@ -85,7 +85,7 @@ echo "amuleapi 37-shared-availability-parts smoke @ $HOST"
 
 TOKEN=$(curl -s -X POST -H "Content-Type: application/json" \
 	-d "{\"password\":\"$ADMIN_PASS\"}" \
-	"$HOST/api/v0/auth/login?type=bearer" | jq -r .token)
+	"$HOST/api/v0/auth/login?include_token=true" | jq -r .token)
 [ -n "$TOKEN" ] && [ "$TOKEN" != "null" ] || _die "login failed"
 
 # The RLE decoder needs the first EC_TAG_KNOWNFILE frame to seed itself
@@ -136,13 +136,13 @@ if [ "$COUNT" -gt 0 ]; then
 		_assert_json_eq '.parts | type' array '/shared/{hash}.parts is array'
 		PARTS_LEN=$(printf '%s' "$CURL_BODY" | jq '.parts | length')
 
-		# --- 3. parts.length == part_count == ceil(size/PARTSIZE). --
-		PART_COUNT=$(printf '%s' "$CURL_BODY" | jq '.part_count')
+		# --- 3. parts.length == parts_total_count == ceil(size/PARTSIZE). --
+		PART_COUNT=$(printf '%s' "$CURL_BODY" | jq '.parts_total_count')
 		if [ "$PARTS_LEN" = "$PART_COUNT" ]; then
-			_pass "/shared/{hash}.parts.length == part_count ($PARTS_LEN)"
+			_pass "/shared/{hash}.parts.length == parts_total_count ($PARTS_LEN)"
 		else
-			_fail "/shared/{hash}.parts.length vs part_count" \
-				"part_count=$PART_COUNT, parts.length=$PARTS_LEN"
+			_fail "/shared/{hash}.parts.length vs parts_total_count" \
+				"parts_total_count=$PART_COUNT, parts.length=$PARTS_LEN"
 		fi
 		if [ "$FIRST_SIZE" -gt 0 ]; then
 			EXPECTED_PARTS=$(( (FIRST_SIZE + 9728000 - 1) / 9728000 ))
@@ -182,15 +182,15 @@ if [ "$COUNT" -gt 0 ]; then
 					"$OUT_OF_RANGE parts have sources outside [0,255]"
 			fi
 
-			# --- 6. complete_sources agrees with min(parts). --------
-			# amuled derives complete_sources as the minimum of the
+			# --- 6. sources.complete agrees with min(parts). --------
+			# amuled derives sources.complete as the minimum of the
 			# availability vector, so a scalar above that minimum means
 			# the two are out of step. Reported as info, not a failure:
 			# the count is refreshed only on the increment path in the
 			# core, so it legitimately lags the vector downward.
 			MIN_SRC=$(printf '%s' "$CURL_BODY" | jq '[.parts[].sources] | min')
-			CS=$(printf '%s' "$CURL_BODY" | jq '.complete_sources // 0')
-			echo "    info: complete_sources=$CS, min(parts[].sources)=$MIN_SRC"
+			CS=$(printf '%s' "$CURL_BODY" | jq '.sources.complete // 0')
+			echo "    info: sources.complete=$CS, min(parts[].sources)=$MIN_SRC"
 		fi
 
 		# --- 7. URL hash case-insensitive. ----------------------
@@ -204,7 +204,7 @@ if [ "$COUNT" -gt 0 ]; then
 	# --- 8. Guest sessions see the bar too (read-only data). -------
 	GUEST_TOKEN=$(curl -s -X POST -H "Content-Type: application/json" \
 		-d "{\"password\":\"${GUEST_PASS:-guestpass}\"}" \
-		"$HOST/api/v0/auth/login?type=bearer" | jq -r .token)
+		"$HOST/api/v0/auth/login?include_token=true" | jq -r .token)
 	if [ -n "$GUEST_TOKEN" ] && [ "$GUEST_TOKEN" != "null" ]; then
 		_curl -H "Authorization: Bearer $GUEST_TOKEN" "$HOST/api/v0/shared/$FIRST_HASH"
 		_assert_status 200 "GET /shared/{hash} as guest → 200"

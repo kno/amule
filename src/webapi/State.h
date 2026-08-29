@@ -36,6 +36,13 @@
 #include <unordered_map>
 #include <vector>
 
+// kNoPartPendingSentinel: the same shape of sentinel as
+// kRemoteQueueFullSentinel below, for the two part indices on ClientSnapshot.
+// It lives in that header rather than here because the predicates that test it
+// are unit-tested standalone, and a constant defined twice is a constant that
+// drifts.
+#include "PartIndex.h"
+
 // Cached snapshot of amuled state. One instance lives inside
 // CamuleapiApp for the whole process; the refresher (wxApp thread)
 // writes; the HTTP server (Boost.Asio thread) reads.
@@ -114,8 +121,8 @@ struct FileSnapshot
 	bool has_media = false;
 	struct Media
 	{
-		std::uint32_t length_s = 0; // duration, seconds
-		std::uint32_t bitrate = 0;
+		std::uint32_t duration_seconds = 0; // duration, seconds
+		std::uint32_t bitrate_kilobits_per_second = 0;
 		std::string codec;
 		std::string artist;
 		std::string album;
@@ -125,7 +132,7 @@ struct FileSnapshot
 	// The partfile's control-file basename (e.g. `001.part`), from
 	// EC_TAG_KNOWNFILE_FILENAME. Meaningful only while the file is still
 	// an incomplete partfile — once it completes, the daemon reuses that
-	// EC tag to carry the directory path, so `met_file` on /downloads is
+	// EC tag to carry the directory path, so `part_file_name` on /downloads is
 	// gated on the download status (empty once completed). See #417.
 	std::string part_met_basename;
 
@@ -140,9 +147,9 @@ struct FileSnapshot
 	// by `/downloads` when the flag is false).
 	struct DownloadSide
 	{
-		std::uint64_t size_done = 0;
-		std::uint64_t size_xfer = 0;
-		std::uint32_t speed_bps = 0;
+		std::uint64_t completed_bytes = 0;
+		std::uint64_t transferred_bytes = 0;
+		std::uint32_t speed_bytes_per_second = 0;
 		std::string status; // "downloading" | "paused"
 				    // | "completed" | "hashing" | ...
 		// Download priority: "very_low" | "low" | "normal" | "high"
@@ -152,22 +159,21 @@ struct FileSnapshot
 		std::uint32_t category = 0;
 		double percent = 0.0;
 		std::uint32_t sources_total = 0;
-		std::uint32_t sources_not_current = 0;
+		std::uint32_t sources_unavailable = 0;
 		std::uint32_t sources_transferring = 0;
 		std::uint32_t sources_a4af = 0;
 
 		// Detail-only fields (GET /downloads/{hash}); the list endpoint
 		// omits them. All decoded from tags CEC_PartFile_Tag already
 		// emits under INC_UPDATE.
-		std::uint32_t last_seen_complete = 0;    // unix ts; 0 = unknown
-		std::uint32_t last_changed = 0;          // unix ts of last change
-		std::uint32_t download_active_time = 0;  // seconds downloading
-		std::uint16_t available_part_count = 0;  // parts across sources
-		std::uint16_t hashing_progress = 0;      // parts hashed so far; 0 = idle
-		std::uint64_t lost_to_corruption = 0;    // bytes
-		std::uint64_t gained_by_compression = 0; // bytes
-		std::uint32_t saved_by_ich = 0;          // packets recovered by ICH
-		std::uint32_t partmet_id = 0;            // numeric partfile id
+		std::uint32_t last_seen_complete_at = 0;       // unix ts; 0 = unknown
+		std::uint32_t last_received_at = 0;            // unix ts of last change
+		std::uint32_t active_seconds = 0;              // seconds downloading
+		std::uint16_t parts_available_count = 0;       // parts across sources
+		std::uint16_t hashed_part_count = 0;           // parts hashed so far; 0 = idle
+		std::uint64_t lost_to_corruption_bytes = 0;    // bytes
+		std::uint64_t gained_by_compression_bytes = 0; // bytes
+		std::uint32_t ich_recovered_packet_count = 0;  // packets recovered by ICH
 
 		// Per-source comments/ratings (GET /downloads/{hash}/comments,
 		// issue #419). Downloads-only — needs a live source list. A
@@ -228,12 +234,12 @@ struct FileSnapshot
 		// Upload-side auto-priority flag, mirroring `download.priority_auto`;
 		// says whether amuled is deriving it automatically from the queue.
 		bool priority_auto = false;
-		std::uint64_t xfer_session = 0;
-		std::uint64_t xfer_total = 0;
-		std::uint32_t requests_session = 0;
-		std::uint32_t requests_total = 0;
-		std::uint32_t accepts_session = 0;
-		std::uint32_t accepts_total = 0;
+		std::uint64_t uploaded_bytes_session = 0;
+		std::uint64_t uploaded_bytes_total = 0;
+		std::uint32_t request_count_session = 0;
+		std::uint32_t request_count_total = 0;
+		std::uint32_t accepted_request_count_session = 0;
+		std::uint32_t accepted_request_count_total = 0;
 		std::uint32_t complete_sources = 0;
 
 		// Detail-only (GET /shared/{hash}). The complete-sources range
@@ -266,18 +272,18 @@ struct FileSnapshot
 		// which both tasks restore when they finish or abort.
 		//
 		// A download that is also shared arrives as EC_TAG_PARTFILE, so its
-		// progress lands in download.hashing_progress and this stays 0 --
+		// progress lands in download.hashed_part_count and this stays 0 --
 		// read both through SharedHashingProgress() rather than this field
 		// directly, the same fallback decoded_part_sources needs.
 		std::uint16_t hashing_progress = 0;
 
 		// Live upload activity (issue #466), the upload-side analogue of
-		// the download stats. `upload_speed_bps` + `uploading_count` are
+		// the download stats. `upload_speed_bytes_per_second` + `uploading_client_count` are
 		// live (refresh every tick); `last_upload` / `shared_since` are
 		// unix timestamps, 0 = unknown (a file that has never uploaded, or
 		// a known.met entry that predates the feature).
-		std::uint32_t upload_speed_bps = 0;
-		std::uint16_t uploading_count = 0;
+		std::uint32_t upload_speed_bytes_per_second = 0;
+		std::uint16_t uploading_client_count = 0;
 		std::uint32_t last_upload = 0;
 		std::uint32_t shared_since = 0;
 	} shared;
@@ -328,16 +334,16 @@ struct KnownClientSnapshot
 	std::string ip; // dotted-quad; "" when the record predates metadata
 	std::uint16_t port = 0;
 	std::uint16_t kad_port = 0;
-	std::string country_code; // ISO 3166-1 alpha-2, resolved daemon-side
-	std::string software;     // resolved name, e.g. "eMule"
-	std::string version;      // "v0.50.0"
+	std::string country_code;     // ISO 3166-1 alpha-2, resolved daemon-side
+	std::string software;         // resolved name, e.g. "eMule"
+	std::string software_version; // "v0.50.0"
 	std::string source_origin;
-	std::string obfuscation;
-	std::uint64_t total_uploaded = 0;
-	std::uint64_t total_downloaded = 0;
-	std::time_t first_seen = 0; // 0 when the record carries no metadata
-	std::time_t last_seen = 0;
-	std::uint32_t sessions = 0;
+	std::string obfuscation_state;
+	std::uint64_t uploaded_bytes_total = 0;
+	std::uint64_t downloaded_bytes_total = 0;
+	std::time_t first_seen_at = 0; // 0 when the record carries no metadata
+	std::time_t last_seen_at = 0;
+	std::uint32_t session_count = 0;
 	//! This peer is connected right now, correlated by user hash against the
 	//! live client list. Never by ECID: those mean nothing across daemon
 	//! restarts, while the hash is what the credit store is keyed on.
@@ -367,7 +373,7 @@ struct ClientSnapshot
 	// short label here so consumers don't need the lookup table.
 	std::string software;         // "amule" | "emule" | "edonkey" | "mldonkey" | ...
 	std::string software_version; // free-form string from EC_TAG_CLIENT_SOFT_VER_STR
-	std::string os_info;          // free-form (CLIENT_OS_INFO)
+	std::string reported_os;      // free-form (CLIENT_OS_INFO)
 
 	// State machine values. We decode the raw US_*/DS_*/IS_* ints
 	// into wire strings so consumers don't reach into amule's enums.
@@ -401,48 +407,48 @@ struct ClientSnapshot
 	// Per-session transfer stats. CLIENT_UPLOAD_SESSION = bytes
 	// uploaded TO this peer; PARTFILE_SIZE_XFER (when re-keyed on a
 	// CLIENT_* tag) = bytes downloaded FROM this peer.
-	std::uint64_t xfer_up_session = 0;
-	std::uint64_t xfer_down_session = 0;
-	std::uint64_t xfer_up_total = 0;
-	std::uint64_t xfer_down_total = 0;
-	std::uint32_t upload_speed_bps = 0;
-	std::uint32_t download_speed_bps = 0;
+	std::uint64_t uploaded_bytes_session = 0;
+	std::uint64_t downloaded_bytes_session = 0;
+	std::uint64_t uploaded_bytes_total = 0;
+	std::uint64_t downloaded_bytes_total = 0;
+	std::uint32_t upload_speed_bytes_per_second = 0;
+	std::uint32_t download_speed_bytes_per_second = 0;
 
 	// Upload queue position (for peers in US_ONUPLOADQUEUE).
 	// 0 when not queued.
-	std::uint32_t queue_waiting_position = 0;
+	std::uint32_t upload_queue_position = 0;
 	// Remote queue rank — our position in THE PEER's upload queue
 	// (i.e. how many other ed2k clients they're going to upload to
 	// before us). 0xFFFF when their queue is full.
 	//! Carries amuled's queue-full sentinel as well as a real position; see
 	//! kRemoteQueueFullSentinel.
-	std::uint16_t remote_queue_rank = 0;
+	std::uint16_t remote_queue_position = 0;
 
 	std::uint32_t score = 0; // EC_TAG_CLIENT_SCORE
 	// Complete set, see ClientObfuscationName() in Refresher.cpp:
-	std::string obfuscation_status; // "undefined" | "enabled" | "supported" | "not_supported" |
-					// "disabled" | "unknown"
+	std::string obfuscation_state; // "undefined" | "enabled" | "supported" | "not_supported" |
+				       // "disabled" | "unknown"
 	bool friend_slot = false;
 
 	// --- Extra fields decoded off the INC_UPDATE wire (issue #422) ----
 	// Originally detail-only. Five of them -- source_origin,
-	// available_parts, mod_version, view_shared_disabled and the derived
+	// parts_offered_count, client_mod_name, view_shared_disabled and the derived
 	// part_progress_percent -- were since promoted to the /clients list row
 	// and the SSE client_* payloads (#995, #1015); the rest are still
 	// serialized only by GET /clients/{ecid}.
-	std::uint32_t user_id_hybrid = 0; // EC_TAG_CLIENT_USER_ID (hybrid eD2k id)
-	bool high_id = false;             // derived: !IsLowID(user_id_hybrid)
-	std::string server_ip;            // dotted-quad; "" when unknown/0
+	std::uint32_t ed2k_user_id = 0; // EC_TAG_CLIENT_USER_ID (hybrid eD2k id)
+	bool high_id = false;           // derived: !IsLowID(ed2k_user_id)
+	std::string server_ip;          // dotted-quad; "" when unknown/0
 	std::uint16_t server_port = 0;
 	std::string server_name;
-	std::uint16_t kad_port = 0;        // 0 => Kad not connected for this peer
-	std::string source_origin;         // "server" | "kad" | "source_exchange" | "passive" | "link" | ...
-	std::uint32_t available_parts = 0; // count of parts the peer has (EC_TAG_CLIENT_AVAILABLE_PARTS)
-	bool has_available_parts = false;  // false => tag absent, emitted as null
-	std::string mod_version;           // EC_TAG_CLIENT_MOD_VERSION
-	bool view_shared_disabled = false; // peer forbids viewing its shared files
+	std::uint16_t kad_port = 0; // 0 => Kad not connected for this peer
+	std::string source_origin;  // "server" | "kad" | "source_exchange" | "passive" | "link" | ...
+	std::uint32_t parts_offered_count = 0; // count of parts the peer has (EC_TAG_CLIENT_AVAILABLE_PARTS)
+	bool has_parts_offered_count = false;  // false => tag absent, emitted as null
+	std::string client_mod_name;           // EC_TAG_CLIENT_MOD_VERSION
+	bool view_shared_disabled = false;     // peer forbids viewing its shared files
 	// Completeness of the linked download for this peer, as a percent
-	// (available_parts / file part count). < 0 => not computable (no
+	// (parts_offered_count / file part count). < 0 => not computable (no
 	// linked file / no part count). Derived rather than decoded: filled in
 	// by ComputePartProgressPercent at every site that serializes a client
 	// -- the list, the per-file rows, the detail object and the SSE
@@ -469,20 +475,28 @@ struct ClientSnapshot
 	// Indices into the download bitmap; absent from the wire means unchanged,
 	// so the has_ flags distinguish "never reported" from "reported as 0".
 	//
-	// Decoded but not yet surfaced: no endpoint serializes these and no
-	// comparator sorts on them. Kept because the decode is already paid for
-	// on every INC_UPDATE tick and they are the natural companions of the
-	// bitmaps above -- a client wanting to show which chunk a peer is
-	// feeding needs them. Delete them rather than leave them rotting if
-	// that never materialises.
+	// Both are indices into the *download* bitmap of the peer's request
+	// file (ECSpecialCoreTags.cpp emits them inside the `pfile` guard, next
+	// to EC_TAG_CLIENT_PART_STATUS), so they address one file, not the peer
+	// as a whole. Surfaced by the per-file client rows only --
+	// `next_requested_part_index` / `downloading_part_index` on
+	// GET /downloads/{hash}/clients under `include_parts` -- which is why
+	// no comparator sorts on them and no SSE payload carries them. Values
+	// are relayed raw and validated by the serializer rather than here,
+	// because only the endpoint knows the file: kNoPartPendingSentinel is
+	// the core's "nothing pending" answer, any index past the file's part
+	// count is unusable, the row needs the bitmap the index indexes, and
+	// last_downloading_part is a stale 0 (BaseClient.cpp inits it so, and
+	// the tag is sent unconditionally) unless download_state is
+	// "downloading" -- all of which come out as null.
 	std::uint16_t next_requested_part = 0;
 	std::uint16_t last_downloading_part = 0;
 	bool has_next_requested_part = false;
 	bool has_last_downloading_part = false;
 
 	// --- Detail-only fields (issue #423, new EC tags) ----------------
-	bool is_friend = false;      // CUpDownClient::IsFriend(); distinct from friend_slot
-	double dl_up_modifier = 0.0; // CUpDownClient::GetScoreRatio() ("DL/UP modifier")
+	bool is_friend = false;    // CUpDownClient::IsFriend(); distinct from friend_slot
+	double credit_ratio = 0.0; // CUpDownClient::GetScoreRatio() ("DL/UP modifier")
 };
 
 // One per eD2k server in the configured server list. Identity is
@@ -539,7 +553,7 @@ struct FriendSnapshot
 	std::uint32_t client_ecid = 0; // live peer this friend is linked to, 0 = offline
 	// Reported by cores that serialize EC_TAG_FRIEND_FRIENDSLOT. An older
 	// daemon omits the tag and this stays false, the same way is_friend and
-	// dl_up_modifier degrade on /clients.
+	// credit_ratio degrade on /clients.
 	bool friend_slot = false;
 };
 
@@ -653,16 +667,42 @@ struct KadSnapshot
 	// id, this one is persisted (preferencesKad.dat) and survives
 	// daemon restarts.
 	std::string node_id;
+	// Everything below is emitted as `null` unless Kad is CONNECTED, and the
+	// `has_*` flags are what carries that -- one per JSON object rather than
+	// one per field, since they share a single gate.
+	//
+	// These used to be plain values with a `0`/`false` default, so a
+	// disconnected daemon answered with numbers that looked live. Measured on a
+	// real node with Kad stopped: `nodes` reported 2 and `firewalled_tcp`
+	// reported true -- claims about a network we are not on. `nodes` is the
+	// worst, because it is the size of our OWN routing table rather than
+	// anything network-wide, and contacts outlive the disconnect.
+	//
+	// REFERENCE.md's "Unknown values" rule is explicit that an unknown value is
+	// `null` and "neither is ever spelled `0` or `-1`". A count for a network
+	// we are not connected to is precisely unknown: `0` reads as "the network
+	// is empty" and a stale figure reads as "this is current" -- both worse
+	// than `null`, because both are syntactically valid answers a consumer will
+	// happily plot.
+	//
+	// Safe as a default-false flag because RefresherTick builds a fresh
+	// KadSnapshot every tick, so an ungated field keeps its default rather than
+	// the previous tick's value.
 	bool firewalled_tcp = false;
+	bool has_firewalled_tcp = false;
 	bool firewalled_udp = false;
+	bool has_firewalled_udp = false;
 	bool lan_mode = false;
+	bool has_lan_mode = false;
 	std::uint32_t users = 0;
 	std::uint32_t files = 0;
 	std::uint32_t nodes = 0;
+	bool has_network = false; // gates users/files/nodes together
 	std::uint32_t indexed_sources = 0;
 	std::uint32_t indexed_keywords = 0;
 	std::uint32_t indexed_notes = 0;
 	std::uint32_t indexed_load = 0;
+	bool has_indexed = false; // gates the four indexed_* together
 	// Our externally-visible address as a remote Kad contact reported
 	// it back, dotted-quad. Named to match the JSON and to keep it
 	// apart from `buddy_ip` below, which is somebody else's. Empty
@@ -680,6 +720,7 @@ struct KadSnapshot
 	// read that absence as `Disconnected`. An empty string would be a
 	// fourth value outside the endpoint's own enum.
 	std::string buddy_status = "no_buddy"; // "no_buddy" | "connecting" | "connected"
+	bool has_buddy = false;                // gates buddy_status/ip/port together
 	// The buddy's address, dotted-quad. "0.0.0.0"/0 while Kad is
 	// connected with no buddy (amuled ships the tags as 0), empty
 	// while Kad is not connected at all -- same "not known" split as
@@ -793,8 +834,8 @@ struct StatsGraphs
 	// entry fetched at one interval must not answer a request for another.
 	std::uint32_t interval_seconds = 1;
 
-	std::vector<std::uint32_t> download_bps;
-	std::vector<std::uint32_t> upload_bps;
+	std::vector<std::uint32_t> download_bytes_per_second;
+	std::vector<std::uint32_t> upload_bytes_per_second;
 	std::vector<std::uint32_t> connections;
 	std::vector<std::uint32_t> kad_nodes;
 
@@ -844,7 +885,7 @@ struct SearchResult
 	std::uint64_t size = 0;
 	std::uint32_t source_count = 0;
 	std::uint32_t complete_source_count = 0;
-	bool already_have = false;
+	bool already_downloaded = false;
 	std::uint8_t rating = 0;
 	// Download status of the result on this node (issue #429), a lowercase
 	// string from the CSearchFile enum: "new" | "downloaded" | "queued" |
@@ -870,8 +911,8 @@ struct SearchResult
 	bool has_media = false;
 	struct Media
 	{
-		std::uint32_t length_s = 0;
-		std::uint32_t bitrate = 0;
+		std::uint32_t duration_seconds = 0;
+		std::uint32_t bitrate_kilobits_per_second = 0;
 		std::string codec;
 		std::string artist;
 		std::string album;
@@ -993,6 +1034,18 @@ void ComputePartProgressPercent(const CState &state, ClientSnapshot &cli);
 // daemon-allocated search_id (see m_searches).
 struct SearchSlot
 {
+	// What the daemon last told us, flat: every result ECID it has sent for
+	// this search, parents and grouped children alike, exactly as they
+	// arrived. This is the merge target for the incremental union poll --
+	// a diffed tag names one ECID and carries only the fields that moved, so
+	// there has to be somewhere addressable by ECID to apply it to.
+	std::map<std::uint32_t, SearchResult> raw;
+	// The view every reader uses: `raw` with each child folded into its
+	// parent's children[] and dropped from the top level, so the API serves
+	// one row per hash+size. Rebuilt from `raw` after each merge rather than
+	// merged into directly, which keeps every consumer (Search(),
+	// FindSearchResultByHash, EventDiff) on exactly the shape it had before
+	// incremental polling existed.
 	std::map<std::uint32_t, SearchResult> results;
 	SearchProgressSnapshot progress;
 	// What was searched for, so a consumer reading one search's results
@@ -1001,10 +1054,6 @@ struct SearchSlot
 	// nickname, not a query. Empty only for a slot seeded by discovery
 	// before its name was observed.
 	std::string query;
-	// Monotonic insertion order, used to evict the oldest slots when the map
-	// exceeds its cap (a client that starts many searches without closing them
-	// would otherwise accumulate slots for the whole process lifetime).
-	std::uint64_t seq = 0;
 	// Wall-clock second this session started the search, for ranking the
 	// entries GET /search returns: that listing comes straight off
 	// EC_OP_SEARCH_LIST, which walks a std::map keyed by search_id and
@@ -1020,6 +1069,35 @@ struct SearchSlot
 	// this stamp. Default-constructed (epoch) means "never fetched", which
 	// is always stale.
 	std::chrono::steady_clock::time_point last_fetch{};
+	// The daemon no longer holds this search: its EC ring evicted it, or it
+	// was closed core-side. Set by the tick when EC_OP_SEARCH_PROGRESS comes
+	// back expired, before that same tick applies the results union -- which
+	// would otherwise tombstone away exactly the results the retirement path
+	// means to keep for late reads, since the union emits EC_TAG_FILE_REMOVED
+	// for every result of an evicted search.
+	//
+	// A detached slot is frozen: ApplySearchUnion skips it for merges and
+	// tombstones alike, since nothing about it can change any more. It is
+	// also the preferred eviction victim, because it is the only kind whose
+	// eviction costs nothing -- the daemon has nothing left to re-send.
+	bool detached = false;
+	// Set when a union roundtrip failed against a live socket, and cleared
+	// once this slot has been re-seeded in full.
+	//
+	// The daemon commits its differential state while BUILDING the reply --
+	// Get_EC_Response_Search_Results_Union swaps io_lastSentResultIds and
+	// writes the valuemap before the packet reaches the socket -- so a reply
+	// we never apply is not re-sent, it is lost. Every later poll elides the
+	// results it covered. Nothing else recovers them: ResetLists deliberately
+	// keeps the search state (wiping it would resync nothing), and
+	// ClaimSearchRefresh refuses an active slot because the tick is supposed
+	// to be covering it. This flag is what turns that dead end into one FULL
+	// re-seed on the next tick.
+	bool needs_resync = false;
+	// Insertion order, for oldest-first eviction. Not started_at: that is 0
+	// for a discovered slot, which would make every adopted search tie for
+	// oldest and evict in map order.
+	std::uint64_t seq = 0;
 };
 
 // `m_amule_log_lines` in CState caches /logs/amule. amule's EC
@@ -1033,7 +1111,7 @@ struct SearchSlot
 // in memory until amuleapi restarts; log volume is bounded by
 // operator habits (idle ~tens of KB/day; busy ~hundreds).
 
-// /logs/serverinfo. amule has no incremental EC op for this log
+// /logs/server_info. amule has no incremental EC op for this log
 // (no equivalent of CLoggerAccess for ServerInfoLog), so the
 // refresher fetches the entire string via EC_OP_GET_SERVERINFO each
 // tick and the cache stores the latest snapshot. Server-info logs
@@ -1054,30 +1132,30 @@ struct PreferencesSnapshot
 	// [General]
 	std::string nickname;
 	std::string user_hash;
-	std::string local_host_name;
-	bool check_new_version = false;
+	std::string daemon_host_name;
+	bool version_check_enabled = false;
 	// Capability: the connected daemon is built with ENABLE_VERSION_CHECK
 	// (emits EC_TAG_GENERAL_VERSION_CHECK_AVAILABLE). False for OS-package
-	// or pre-3.1 daemons; combined with check_new_version to decide whether
+	// or pre-3.1 daemons; combined with version_check_enabled to decide whether
 	// update checking is active. See /version's "update" object.
 	bool version_check_available = false;
 
 	// [Connection]
 	std::uint32_t max_upload_kbps = 0;
 	std::uint32_t max_download_kbps = 0;
-	std::uint32_t upload_slot_kbps = 0;
+	std::uint32_t upload_slot_min_kbps = 0;
 	std::uint16_t tcp_port = 0;
 	std::uint16_t udp_port = 0;
 	// Positive sense: true = the extended UDP port (Kad / global search) is on.
 	// The EC layer carries the opposite (EC_TAG_CONN_UDP_DISABLE); the API
 	// inverts on read and write.
 	bool extended_udp_port_enabled = true;
-	std::uint32_t max_sources_per_file = 0;
-	std::uint32_t max_connections = 0;
+	std::uint32_t max_sources_per_file_count = 0;
+	std::uint32_t max_connection_count = 0;
 	bool autoconnect = false;
-	bool reconnect = false;
-	bool network_ed2k = false;
-	bool network_kad = false;
+	bool reconnect_on_connection_loss = false;
+	bool ed2k_enabled = false;
+	bool kad_enabled = false;
 	// Bind the daemon's listening sockets to this local IP (empty = any).
 	// Applied on next daemon start, same as the desktop control.
 	std::string bind_address;
@@ -1098,13 +1176,13 @@ struct PreferencesSnapshot
 	bool proxy_auth = false;
 	std::string proxy_user;
 	// UPnP. upnp_enabled toggles router forwarding of the P2P ports (which
-	// are tcp_port / udp_port themselves); upnp_tcp_port is the UPnP control
-	// point's own local port (0 = auto), not a forwarded port. upnp_available
+	// are tcp_port / udp_port themselves); upnp_control_point_port is the UPnP control
+	// point's own local port (0 = auto), not a forwarded port. upnp_supported
 	// is a read-only capability: the daemon advertises whether it was built
 	// with UPnP (false on a core built -DENABLE_UPNP=OFF).
-	bool upnp_available = false;
+	bool upnp_supported = false;
 	bool upnp_enabled = false;
-	std::uint16_t upnp_tcp_port = 0;
+	std::uint16_t upnp_control_point_port = 0;
 
 	// --- Extended EC-carried categories (issue #437) -----------------
 	// Every field below maps 1:1 to an EC tag the daemon already
@@ -1115,11 +1193,11 @@ struct PreferencesSnapshot
 	// [Directories] EC_TAG_PREFS_DIRECTORIES
 	struct DirectoriesPrefs
 	{
-		std::string incoming;
-		std::string temp;
-		std::vector<std::string> shared;
+		std::string incoming_path;
+		std::string temp_path;
+		std::vector<std::string> shared_paths;
 		bool share_hidden = false;
-		bool auto_rescan = false;
+		bool rescan_on_startup = false;
 		bool follow_symlinks = false;
 		std::string exclude_patterns;
 		bool exclude_patterns_use_regex = false;
@@ -1129,17 +1207,17 @@ struct PreferencesSnapshot
 	struct FilesPrefs
 	{
 		bool ich_enabled = false;
-		bool aich_trust_every_hash = false;
+		bool trust_unverified_aich_hashes = false;
 		bool add_new_downloads_paused = false;
 		bool new_downloads_auto_priority = false;
 		bool new_shared_files_auto_priority = false;
 		bool prioritize_first_last_chunks = false;
-		bool start_next_paused = false;
-		bool start_next_same_category = false;
-		bool save_source_seeds_for_rare_files = false;
+		bool on_finished_start_next_paused = false;
+		bool on_finished_start_next_in_same_category = false;
+		bool save_sources_for_rare_files = false;
 		bool preallocate_full_file_size = false;
 		// Memory-mapped file I/O (#565). mmap_supported is a read-only daemon
-		// capability (mirrors upnp_available): true only when the core was built
+		// capability (mirrors upnp_supported): true only when the core was built
 		// with mmap support. mmap_enabled is the runtime preference and is only
 		// accepted on PATCH when mmap_supported is true.
 		bool mmap_supported = false;
@@ -1155,8 +1233,8 @@ struct PreferencesSnapshot
 		// runs on Windows -- on POSIX both branches create the part file
 		// identically.
 		bool create_sparse_files = true;
-		bool start_next_alphabetical = false;
-		bool endgame_enabled = false;
+		bool on_finished_start_next_alphabetically = false;
+		bool endgame_mode_enabled = false;
 		// Media metadata (issue #140): probe shared files with ffprobe to
 		// advertise length/bitrate/codec. Empty path = daemon auto-detect.
 		bool media_metadata_enabled = false;
@@ -1166,14 +1244,14 @@ struct PreferencesSnapshot
 	// [Servers] EC_TAG_PREFS_SERVERS
 	struct ServersPrefs
 	{
-		bool remove_dead = false;
-		std::uint32_t dead_server_retries = 0;
-		bool auto_update = false;
+		bool remove_dead_servers = false;
+		std::uint32_t dead_server_retry_count = 0;
+		bool update_list_at_startup = false;
 		bool update_list_from_server = false;
 		bool update_list_from_client = false;
-		bool use_priority_system = false;
-		bool smart_id_check = false;
-		bool safe_connect = false;
+		bool server_priority_system_enabled = false;
+		bool smart_lowid_check_enabled = false;
+		bool safe_server_connect_enabled = false;
 		bool autoconnect_static_servers_only = false;
 		bool manual_servers_high_priority = false;
 		std::string update_url;
@@ -1191,14 +1269,14 @@ struct PreferencesSnapshot
 		bool ipfilter_servers = false;
 		bool ipfilter_auto_update = false;
 		std::string ipfilter_update_url;
-		std::uint32_t ipfilter_block_below_access_level = 0;
+		std::uint32_t ipfilter_min_access_level = 0;
 		bool ipfilter_include_lan_ips = false;
-		bool use_secident = false;
-		bool obfuscation_enabled = false;
+		bool secure_identification_enabled = false;
+		bool protocol_obfuscation_enabled = false;
 		bool obfuscation_requested = false;
 		bool obfuscation_required = false;
 		bool reject_spoofed_source_ips = false;
-		bool use_system_ipfilter = false;
+		bool system_ipfilter_enabled = false;
 	} security;
 
 	// [MessageFilter] EC_TAG_PREFS_MESSAGEFILTER
@@ -1208,9 +1286,9 @@ struct PreferencesSnapshot
 		bool filter_all_messages = false;
 		bool accept_from_friends_only = false;
 		bool accept_from_known_clients_only = false;
-		bool by_keyword = false;
+		bool filter_by_keyword = false;
 		std::string keywords;
-		bool show_in_log = false;
+		bool log_filtered_messages = false;
 		bool filter_comments = false;
 		std::string comment_keywords;
 	} message_filter;
@@ -1229,11 +1307,10 @@ struct PreferencesSnapshot
 		{
 			bool enabled = false;
 			std::uint32_t port = 0;
-			bool use_gzip = false;
+			bool gzip_enabled = false;
 			std::uint32_t refresh_seconds = 0;
-			// JSON key is "template"; the member cannot be, since `template`
-			// is a C++ keyword. Only field in the payload where the two names
-			// differ.
+			// `template_name`, not `template`: the JSON key was renamed to
+			// match the member, which could never be `template` (C++ keyword).
 			std::string template_name;
 			bool guest_enabled = false;
 		} webserver;
@@ -1253,26 +1330,26 @@ struct PreferencesSnapshot
 		std::uint32_t update_frequency_seconds = 0;
 	} online_signature;
 
-	// [CoreTweaks] EC_TAG_PREFS_CORETWEAKS
-	struct CoreTweaksPrefs
+	// [advanced] (EC group: CORETWEAKS)
+	struct AdvancedPrefs
 	{
-		std::uint32_t max_new_connections_per_5s = 0;
+		std::uint32_t max_new_connections_per_5_seconds = 0;
 		bool verbose_logging = false;
 		std::uint32_t file_buffer_bytes = 0;
 		std::uint32_t max_upload_queue_clients = 0;
 		std::uint32_t server_keepalive_timeout_minutes = 0;
-		std::uint32_t kad_max_source_searches = 0;
-		std::uint32_t kad_reask_minutes = 0;
+		std::uint32_t kad_max_concurrent_source_searches = 0;
+		std::uint32_t kad_source_reask_minutes = 0;
 		std::uint32_t source_reask_minutes = 0;
-	} core_tweaks;
+	} advanced;
 
-	// [Kademlia] EC_TAG_PREFS_KADEMLIA
-	struct KademliaPrefs
+	// [kad] (EC group: KADEMLIA)
+	struct KadPrefs
 	{
 		std::string update_url;
-	} kademlia;
+	} kad;
 
-	// [IP2Country] EC_TAG_PREFS_IP2COUNTRY (#440). The daemon only emits
+	// [geoip] (EC group: IP2COUNTRY, #440). The daemon only emits
 	// this category on a GeoIP-capable build, so an absent category leaves
 	// `supported` false (mirrors version_check_available: a capability the
 	// connected daemon advertises, not a stored setting). `source` is the
@@ -1281,20 +1358,20 @@ struct PreferencesSnapshot
 	// `maxmind_license` round-trips plainly — it is a config string the
 	// core already serializes and the desktop GeoIP panel shows, not a
 	// masked password like the [RemoteControls] ones.
-	struct Ip2CountryPrefs
+	struct GeoipPrefs
 	{
 		bool supported = false;
 		bool enabled = false;
 		std::string source; // "dbip" / "maxmind" / "custom"
-		std::string custom_url;
+		std::string custom_update_url;
 		std::string maxmind_license;
 		bool auto_update = false;
 		std::string loaded_source;
 		std::string db_path;
 		bool db_loaded = false;
 		bool download_in_progress = false;
-		std::string last_update_result;
-	} ip2country;
+		std::string last_update_status;
+	} geoip;
 };
 
 struct StatusSnapshot
@@ -1330,7 +1407,7 @@ struct StatusSnapshot
 	// Our eD2k id as assigned by the connected server. 0 when not
 	// connected; the 0xffffffff "connect in flight" sentinel is normalized
 	// to 0 rather than surfaced. Packed LSB-first, unlike the peer-side
-	// user_id_hybrid on CUpDownClient, which byte-swaps a HighID.
+	// ed2k_user_id on CUpDownClient, which byte-swaps a HighID.
 	std::uint32_t ed2k_user_id = 0;
 
 	// Our public IPv4 in dotted-quad form, derived from ed2k_user_id when that
@@ -1343,6 +1420,9 @@ struct StatusSnapshot
 	// connection before it clears. Distinct from the UDP test, which is
 	// a different mechanism -- see KadSnapshot::firewalled_udp.
 	bool kad_firewalled_tcp = false;
+	// `null` unless Kad is connected: IsKadFirewalled() reads a connstate bit
+	// that survives the disconnect, so this answered `true` on a stopped Kad.
+	bool has_kad_firewalled_tcp = false;
 
 	// Unix timestamp of the most recent connect (amule-org/amule#174),
 	// from EC_TAG_CONNSTATE's optional {ED2K,KAD}_CONNECTED_SINCE
@@ -1353,15 +1433,15 @@ struct StatusSnapshot
 
 	// Bytes per second (NOT kB) so the field name matches the wire
 	// units throughout. Clients that want kB/s do the divide.
-	std::uint64_t download_bps = 0;
-	std::uint64_t upload_bps = 0;
+	std::uint64_t download_bytes_per_second = 0;
+	std::uint64_t upload_bytes_per_second = 0;
 
 	// Protocol/control-traffic overhead, bytes/second. ADDITIVE to the two
 	// rates above rather than a subset of them -- amuled keeps them as
 	// separate counters and the desktop renders them as a second figure in
 	// parentheses. 0 when the daemon reports nothing.
-	std::uint64_t download_overhead_bps = 0;
-	std::uint64_t upload_overhead_bps = 0;
+	std::uint64_t download_overhead_bytes_per_second = 0;
+	std::uint64_t upload_overhead_bytes_per_second = 0;
 
 	// Aggregate counts pulled by the same EC_OP_STATS round-trip.
 	std::uint32_t ul_queue_len = 0;
@@ -1385,8 +1465,16 @@ struct StatusSnapshot
 	// kad.network.{users,files,nodes} on KadSnapshot. Populated from
 	// EC_TAG_STATS_ED2K_{USERS,FILES}, present in the same
 	// EC_OP_STAT_REQ response we already parse.
+	//
+	// `null` unless eD2k is connected. These are summed over the whole known
+	// SERVER LIST rather than the server we are attached to, and nothing zeroes
+	// them on disconnect: measured on a real node, a disconnected daemon kept
+	// reporting the identical figures it had while connected, indefinitely. A
+	// consumer cannot tell that from live data, which is what makes it worse
+	// than a `0`.
 	std::uint32_t ed2k_users = 0;
 	std::uint32_t ed2k_files = 0;
+	bool has_ed2k_network = false; // gates ed2k_users/ed2k_files together
 
 	// Version-check result, relayed on the same EC_OP_STATS round-trip
 	// (EC_TAG_GENERAL_VERSION_CHECK_*). done == a check has completed;
@@ -1743,6 +1831,21 @@ public:
 	std::time_t SearchStartedAt(std::uint32_t search_id) const;
 	// Slots the refresher must still poll (progress.active).
 	std::vector<std::uint32_t> ActiveSearchIds() const;
+	// Every slot the daemon could still speak for: attached, active or not.
+	// The tick polls THIS set for expiry, not ActiveSearchIds(), because a
+	// finished search is exactly the one the daemon's ring drops first and
+	// the one whose results we are keeping. Naming them in the progress
+	// union also refreshes their LRU entry daemon-side, which is what the
+	// daemon means by "the searches a client still has open".
+	//
+	// Empty is also the gate for both union polls: with no attached slot
+	// there is nothing the daemon could answer about, and sending either
+	// request would be a roundtrip a second that can never return anything.
+	// This replaced a separate HasAnySearch() predicate -- the same
+	// !detached test spelled a second way, which is what drifts -- and the
+	// vector it was introduced to avoid is now built for the progress union
+	// regardless.
+	std::vector<std::uint32_t> AttachedSearchIds() const;
 	// Every live slot id, for the SSE per-search diff.
 	std::vector<std::uint32_t> AllSearchIds() const;
 	// Find a result carrying this (already-lowercased) hash across ALL open
@@ -1829,6 +1932,13 @@ public:
 	// overwrite). No-op if the id names no live slot.
 	void MutateSearch(std::uint32_t search_id,
 		const std::function<void(std::map<std::uint32_t, SearchResult> &)> &fn);
+	// Mutate every search slot and the ECID->search_id index together, under
+	// one exclusive lock. The incremental union poll needs both: a diffed tag
+	// names no search, so the index resolves it, and a result that moves or
+	// disappears has to leave the map and the index in step. Handing out both
+	// halves to one callback is what makes that atomic.
+	void MutateAllSearches(const std::function<void(std::map<std::uint32_t, SearchSlot> &,
+			std::map<std::uint32_t, std::uint32_t> &)> &fn);
 
 	// Wholesale reset paths. Called by the refresher after a
 	// MarkTickFailure → MarkTickSuccess transition (the server's
@@ -1883,6 +1993,24 @@ public:
 	// derived: 100 for a finished search (true by definition), 0 for a
 	// running one (the tick corrects it within a second, and inventing a
 	// number would flash a wrong one meanwhile).
+	/**
+	 * Mark a slot as no longer backed by the daemon. Freezes its results:
+	 * see SearchSlot::detached. Idempotent; a no-op for an unknown id.
+	 */
+	void DetachSearch(std::uint32_t search_id);
+
+	// Flag every slot the daemon could still speak for as needing a full
+	// re-seed. Called when a union roundtrip failed: we cannot know what that
+	// reply carried, and the daemon will not send it again.
+	void MarkAllSearchesNeedResync();
+	// Ids awaiting that re-seed, oldest slot first. Drained by the tick.
+	// Detached slots are excluded, matching MarkAllSearchesNeedResync: one
+	// detached after it was flagged has nothing left to re-seed.
+	std::vector<std::uint32_t> SearchesNeedingResync() const;
+	// Clears the flag for one slot without re-seeding it, for when the daemon
+	// answers that the search is gone.
+	void ClearSearchResyncFlag(std::uint32_t search_id);
+
 	void MarkSearchDiscovered(std::uint32_t search_id,
 		const std::string &kind,
 		const std::string &query,
@@ -1964,18 +2092,41 @@ private:
 	// the REST surface by its daemon-allocated search_id. One slot per search
 	// holds that search's results (by result ECID) and its lifecycle progress.
 	std::map<std::uint32_t, SearchSlot> m_searches;
-	// Ever-increasing sequence stamped on each new slot for oldest-first
-	// eviction. Never wraps in practice (one bump per POST /search).
+	// Result ECID -> owning search_id, mirroring m_searches' result maps.
+	//
+	// Required by the incremental union poll: the daemon sends
+	// EC_TAG_SEARCH_ID only the first time it tells us about a result, and
+	// EC_TAG_FILE_REMOVED carries the bare ECID, so every later tag has to be
+	// attributed from here. Maintained inside the same locked mutation that
+	// writes the result maps -- an index that can drift from the map it
+	// mirrors is how #1028 leaked keys a reload could not heal.
+	std::map<std::uint32_t, std::uint32_t> m_resultOwner;
+	//! Monotonic source for SearchSlot::seq.
 	std::uint64_t m_search_seq = 0;
-	// Hard cap on retained slots. Comfortably above the daemon's 20-search
-	// ring so every live search always fits; excess is finished slots a
-	// client never closed, evicted oldest-first.
+	// Ceiling on retained slots. A client that never DELETEs its searches,
+	// or one watching a busy monolithic GUI, would otherwise accumulate a
+	// slot and its whole result map per search for the life of the process:
+	// the daemon's own kMaxEcSearches bounds only the searches it holds for
+	// *this* connection, and detached slots outlive even those.
+	//
+	// Eviction is recoverable, which is why a cap is affordable at all: a
+	// later read of an evicted id misses the cache, re-discovers it via
+	// EC_OP_SEARCH_LIST and re-seeds it in full through FetchOneSearchFull.
+	// Detached slots are preferred as victims anyway, since for those the
+	// daemon has nothing left to re-send and nothing is lost.
+	//
+	// A soft cap, not a hard bound: an active slot is never a victim, so a
+	// burst of more than this many concurrent searches sits above the cap
+	// until they finish. That is deliberate -- evicting a search still being
+	// polled would drop results the daemon has already marked delivered.
 	static constexpr std::size_t kMaxSearchSlots = 64;
-
-	// Trim m_searches back to kMaxSearchSlots, dropping the oldest slot that
-	// is not still being polled. Shared by both slot-creating paths, which
-	// need the identical rule. MUST be called with m_mu held exclusively.
-	void EvictSurplusSearchSlotsLocked();
+	// Trim m_searches back to kMaxSearchSlots, and drop the evicted slots'
+	// entries from m_resultOwner with them. Caller holds the write lock.
+	//
+	// `exempt_id` is never chosen as a victim: callers evict straight after
+	// inserting, and with every other slot active the freshly-inserted one is
+	// the only eligible victim, so it would evict what it just seeded.
+	void EvictSurplusSearchSlotsLocked(std::uint32_t exempt_id = 0);
 };
 
 } // namespace webapi

@@ -87,11 +87,11 @@ fi
 echo "amuleapi 30-shared-verify smoke @ $HOST"
 
 ADMIN_TOKEN=$(curl -s -X POST -H "Content-Type: application/json" \
-	-d "{\"password\":\"$ADMIN_PASS\"}" "$HOST/api/v0/auth/login?type=bearer" | jq -r .token)
+	-d "{\"password\":\"$ADMIN_PASS\"}" "$HOST/api/v0/auth/login?include_token=true" | jq -r .token)
 [ -n "$ADMIN_TOKEN" ] && [ "$ADMIN_TOKEN" != "null" ] || _die "admin login failed"
 
 GUEST_TOKEN=$(curl -s -X POST -H "Content-Type: application/json" \
-	-d "{\"password\":\"$GUEST_PASS\"}" "$HOST/api/v0/auth/login?type=bearer" | jq -r .token)
+	-d "{\"password\":\"$GUEST_PASS\"}" "$HOST/api/v0/auth/login?include_token=true" | jq -r .token)
 HAVE_GUEST=0
 [ -n "$GUEST_TOKEN" ] && [ "$GUEST_TOKEN" != "null" ] && HAVE_GUEST=1
 
@@ -157,7 +157,7 @@ fi
 _curl -X POST -H "Authorization: Bearer $ADMIN_TOKEN" \
 	"$HOST/api/v0/shared/$TEST_HASH/verify"
 # 202 with no body: the hash came from the URL, and the outcome only arrives
-# later, on hashing_progress and the log line.
+# later, on hashed_part_count and the log line.
 _assert_status 202 "POST /shared/{hash}/verify → 202"
 _assert_body_empty "verify sends no body"
 

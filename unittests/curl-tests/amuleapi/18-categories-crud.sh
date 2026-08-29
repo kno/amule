@@ -4,9 +4,9 @@
 #
 # Endpoints:
 #   POST   /api/v0/categories             — create
-#       body: {name, path?, comment?, color?, priority?}
+#       body: {name, save_path?, comment?, color?, priority?}
 #   PATCH  /api/v0/categories/{index}     — update
-#       body: any subset of {name, path, comment, color, priority}
+#       body: any subset of {name, save_path, comment, color, priority}
 #   DELETE /api/v0/categories/{index}     — remove
 #
 # The default (index=0) "All" category cannot be deleted —
@@ -86,11 +86,11 @@ mkdir -p "$TEST_PATH"
 echo "amuleapi 18-categories-crud smoke @ $HOST"
 
 ADMIN_TOKEN=$(curl -s -X POST -H "Content-Type: application/json" \
-	-d "{\"password\":\"$ADMIN_PASS\"}" "$HOST/api/v0/auth/login?type=bearer" | jq -r .token)
+	-d "{\"password\":\"$ADMIN_PASS\"}" "$HOST/api/v0/auth/login?include_token=true" | jq -r .token)
 [ -n "$ADMIN_TOKEN" ] && [ "$ADMIN_TOKEN" != "null" ] || _die "admin login failed"
 
 GUEST_TOKEN=$(curl -s -X POST -H "Content-Type: application/json" \
-	-d "{\"password\":\"$GUEST_PASS\"}" "$HOST/api/v0/auth/login?type=bearer" | jq -r .token)
+	-d "{\"password\":\"$GUEST_PASS\"}" "$HOST/api/v0/auth/login?include_token=true" | jq -r .token)
 HAVE_GUEST=0
 [ -n "$GUEST_TOKEN" ] && [ "$GUEST_TOKEN" != "null" ] && HAVE_GUEST=1
 
@@ -110,11 +110,16 @@ _assert_json_eq '.index' 0 '/categories/0 reports index 0'
 # `defaultcat` is built with an empty title and path, which left a client
 # rendering a picker with a blank row and nowhere to show where an
 # uncategorised download lands. `path` is not invented -- it is
-# directories.incoming, which is genuinely where such a file is saved.
+# directories.incoming_path, which is genuinely where such a file is saved.
 _assert_json_eq '.name' Default '/categories/0 is named Default'
 INCOMING=$(curl -s -H "Authorization: Bearer $ADMIN_TOKEN" \
-	"$HOST/api/v0/preferences" | jq -r '.directories.incoming')
-_assert_json_eq '.path' "$INCOMING" '/categories/0 path is directories.incoming'
+	"$HOST/api/v0/preferences" | jq -r '.directories.incoming_path')
+_assert_json_eq '.save_path' "$INCOMING" '/categories/0 save_path is directories.incoming_path'
+# color is "#rrggbb", not the raw 24-bit integer. The core packs it as
+# 0x00BBGGRR (red in the low byte), so a naive hex print of the integer
+# would come out reversed -- pin the format so that cannot regress.
+_assert_json_eq '(.color | test("^#[0-9a-f]{6}$"))' true \
+	'/categories/0 color is a #rrggbb string'
 
 # ...and the same values whether or not the daemon sent the row. This phase
 # creates a custom category below, which is what makes amuled start emitting
@@ -140,7 +145,7 @@ _curl -H "Authorization: Bearer $ADMIN_TOKEN" "$HOST/api/v0/categories"
 _assert_status 200 "GET /categories → 200"
 _assert_json_eq '.total | type'  number '/categories carries total'
 _assert_json_eq '.offset | type' number '/categories carries offset'
-_assert_json_eq '.limit' null '/categories limit is null when unlimited'
+_assert_json_eq '.limit' 100 '/categories omitted limit echoes the default 100'
 
 _curl -H "Authorization: Bearer $ADMIN_TOKEN" "$HOST/api/v0/categories?limit=1"
 _assert_status 200 "GET /categories?limit=1 → 200"
@@ -151,7 +156,7 @@ _curl -H "Authorization: Bearer $ADMIN_TOKEN" "$HOST/api/v0/categories?sort=inde
 _assert_status 200 "GET /categories?sort=index&order=desc → 200"
 
 # The parameters are validated now, not ignored.
-for bad in "limit=abc" "limit=99999" "offset=-1" "order=sideways" "sort=nonexistent_field"; do
+for bad in "limit=abc" "limit=1000000001" "offset=-1" "order=sideways" "sort=nonexistent_field"; do
 	_curl -H "Authorization: Bearer $ADMIN_TOKEN" "$HOST/api/v0/categories?$bad"
 	_assert_status 400 "GET /categories?$bad → 400"
 done
@@ -187,7 +192,7 @@ BEFORE_IDX=$(printf '%s' "$CURL_BODY" | jq -c '[.categories[].index]')
 
 _curl -X POST -H "Authorization: Bearer $ADMIN_TOKEN" \
 	-H "Content-Type: application/json" \
-	-d "{\"name\":\"$TEST_NAME\",\"path\":\"$TEST_PATH\",\"comment\":\"18-categories-crud test\",\"priority\":\"high\"}" \
+	-d "{\"name\":\"$TEST_NAME\",\"save_path\":\"$TEST_PATH\",\"comment\":\"18-categories-crud test\",\"priority\":\"high\"}" \
 	"$HOST/api/v0/categories"
 # 202 with no body. EC_OP_CREATE_CATEGORY answers success or failure and never
 # returns the index it assigned, so naming the new category here meant scanning
@@ -212,7 +217,7 @@ fi
 # reads what the daemon actually kept, not what amuleapi guessed it kept.
 LOOKUP=$(printf '%s' "$CURL_BODY" \
 	| jq --argjson i "$NEW_IDX" '[.categories[] | select(.index == $i)] | first')
-for f in name:"$TEST_NAME" path:"$TEST_PATH" priority:high; do
+for f in name:"$TEST_NAME" save_path:"$TEST_PATH" priority:high; do
 	key=${f%%:*}; want=${f#*:}
 	got=$(printf '%s' "$LOOKUP" | jq -r ".$key")
 	if [ "$got" = "$want" ]; then
@@ -233,15 +238,21 @@ _curl -X POST -H "Authorization: Bearer $ADMIN_TOKEN" \
 	-d "{\"name\":\"x\",\"priority\":\"bogus\"}" "$HOST/api/v0/categories"
 _assert_status 400 "POST /categories (bad priority enum) → 400"
 
-# A category priority is applied to its files as a DOWNLOAD priority, so it
-# takes the restricted download set (low/normal/high/auto). very_low and
-# release are downloads-invalid — the daemon clamps them to Normal on the
-# next restart — so they must be rejected here too (issue #384).
+# R9: a category's priority is rendered on read from the full six-level file
+# set, so the write side accepts the same six. very_low and release used to be
+# refused here, which meant a read-modify-write round-trip failed on a field
+# the client never touched.
 for p in very_low release; do
 	_curl -X POST -H "Authorization: Bearer $ADMIN_TOKEN" \
 		-H "Content-Type: application/json" \
-		-d "{\"name\":\"x\",\"priority\":\"$p\"}" "$HOST/api/v0/categories"
-	_assert_status 400 "POST /categories (priority=$p rejected) → 400"
+		-d "{\"name\":\"prio-$p\",\"save_path\":\"$TEST_PATH\",\"priority\":\"$p\"}" \
+		"$HOST/api/v0/categories"
+	_assert_status 202 "POST /categories (priority=$p accepted, R9) → 202"
+	# Leave no residue: a leftover category poisons the next run's create.
+	PRIO_IDX=$(curl -s -H "Authorization: Bearer $ADMIN_TOKEN" "$HOST/api/v0/categories" \
+		| jq -r --arg n "prio-$p" '[.categories[] | select(.name == $n)][0].index // empty')
+	[ -n "$PRIO_IDX" ] && curl -s -o /dev/null -X DELETE \
+		-H "Authorization: Bearer $ADMIN_TOKEN" "$HOST/api/v0/categories/$PRIO_IDX"
 done
 
 # --- 4. PATCH /categories/{idx}. ----------------------------------
@@ -275,8 +286,13 @@ for p in very_low release; do
 	_curl -X PATCH -H "Authorization: Bearer $ADMIN_TOKEN" \
 		-H "Content-Type: application/json" \
 		-d "{\"priority\":\"$p\"}" "$HOST/api/v0/categories/$NEW_IDX"
-	_assert_status 400 "PATCH /categories (priority=$p rejected) → 400"
+	_assert_status 200 "PATCH /categories (priority=$p accepted, R9) → 200"
 done
+# ...and back to a value the rest of the phase expects.
+_curl -X PATCH -H "Authorization: Bearer $ADMIN_TOKEN" \
+	-H "Content-Type: application/json" \
+	-d '{"priority":"high"}' "$HOST/api/v0/categories/$NEW_IDX"
+_assert_status 200 "PATCH /categories priority restored to high → 200"
 
 _curl -X PATCH -H "Authorization: Bearer $ADMIN_TOKEN" \
 	-H "Content-Type: application/json" \
@@ -298,14 +314,14 @@ _assert_status 400 "PATCH /categories non-numeric index → 400"
 _curl -H "Authorization: Bearer $ADMIN_TOKEN" "$HOST/api/v0/categories/0"
 _assert_status 200 "GET /categories/0 (amuled now sends it) → 200"
 _assert_json_eq '.name' Default '/categories/0 is still named Default'
-_assert_json_eq '.path' "$INCOMING" '/categories/0 path is still directories.incoming'
+_assert_json_eq '.save_path' "$INCOMING" '/categories/0 save_path is still directories.incoming_path'
 
 # The collection agrees with the member route, on the same daemon state.
 _curl -H "Authorization: Bearer $ADMIN_TOKEN" "$HOST/api/v0/categories?limit=500"
 _assert_json_eq '[.categories[] | select(.index == 0)][0].name' Default \
 	'/categories lists index 0 as Default too'
-_assert_json_eq '[.categories[] | select(.index == 0)][0].path' "$INCOMING" \
-	'/categories lists index 0 with the incoming path too'
+_assert_json_eq '[.categories[] | select(.index == 0)][0].save_path' "$INCOMING" \
+	'/categories lists index 0 with the incoming save_path too'
 
 # --- 6. DELETE happy path + cannot-delete-default + no-stale. ----
 _curl -X DELETE -H "Authorization: Bearer $ADMIN_TOKEN" \
@@ -332,6 +348,77 @@ fi
 _curl -X DELETE -H "Authorization: Bearer $ADMIN_TOKEN" \
 	"$HOST/api/v0/categories/$NEW_IDX"
 _assert_status 404 "DELETE same index twice → 404"
+
+# --- 8. The path-substitution contract (partial success, not failure). ---
+#
+# amuled answers EC_OP_FAILED for these two ops when it created or updated the
+# category but could not use the path, keeping another one and returning it in
+# EC_TAG_CATEGORY_PATH. The category exists either way, so the API reports
+# success and `save_path` carries the path that was actually kept. Relaying it
+# as a 400 used to claim the request failed while the category was sitting in
+# the list.
+#
+# Placed last because each case creates a category; each cleans up its own.
+
+# 8a. No save_path at all. The daemon's documented default is the incoming
+#     directory, so this is an ordinary create, not an error.
+_curl -X POST -H "Authorization: Bearer $ADMIN_TOKEN" \
+	-H "Content-Type: application/json" \
+	-d '{"name":"18-cat-nopath"}' "$HOST/api/v0/categories"
+_assert_status 202 "POST /categories with no save_path -> 202 (defaults to incoming)"
+_curl -H "Authorization: Bearer $ADMIN_TOKEN" "$HOST/api/v0/categories"
+NOPATH_IDX=$(printf '%s' "$CURL_BODY" \
+	| jq -r '[.categories[] | select(.name == "18-cat-nopath")][0].index // empty')
+if [ -n "$NOPATH_IDX" ]; then
+	_pass "the category created without save_path is in the list (index=$NOPATH_IDX)"
+	_assert_json_eq '[.categories[] | select(.name == "18-cat-nopath")][0].save_path' \
+		"$INCOMING" 'a create with no save_path lands on directories.incoming_path'
+	_curl -X DELETE -H "Authorization: Bearer $ADMIN_TOKEN" "$HOST/api/v0/categories/$NOPATH_IDX"
+	_assert_status 204 "cleanup: DELETE /categories/$NOPATH_IDX -> 204"
+else
+	_fail "create without save_path" "202 returned but no such category in /categories"
+fi
+
+# 8b. A save_path the daemon cannot create. It keeps the incoming directory and
+#     the category still exists. Running as root the mkdir would succeed, so the
+#     assertion is guarded on the substitution actually having happened.
+UNUSABLE=/18-cat-unusable-$$/sub
+_curl -X POST -H "Authorization: Bearer $ADMIN_TOKEN" \
+	-H "Content-Type: application/json" \
+	-d "{\"name\":\"18-cat-badpath\",\"save_path\":\"$UNUSABLE\"}" "$HOST/api/v0/categories"
+_assert_status 202 "POST /categories with an uncreatable save_path -> 202 (path substituted)"
+_curl -H "Authorization: Bearer $ADMIN_TOKEN" "$HOST/api/v0/categories"
+BAD_IDX=$(printf '%s' "$CURL_BODY" \
+	| jq -r '[.categories[] | select(.name == "18-cat-badpath")][0].index // empty')
+if [ -n "$BAD_IDX" ]; then
+	_pass "the category survives an uncreatable save_path (index=$BAD_IDX)"
+	BAD_PATH=$(printf '%s' "$CURL_BODY" \
+		| jq -r '[.categories[] | select(.name == "18-cat-badpath")][0].save_path')
+	if [ "$BAD_PATH" = "$UNUSABLE" ]; then
+		_skip "path-substitution check: the daemon could create $UNUSABLE (running as root?)"
+	else
+		_assert_json_eq '[.categories[] | select(.name == "18-cat-badpath")][0].save_path' \
+			"$INCOMING" 'the refused path is replaced by directories.incoming_path, not stored'
+	fi
+
+	# 8c. The same contract on PATCH: an update whose path is refused still
+	#     applies every other field, and the echoed object reports the path
+	#     that was kept rather than the one that was asked for.
+	_curl -X PATCH -H "Authorization: Bearer $ADMIN_TOKEN" \
+		-H "Content-Type: application/json" \
+		-d "{\"name\":\"18-cat-badpath-renamed\",\"save_path\":\"$UNUSABLE\"}" \
+		"$HOST/api/v0/categories/$BAD_IDX"
+	_assert_status 200 "PATCH /categories/$BAD_IDX with an uncreatable save_path -> 200"
+	_assert_json_eq '.name' '18-cat-badpath-renamed' \
+		'the rest of the PATCH lands even when the path is refused'
+	_assert_json_eq "(.save_path == \"$UNUSABLE\")" false \
+		'the echoed save_path is the kept one, not the refused one'
+
+	_curl -X DELETE -H "Authorization: Bearer $ADMIN_TOKEN" "$HOST/api/v0/categories/$BAD_IDX"
+	_assert_status 204 "cleanup: DELETE /categories/$BAD_IDX -> 204"
+else
+	_fail "create with an uncreatable save_path" "202 returned but no such category in /categories"
+fi
 
 # --- Summary. -----------------------------------------------------
 echo

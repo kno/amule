@@ -27,6 +27,7 @@
 #include <cstdlib>  // std::abort
 #include <iostream> // std::cerr
 
+#include <algorithm>
 #include <cstdio>
 #include <ctime>
 
@@ -46,7 +47,7 @@ std::uint64_t PartCountForSize(std::uint64_t size)
 
 std::uint16_t SharedHashingProgress(const FileSnapshot &f)
 {
-	return f.shared.hashing_progress ? f.shared.hashing_progress : f.download.hashing_progress;
+	return f.shared.hashing_progress ? f.shared.hashing_progress : f.download.hashed_part_count;
 }
 
 // Completeness of the file we download FROM this peer: parts the peer has over
@@ -56,7 +57,7 @@ std::uint16_t SharedHashingProgress(const FileSnapshot &f)
 // the field.
 void ComputePartProgressPercent(const CState &state, ClientSnapshot &cli)
 {
-	if (!cli.has_available_parts || cli.download_file_hash.empty()) {
+	if (!cli.has_parts_offered_count || cli.download_file_hash.empty()) {
 		return;
 	}
 	// DownloadPartCount, not FindDownload: this runs once per source per
@@ -68,7 +69,7 @@ void ComputePartProgressPercent(const CState &state, ClientSnapshot &cli)
 	if (part_count == 0) {
 		return;
 	}
-	double pct = 100.0 * static_cast<double>(cli.available_parts) / static_cast<double>(part_count);
+	double pct = 100.0 * static_cast<double>(cli.parts_offered_count) / static_cast<double>(part_count);
 	if (pct > 100.0)
 		pct = 100.0;
 	cli.part_progress_percent = pct;
@@ -265,6 +266,16 @@ std::vector<std::uint32_t> CState::ActiveSearchIds() const
 	return out;
 }
 
+std::vector<std::uint32_t> CState::AttachedSearchIds() const
+{
+	std::shared_lock<std::shared_timed_mutex> lock(m_mu);
+	std::vector<std::uint32_t> out;
+	for (const auto &kv : m_searches)
+		if (!kv.second.detached)
+			out.push_back(kv.first);
+	return out;
+}
+
 std::vector<std::uint32_t> CState::AllSearchIds() const
 {
 	std::shared_lock<std::shared_timed_mutex> lock(m_mu);
@@ -292,46 +303,34 @@ bool CState::FindSearchResultByHash(
 	return false;
 }
 
-void CState::EvictSurplusSearchSlotsLocked()
-{
-	// Bound the retained slots: a client that never frees its searches would
-	// otherwise accumulate one slot (with its result map) per search for the
-	// whole process lifetime. Evict oldest-first, never an active
-	// (still-polling) one — the surplus is always finished slots.
-	while (m_searches.size() > kMaxSearchSlots) {
-		auto victim = m_searches.end();
-		for (auto it = m_searches.begin(); it != m_searches.end(); ++it) {
-			if (it->second.progress.active) {
-				continue;
-			}
-			if (victim == m_searches.end() || it->second.seq < victim->second.seq) {
-				victim = it;
-			}
-		}
-		if (victim == m_searches.end()) {
-			break; // every remaining slot is still active — nothing to evict
-		}
-		m_searches.erase(victim);
-	}
-}
-
 void CState::MarkSearchStarted(std::uint32_t search_id, const std::string &kind, const std::string &query)
 {
 	std::unique_lock<std::shared_timed_mutex> lock(m_mu);
 	SearchSlot &slot = m_searches[search_id];
+	if (slot.seq == 0)
+		slot.seq = ++m_search_seq;
 	// generation is per-slot and monotonic: a restart of the same id (rare —
 	// the daemon allocates fresh ids) keeps it climbing so EventDiff still fires.
 	const auto next_generation = slot.progress.generation + 1;
+	// Both maps, and the ECID index that points at them. `raw` is the merge
+	// target the union applies diffed tags to, so a stale entry left here
+	// would have the previous search's fields show through wherever the new
+	// one's tag happens not to carry that field -- and RebuildFoldedResults
+	// would then put the ghost straight back into `results`, however many
+	// times that gets cleared.
+	for (const auto &entry : slot.raw)
+		m_resultOwner.erase(entry.first);
+	slot.raw.clear();
 	slot.results.clear();
+	slot.detached = false;
 	slot.progress = SearchProgressSnapshot{};
 	slot.progress.active = true;
 	slot.progress.kind = kind;
 	slot.progress.generation = next_generation;
 	slot.query = query;
-	slot.seq = ++m_search_seq;
 	slot.started_at = std::time(nullptr);
 	slot.last_fetch = {};
-	EvictSurplusSearchSlotsLocked();
+	EvictSurplusSearchSlotsLocked(search_id);
 }
 
 void CState::MarkSearchDiscovered(std::uint32_t search_id,
@@ -347,7 +346,7 @@ void CState::MarkSearchDiscovered(std::uint32_t search_id,
 		// Already known (self-started, or discovered on an earlier
 		// cache-miss check): leave its accumulated results/progress
 		// alone. Re-seeding here would stomp whatever
-		// WriteSearchProgress/ApplySearchFull already recorded for it
+		// WriteSearchProgress/ApplySearchUnion already recorded for it
 		// this session. The query is the one exception — a slot seeded
 		// before the daemon reported a name has an empty one, and
 		// filling it in loses nothing.
@@ -356,6 +355,7 @@ void CState::MarkSearchDiscovered(std::uint32_t search_id,
 		return;
 	}
 	SearchSlot &slot = m_searches[search_id];
+	slot.seq = ++m_search_seq;
 	// The daemon's own lifecycle state for this search, not an assumption.
 	// A finished search seeded as active reads as running until the next
 	// tick corrects it, and POST /search/{id}/more gates on exactly that.
@@ -377,8 +377,86 @@ void CState::MarkSearchDiscovered(std::uint32_t search_id,
 		reported_percent >= 0 ? static_cast<std::uint32_t>(reported_percent) : (complete ? 100u : 0u);
 	slot.progress.kind = kind;
 	slot.query = query;
-	slot.seq = ++m_search_seq;
-	EvictSurplusSearchSlotsLocked();
+	EvictSurplusSearchSlotsLocked(search_id);
+}
+
+void CState::DetachSearch(std::uint32_t search_id)
+{
+	std::unique_lock<std::shared_timed_mutex> lock(m_mu);
+	auto it = m_searches.find(search_id);
+	if (it != m_searches.end())
+		it->second.detached = true;
+}
+
+void CState::MarkAllSearchesNeedResync()
+{
+	std::unique_lock<std::shared_timed_mutex> lock(m_mu);
+	for (auto &kv : m_searches) {
+		// A detached slot is frozen and the daemon holds nothing for it, so
+		// there is nothing to re-seed and the FULL would come back expired.
+		if (!kv.second.detached)
+			kv.second.needs_resync = true;
+	}
+}
+
+std::vector<std::uint32_t> CState::SearchesNeedingResync() const
+{
+	std::shared_lock<std::shared_timed_mutex> lock(m_mu);
+	std::vector<std::pair<std::uint64_t, std::uint32_t>> pending;
+	for (const auto &kv : m_searches) {
+		// Same exemption the flag's writer applies, and for the same reason:
+		// a slot detached after it was flagged has had its search dropped by
+		// the daemon, so a full re-read would only come back expired. Asking
+		// anyway costs a roundtrip per slot, and a replace-mode apply against
+		// a detached slot would clear the results the detach exists to keep.
+		if (kv.second.needs_resync && !kv.second.detached)
+			pending.emplace_back(kv.second.seq, kv.first);
+	}
+	std::sort(pending.begin(), pending.end());
+	std::vector<std::uint32_t> out;
+	out.reserve(pending.size());
+	for (const auto &p : pending)
+		out.push_back(p.second);
+	return out;
+}
+
+void CState::ClearSearchResyncFlag(std::uint32_t search_id)
+{
+	std::unique_lock<std::shared_timed_mutex> lock(m_mu);
+	auto it = m_searches.find(search_id);
+	if (it != m_searches.end())
+		it->second.needs_resync = false;
+}
+
+void CState::EvictSurplusSearchSlotsLocked(std::uint32_t exempt_id)
+{
+	while (m_searches.size() > kMaxSearchSlots) {
+		auto victim = m_searches.end();
+		for (auto it = m_searches.begin(); it != m_searches.end(); ++it) {
+			// Never an active one: it is still being polled, and the surplus
+			// is always made of slots that have stopped moving.
+			if (it->second.progress.active)
+				continue;
+			// Never the slot the caller is in the middle of seeding.
+			if (exempt_id != 0 && it->first == exempt_id)
+				continue;
+			// A detached slot always outranks an attached one, however much
+			// younger: the daemon no longer holds it, so evicting it drops
+			// nothing that could still be re-read.
+			if (victim == m_searches.end() || (it->second.detached && !victim->second.detached) ||
+				(it->second.detached == victim->second.detached &&
+					it->second.seq < victim->second.seq)) {
+				victim = it;
+			}
+		}
+		if (victim == m_searches.end())
+			break; // every remaining slot is still active — nothing to evict
+		// The index has to go with the slot, or a later result reusing one of
+		// these ECIDs would be attributed to a search that is no longer here.
+		for (const auto &entry : victim->second.raw)
+			m_resultOwner.erase(entry.first);
+		m_searches.erase(victim);
+	}
 }
 
 void CState::WriteSearchProgress(std::uint32_t search_id, SearchProgressSnapshot s)
@@ -389,10 +467,27 @@ void CState::WriteSearchProgress(std::uint32_t search_id, SearchProgressSnapshot
 		it->second.progress = std::move(s);
 }
 
+void CState::MutateAllSearches(const std::function<void(
+		std::map<std::uint32_t, SearchSlot> &, std::map<std::uint32_t, std::uint32_t> &)> &fn)
+{
+	const ReentryGuard guard(this);
+	std::unique_lock<std::shared_timed_mutex> lock(m_mu);
+	fn(m_searches, m_resultOwner);
+}
+
 void CState::CloseSearch(std::uint32_t search_id)
 {
 	std::unique_lock<std::shared_timed_mutex> lock(m_mu);
-	m_searches.erase(search_id);
+	const auto it = m_searches.find(search_id);
+	if (it == m_searches.end())
+		return;
+	// The index mirrors this slot's result map, so it has to lose the same
+	// ECIDs in the same locked step. Walking the slot's own results is what
+	// keeps that exact: erasing by value over the whole index would be O(n)
+	// in every search rather than this one.
+	for (const auto &kv : it->second.raw)
+		m_resultOwner.erase(kv.first);
+	m_searches.erase(it);
 }
 
 void CState::WriteStatsTree(StatsTreeNode t)
@@ -625,8 +720,8 @@ void CState::ReconcileKnownClientsLocked()
 			// same arrival twice.
 			KnownClientSnapshot k;
 			k.user_hash = c.user_hash;
-			k.first_seen = now;
-			k.last_seen = now;
+			k.first_seen_at = now;
+			k.last_seen_at = now;
 			m_known_clients.push_back(std::move(k));
 			it = m_known_of_hash.emplace(c.user_hash, m_known_clients.size() - 1).first;
 		}
@@ -642,15 +737,15 @@ void CState::ReconcileKnownClientsLocked()
 		// daemon's own figure replaces this at the next fetch, so any drift
 		// lives no longer than the connection to that core.
 		if (!k.online)
-			k.sessions++;
+			k.session_count++;
 		k.online = true;
 		// A peer in front of us was last seen now, not whenever it previously
 		// disconnected. Leaving the stored value would report a peer that is
 		// connected as last seen months ago, and now is what the core writes
 		// to the record at its own disconnect handling anyway.
-		k.last_seen = now;
-		k.total_uploaded = c.xfer_up_total;
-		k.total_downloaded = c.xfer_down_total;
+		k.last_seen_at = now;
+		k.uploaded_bytes_total = c.uploaded_bytes_total;
+		k.downloaded_bytes_total = c.downloaded_bytes_total;
 		// Identity, when the peer in front of us knows more than the record.
 		// A record only gains a name once the core writes its metadata, so a
 		// peer we have never finished a session with is otherwise nameless.
@@ -663,9 +758,9 @@ void CState::ReconcileKnownClientsLocked()
 			k.kad_port = c.kad_port;
 			k.country_code = c.country_code;
 			k.software = c.software;
-			k.version = c.software_version;
+			k.software_version = c.software_version;
 			k.source_origin = c.source_origin;
-			k.obfuscation = c.obfuscation_status;
+			k.obfuscation_state = c.obfuscation_state;
 		}
 	}
 
@@ -680,7 +775,7 @@ void CState::ReconcileKnownClientsLocked()
 		// at its own disconnect handling. The stored value is the *previous*
 		// disconnect, so leaving it would show a peer that was here a second
 		// ago as last seen months back.
-		m_known_clients[idx].last_seen = now;
+		m_known_clients[idx].last_seen_at = now;
 	}
 	m_known_online.swap(still_online);
 }
@@ -798,7 +893,7 @@ void CState::MutateClientsWithFiles(
 void CState::ResetLists()
 {
 	std::unique_lock<std::shared_timed_mutex> lock(m_mu);
-	// A wholesale wipe on EC reconnect is as much a body change as any
+	// A wholesale wipe on a failed tick is as much a body change as any
 	// mutation, and it runs on the failure path -- exactly where the key
 	// used to freeze while the bodies moved underneath it.
 	++m_snapshot_rev;
@@ -806,18 +901,25 @@ void CState::ResetLists()
 	m_clients.clear();
 	m_servers.clear();
 	m_categories.clear();
-	// Drop all search slots on an EC reconnect: the daemon's per-connection
-	// search registry is gone with the old connection, so every cached
-	// search_id is stale; the next POST /search re-seeds. (EventDiff
-	// re-baselines its per-search state when a slot it was tracking
-	// disappears, so no generation carry-over is needed here.)
-	m_searches.clear();
-	// The credit store deliberately does NOT go with them. This runs when a
-	// tick failed against a socket that is still up, and dropping the store
-	// there would refetch the whole thing after one null tick -- the cost this
-	// endpoint exists to avoid. It cannot go stale across a daemon restart
-	// either: HandleEcConnectionLost() shuts amuleapi down the moment the
-	// socket drops, so the process never attaches to a second core.
+	// Search slots and the ECID->search_id index that mirrors them are
+	// deliberately NOT cleared, for the same reason as the credit store
+	// below and then some. This runs when a tick failed against a socket
+	// that is still up -- an actual dropped connection sets
+	// g_shutdownRequested via HandleEcConnectionLost() and this loop exits
+	// instead -- so the daemon's per-connection search registry is very much
+	// alive, along with its record of which results it has already sent us
+	// and the valuemap it diffs against. Wiping our side of that would not
+	// resync anything: results the daemon considers delivered are elided from
+	// then on, so every search would come back permanently short by whatever
+	// it held at the moment one tick returned null. The collections above are
+	// safe to wipe precisely because their EC_DETAIL_UPDATE streams resend in
+	// full; this one does not.
+	//
+	// The credit store is dropped for the same reason -- refetching the whole
+	// thing after one null tick is the cost this endpoint exists to avoid. It
+	// cannot go stale across a daemon restart either: amuleapi shuts down the
+	// moment the socket drops, so the process never attaches to a second
+	// core.
 	// Logs + stats_tree + graphs survive EC reconnects on purpose —
 	// operator can see "EC disconnected at HH:MM" alongside earlier
 	// graph traffic; stats_tree's counters are amuled-uptime not

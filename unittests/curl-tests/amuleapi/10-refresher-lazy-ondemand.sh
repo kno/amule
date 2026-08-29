@@ -10,7 +10,7 @@
 #   3. EC_OP_GET_PREFERENCES                → /preferences + /categories
 #
 # Four endpoints lazy-fetched on first GET, coalesced via 1 s TTL:
-#   * /logs/serverinfo  (EC_OP_GET_SERVERINFO)
+#   * /logs/server_info  (EC_OP_GET_SERVERINFO)
 #   * /stats/tree       (EC_OP_GET_STATSTREE)
 #   * /stats/graphs/{X} (EC_OP_GET_STATSGRAPHS — one fetch serves all 4)
 #   * /search/{id}/results (EC_OP_SEARCH_RESULTS, on a finished search)
@@ -84,7 +84,7 @@ echo "amuleapi 10-refresher-lazy-ondemand smoke @ $HOST"
 
 TOKEN=$(curl -s -X POST -H "Content-Type: application/json" \
 	-d "{\"password\":\"$ADMIN_PASS\"}" \
-	"$HOST/api/v0/auth/login?type=bearer" | jq -r .token)
+	"$HOST/api/v0/auth/login?include_token=true" | jq -r .token)
 [ -n "$TOKEN" ] && [ "$TOKEN" != "null" ] || _die "login failed"
 
 # Refresher has 3 ops/tick now (STAT_REQ + GET_UPDATE + PREFERENCES).
@@ -114,10 +114,14 @@ if [ "$CCOUNT" -gt 0 ]; then
 	_assert_json_eq '.clients[0].software | type'       string   '/clients[0].software is string'
 	# #439 peer country: always-present ISO 3166-1 alpha-2 string,
 	# empty when GeoIP is off/unresolved (never absent/null).
-	_assert_json_eq '.clients[0].country_code | type'   string   '/clients[0].country_code is string (#439)'
-	_assert_json_eq '.clients[0].xfer | type'           object   '/clients[0].xfer is object'
-	_assert_json_eq '.clients[0].xfer.up_session | type'   number '/clients[0].xfer.up_session is numeric'
-	_assert_json_eq '.clients[0].xfer.down_session | type' number '/clients[0].xfer.down_session is numeric'
+	# Nullable since the R10 pass: null means GeoIP is off or the lookup has
+	# not resolved, which used to be spelled "".
+	_assert_json_eq '(.clients[0].country_code == null or (.clients[0].country_code | type) == "string")' \
+		true '/clients[0].country_code is a string or null'
+	# xfer was flattened (R11): the window belongs in the key, not a wrapper.
+	_assert_json_eq '.clients[0] | has("xfer")' false '/clients[0] no longer wraps counters in xfer'
+	_assert_json_eq '.clients[0].uploaded_bytes_session | type'   number '/clients[0].uploaded_bytes_session is numeric'
+	_assert_json_eq '.clients[0].downloaded_bytes_session | type' number '/clients[0].downloaded_bytes_session is numeric'
 
 	# State enum allowlists — any peer's upload_state must be one of
 	# the wire strings the walker emits. Catch silent regressions if
@@ -144,7 +148,7 @@ fi
 # --- 3. Lazy-fetch endpoints — fresh per-endpoint snapshot_at. -----
 #
 # Per Phase 4g, /stats/tree, /stats/graphs/{X}, /search/{id}/results, and
-# /logs/serverinfo no longer ride the refresher tick. Each handler
+# /logs/server_info no longer ride the refresher tick. Each handler
 # drives its own EC roundtrip on first call, coalesced via 1 s TTL.
 # The `snapshot_at` field on each reflects the per-endpoint fetch
 # time, not the refresher tick.
@@ -185,7 +189,7 @@ _assert_status 404 "GET /stats/graphs/bogus → 404 (still validated)"
 # which is the lazy-fetch behaviour this phase is about.
 _curl -X POST -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/json' \
 	-d '{"query":"amuleapi-phase10","type":"local"}' "$HOST/api/v0/search"
-SID=$(printf '%s' "$CURL_BODY" | jq -r '.search_id // empty')
+SID=$(printf '%s' "$CURL_BODY" | jq -r '.id // empty')
 [ -n "$SID" ] || _die "POST /search returned no search_id"
 
 _curl -H "Authorization: Bearer $TOKEN" "$HOST/api/v0/search/$SID/results"
@@ -196,10 +200,10 @@ _assert_json_eq '.results | type' array '/search/{id}/results .results is array'
 _curl -H "Authorization: Bearer $TOKEN" "$HOST/api/v0/search/4294967290/results"
 _assert_status 404 "GET /search/{unknown}/results → 404 (no implicit fallback)"
 
-_curl -H "Authorization: Bearer $TOKEN" "$HOST/api/v0/logs/serverinfo"
-_assert_status 200 "GET /logs/serverinfo → 200 (lazy fetch)"
-_assert_json_eq '.text | type' string '/logs/serverinfo .text is string'
-_assert_json_eq '.total_bytes | type' number '/logs/serverinfo .total_bytes is numeric'
+_curl -H "Authorization: Bearer $TOKEN" "$HOST/api/v0/logs/server_info"
+_assert_status 200 "GET /logs/server_info → 200 (lazy fetch)"
+_assert_json_eq '.text | type' string '/logs/server_info .text is string'
+_assert_json_eq '.total_bytes | type' number '/logs/server_info .total_bytes is numeric'
 
 # --- 4. Per-tick endpoints still fresh from the refresher. ---------
 #

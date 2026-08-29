@@ -89,7 +89,7 @@ fi
 echo "amuleapi 20-etag-conditional-get smoke @ $HOST"
 
 ADMIN_TOKEN=$(curl -s -X POST -H "Content-Type: application/json" \
-	-d "{\"password\":\"$ADMIN_PASS\"}" "$HOST/api/v0/auth/login?type=bearer" | jq -r .token)
+	-d "{\"password\":\"$ADMIN_PASS\"}" "$HOST/api/v0/auth/login?include_token=true" | jq -r .token)
 [ -n "$ADMIN_TOKEN" ] && [ "$ADMIN_TOKEN" != "null" ] || _die "admin login failed"
 
 sleep 4
@@ -255,7 +255,7 @@ fi
 
 # Free the search to leave the daemon clean. The id comes from the start
 # reply -- there is no unaddressed stop to fall back on.
-SID=$(printf '%s' "$CURL_BODY" | jq -r '.search_id // empty')
+SID=$(printf '%s' "$CURL_BODY" | jq -r '.id // empty')
 if [ -n "$SID" ]; then
 	curl -s -X DELETE -H "Authorization: Bearer $ADMIN_TOKEN" \
 		"$HOST/api/v0/search/$SID" > /dev/null

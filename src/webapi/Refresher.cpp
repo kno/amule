@@ -48,6 +48,7 @@
 #include <ec/cpp/ECSpecialTags.h>
 #include <ec/cpp/ECPacket.h>
 
+#include <map>
 #include <algorithm>
 #include <cctype>
 #include <cstdio>
@@ -199,7 +200,13 @@ void ParseStatusFromPacket(const CECPacket *resp, StatusSnapshot &out)
 		// reads 0, and HasLowID() is "id < HIGHEST_LOWID_ED2K_KAD", so a
 		// disconnected daemon would otherwise be reported as a LowID.
 		out.ed2k_high_id = conn->IsConnectedED2K() && !conn->HasLowID();
-		out.kad_firewalled_tcp = conn->IsKadFirewalled();
+		// Gated: IsKadFirewalled() reads a connstate bit that survives a
+		// disconnect, so an unconnected daemon answered `true` -- a
+		// reachability verdict about a network it is not on.
+		if (conn->IsConnectedKademlia()) {
+			out.kad_firewalled_tcp = conn->IsKadFirewalled();
+			out.has_kad_firewalled_tcp = true;
+		}
 		if (conn->IsConnectedED2K()) {
 			// 0xffffffff is the "connect in flight, no id yet" sentinel
 			// (ECSpecialCoreTags.cpp) and must not reach a consumer.
@@ -244,20 +251,20 @@ void ParseStatusFromPacket(const CECPacket *resp, StatusSnapshot &out)
 	}
 
 	if (const CECTag *t = resp->GetTagByName(EC_TAG_STATS_DL_SPEED)) {
-		out.download_bps = static_cast<std::uint64_t>(t->GetInt());
+		out.download_bytes_per_second = static_cast<std::uint64_t>(t->GetInt());
 	}
 	if (const CECTag *t = resp->GetTagByName(EC_TAG_STATS_UL_SPEED)) {
-		out.upload_bps = static_cast<std::uint64_t>(t->GetInt());
+		out.upload_bytes_per_second = static_cast<std::uint64_t>(t->GetInt());
 	}
 	// Overhead rates and free space ride the same EC_DETAIL_FULL response.
 	// The two disk figures are cast through int64 on purpose: amuled's
 	// FREE_SPACE_UNKNOWN is -1 and the serializer casts it to uint64, so an
 	// unsigned read would turn "unknown" into 18446744073709551615.
 	if (const CECTag *t = resp->GetTagByName(EC_TAG_STATS_UP_OVERHEAD)) {
-		out.upload_overhead_bps = static_cast<std::uint64_t>(t->GetInt());
+		out.upload_overhead_bytes_per_second = static_cast<std::uint64_t>(t->GetInt());
 	}
 	if (const CECTag *t = resp->GetTagByName(EC_TAG_STATS_DOWN_OVERHEAD)) {
-		out.download_overhead_bps = static_cast<std::uint64_t>(t->GetInt());
+		out.download_overhead_bytes_per_second = static_cast<std::uint64_t>(t->GetInt());
 	}
 	if (const CECTag *t = resp->GetTagByName(EC_TAG_STATS_TEMP_FREE_SPACE)) {
 		out.temp_free_bytes = static_cast<std::int64_t>(t->GetInt());
@@ -277,11 +284,20 @@ void ParseStatusFromPacket(const CECPacket *resp, StatusSnapshot &out)
 	// next to them (ExternalConn.cpp:762-768). Read them here so
 	// /status can surface ed2k.network.{users,files} symmetric with
 	// kad.network.{users,files,nodes} — no extra EC round-trip.
-	if (const CECTag *t = resp->GetTagByName(EC_TAG_STATS_ED2K_USERS)) {
-		out.ed2k_users = static_cast<std::uint32_t>(t->GetInt());
-	}
-	if (const CECTag *t = resp->GetTagByName(EC_TAG_STATS_ED2K_FILES)) {
-		out.ed2k_files = static_cast<std::uint32_t>(t->GetInt());
+	//
+	// Gated on being connected. amuled emits these tags unconditionally, above
+	// its own `if (IsConnected())` block, and CServerList::GetUserFileStatus
+	// sums the whole known server list rather than the server we are attached
+	// to -- so nothing zeroes them on disconnect. Measured: a disconnected
+	// daemon kept reporting the identical figures it had while connected.
+	if (out.ed2k_state == "connected") {
+		if (const CECTag *t = resp->GetTagByName(EC_TAG_STATS_ED2K_USERS)) {
+			out.ed2k_users = static_cast<std::uint32_t>(t->GetInt());
+		}
+		if (const CECTag *t = resp->GetTagByName(EC_TAG_STATS_ED2K_FILES)) {
+			out.ed2k_files = static_cast<std::uint32_t>(t->GetInt());
+		}
+		out.has_ed2k_network = true;
 	}
 	// Version-check result (present only once the daemon has completed a
 	// check). LATEST carries the release string; its presence means a check
@@ -310,7 +326,7 @@ namespace
 // recognise. "downloading" is overloaded: it covers PS_READY (the
 // daemon's "transferring" state) AND PS_EMPTY (no sources right now
 // but the file isn't paused) — clients distinguish by reading
-// `speed_bps` and `sources.transferring`.
+// `speed_bytes_per_second` and `sources.transferring`.
 const char *DownloadStatusName(std::uint8_t ps_code, bool stopped)
 {
 	// PS_COMPLETE / PS_COMPLETING take priority over `stopped` —
@@ -457,10 +473,10 @@ void MergeKnownFileDetail(const CECTag *t, FileSnapshot &f)
 	{
 		std::uint32_t v = 0;
 		if (t->AssignIfExist(EC_TAG_KNOWNFILE_MEDIA_LENGTH, v)) {
-			f.media.length_s = v;
+			f.media.duration_seconds = v;
 		}
 		if (t->AssignIfExist(EC_TAG_KNOWNFILE_MEDIA_BITRATE, v)) {
-			f.media.bitrate = v;
+			f.media.bitrate_kilobits_per_second = v;
 		}
 	}
 	if (const CECTag *x = t->GetTagByName(EC_TAG_KNOWNFILE_MEDIA_CODEC)) {
@@ -480,8 +496,9 @@ void MergeKnownFileDetail(const CECTag *t, FileSnapshot &f)
 	// clearing that field, so latching would report has_media on a file whose
 	// every field has since been cleared -- and assigning the empty value
 	// above is what makes a clear propagate at all.
-	f.has_media = f.media.length_s != 0 || f.media.bitrate != 0 || !f.media.codec.empty() ||
-		      !f.media.artist.empty() || !f.media.album.empty() || !f.media.title.empty();
+	f.has_media = f.media.duration_seconds != 0 || f.media.bitrate_kilobits_per_second != 0 ||
+		      !f.media.codec.empty() || !f.media.artist.empty() || !f.media.album.empty() ||
+		      !f.media.title.empty();
 }
 
 void MergePartFileTag(const CEC_PartFile_Tag *pf, FileSnapshot &f, bool is_new)
@@ -502,19 +519,19 @@ void MergePartFileTag(const CEC_PartFile_Tag *pf, FileSnapshot &f, bool is_new)
 			f.size = v;
 	}
 	{
-		std::uint64_t v = f.download.size_done;
+		std::uint64_t v = f.download.completed_bytes;
 		if (pf->AssignIfExist(EC_TAG_PARTFILE_SIZE_DONE, v))
-			f.download.size_done = v;
+			f.download.completed_bytes = v;
 	}
 	{
-		std::uint64_t v = f.download.size_xfer;
+		std::uint64_t v = f.download.transferred_bytes;
 		if (pf->AssignIfExist(EC_TAG_PARTFILE_SIZE_XFER, v))
-			f.download.size_xfer = v;
+			f.download.transferred_bytes = v;
 	}
 	{
-		std::uint32_t v = f.download.speed_bps;
+		std::uint32_t v = f.download.speed_bytes_per_second;
 		if (pf->AssignIfExist(EC_TAG_PARTFILE_SPEED, v))
-			f.download.speed_bps = v;
+			f.download.speed_bytes_per_second = v;
 	}
 	{
 		// Status + stopped flag interact — re-derive the wire string
@@ -560,7 +577,7 @@ void MergePartFileTag(const CEC_PartFile_Tag *pf, FileSnapshot &f, bool is_new)
 		if (pf->AssignIfExist(EC_TAG_PARTFILE_SOURCE_COUNT, v))
 			f.download.sources_total = v;
 		if (pf->AssignIfExist(EC_TAG_PARTFILE_SOURCE_COUNT_NOT_CURRENT, v))
-			f.download.sources_not_current = v;
+			f.download.sources_unavailable = v;
 		if (pf->AssignIfExist(EC_TAG_PARTFILE_SOURCE_COUNT_XFER, v))
 			f.download.sources_transferring = v;
 		if (pf->AssignIfExist(EC_TAG_PARTFILE_SOURCE_COUNT_A4AF, v))
@@ -570,29 +587,27 @@ void MergePartFileTag(const CEC_PartFile_Tag *pf, FileSnapshot &f, bool is_new)
 	{
 		std::uint32_t v = 0;
 		if (pf->AssignIfExist(EC_TAG_PARTFILE_LAST_SEEN_COMP, v))
-			f.download.last_seen_complete = v;
+			f.download.last_seen_complete_at = v;
 		if (pf->AssignIfExist(EC_TAG_PARTFILE_LAST_RECV, v))
-			f.download.last_changed = v;
+			f.download.last_received_at = v;
 		if (pf->AssignIfExist(EC_TAG_PARTFILE_DOWNLOAD_ACTIVE, v))
-			f.download.download_active_time = v;
+			f.download.active_seconds = v;
 		if (pf->AssignIfExist(EC_TAG_PARTFILE_SAVED_ICH, v))
-			f.download.saved_by_ich = v;
-		if (pf->AssignIfExist(EC_TAG_PARTFILE_PARTMETID, v))
-			f.download.partmet_id = v;
+			f.download.ich_recovered_packet_count = v;
 	}
 	{
 		std::uint16_t v = 0;
 		if (pf->AssignIfExist(EC_TAG_PARTFILE_AVAILABLE_PARTS, v))
-			f.download.available_part_count = v;
+			f.download.parts_available_count = v;
 		if (pf->AssignIfExist(EC_TAG_PARTFILE_HASHED_PART_COUNT, v))
-			f.download.hashing_progress = v;
+			f.download.hashed_part_count = v;
 	}
 	{
 		std::uint64_t v = 0;
 		if (pf->AssignIfExist(EC_TAG_PARTFILE_LOST_CORRUPTION, v))
-			f.download.lost_to_corruption = v;
+			f.download.lost_to_corruption_bytes = v;
 		if (pf->AssignIfExist(EC_TAG_PARTFILE_GAINED_COMPRESSION, v))
-			f.download.gained_by_compression = v;
+			f.download.gained_by_compression_bytes = v;
 	}
 	// Per-source comments/ratings (issue #419). The EC container packs
 	// four children per source, evaluated by index: username, filename,
@@ -658,13 +673,12 @@ void MergePartFileTag(const CEC_PartFile_Tag *pf, FileSnapshot &f, bool is_new)
 		for (const CECTag &src : *a4af)
 			f.download.a4af_sources.push_back(static_cast<std::uint32_t>(src.GetInt()));
 	}
-	// Base CKnownFile detail tags (aich_hash, queued_count, met_file).
+	// Base CKnownFile detail tags (aich_hash, upload_queue_count, part_file_name).
 	MergeKnownFileDetail(pf, f);
 	// Recompute percent unconditionally — both inputs may have moved.
-	f.download.percent =
-		(f.size > 0)
-			? (static_cast<double>(f.download.size_done) * 100.0 / static_cast<double>(f.size))
-			: 0.0;
+	f.download.percent = (f.size > 0) ? (static_cast<double>(f.download.completed_bytes) * 100.0 /
+						    static_cast<double>(f.size))
+					  : 0.0;
 }
 
 // State-code → wire-string decoders for the four enums amule ships
@@ -856,11 +870,11 @@ void MergeClientTag(const CEC_UpDownClient_Tag *c, ClientSnapshot &cs, bool is_n
 	if (cs.software_version.empty()) {
 		cs.software_version = "unknown";
 	}
-	// os_info is the peer's own self-reported OS string (raw external data,
+	// reported_os is the peer's own self-reported OS string (raw external data,
 	// not gettext-translated by our daemon), so it carries no locale-leak;
 	// it is frequently empty because most clients don't send it.
 	if (const CECTag *t = c->GetTagByName(EC_TAG_CLIENT_OS_INFO)) {
-		cs.os_info = std::string(t->GetStringData().utf8_str());
+		cs.reported_os = std::string(t->GetStringData().utf8_str());
 	}
 	{
 		std::uint8_t v = 0;
@@ -948,29 +962,29 @@ void MergeClientTag(const CEC_UpDownClient_Tag *c, ClientSnapshot &cs, bool is_n
 		}
 	}
 	{
-		std::uint64_t v = cs.xfer_up_session;
+		std::uint64_t v = cs.uploaded_bytes_session;
 		if (c->AssignIfExist(EC_TAG_CLIENT_UPLOAD_SESSION, v))
-			cs.xfer_up_session = v;
+			cs.uploaded_bytes_session = v;
 	}
 	{
-		std::uint64_t v = cs.xfer_down_session;
+		std::uint64_t v = cs.downloaded_bytes_session;
 		if (c->AssignIfExist(EC_TAG_PARTFILE_SIZE_XFER, v))
-			cs.xfer_down_session = v;
+			cs.downloaded_bytes_session = v;
 	}
 	{
-		std::uint64_t v = cs.xfer_up_total;
+		std::uint64_t v = cs.uploaded_bytes_total;
 		if (c->AssignIfExist(EC_TAG_CLIENT_UPLOAD_TOTAL, v))
-			cs.xfer_up_total = v;
+			cs.uploaded_bytes_total = v;
 	}
 	{
-		std::uint64_t v = cs.xfer_down_total;
+		std::uint64_t v = cs.downloaded_bytes_total;
 		if (c->AssignIfExist(EC_TAG_CLIENT_DOWNLOAD_TOTAL, v))
-			cs.xfer_down_total = v;
+			cs.downloaded_bytes_total = v;
 	}
 	{
-		std::uint32_t v = cs.upload_speed_bps;
+		std::uint32_t v = cs.upload_speed_bytes_per_second;
 		if (c->AssignIfExist(EC_TAG_CLIENT_UP_SPEED, v))
-			cs.upload_speed_bps = v;
+			cs.upload_speed_bytes_per_second = v;
 	}
 	{
 		// EC_TAG_CLIENT_DOWN_SPEED is emitted as a double-encoded
@@ -979,18 +993,18 @@ void MergeClientTag(const CEC_UpDownClient_Tag *c, ClientSnapshot &cs, bool is_n
 		// extract via the typed read and convert.
 		if (const CECTag *t = c->GetTagByName(EC_TAG_CLIENT_DOWN_SPEED)) {
 			const double kBps = t->GetDoubleData();
-			cs.download_speed_bps = static_cast<std::uint32_t>(kBps * 1024.0);
+			cs.download_speed_bytes_per_second = static_cast<std::uint32_t>(kBps * 1024.0);
 		}
 	}
 	{
-		std::uint32_t v = cs.queue_waiting_position;
+		std::uint32_t v = cs.upload_queue_position;
 		if (c->AssignIfExist(EC_TAG_CLIENT_WAITING_POSITION, v))
-			cs.queue_waiting_position = v;
+			cs.upload_queue_position = v;
 	}
 	{
-		std::uint16_t v = cs.remote_queue_rank;
+		std::uint16_t v = cs.remote_queue_position;
 		if (c->AssignIfExist(EC_TAG_CLIENT_REMOTE_QUEUE_RANK, v))
-			cs.remote_queue_rank = v;
+			cs.remote_queue_position = v;
 	}
 	{
 		std::uint32_t v = cs.score;
@@ -1000,7 +1014,7 @@ void MergeClientTag(const CEC_UpDownClient_Tag *c, ClientSnapshot &cs, bool is_n
 	{
 		std::uint8_t v = 0;
 		if (c->AssignIfExist(EC_TAG_CLIENT_OBFUSCATION_STATUS, v)) {
-			cs.obfuscation_status = ClientObfuscationName(v);
+			cs.obfuscation_state = ClientObfuscationName(v);
 		}
 	}
 	{
@@ -1015,7 +1029,7 @@ void MergeClientTag(const CEC_UpDownClient_Tag *c, ClientSnapshot &cs, bool is_n
 	{
 		std::uint32_t v = 0;
 		if (c->AssignIfExist(EC_TAG_CLIENT_USER_ID, v)) {
-			cs.user_id_hybrid = v;
+			cs.ed2k_user_id = v;
 			// A LowID peer has a hybrid id below 0x1000000 (IsLowID(),
 			// NetworkFunctions.h); inline the ed2k-stable ceiling rather
 			// than drag the core header into the webapi decoder.
@@ -1082,12 +1096,12 @@ void MergeClientTag(const CEC_UpDownClient_Tag *c, ClientSnapshot &cs, bool is_n
 	{
 		std::uint32_t v = 0;
 		if (c->AssignIfExist(EC_TAG_CLIENT_AVAILABLE_PARTS, v)) {
-			cs.available_parts = v;
-			cs.has_available_parts = true;
+			cs.parts_offered_count = v;
+			cs.has_parts_offered_count = true;
 		}
 	}
 	if (const CECTag *t = c->GetTagByName(EC_TAG_CLIENT_MOD_VERSION)) {
-		cs.mod_version = std::string(t->GetStringData().utf8_str());
+		cs.client_mod_name = std::string(t->GetStringData().utf8_str());
 	}
 	{
 		bool v = false;
@@ -1105,7 +1119,7 @@ void MergeClientTag(const CEC_UpDownClient_Tag *c, ClientSnapshot &cs, bool is_n
 			cs.is_friend = v;
 	}
 	if (const CECTag *t = c->GetTagByName(EC_TAG_CLIENT_SCORE_RATIO)) {
-		cs.dl_up_modifier = t->GetDoubleData();
+		cs.credit_ratio = t->GetDoubleData();
 	}
 }
 
@@ -1127,34 +1141,34 @@ void MergeSharedTag(const CEC_SharedFile_Tag *sf, FileSnapshot &f)
 			f.size = v;
 	}
 	{
-		std::uint64_t v = f.shared.xfer_session;
+		std::uint64_t v = f.shared.uploaded_bytes_session;
 		if (sf->AssignIfExist(EC_TAG_KNOWNFILE_XFERRED, v))
-			f.shared.xfer_session = v;
+			f.shared.uploaded_bytes_session = v;
 	}
 	{
-		std::uint64_t v = f.shared.xfer_total;
+		std::uint64_t v = f.shared.uploaded_bytes_total;
 		if (sf->AssignIfExist(EC_TAG_KNOWNFILE_XFERRED_ALL, v))
-			f.shared.xfer_total = v;
+			f.shared.uploaded_bytes_total = v;
 	}
 	{
-		std::uint32_t v = f.shared.requests_session;
+		std::uint32_t v = f.shared.request_count_session;
 		if (sf->AssignIfExist(EC_TAG_KNOWNFILE_REQ_COUNT, v))
-			f.shared.requests_session = v;
+			f.shared.request_count_session = v;
 	}
 	{
-		std::uint32_t v = f.shared.requests_total;
+		std::uint32_t v = f.shared.request_count_total;
 		if (sf->AssignIfExist(EC_TAG_KNOWNFILE_REQ_COUNT_ALL, v))
-			f.shared.requests_total = v;
+			f.shared.request_count_total = v;
 	}
 	{
-		std::uint32_t v = f.shared.accepts_session;
+		std::uint32_t v = f.shared.accepted_request_count_session;
 		if (sf->AssignIfExist(EC_TAG_KNOWNFILE_ACCEPT_COUNT, v))
-			f.shared.accepts_session = v;
+			f.shared.accepted_request_count_session = v;
 	}
 	{
-		std::uint32_t v = f.shared.accepts_total;
+		std::uint32_t v = f.shared.accepted_request_count_total;
 		if (sf->AssignIfExist(EC_TAG_KNOWNFILE_ACCEPT_COUNT_ALL, v))
-			f.shared.accepts_total = v;
+			f.shared.accepted_request_count_total = v;
 	}
 	{
 		std::uint16_t v = 0;
@@ -1170,7 +1184,7 @@ void MergeSharedTag(const CEC_SharedFile_Tag *sf, FileSnapshot &f)
 		// rebuild over this complete share. Rides every update tick,
 		// CValueMap-suppressed when unchanged, so it moves only while a
 		// hash is actually running. The partfile equivalent is decoded
-		// into download.hashing_progress above.
+		// into download.hashed_part_count above.
 		if (sf->AssignIfExist(EC_TAG_KNOWNFILE_HASHED_PART_COUNT, v))
 			f.shared.hashing_progress = v;
 	}
@@ -1184,14 +1198,14 @@ void MergeSharedTag(const CEC_SharedFile_Tag *sf, FileSnapshot &f)
 	}
 	// Live upload activity + timestamps (issue #466).
 	{
-		std::uint32_t v = f.shared.upload_speed_bps;
+		std::uint32_t v = f.shared.upload_speed_bytes_per_second;
 		if (sf->AssignIfExist(EC_TAG_KNOWNFILE_UPLOAD_SPEED, v))
-			f.shared.upload_speed_bps = v;
+			f.shared.upload_speed_bytes_per_second = v;
 	}
 	{
-		std::uint16_t v = f.shared.uploading_count;
+		std::uint16_t v = f.shared.uploading_client_count;
 		if (sf->AssignIfExist(EC_TAG_KNOWNFILE_UPLOADING_COUNT, v))
-			f.shared.uploading_count = v;
+			f.shared.uploading_client_count = v;
 	}
 	{
 		std::uint32_t v = f.shared.last_upload;
@@ -1556,7 +1570,13 @@ void ParseKadFromPacket(const CECPacket *resp, KadSnapshot &out)
 
 	out.state = KadStateString(conn);
 	if (conn) {
-		out.firewalled_tcp = conn->IsKadFirewalled();
+		// Gated like the /status copy of this field: IsKadFirewalled() reads a
+		// connstate bit that outlives the disconnect, so an unconnected daemon
+		// reported a reachability verdict it had not measured.
+		if (conn->IsConnectedKademlia()) {
+			out.firewalled_tcp = conn->IsKadFirewalled();
+			out.has_firewalled_tcp = true;
+		}
 		// Our own node id. amuled ships EC_TAG_KAD_ID only while Kad
 		// is running, which is the same condition KadStateString()
 		// reports as anything other than "disabled" -- so an absent
@@ -1571,20 +1591,29 @@ void ParseKadFromPacket(const CECPacket *resp, KadSnapshot &out)
 		}
 	}
 
-	if (const CECTag *t = resp->GetTagByName(EC_TAG_STATS_KAD_USERS)) {
-		out.users = static_cast<std::uint32_t>(t->GetInt());
-	}
-	if (const CECTag *t = resp->GetTagByName(EC_TAG_STATS_KAD_FILES)) {
-		out.files = static_cast<std::uint32_t>(t->GetInt());
-	}
-	if (const CECTag *t = resp->GetTagByName(EC_TAG_STATS_KAD_NODES)) {
-		out.nodes = static_cast<std::uint32_t>(t->GetInt());
+	// Gated on `connected`, unlike the tags below, which amuled already gates
+	// itself. These three ship unconditionally: `users`/`files` are the last
+	// persisted estimate and survive into `connecting`, and `nodes` is our own
+	// routing-table size -- measured at 2 with Kad fully stopped, so not even
+	// the terminal state reaches 0.
+	if (out.state == "connected") {
+		if (const CECTag *t = resp->GetTagByName(EC_TAG_STATS_KAD_USERS)) {
+			out.users = static_cast<std::uint32_t>(t->GetInt());
+		}
+		if (const CECTag *t = resp->GetTagByName(EC_TAG_STATS_KAD_FILES)) {
+			out.files = static_cast<std::uint32_t>(t->GetInt());
+		}
+		if (const CECTag *t = resp->GetTagByName(EC_TAG_STATS_KAD_NODES)) {
+			out.nodes = static_cast<std::uint32_t>(t->GetInt());
+		}
+		out.has_network = true;
 	}
 
 	// These ship only when Kad is connected (server gates them at
 	// ExternalConn.cpp:755 `if (Kademlia::CKademlia::IsConnected())`).
 	if (const CECTag *t = resp->GetTagByName(EC_TAG_STATS_KAD_FIREWALLED_UDP)) {
 		out.firewalled_udp = (t->GetInt() != 0);
+		out.has_firewalled_udp = true;
 	}
 	if (const CECTag *t = resp->GetTagByName(EC_TAG_STATS_KAD_INDEXED_SOURCES)) {
 		out.indexed_sources = static_cast<std::uint32_t>(t->GetInt());
@@ -1598,14 +1627,21 @@ void ParseKadFromPacket(const CECPacket *resp, KadSnapshot &out)
 	if (const CECTag *t = resp->GetTagByName(EC_TAG_STATS_KAD_INDEXED_LOAD)) {
 		out.indexed_load = static_cast<std::uint32_t>(t->GetInt());
 	}
+	// One flag for the group: amuled ships all four together, inside its own
+	// `if (IsConnected())`, so any one arriving means the set did.
+	out.has_indexed = resp->GetTagByName(EC_TAG_STATS_KAD_INDEXED_LOAD) != nullptr;
 	if (const CECTag *t = resp->GetTagByName(EC_TAG_STATS_KAD_IP_ADDRESS)) {
 		out.public_ip = IPv4ToDotted(static_cast<std::uint32_t>(t->GetInt()));
 	}
 	if (const CECTag *t = resp->GetTagByName(EC_TAG_STATS_KAD_IN_LAN_MODE)) {
 		out.lan_mode = (t->GetInt() != 0);
+		out.has_lan_mode = true;
 	}
 	if (const CECTag *t = resp->GetTagByName(EC_TAG_STATS_BUDDY_STATUS)) {
 		out.buddy_status = KadBuddyStatusName(static_cast<std::uint32_t>(t->GetInt()));
+		// The group's flag: amuled ships status/ip/port together inside its
+		// connected gate, and status is the one that is always in the set.
+		out.has_buddy = true;
 	}
 	if (const CECTag *t = resp->GetTagByName(EC_TAG_STATS_BUDDY_IP)) {
 		out.buddy_ip = IPv4ToDotted(static_cast<std::uint32_t>(t->GetInt()));
@@ -2269,8 +2305,8 @@ void ParseGraphsFromPacket(const CECPacket *resp, StatsGraphs &out)
 			/*num_channels=*/4,
 			channels);
 		if (channels.size() >= 4) {
-			out.download_bps = std::move(channels[0]);
-			out.upload_bps = std::move(channels[1]);
+			out.download_bytes_per_second = std::move(channels[0]);
+			out.upload_bytes_per_second = std::move(channels[1]);
 			out.connections = std::move(channels[2]);
 			out.kad_nodes = std::move(channels[3]);
 		}
@@ -2323,8 +2359,8 @@ void ParseGraphsFromPacket(const CECPacket *resp, StatsGraphs &out)
 	// those draws them as distinct samples -- silently compressing time
 	// across the older part of the plot. A no-op where the request width
 	// and the reported depth agree, which is the current-build case.
-	TruncateToLast(out.download_bps, out.max_points);
-	TruncateToLast(out.upload_bps, out.max_points);
+	TruncateToLast(out.download_bytes_per_second, out.max_points);
+	TruncateToLast(out.upload_bytes_per_second, out.max_points);
 	TruncateToLast(out.connections, out.max_points);
 	TruncateToLast(out.kad_nodes, out.max_points);
 	TruncateToLast(out.active_uploads, out.max_points);
@@ -2367,148 +2403,210 @@ std::string FileTypeToken(const std::string &name)
 	std::transform(s.begin(), s.end(), s.begin(), [](unsigned char c) {
 		return static_cast<char>(std::tolower(c));
 	});
-	return s;
+	// GetFiletypeDesc() returns UI labels, and lowercasing them left three
+	// problems in one enum: plurals where the token names ONE file's type, a
+	// hyphen where every other enum token on the surface is snake_case, and
+	// "any" meaning "unknown". Normalise rather than expose the label.
+	static const std::map<std::string, std::string> kNormalised = {
+		{ "videos", "video" },
+		{ "audio", "audio" },
+		{ "archives", "archive" },
+		{ "cd-images", "cd_image" },
+		{ "pictures", "picture" },
+		{ "texts", "text" },
+		{ "programs", "program" },
+		{ "any", "unknown" },
+	};
+	const auto it = kNormalised.find(s);
+	// An unrecognised label means the core grew a type this build does not
+	// know; "unknown" is the honest answer, and matches what "any" meant.
+	return it != kNormalised.end() ? it->second : std::string("unknown");
 }
 
-void ApplySearchFull(const CECPacket *resp, std::map<std::uint32_t, SearchResult> &cache)
+// Merge one EC_TAG_SEARCHFILE onto a result, writing only the fields the tag
+// actually carries.
+//
+// This is the whole contract of the incremental union poll: the daemon diffs a
+// result against what it last sent us and emits only what moved, so an absent
+// field means "unchanged", never "cleared". Every write below is therefore
+// guarded on its tag being present -- including the ones a full fetch could
+// take unconditionally, because their accessors go through GetTagByNameSafe
+// and answer 0 / "" for a tag that is not there.
+void MergeSearchResultTag(const CEC_SearchFile_Tag *sf, SearchResult &r)
 {
-	cache.clear();
-	if (!resp)
-		return;
-	for (CECPacket::const_iterator it = resp->begin(); it != resp->end(); ++it) {
-		const CECTag *t = &*it;
-		if (t->GetTagName() != EC_TAG_SEARCHFILE)
-			continue;
-		const CEC_SearchFile_Tag *sf = static_cast<const CEC_SearchFile_Tag *>(t);
-		SearchResult r;
-		r.ecid = sf->ID();
-		{
-			std::string h(sf->FileHashString().utf8_str());
-			std::transform(h.begin(), h.end(), h.begin(), [](unsigned char c) {
-				return std::tolower(c);
-			});
-			r.hash = std::move(h);
-		}
-		r.name = std::string(sf->FileName().utf8_str());
-		r.size = sf->SizeFull();
-		{
-			std::uint32_t v = 0;
-			if (sf->AssignIfExist(EC_TAG_PARTFILE_SOURCE_COUNT, v))
-				r.source_count = v;
-		}
-		{
-			std::uint32_t v = 0;
-			if (sf->AssignIfExist(EC_TAG_PARTFILE_SOURCE_COUNT_XFER, v))
-				r.complete_source_count = v;
-		}
-		r.already_have = sf->AlreadyHave();
-		// Grouping (issue #431): a child hit carries its parent's ECID in
-		// EC_TAG_SEARCH_PARENT. Recorded here; folded into the parent's
-		// children[] in the second pass below.
-		{
-			std::uint32_t v = 0;
-			if (sf->AssignIfExist(EC_TAG_SEARCH_PARENT, v)) {
-				r.parent_ecid = v;
-				r.has_parent = true;
-			}
-		}
-		{
-			std::uint8_t v = 0;
-			if (sf->AssignIfExist(EC_TAG_KNOWNFILE_RATING, v))
-				r.rating = v;
-		}
-		// Download status (issue #429): amuled packs the CSearchFile
-		// status in EC_TAG_PARTFILE_STATUS on every search-result tag.
-		{
-			std::uint32_t v = 0;
-			r.status = SearchStatusName(sf->AssignIfExist(EC_TAG_PARTFILE_STATUS, v) ? v : 0);
-		}
-		// File type, computed from the filename (no EC data needed).
-		r.type = FileTypeToken(r.name);
-		// Browse-only: the folder this file sits in inside the peer's
-		// share. The core attaches it to results filed from a shared-file
-		// listing and to nothing else, so an ordinary server/Kad hit
-		// simply leaves it empty.
-		if (const CECTag *x = sf->GetTagByName(EC_TAG_SEARCHFILE_DIRECTORY)) {
-			r.directory = std::string(x->GetStringData().utf8_str());
-		}
-		// Media metadata (issue #430): present when the hit carried
-		// FT_MEDIA_* tags. On a locally known/probed file those are our
-		// own probe's values; on a remote hit they are whatever the
-		// responding server advertised, which is not validated anywhere
-		// and can contradict the file (a .pdf with a runtime and an xvid
-		// codec is a real observed result). Passed through as sent -- the
-		// API documents the search-result `media` as unverified rather
-		// than second-guessing the server. Any present tag marks
-		// has_media so the API emits the `media` object.
-		{
-			std::uint32_t v = 0;
-			if (sf->AssignIfExist(EC_TAG_KNOWNFILE_MEDIA_LENGTH, v)) {
-				r.media.length_s = v;
-			}
-			if (sf->AssignIfExist(EC_TAG_KNOWNFILE_MEDIA_BITRATE, v)) {
-				r.media.bitrate = v;
-			}
-		}
-		if (const CECTag *x = sf->GetTagByName(EC_TAG_KNOWNFILE_MEDIA_CODEC)) {
-			r.media.codec = std::string(x->GetStringData().utf8_str());
-		}
-		if (const CECTag *x = sf->GetTagByName(EC_TAG_KNOWNFILE_MEDIA_ARTIST)) {
-			r.media.artist = std::string(x->GetStringData().utf8_str());
-		}
-		if (const CECTag *x = sf->GetTagByName(EC_TAG_KNOWNFILE_MEDIA_ALBUM)) {
-			r.media.album = std::string(x->GetStringData().utf8_str());
-		}
-		if (const CECTag *x = sf->GetTagByName(EC_TAG_KNOWNFILE_MEDIA_TITLE)) {
-			r.media.title = std::string(x->GetStringData().utf8_str());
-		}
-		// Derived from the fields, exactly as MergeKnownFileDetail does for a
-		// shared file. Both paths share AddMediaTagsPresent on the daemon
-		// side, so either can be sent a zero / empty "this field is gone" tag
-		// -- latching on any tag being present would mark a result as having
-		// media with every field blank.
-		r.has_media = r.media.length_s != 0 || r.media.bitrate != 0 || !r.media.codec.empty() ||
-			      !r.media.artist.empty() || !r.media.album.empty() || !r.media.title.empty();
-		// On-demand Kad community ratings/comments (issue #434). Same
-		// 4-children-per-entry positional container the download side uses
-		// (username, filename, rating, comment); a search hit's comments are
-		// purely Kad notes.
-		if (const CECTag *cont = sf->GetTagByName(EC_TAG_PARTFILE_COMMENTS)) {
-			std::vector<const CECTag *> kids;
-			for (const CECTag &kid : *cont)
-				kids.push_back(&kid);
-			for (std::size_t i = 0; i + 3 < kids.size(); i += 4) {
-				SearchResult::Comment c;
-				c.username = std::string(kids[i]->GetStringData().utf8_str());
-				c.filename = std::string(kids[i + 1]->GetStringData().utf8_str());
-				c.rating = static_cast<std::int32_t>(
-					static_cast<std::int64_t>(kids[i + 2]->GetInt()));
-				c.comment = std::string(kids[i + 3]->GetStringData().utf8_str());
-				r.comments.push_back(std::move(c));
-			}
-		}
-		{
-			std::uint32_t v = 0;
-			if (sf->AssignIfExist(EC_TAG_PARTFILE_KAD_COMMENT_SEARCHING, v))
-				r.kad_comment_searching = v != 0;
-		}
-		cache.emplace(r.ecid, std::move(r));
+	r.ecid = sf->ID();
+	// Identity and the immutable descriptors. Under INC_UPDATE these
+	// travel once and are diffed away afterwards, and the accessors
+	// answer through GetTagByNameSafe -- an absent tag reads as an empty
+	// string or 0, which would wipe the field rather than leave it. So
+	// each one is written only when its tag is actually on this packet.
+	if (sf->GetTagByName(EC_TAG_PARTFILE_HASH)) {
+		std::string h(sf->FileHashString().utf8_str());
+		std::transform(
+			h.begin(), h.end(), h.begin(), [](unsigned char c) { return std::tolower(c); });
+		r.hash = std::move(h);
 	}
+	if (sf->GetTagByName(EC_TAG_PARTFILE_NAME)) {
+		r.name = std::string(sf->FileName().utf8_str());
+	}
+	if (sf->GetTagByName(EC_TAG_PARTFILE_SIZE_FULL)) {
+		r.size = sf->SizeFull();
+	}
+	{
+		std::uint32_t v = 0;
+		if (sf->AssignIfExist(EC_TAG_PARTFILE_SOURCE_COUNT, v))
+			r.source_count = v;
+	}
+	{
+		std::uint32_t v = 0;
+		if (sf->AssignIfExist(EC_TAG_PARTFILE_SOURCE_COUNT_XFER, v))
+			r.complete_source_count = v;
+	}
+	// Grouping (issue #431): a child hit carries its parent's ECID in
+	// EC_TAG_SEARCH_PARENT. Recorded here; folded into the parent's
+	// children[] in the second pass below.
+	{
+		std::uint32_t v = 0;
+		if (sf->AssignIfExist(EC_TAG_SEARCH_PARENT, v)) {
+			r.parent_ecid = v;
+			r.has_parent = true;
+		}
+	}
+	{
+		std::uint8_t v = 0;
+		if (sf->AssignIfExist(EC_TAG_KNOWNFILE_RATING, v))
+			r.rating = v;
+	}
+	// Download status (issue #429): amuled packs the CSearchFile
+	// status in EC_TAG_PARTFILE_STATUS on every search-result tag.
+	// Download status (issue #429): amuled packs the CSearchFile status
+	// in EC_TAG_PARTFILE_STATUS. `already_downloaded` is not its own field on
+	// the wire -- AlreadyHave() reads the same tag -- so both move
+	// together, and both are left alone when the tag is diffed away.
+	// Writing the absent case as status 0 would report every unchanged
+	// result as "new" on the very polls that say nothing changed.
+	{
+		std::uint32_t v = 0;
+		if (sf->AssignIfExist(EC_TAG_PARTFILE_STATUS, v)) {
+			r.status = SearchStatusName(v);
+			r.already_downloaded = sf->AlreadyHave();
+		}
+	}
+	// File type, computed from the filename (no EC data needed).
+	// Derived from the filename, so it is recomputed whenever the name is.
+	if (!r.name.empty()) {
+		r.type = FileTypeToken(r.name);
+	}
+	// Browse-only: the folder this file sits in inside the peer's
+	// share. The core attaches it to results filed from a shared-file
+	// listing and to nothing else, so an ordinary server/Kad hit
+	// simply leaves it empty.
+	if (const CECTag *x = sf->GetTagByName(EC_TAG_SEARCHFILE_DIRECTORY)) {
+		r.directory = std::string(x->GetStringData().utf8_str());
+	}
+	// Media metadata (issue #430): present when the hit carried
+	// FT_MEDIA_* tags. On a locally known/probed file those are our
+	// own probe's values; on a remote hit they are whatever the
+	// responding server advertised, which is not validated anywhere
+	// and can contradict the file (a .pdf with a runtime and an xvid
+	// codec is a real observed result). Passed through as sent -- the
+	// API documents the search-result `media` as unverified rather
+	// than second-guessing the server. Any present tag marks
+	// has_media so the API emits the `media` object.
+	{
+		std::uint32_t v = 0;
+		if (sf->AssignIfExist(EC_TAG_KNOWNFILE_MEDIA_LENGTH, v)) {
+			r.media.duration_seconds = v;
+		}
+		if (sf->AssignIfExist(EC_TAG_KNOWNFILE_MEDIA_BITRATE, v)) {
+			r.media.bitrate_kilobits_per_second = v;
+		}
+	}
+	if (const CECTag *x = sf->GetTagByName(EC_TAG_KNOWNFILE_MEDIA_CODEC)) {
+		r.media.codec = std::string(x->GetStringData().utf8_str());
+	}
+	if (const CECTag *x = sf->GetTagByName(EC_TAG_KNOWNFILE_MEDIA_ARTIST)) {
+		r.media.artist = std::string(x->GetStringData().utf8_str());
+	}
+	if (const CECTag *x = sf->GetTagByName(EC_TAG_KNOWNFILE_MEDIA_ALBUM)) {
+		r.media.album = std::string(x->GetStringData().utf8_str());
+	}
+	if (const CECTag *x = sf->GetTagByName(EC_TAG_KNOWNFILE_MEDIA_TITLE)) {
+		r.media.title = std::string(x->GetStringData().utf8_str());
+	}
+	// Derived from the fields, exactly as MergeKnownFileDetail does for a
+	// shared file. Both paths share AddMediaTagsPresent on the daemon
+	// side, so either can be sent a zero / empty "this field is gone" tag
+	// -- latching on any tag being present would mark a result as having
+	// media with every field blank.
+	r.has_media = r.media.duration_seconds != 0 || r.media.bitrate_kilobits_per_second != 0 ||
+		      !r.media.codec.empty() || !r.media.artist.empty() || !r.media.album.empty() ||
+		      !r.media.title.empty();
+	// On-demand Kad community ratings/comments (issue #434). Same
+	// 4-children-per-entry positional container the download side uses
+	// (username, filename, rating, comment); a search hit's comments are
+	// purely Kad notes.
+	// The comments container is the one field where absence is a value,
+	// not silence: it is built only when there are notes and is added
+	// without the valuemap, so it is never diffed away. An absent one
+	// therefore means "no notes", and a present one replaces the set
+	// rather than appending to it.
+	//
+	// The searching flag beside it is NOT in that category -- it goes
+	// through the valuemap like every other field, so it follows the
+	// ordinary absent-means-unchanged rule below.
+	r.comments.clear();
+	if (const CECTag *cont = sf->GetTagByName(EC_TAG_PARTFILE_COMMENTS)) {
+		std::vector<const CECTag *> kids;
+		for (const CECTag &kid : *cont)
+			kids.push_back(&kid);
+		for (std::size_t i = 0; i + 3 < kids.size(); i += 4) {
+			SearchResult::Comment c;
+			c.username = std::string(kids[i]->GetStringData().utf8_str());
+			c.filename = std::string(kids[i + 1]->GetStringData().utf8_str());
+			c.rating =
+				static_cast<std::int32_t>(static_cast<std::int64_t>(kids[i + 2]->GetInt()));
+			c.comment = std::string(kids[i + 3]->GetStringData().utf8_str());
+			r.comments.push_back(std::move(c));
+		}
+	}
+	{
+		std::uint32_t v = 0;
+		if (sf->AssignIfExist(EC_TAG_PARTFILE_KAD_COMMENT_SEARCHING, v))
+			r.kad_comment_searching = v != 0;
+	}
+}
 
-	// Second pass (issue #431): fold each child into its parent's
-	// children[] and drop it from the top-level set, so the API serves
-	// one parent row per hash+size with the alternative filenames nested.
-	// A child whose parent isn't in the set (shouldn't happen — the core
-	// emits the parent before its children) is left as a top-level row so
-	// nothing is silently lost.
-	std::vector<std::uint32_t> folded;
-	for (auto &kv : cache) {
-		SearchResult &child = kv.second;
+// Rebuild the folded view (`results`) from the flat merge target (`raw`).
+//
+// Kept as a pass over `raw` rather than merged into directly: a grouped child
+// is addressable by its own ECID on the wire and gets diffed tags of its own,
+// so it has to stay in `raw`, while every reader wants it nested in its
+// parent. Rebuilding is O(n) in one search's results and runs only when that
+// search actually changed.
+void RebuildFoldedResults(
+	const std::map<std::uint32_t, SearchResult> &raw, std::map<std::uint32_t, SearchResult> &out)
+{
+	out.clear();
+	// Parents first, so a child always finds its parent already present.
+	for (const auto &kv : raw) {
+		if (!kv.second.has_parent)
+			out.emplace(kv.first, kv.second);
+	}
+	// Then fold each child into its parent's children[] (issue #431), so the
+	// API serves one row per hash+size with the alternative filenames nested.
+	// A child whose parent is not in the set -- which should not happen, the
+	// core emits the parent first -- is promoted to a top-level row instead,
+	// so nothing is silently lost.
+	for (const auto &kv : raw) {
+		const SearchResult &child = kv.second;
 		if (!child.has_parent)
 			continue;
-		auto pit = cache.find(child.parent_ecid);
-		if (pit == cache.end())
+		auto pit = out.find(child.parent_ecid);
+		if (pit == out.end()) {
+			out.emplace(kv.first, child);
 			continue;
+		}
 		SearchResult::Child c;
 		c.ecid = child.ecid;
 		c.name = child.name;
@@ -2517,10 +2615,183 @@ void ApplySearchFull(const CECPacket *resp, std::map<std::uint32_t, SearchResult
 		c.complete_source_count = child.complete_source_count;
 		c.directory = child.directory;
 		pit->second.children.push_back(std::move(c));
-		folded.push_back(kv.first);
 	}
-	for (std::uint32_t ecid : folded) {
-		cache.erase(ecid);
+}
+
+// Apply one incremental multi-search union reply across every search slot.
+//
+// The reply is not per-search: it carries every result of every search the
+// daemon holds, and it carries them incrementally. Two consequences drive the
+// shape here.
+//
+// First, EC_TAG_SEARCH_ID travels only the first time the daemon tells us
+// about a result -- after that the tag is diffed away, because a result never
+// changes owner. So a tag without one is attributed through `owner`, the index
+// this function is responsible for keeping in step with the slots.
+//
+// Second, absence no longer means deletion. A result the daemon still holds
+// but has nothing new to say about is omitted entirely; removal is explicit,
+// as one EC_TAG_FILE_REMOVED per gone ECID. Sweeping "anything missing is
+// gone" here would delete the whole result set on the first quiet poll.
+void ApplySearchUnion(const CECPacket *resp,
+	std::map<std::uint32_t, SearchSlot> &slots,
+	std::map<std::uint32_t, std::uint32_t> &owner,
+	std::uint32_t default_sid)
+{
+	if (!resp)
+		return;
+	// Slots that actually took a change, so the fold below only re-runs for
+	// those rather than for every open search on every poll.
+	std::set<std::uint32_t> touched;
+
+	for (const CECTag &tag : *resp) {
+		const CECTag *t = &tag;
+
+		if (t->GetTagName() == EC_TAG_FILE_REMOVED) {
+			const std::uint32_t ecid = static_cast<std::uint32_t>(t->GetInt());
+			const auto oit = owner.find(ecid);
+			if (oit == owner.end())
+				continue;
+			const auto sit = slots.find(oit->second);
+			if (sit == slots.end()) {
+				owner.erase(oit);
+				continue;
+			}
+			if (sit->second.detached) {
+				// The daemon evicted this whole search and is tombstoning
+				// its results on the way out. Retirement deliberately keeps
+				// them for late reads, so the removals are ignored -- and
+				// the index entries with them, since nothing else will
+				// re-establish them.
+				continue;
+			}
+			if (sit->second.raw.erase(ecid) != 0)
+				touched.insert(oit->second);
+			owner.erase(oit);
+			continue;
+		}
+
+		if (t->GetTagName() != EC_TAG_SEARCHFILE)
+			continue;
+		const CEC_SearchFile_Tag *sf = static_cast<const CEC_SearchFile_Tag *>(t);
+		const std::uint32_t ecid = sf->ID();
+
+		// Present on a result's first appearance, diffed away afterwards.
+		//
+		// The index is written only once this tag is known to be applicable,
+		// below: a slot that turns out to be missing or detached takes an
+		// early exit, and an entry written ahead of those would outlive the
+		// slot it points at -- eviction drops index entries by walking the
+		// slot's own results, so one that never made it there is never
+		// cleaned up.
+		std::uint32_t sid = 0;
+		bool sid_is_new = false;
+		if (const CECTag *x = sf->GetTagByName(EC_TAG_SEARCH_ID)) {
+			sid = static_cast<std::uint32_t>(x->GetInt());
+			sid_is_new = true;
+		} else if (default_sid != 0) {
+			// A per-search reply: every tag in it belongs to the search the
+			// caller asked for, and that form carries no id of its own.
+			sid = default_sid;
+			sid_is_new = true;
+		} else {
+			const auto oit = owner.find(ecid);
+			if (oit == owner.end()) {
+				// A diffed tag for a result we have no record of. Only
+				// reachable if our slot went away while the daemon still
+				// believed we held it -- there is nothing to apply it to,
+				// and inventing a slot would produce a search with no
+				// lifecycle state behind it.
+				continue;
+			}
+			sid = oit->second;
+		}
+
+		const auto sit = slots.find(sid);
+		if (sit == slots.end()) {
+			// Results for a search this session has no slot for -- one
+			// started in amulegui or the monolithic GUI, since the union
+			// responder walks every search the core holds. Dropped rather
+			// than auto-created: MarkSearchStarted / discovery own slot
+			// creation, and they also set the lifecycle state that
+			// GET /search reports.
+			//
+			// The drop is not the loss it would otherwise be, because the
+			// daemon has now marked these ECIDs sent and will elide them
+			// from every later poll. Whoever creates the slot re-reads the
+			// search in full instead: DiscoverSearchIfHeldByCore seeds it
+			// via FetchOneSearchFull, which bypasses the differential
+			// stream entirely.
+			owner.erase(ecid);
+			continue;
+		}
+		if (sit->second.detached) {
+			// Frozen: the daemon no longer holds this search, so anything
+			// arriving for it is the tail of an eviction, not an update.
+			continue;
+		}
+		if (sid_is_new)
+			owner[ecid] = sid;
+		auto &slot_results = sit->second.raw;
+		const auto existing = slot_results.find(ecid);
+		if (existing == slot_results.end()) {
+			// First sight of this result. Seed the fields whose "absent"
+			// reading differs between a fresh row and a diff: status has no
+			// sensible empty value, and the daemon's own default for a hit
+			// it has said nothing about is the zero code. Merging onto a
+			// default-constructed SearchResult would leave it "", which is
+			// not a state any consumer knows.
+			SearchResult fresh;
+			fresh.ecid = ecid;
+			fresh.status = SearchStatusName(0);
+			MergeSearchResultTag(sf, fresh);
+			slot_results.emplace(ecid, std::move(fresh));
+		} else {
+			MergeSearchResultTag(sf, existing->second);
+			existing->second.ecid = ecid;
+		}
+		touched.insert(sid);
+	}
+
+	for (std::uint32_t sid : touched) {
+		const auto sit = slots.find(sid);
+		if (sit != slots.end())
+			RebuildFoldedResults(sit->second.raw, sit->second.results);
+	}
+}
+
+void ApplySearchFullReply(const CECPacket *resp,
+	std::map<std::uint32_t, SearchSlot> &slots,
+	std::map<std::uint32_t, std::uint32_t> &owner,
+	std::uint32_t search_id,
+	bool replace)
+{
+	auto sit = slots.find(search_id);
+	if (sit == slots.end())
+		return;
+	if (replace) {
+		// Drop the old rows AND their index entries: the reply below re-adds
+		// an entry for every result it carries, so anything not re-added is a
+		// row the daemon no longer holds.
+		for (const auto &entry : sit->second.raw)
+			owner.erase(entry.first);
+		sit->second.raw.clear();
+	}
+	ApplySearchUnion(resp, slots, owner, search_id);
+	sit = slots.find(search_id);
+	if (sit == slots.end())
+		return;
+	// ApplySearchUnion only refolds slots it touched, and an empty reply
+	// touches nothing -- which is exactly the case where the stale fold has to
+	// be cleared rather than kept.
+	if (replace) {
+		RebuildFoldedResults(sit->second.raw, sit->second.results);
+		// Only a replace answers the question the flag asks. A merge re-reads
+		// every row the daemon still has, but it cannot remove one it has
+		// dropped -- the tombstones for those went out in the union reply that
+		// was lost, and the daemon will not mention them again. Clearing the
+		// flag here would leave those rows in place for the life of the slot.
+		sit->second.needs_resync = false;
 	}
 }
 
@@ -2590,10 +2861,10 @@ void ParseGeneralPrefs(const CECTag *gen, PreferencesSnapshot &out)
 		out.user_hash = std::string(t->GetMD4Data().Encode().Lower().utf8_str());
 	}
 	if (const CECTag *t = gen->GetTagByName(EC_TAG_USER_HOST)) {
-		out.local_host_name = std::string(t->GetStringData().utf8_str());
+		out.daemon_host_name = std::string(t->GetStringData().utf8_str());
 	}
 	if (gen->GetTagByName(EC_TAG_GENERAL_CHECK_NEW_VERSION)) {
-		out.check_new_version = true;
+		out.version_check_enabled = true;
 	}
 	// Capability: 3.1+ daemons always send this bool (true when built with
 	// ENABLE_VERSION_CHECK, false when compiled out). Absent means a pre-3.1
@@ -2602,7 +2873,7 @@ void ParseGeneralPrefs(const CECTag *gen, PreferencesSnapshot &out)
 		out.version_check_available = t->GetInt() != 0;
 	}
 	if (const CECTag *t = gen->GetTagByName(EC_TAG_GENERAL_UPNP_AVAILABLE)) {
-		out.upnp_available = t->GetInt() != 0;
+		out.upnp_supported = t->GetInt() != 0;
 	}
 }
 
@@ -2615,7 +2886,7 @@ void ParseConnectionPrefs(const CECTag *conn, PreferencesSnapshot &out)
 		out.max_download_kbps = static_cast<std::uint32_t>(t->GetInt());
 	}
 	if (const CECTag *t = conn->GetTagByName(EC_TAG_CONN_SLOT_ALLOCATION)) {
-		out.upload_slot_kbps = static_cast<std::uint32_t>(t->GetInt());
+		out.upload_slot_min_kbps = static_cast<std::uint32_t>(t->GetInt());
 	}
 	if (const CECTag *t = conn->GetTagByName(EC_TAG_CONN_TCP_PORT)) {
 		out.tcp_port = static_cast<std::uint16_t>(t->GetInt());
@@ -2628,9 +2899,9 @@ void ParseConnectionPrefs(const CECTag *conn, PreferencesSnapshot &out)
 	// extended UDP port is off, so absence = enabled.
 	out.extended_udp_port_enabled = conn->GetTagByName(EC_TAG_CONN_UDP_DISABLE) == nullptr;
 	out.autoconnect = conn->GetTagByName(EC_TAG_CONN_AUTOCONNECT) != nullptr;
-	out.reconnect = conn->GetTagByName(EC_TAG_CONN_RECONNECT) != nullptr;
-	out.network_ed2k = conn->GetTagByName(EC_TAG_NETWORK_ED2K) != nullptr;
-	out.network_kad = conn->GetTagByName(EC_TAG_NETWORK_KADEMLIA) != nullptr;
+	out.reconnect_on_connection_loss = conn->GetTagByName(EC_TAG_CONN_RECONNECT) != nullptr;
+	out.ed2k_enabled = conn->GetTagByName(EC_TAG_NETWORK_ED2K) != nullptr;
+	out.kad_enabled = conn->GetTagByName(EC_TAG_NETWORK_KADEMLIA) != nullptr;
 	if (const CECTag *t = conn->GetTagByName(EC_TAG_CONN_BIND_ADDRESS)) {
 		out.bind_address = std::string(t->GetStringData().utf8_str());
 	}
@@ -2678,14 +2949,14 @@ void ParseConnectionPrefs(const CECTag *conn, PreferencesSnapshot &out)
 		out.upnp_enabled = t->GetInt() != 0;
 	}
 	if (const CECTag *t = conn->GetTagByName(EC_TAG_CONN_UPNP_TCP_PORT)) {
-		out.upnp_tcp_port = static_cast<std::uint16_t>(t->GetInt());
+		out.upnp_control_point_port = static_cast<std::uint16_t>(t->GetInt());
 	}
 
 	if (const CECTag *t = conn->GetTagByName(EC_TAG_CONN_MAX_FILE_SOURCES)) {
-		out.max_sources_per_file = static_cast<std::uint32_t>(t->GetInt());
+		out.max_sources_per_file_count = static_cast<std::uint32_t>(t->GetInt());
 	}
 	if (const CECTag *t = conn->GetTagByName(EC_TAG_CONN_MAX_CONN)) {
-		out.max_connections = static_cast<std::uint32_t>(t->GetInt());
+		out.max_connection_count = static_cast<std::uint32_t>(t->GetInt());
 	}
 }
 

@@ -37,20 +37,91 @@
 #include <ec/cpp/ECSpecialTags.h>
 #include <ec/cpp/ECPacket.h>
 
+#include <algorithm>
 #include <cstdint>
 #include <map>
 #include <memory>
+#include <mutex>
 #include <set>
+#include <vector>
 
 namespace webapi
 {
 
-SearchFetchOutcome FetchSearchResults(CamuleapiApp &app, CState &state, std::uint32_t search_id)
+// One id-less EC_OP_SEARCH_RESULTS at EC_DETAIL_INC_UPDATE: the daemon answers
+// with every result of every search it holds, incrementally.
+//
+// This replaced one EC_DETAIL_FULL roundtrip per active search, each carrying
+// that search's whole result set on every tick whether or not anything had
+// changed. With eliding, an unchanged result costs nothing on the wire and an
+// idle or finished search costs nothing at all -- which is what makes polling
+// finished searches affordable, and is why the caller no longer filters on
+// ActiveSearchIds().
+//
+// No single-search fallback: amuleapi already advertises multi-search
+// unconditionally and never checks whether the daemon supports it (App.cpp),
+// so it has always required a matching daemon for search. EC_TAG_CAN_PARTIAL_SEARCH
+// is advertised for every client of CRemoteConnect, so the daemon is already
+// eliding for this connection.
+// Serialises the two issuers of the search stream across the roundtrip AND the
+// apply. SendRecvSerialized only orders the roundtrips: both callers then take
+// the State lock separately, so a union reply and a FULL reply can still be
+// applied in the opposite order to the one they were fetched in. That matters
+// because the union's tombstones are one-shot -- the daemon drops an ECID from
+// io_lastSentResultIds as it emits EC_TAG_FILE_REMOVED for it -- so a stale
+// FULL landing after a tombstone re-inserts a row nothing will ever remove
+// again. Held across the EC call, which is the same wait the EC worker already
+// imposes; the State lock is always taken inside this one, never the reverse.
+std::mutex g_search_stream_mtx;
+
+SearchFetchOutcome FetchSearchResults(CamuleapiApp &app, CState &state)
 {
-	std::unique_ptr<CECPacket> req(new CECPacket(EC_OP_SEARCH_RESULTS, EC_DETAIL_FULL));
+	std::lock_guard<std::mutex> stream_lock(g_search_stream_mtx);
+	std::unique_ptr<CECPacket> req(new CECPacket(EC_OP_SEARCH_RESULTS, EC_DETAIL_INC_UPDATE));
 	// Opt into result grouping (issue #431): the empty EC_TAG_SEARCH_PARENT
-	// flag tells the FULL responder to also emit each same-hash/different-name
+	// flag tells the responder to also emit each same-hash/different-name
 	// child so the results list can nest them.
+	req->AddTag(CECEmptyTag(EC_TAG_SEARCH_PARENT));
+	const CECPacket *resp = app.SendRecvSerialized(req.get());
+	if (!resp)
+		return SearchFetchOutcome::EcFailed;
+	state.MutateAllSearches([&](std::map<std::uint32_t, SearchSlot> &slots,
+					std::map<std::uint32_t, std::uint32_t> &owner) {
+		ApplySearchUnion(resp, slots, owner);
+	});
+	delete resp;
+	return SearchFetchOutcome::Updated;
+}
+
+// Re-fetch ONE search at EC_DETAIL_FULL, bypassing the union entirely.
+//
+// The union is a stateful differential stream: the daemon records what it has
+// sent this connection and then sends only changes, with no opcode for "send
+// it all again". That makes it the wrong tool twice over, and this is the
+// escape hatch for both.
+//
+// Seeding a newly discovered slot. The union responder walks
+// GetKnownSearchIds() -- every search the core holds, including ones started
+// in amulegui or the monolithic GUI. ApplySearchUnion drops results for a
+// search it has no slot for, but the daemon has already marked those ECIDs
+// delivered and seeded its valuemap, so on the next poll they are unchanged
+// and elided: dropped once means dropped forever. A slot created later by
+// discovery would stay empty. This fetch is what fills it.
+//
+// Serving the HTTP thread. The union must have exactly one issuer, or two
+// replies can be applied out of order and leave a ghost row no later poll can
+// clear. A FULL reply is self-contained, but it is not ordered against the
+// union's one-shot tombstones, so this shares g_search_stream_mtx with the
+// union rather than relying on idempotence alone.
+//
+// Re-seeding after a lost union reply, with `replace`. A merge cannot express
+// a deletion, and a FULL reply carries no tombstones, so a plain merge would
+// leave behind rows the daemon has since dropped. In replace mode the slot's
+// results are swapped wholesale for what the daemon reports now.
+SearchFetchOutcome FetchOneSearchFull(CamuleapiApp &app, CState &state, std::uint32_t search_id, bool replace)
+{
+	std::lock_guard<std::mutex> stream_lock(g_search_stream_mtx);
+	std::unique_ptr<CECPacket> req(new CECPacket(EC_OP_SEARCH_RESULTS, EC_DETAIL_FULL));
 	req->AddTag(CECEmptyTag(EC_TAG_SEARCH_PARENT));
 	req->AddTag(CECTag(EC_TAG_SEARCH_ID, search_id));
 	const CECPacket *resp = app.SendRecvSerialized(req.get());
@@ -60,8 +131,20 @@ SearchFetchOutcome FetchSearchResults(CamuleapiApp &app, CState &state, std::uin
 	if (resp->GetTagByName(EC_TAG_SEARCH_EXPIRED)) {
 		outcome = SearchFetchOutcome::Expired;
 	} else {
-		state.MutateSearch(search_id,
-			[&](std::map<std::uint32_t, SearchResult> &cache) { ApplySearchFull(resp, cache); });
+		// Same merge the union uses. The per-search responder builds its tags
+		// without a valuemap, so every field of every result is present and
+		// the merge's absent-means-unchanged rule simply never fires. The
+		// reply carries no EC_TAG_SEARCH_ID of its own, hence the explicit id.
+		state.MutateAllSearches([&](std::map<std::uint32_t, SearchSlot> &slots,
+						std::map<std::uint32_t, std::uint32_t> &owner) {
+			ApplySearchFullReply(resp, slots, owner, search_id, replace);
+		});
+	}
+	if (outcome == SearchFetchOutcome::Expired) {
+		// Definitive answer, just not a useful one: the daemon no longer has
+		// this search, so retirement owns the slot from here. Clearing the
+		// flag stops it being re-requested every tick forever.
+		state.ClearSearchResyncFlag(search_id);
 	}
 	delete resp;
 	return outcome;
@@ -219,7 +302,7 @@ bool RefresherTick(CamuleapiApp &app, CState &state)
 		PublishChatEvents(app.EventBus(), new_messages, closed);
 	}
 
-	// /logs/serverinfo, /stats/tree, /stats/graphs/{graph} are NOT
+	// /logs/server_info, /stats/tree, /stats/graphs/{graph} are NOT
 	// fetched per-tick — they're lazy-fetched on first GET via
 	// CTtlCache (1 s TTL coalesces burst reads). HTTP handlers in
 	// Api.cpp drive their own EC roundtrips under m_ec_mtx. Per-tick
@@ -250,14 +333,27 @@ bool RefresherTick(CamuleapiApp &app, CState &state)
 	std::map<std::uint32_t, std::pair<std::uint32_t, std::uint32_t>> union_progress;
 	bool have_union = false;
 	const std::vector<std::uint32_t> active_sids = state.ActiveSearchIds();
-	// Nothing active means nothing to ask about. Without this guard the union
-	// would cost a roundtrip every tick forever on an idle daemon, where the
-	// per-id loop below simply had nothing to iterate.
-	if (app.IsServerSearchProgressUnionActive() && !active_sids.empty()) {
+	// Every slot the daemon could still speak for, finished ones included.
+	// A finished search is never polled for progress -- there is none left to
+	// report -- but it still has to be watched for EXPIRY, because the ring
+	// evicting it is what tombstones its results, and a slot that is not
+	// detached by then has them erased by the union below. That is the whole
+	// point of detaching: keep the last-known results for late reads.
+	//
+	// Naming these ids is also what stops the eviction happening so soon.
+	// The daemon touches its LRU for exactly the ids a client names, so
+	// leaving finished searches out made them the least-recently-used and the
+	// first victims of anyone's next search -- amuleapi stopped refreshing
+	// precisely the searches it had decided to keep.
+	const std::vector<std::uint32_t> attached_sids = state.AttachedSearchIds();
+	// Nothing attached means nothing to ask about. Without this guard the
+	// union would cost a roundtrip every tick forever on an idle daemon,
+	// where the per-id loop below simply had nothing to iterate.
+	if (app.IsServerSearchProgressUnionActive() && !attached_sids.empty()) {
 		std::unique_ptr<CECPacket> req(new CECPacket(EC_OP_SEARCH_PROGRESS));
 		// Name the searches we track so the daemon bumps exactly those in its
 		// LRU, matching what the per-id poll did.
-		for (std::uint32_t sid : active_sids) {
+		for (std::uint32_t sid : attached_sids) {
 			req->AddTag(CECTag(EC_TAG_SEARCH_ID, sid));
 		}
 		const CECPacket *resp = app.SendRecvSerialized(req.get());
@@ -272,22 +368,21 @@ bool RefresherTick(CamuleapiApp &app, CState &state)
 		delete resp;
 	}
 
-	for (std::uint32_t sid : active_sids) {
+	// Per-search lifecycle, off the progress union fetched above (or one
+	// roundtrip each against an older daemon). Runs BEFORE the results poll
+	// below so an eviction is seen, and the slot frozen, while its results
+	// are still there to keep -- see the `expired` branch.
+	for (std::uint32_t sid : attached_sids) {
 		std::uint32_t percent = 0;
 		std::uint32_t lifecycle_state = 0;
 		bool expired = false;
-		switch (FetchSearchResults(app, state, sid)) {
-		case SearchFetchOutcome::EcFailed:
-			// Same rule as every other step in the tick: a failed roundtrip
-			// bails the whole tick rather than exposing a half-refreshed cache.
-			return false;
-		case SearchFetchOutcome::Expired:
-			expired = true;
-			break;
-		case SearchFetchOutcome::Updated:
-			break;
-		}
-		if (!expired && have_union) {
+		// A finished slot is here for the expiry verdict only. Its progress
+		// is terminal and must not be re-derived: AdvanceSearchProgress reads
+		// a missing lifecycle tag as IDLE and would reset complete/percent
+		// back to 0, turning a finished search into an idle one.
+		const bool was_active =
+			std::find(active_sids.begin(), active_sids.end(), sid) != active_sids.end();
+		if (have_union) {
 			// Already fetched above; absent means the daemon dropped it.
 			const auto found = union_progress.find(sid);
 			if (found == union_progress.end()) {
@@ -296,7 +391,11 @@ bool RefresherTick(CamuleapiApp &app, CState &state)
 				percent = found->second.first;
 				lifecycle_state = found->second.second;
 			}
-		} else if (!expired) {
+		} else if (was_active) {
+			// No union on this daemon: fall back to one roundtrip per search,
+			// and only for the active ones. Paying a roundtrip per FINISHED
+			// slot every tick to learn about an eviction that may never come
+			// is the trade the union makes cheap and this form does not.
 			std::unique_ptr<CECPacket> req(new CECPacket(EC_OP_SEARCH_PROGRESS));
 			req->AddTag(CECTag(EC_TAG_SEARCH_ID, sid));
 			const CECPacket *resp = app.SendRecvSerialized(req.get());
@@ -323,6 +422,16 @@ bool RefresherTick(CamuleapiApp &app, CState &state)
 			// slot as finished + inactive so we stop polling it but keep the
 			// last-known results for late reads; the terminal state also drives
 			// a final search_progress SSE frame for subscribers.
+			//
+			// Detaching is what makes "keep the last-known results" true. The
+			// same eviction makes the union emit an EC_TAG_FILE_REMOVED for
+			// every one of this search's results, which would erase precisely
+			// what is being kept -- so the slot is frozen here, before the
+			// union below is fetched, and ApplySearchUnion then leaves it be.
+			// Hence this loop running ahead of the results poll: the progress
+			// union it reads was fetched separately, above, so the order is
+			// free.
+			state.DetachSearch(sid);
 			SearchProgressSnapshot fin = state.SearchProgress(sid);
 			fin.active = false;
 			fin.complete = true;
@@ -330,9 +439,78 @@ bool RefresherTick(CamuleapiApp &app, CState &state)
 			state.WriteSearchProgress(sid, fin);
 			continue;
 		}
+		if (!was_active) {
+			// Not expired, and not active: nothing to advance. Leaving the
+			// snapshot alone is what keeps a finished search finished.
+			continue;
+		}
 		const SearchProgressSnapshot next =
 			AdvanceSearchProgress(state.SearchProgress(sid), lifecycle_state, percent);
 		state.WriteSearchProgress(sid, next);
+	}
+
+	// Results for every search in one roundtrip.
+	//
+	// Gated on there being any search at all, not on which ones are active. A
+	// finished search still changes -- a hit gets downloaded, a Kad notes
+	// lookup lands -- and now costs nothing to keep polling, which is what
+	// lets those changes be seen rather than only appearing on a client's
+	// next read. What is not worth paying for is the empty case: a daemon
+	// holding no searches would otherwise take a roundtrip a second forever
+	// to be told so.
+	//
+	// Deliberately NOT gated on SSE subscribers. The diff walk is (see
+	// CEventBus's subscriber accounting), but the fetch cannot be: a REST
+	// client polling GET /search/{id}/results reads this cache, and for an
+	// active search nothing else refreshes it -- ClaimSearchRefresh covers
+	// only slots that are not active. Skipping the fetch when nobody is
+	// subscribed would hand that client frozen results.
+	//
+	// The gate asks about OUR slots -- specifically the ones the daemon could
+	// still speak for, since a detached slot's search has already been
+	// evicted core-side and polling for it would never return anything. It
+	// does not ask about the daemon's searches, and the daemon never tells us
+	// about one unasked: a slot exists only because
+	// this process started the search or because a read discovered it
+	// (RequireSearch -> DiscoverSearchIfHeldByCore, a one-off
+	// EC_OP_SEARCH_LIST on a cache miss). A search begun in amulegui or the
+	// monolithic GUI therefore leaves this false, and the union is not sent.
+	//
+	// Skipping the poll is not merely an optimisation there, it is the point.
+	// ApplySearchUnion drops results for a search it has no slot for, and the
+	// daemon marks them sent regardless, so polling with nothing to apply
+	// them to would burn through a foreign search's results once and elide
+	// them forever after. Neither discovery route runs through here:
+	// GET /search goes straight to EC_OP_SEARCH_LIST every call, and a by-id
+	// read seeds the slot in full via FetchOneSearchFull before this opens.
+	// Anything the last failed union reply covered is unrecoverable from the
+	// stream itself, so re-seed those slots in full before polling again.
+	// Ordered after the retirement loop so a slot the daemon has dropped is
+	// already detached by the time this runs, and SearchesNeedingResync skips
+	// it: the ordering alone only makes the slot detached, it does not keep it
+	// out of the list.
+	for (std::uint32_t sid : state.SearchesNeedingResync()) {
+		if (FetchOneSearchFull(app, state, sid, /*replace=*/true) == SearchFetchOutcome::EcFailed) {
+			return false;
+		}
+	}
+	// The same set the progress union above asked about, reused rather than
+	// recomputed against a second spelling of the same !detached test. A slot
+	// an HTTP thread created since is missed for this one tick and picked up
+	// by the next, which is the poll interval either way.
+	if (!attached_sids.empty()) {
+		if (FetchSearchResults(app, state) == SearchFetchOutcome::EcFailed) {
+			// The daemon commits its differential state while building the
+			// reply, so what this one carried is already gone from its point
+			// of view. Flag the slots for a full re-seed above on the next
+			// tick; without it every result that reply covered would be
+			// elided from every later poll.
+			state.MarkAllSearchesNeedResync();
+			// Same rule as every other step in the tick: a failed roundtrip
+			// bails the whole tick rather than exposing a half-refreshed
+			// cache.
+			return false;
+		}
 	}
 
 	// /preferences + /categories — one EC roundtrip populates both.

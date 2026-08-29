@@ -14,7 +14,7 @@
 #                                          parts: [{state, sources}] }`
 #
 # `parts.length == ceil(size / 9728000)` (ed2k PARTSIZE).
-# `state` ∈ {"complete", "incomplete", "missing"}.
+# `state` ∈ {"complete", "pending", "unavailable"}.
 # `sources` is uint16 (0 ≤ sources ≤ 65535).
 #
 # This script tolerates an empty download queue — every assertion past
@@ -84,7 +84,7 @@ echo "amuleapi 08-read-download-parts smoke @ $HOST"
 
 TOKEN=$(curl -s -X POST -H "Content-Type: application/json" \
 	-d "{\"password\":\"$ADMIN_PASS\"}" \
-	"$HOST/api/v0/auth/login?type=bearer" | jq -r .token)
+	"$HOST/api/v0/auth/login?include_token=true" | jq -r .token)
 [ -n "$TOKEN" ] && [ "$TOKEN" != "null" ] || _die "login failed"
 
 # Refresher needs at least 2 ticks for the two-phase INC protocol to
@@ -163,14 +163,14 @@ if [ "$COUNT" -gt 0 ]; then
 			'/downloads/{hash}.progress.parts[0].sources is number'
 
 		# --- 5. state enum allowlist. ------------------------------
-		# Every part state must be one of {complete, incomplete, missing}.
-		# The walker is: has_gap → (sources>0 ? incomplete : missing);
+		# Every part state must be one of {complete, pending, unavailable}.
+		# The walker is: has_gap → (sources>0 ? pending : unavailable);
 		# !has_gap → complete. Any other string means the emitter
 		# silently regressed.
 		BOGUS_COUNT=$(printf '%s' "$CURL_BODY" | jq \
-			'[.progress.parts[].state | select(. != "complete" and . != "incomplete" and . != "missing")] | length')
+			'[.progress.parts[].state | select(. != "complete" and . != "pending" and . != "unavailable")] | length')
 		if [ "$BOGUS_COUNT" = "0" ]; then
-			_pass "/downloads/{hash} all part.state values ∈ {complete, incomplete, missing}"
+			_pass "/downloads/{hash} all part.state values ∈ {complete, pending, unavailable}"
 		else
 			_fail "/downloads/{hash} part.state enum" \
 				"$BOGUS_COUNT parts have an out-of-enum state value"

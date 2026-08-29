@@ -49,7 +49,7 @@ export default function Search({ isGuest }) {
     // An unopened tab has no amuleapi slot, so no SSE refreshes its badge --
     // re-list on every mount instead. Debounced, so the first one is free.
     searches.nudgeAdopt();
-    api.get("categories").then((r) => setCategories(r.categories || [])).catch(() => {});
+    api.list("categories").then((r) => setCategories(r.categories || [])).catch(() => {});
   }, []);
 
   const sizeBytes = (v, unit) => { const n = Number(v); return (!n || n < 0) ? 0 : Math.round(n * SIZE_UNITS[unit]); };
@@ -143,8 +143,8 @@ function ResultsPane({ tab, categories }) {
   const browse = tab.kind === "browse";
   const { sortKey, sortDir, hidden, widths, toggleSort, toggleCol, setWidth, resetPrefs } =
     useTablePrefs(browse ? "search-browse" : "search", browse
-      ? { sortKey: "directory", sortDir: 1, hidden: ["sources", "rating", "status", "length", "bitrate", "codec"] }
-      : { sortKey: "sources", sortDir: -1, hidden: ["directory", "length", "bitrate", "codec"] });
+      ? { sortKey: "directory", sortDir: 1, hidden: ["sources", "rating", "status", "length", "bitrate_kilobits_per_second", "codec"] }
+      : { sortKey: "sources", sortDir: -1, hidden: ["directory", "length", "bitrate_kilobits_per_second", "codec"] });
 
   // Selection, filters and per-row choices belong to the TAB, not to this
   // component: switching tabs and coming back must restore them.
@@ -156,7 +156,7 @@ function ResultsPane({ tab, categories }) {
   const visible = (all, filter, filterHave) => {
     const m = textMatcher(filter);
     let out = filter ? all.filter((r) => m(r.name)) : all;
-    if (filterHave !== "all") out = out.filter((r) => (filterHave === "have") === !!r.already_have);
+    if (filterHave !== "all") out = out.filter((r) => (filterHave === "have") === !!r.already_downloaded);
     return out;
   };
   const filtered = visible(rows, ui.filter, ui.filterHave);
@@ -236,7 +236,7 @@ function ResultsPane({ tab, categories }) {
         // The core names a group after its most-sourced child
         // (CSearchFile::UpdateParent), so one child always repeats the parent's
         // name; the default option below already IS that name.
-        const kids = (r.children || []).filter((c) => c.name !== r.name);
+        const kids = (r.alternate_names || []).filter((c) => c.name !== r.name);
         if (!kids.length) return r.name;
         return html`
           <select class="input input-sm name-select" title=${t("search_alt_names_title")}
@@ -247,7 +247,7 @@ function ResultsPane({ tab, categories }) {
           </select>`;
       } },
     { key: "size", label: t("search_size"), num: true, width: "110px", sortable: true,
-      sortVal: (r) => r.size || 0, cell: (r) => formatBytes(r.size) },
+      sortVal: (r) => r.size_bytes || 0, cell: (r) => formatBytes(r.size_bytes) },
     { key: "sources", label: t("search_sources"), num: true, width: "120px", sortable: true,
       sortVal: (r) => (r.sources && r.sources.total) || 0,
       // Total, plus the complete count in parentheses only when there IS one,
@@ -269,7 +269,7 @@ function ResultsPane({ tab, categories }) {
       // rating only ever surfaces per-comment in the ratings dialog.
       cell: (r) => (r.rating ? html`<span title=${ratingLabel(r.rating)}>${r.rating}</span>` : "—") },
     { key: "type", label: t("search_type"), width: "100px", sortable: true,
-      sortVal: (r) => r.type || "", cell: (r) => typeLabel(r.type) },
+      sortVal: (r) => r.file_type || "", cell: (r) => typeLabel(r.file_type) },
     { key: "status", label: t("downloads_status_label"), width: "120px", sortable: true,
       sortVal: (r) => r.status || "", cell: (r) => searchStatusBadge(r.status) },
     // Browse-only: the folder inside the peer's share, empty on every
@@ -278,11 +278,11 @@ function ResultsPane({ tab, categories }) {
       sortVal: (r) => ((r.directory || "") + "/" + (r.name || "")).toLowerCase(),
       cell: (r) => html`<span title=${r.directory}>${r.directory || "—"}</span>` },
     { key: "length", label: t("downloads_detail_media_length"), num: true, width: "100px", sortable: true,
-      sortVal: (r) => (r.media && r.media.length_s) || 0,
-      cell: (r) => (r.media && r.media.length_s) ? formatDuration(r.media.length_s) : "" },
-    { key: "bitrate", label: t("downloads_detail_media_bitrate"), num: true, width: "90px", sortable: true,
-      sortVal: (r) => (r.media && r.media.bitrate) || 0,
-      cell: (r) => (r.media && r.media.bitrate) ? formatInt(r.media.bitrate) : "" },
+      sortVal: (r) => (r.media && r.media.duration_seconds) || 0,
+      cell: (r) => (r.media && r.media.duration_seconds) ? formatDuration(r.media.duration_seconds) : "" },
+    { key: "bitrate_kilobits_per_second", label: t("downloads_detail_media_bitrate"), num: true, width: "90px", sortable: true,
+      sortVal: (r) => (r.media && r.media.bitrate_kilobits_per_second) || 0,
+      cell: (r) => (r.media && r.media.bitrate_kilobits_per_second) ? formatInt(r.media.bitrate_kilobits_per_second) : "" },
     { key: "codec", label: t("downloads_detail_media_codec"), width: "90px", sortable: true,
       sortVal: (r) => (r.media && r.media.codec) || "", cell: (r) => (r.media && r.media.codec) || "" },
     { key: "actions", label: t("search_actions"), cls: "row-actions", width: "220px",
@@ -308,7 +308,7 @@ function ResultsPane({ tab, categories }) {
   const rowClass = (r) => {
     const c = [];
     if (ui.selection.has(r.hash)) c.push("row-selected");
-    if (r.already_have) c.push("row-have");
+    if (r.already_downloaded) c.push("row-have");
     return c.join(" ");
   };
 
@@ -375,14 +375,14 @@ function ResultComments({ result, onClose }) {
         setD(x);
         // Capped: the Kad lookup lives ~45 s, so a stuck flag must not poll
         // for ever.
-        if (x.kad_comment_search_running && tries++ < 30) timer = setTimeout(load, 2000);
+        if (x.kad_comment_lookup_running && tries++ < 30) timer = setTimeout(load, 2000);
       })
       .catch(() => { if (alive) setD({ count: 0, comments: [] }); });
     load();
     return () => { alive = false; clearTimeout(timer); };
   }, [result.hash, nonce]);
 
-  const running = !!(d && d.kad_comment_search_running);
+  const running = !!(d && d.kad_comment_lookup_running);
   const list = (d && d.comments) || [];
   const getKad = () => api.post("search/results/" + result.hash + "/comments")
     .then(() => { toast(t("comments_kad_started"), "info"); setNonce((n) => n + 1); })

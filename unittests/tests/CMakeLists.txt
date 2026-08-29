@@ -748,6 +748,23 @@ target_link_libraries (StaticFsTest
 	mulecommon
 )
 
+# amuleapi shared-file content endpoint: path containment against the
+# share-root list, Range parsing, and the Content-Disposition builder.
+# SharedContent.cpp is plain std/POSIX (no wx, Beast or EC), same as
+# StaticFs.cpp, so it links standalone here.
+add_executable (SharedContentTest
+	SharedContentTest.cpp
+	${CMAKE_SOURCE_DIR}/src/webapi/SharedContent.cpp
+)
+target_include_directories (SharedContentTest
+	PRIVATE ${CMAKE_SOURCE_DIR}/src/webapi
+)
+add_test (NAME SharedContentTest COMMAND SharedContentTest)
+target_link_libraries (SharedContentTest
+	muleunit
+	mulecommon
+)
+
 add_executable (EventBusTest
 	EventBusTest.cpp
 	${CMAKE_SOURCE_DIR}/src/webapi/EventBus.cpp
@@ -1218,6 +1235,29 @@ target_include_directories (QuicContextTest
 )
 
 target_link_libraries (QuicContextTest
+	muleunit
+	mulecommon
+	${Boost_LIBRARIES}
+)
+
+# RangeFileBody is the Boost.Beast Body amuleapi serves shared content with: a
+# bounded [first, last] window read through a fixed 64 KiB buffer. Header-only
+# and free of wx and of the rest of the webapi tree, so the test compiles on
+# its own -- it only needs the Boost headers amuleapi already builds against.
+add_executable (RangeFileBodyTest
+	RangeFileBodyTest.cpp
+)
+
+add_test (NAME RangeFileBodyTest
+	COMMAND RangeFileBodyTest
+)
+
+target_include_directories (RangeFileBodyTest
+	PRIVATE ${CMAKE_SOURCE_DIR}/src/webapi
+	PRIVATE ${Boost_INCLUDE_DIR}
+)
+
+target_link_libraries (RangeFileBodyTest
 	muleunit
 	mulecommon
 	${Boost_LIBRARIES}
@@ -1919,4 +1959,30 @@ target_link_libraries (NatRendezvousManagerTest
 	muleunit
 	mulecommon
 	${Boost_LIBRARIES}
+)
+
+# The two part-index predicates behind `next_requested_part_index` /
+# `downloading_part_index` on the per-file client rows. Every branch that
+# matters turns on a value a live peer will not produce on request -- the
+# 0xffff sentinel, the boundary at part_count, a file with more than 65535
+# parts, a source whose state flips to "downloading" -- so PartIndex.h is
+# header-only and free of wx, Beast and EC, and the test needs nothing but
+# the harness.
+add_executable (PartIndexTest
+	PartIndexTest.cpp
+)
+
+add_test (NAME PartIndexTest
+	COMMAND PartIndexTest
+)
+
+target_include_directories (PartIndexTest
+	PRIVATE ${CMAKE_SOURCE_DIR}/src/webapi
+)
+
+# mulecommon even though the header is inline-only: macOS links without it,
+# GNU ld and mingw do not (see JsonDepthScanTest).
+target_link_libraries (PartIndexTest
+	muleunit
+	mulecommon
 )

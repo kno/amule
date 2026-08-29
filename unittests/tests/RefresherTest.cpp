@@ -631,7 +631,7 @@ TEST(Refresher, SharedPartfileTransitionsOutClearsSharedRole)
 		s.hash = "dddd4444dddd4444dddd4444dddd4444";
 		s.name = "was-sharing.iso";
 		s.is_shared = true;
-		s.shared.xfer_session = 99; // stale stat to verify the reset
+		s.shared.uploaded_bytes_session = 99; // stale stat to verify the reset
 		cache.emplace(70, s);
 	}
 	CECPacket resp(EC_OP_SHARED_FILES);
@@ -647,7 +647,7 @@ TEST(Refresher, SharedPartfileTransitionsOutClearsSharedRole)
 	ASSERT_TRUE(!cache.find(70)->second.is_shared);
 	// Stale upload stats from the prior sharing period must be cleared
 	// so /shared can never re-surface them.
-	ASSERT_EQUALS(static_cast<std::uint64_t>(0), cache.find(70)->second.shared.xfer_session);
+	ASSERT_EQUALS(static_cast<std::uint64_t>(0), cache.find(70)->second.shared.uploaded_bytes_session);
 }
 
 TEST(Refresher, SuppressedSharedFlagPreservesCachedPartfile)
@@ -845,6 +845,9 @@ TEST(Refresher, DownloadDetailTagsDecodeIntoSnapshot)
 	pf.AddTag(CECTag(EC_TAG_PARTFILE_LOST_CORRUPTION, static_cast<std::uint64_t>(9728000)));
 	pf.AddTag(CECTag(EC_TAG_PARTFILE_GAINED_COMPRESSION, static_cast<std::uint64_t>(4096)));
 	pf.AddTag(CECTag(EC_TAG_PARTFILE_SAVED_ICH, static_cast<std::uint32_t>(7)));
+	// Still sent by the daemon, deliberately not decoded any more: partmet_id
+	// was dropped from the surface, and an undecoded tag must not disturb the
+	// rest of the parse.
 	pf.AddTag(CECTag(EC_TAG_PARTFILE_PARTMETID, static_cast<std::uint32_t>(42)));
 	// Base CKnownFile tags carried on the partfile tag too.
 	pf.AddTag(CECTag(EC_TAG_KNOWNFILE_ON_QUEUE, static_cast<std::uint32_t>(5)));
@@ -858,15 +861,14 @@ TEST(Refresher, DownloadDetailTagsDecodeIntoSnapshot)
 	const auto it = cache.find(101);
 	ASSERT_TRUE(it != cache.end());
 	const auto &d = it->second;
-	ASSERT_EQUALS(static_cast<std::uint32_t>(1700000000), d.download.last_seen_complete);
-	ASSERT_EQUALS(static_cast<std::uint32_t>(1700000123), d.download.last_changed);
-	ASSERT_EQUALS(static_cast<std::uint32_t>(3600), d.download.download_active_time);
-	ASSERT_EQUALS(static_cast<std::uint16_t>(12), d.download.available_part_count);
-	ASSERT_EQUALS(static_cast<std::uint16_t>(3), d.download.hashing_progress);
-	ASSERT_EQUALS(static_cast<std::uint64_t>(9728000), d.download.lost_to_corruption);
-	ASSERT_EQUALS(static_cast<std::uint64_t>(4096), d.download.gained_by_compression);
-	ASSERT_EQUALS(static_cast<std::uint32_t>(7), d.download.saved_by_ich);
-	ASSERT_EQUALS(static_cast<std::uint32_t>(42), d.download.partmet_id);
+	ASSERT_EQUALS(static_cast<std::uint32_t>(1700000000), d.download.last_seen_complete_at);
+	ASSERT_EQUALS(static_cast<std::uint32_t>(1700000123), d.download.last_received_at);
+	ASSERT_EQUALS(static_cast<std::uint32_t>(3600), d.download.active_seconds);
+	ASSERT_EQUALS(static_cast<std::uint16_t>(12), d.download.parts_available_count);
+	ASSERT_EQUALS(static_cast<std::uint16_t>(3), d.download.hashed_part_count);
+	ASSERT_EQUALS(static_cast<std::uint64_t>(9728000), d.download.lost_to_corruption_bytes);
+	ASSERT_EQUALS(static_cast<std::uint64_t>(4096), d.download.gained_by_compression_bytes);
+	ASSERT_EQUALS(static_cast<std::uint32_t>(7), d.download.ich_recovered_packet_count);
 	ASSERT_EQUALS(static_cast<std::uint32_t>(5), d.queued_count);
 	ASSERT_EQUALS(std::string("ABCDEF0123"), d.aich_hash);
 	ASSERT_EQUALS(std::string("042.part"), d.part_met_basename);
@@ -908,8 +910,8 @@ TEST(Refresher, SharedDetailTagsDecodeIntoSnapshot)
 	// (the write layer reports it verbatim, with `incomplete` alongside).
 	ASSERT_EQUALS(std::string("/home/me/Incoming"), s.on_disk_dir);
 	// Upload activity (issue #466) decodes into the shared sub-block.
-	ASSERT_EQUALS(static_cast<std::uint32_t>(51200), s.shared.upload_speed_bps);
-	ASSERT_EQUALS(static_cast<std::uint16_t>(3), s.shared.uploading_count);
+	ASSERT_EQUALS(static_cast<std::uint32_t>(51200), s.shared.upload_speed_bytes_per_second);
+	ASSERT_EQUALS(static_cast<std::uint16_t>(3), s.shared.uploading_client_count);
 	ASSERT_EQUALS(static_cast<std::uint32_t>(1700000500), s.shared.last_upload);
 	ASSERT_EQUALS(static_cast<std::uint16_t>(4), s.shared.hashing_progress);
 	ASSERT_EQUALS(static_cast<std::uint32_t>(1699000000), s.shared.shared_since);
@@ -1057,8 +1059,8 @@ TEST(Refresher, MediaMetadataDecode)
 	const auto it = cache.find(606);
 	ASSERT_TRUE(it != cache.end());
 	ASSERT_TRUE(it->second.has_media);
-	ASSERT_EQUALS(static_cast<std::uint32_t>(5400), it->second.media.length_s);
-	ASSERT_EQUALS(static_cast<std::uint32_t>(1500), it->second.media.bitrate);
+	ASSERT_EQUALS(static_cast<std::uint32_t>(5400), it->second.media.duration_seconds);
+	ASSERT_EQUALS(static_cast<std::uint32_t>(1500), it->second.media.bitrate_kilobits_per_second);
 	ASSERT_EQUALS(std::string("h264"), it->second.media.codec);
 	ASSERT_EQUALS(std::string("Some Artist"), it->second.media.artist);
 	ASSERT_EQUALS(std::string("Some Album"), it->second.media.album);
@@ -1105,8 +1107,8 @@ TEST(Refresher, MediaMetadataClearRemovesFieldsAndRecomputesHasMedia)
 	}
 	const auto it = cache.find(700);
 	ASSERT_TRUE(it != cache.end());
-	ASSERT_EQUALS(static_cast<std::uint32_t>(0), it->second.media.length_s);
-	ASSERT_EQUALS(static_cast<std::uint32_t>(0), it->second.media.bitrate);
+	ASSERT_EQUALS(static_cast<std::uint32_t>(0), it->second.media.duration_seconds);
+	ASSERT_EQUALS(static_cast<std::uint32_t>(0), it->second.media.bitrate_kilobits_per_second);
 	ASSERT_TRUE(it->second.media.artist.empty());
 	// The codec was not mentioned this time, which means UNCHANGED -- not
 	// cleared. Distinguishing those two is the whole point of the design.
@@ -1660,29 +1662,42 @@ constexpr std::uint32_t LIFECYCLE_FINISHED = 2;
 
 // Search result status + type (issue #429): EC_TAG_PARTFILE_STATUS decodes
 // to the lowercase status string, and `type` is derived from the filename.
+// The union reply is not per-search: every result carries EC_TAG_SEARCH_ID the
+// first time the daemon mentions it, and the applier attributes later diffed
+// tags through the ECID -> search_id index. These fixtures therefore stamp one
+// search id on every result tag and pre-create its slot, which is what the
+// refresher does via MarkSearchStarted before any poll runs.
+static constexpr std::uint32_t kSid = 4242;
+
 TEST(Refresher, SearchResultStatusAndTypeDecode)
 {
-	std::map<std::uint32_t, SearchResult> cache;
+	std::map<std::uint32_t, SearchSlot> slots;
+	std::map<std::uint32_t, std::uint32_t> owner;
+	slots[kSid];
+	std::map<std::uint32_t, SearchResult> &cache = slots[kSid].results;
 	CECPacket resp(EC_OP_SEARCH_RESULTS);
 	CECTag sf(EC_TAG_SEARCHFILE, static_cast<std::uint32_t>(70));
+	sf.AddTag(CECTag(EC_TAG_SEARCH_ID, kSid));
 	sf.AddTag(CECTag(EC_TAG_PARTFILE_NAME, std::string("cool.movie.mkv")));
 	sf.AddTag(CECTag(EC_TAG_PARTFILE_SIZE_FULL, static_cast<std::uint64_t>(123)));
 	sf.AddTag(CECTag(EC_TAG_PARTFILE_STATUS, static_cast<std::uint32_t>(2))); // QUEUED
 	resp.AddTag(sf);
 	// A second result with no status tag defaults to "new"; a .mp3 → audio.
 	CECTag sf2(EC_TAG_SEARCHFILE, static_cast<std::uint32_t>(71));
+	sf2.AddTag(CECTag(EC_TAG_SEARCH_ID, kSid));
 	sf2.AddTag(CECTag(EC_TAG_PARTFILE_NAME, std::string("song.mp3")));
 	sf2.AddTag(CECTag(EC_TAG_PARTFILE_SIZE_FULL, static_cast<std::uint64_t>(4)));
 	resp.AddTag(sf2);
 
-	ApplySearchFull(&resp, cache);
+	ApplySearchUnion(&resp, slots, owner);
 
 	const auto it = cache.find(70);
 	ASSERT_TRUE(it != cache.end());
 	ASSERT_EQUALS(std::string("queued"), it->second.status);
-	// GetFiletypeByName's label lowercased — "videos", same tokens as the
-	// shared-detail file_type (issue #417), not a bespoke "video".
-	ASSERT_EQUALS(std::string("videos"), it->second.type);
+	// Normalised from GetFiletypeByName's UI label: singular, snake_case,
+	// and "unknown" rather than "any". Same token set as the shared-detail
+	// file_type, which shares this helper.
+	ASSERT_EQUALS(std::string("video"), it->second.type);
 
 	const auto it2 = cache.find(71);
 	ASSERT_TRUE(it2 != cache.end());
@@ -1751,9 +1766,13 @@ TEST(Refresher, SearchProgressIdleZeroesOutGracefully)
 // has_media=false so the API omits the `media` object.
 TEST(Refresher, SearchResultMediaDecode)
 {
-	std::map<std::uint32_t, SearchResult> cache;
+	std::map<std::uint32_t, SearchSlot> slots;
+	std::map<std::uint32_t, std::uint32_t> owner;
+	slots[kSid];
+	std::map<std::uint32_t, SearchResult> &cache = slots[kSid].results;
 	CECPacket resp(EC_OP_SEARCH_RESULTS);
 	CECTag sf(EC_TAG_SEARCHFILE, static_cast<std::uint32_t>(80));
+	sf.AddTag(CECTag(EC_TAG_SEARCH_ID, kSid));
 	sf.AddTag(CECTag(EC_TAG_PARTFILE_NAME, std::string("show.s01e01.mkv")));
 	sf.AddTag(CECTag(EC_TAG_PARTFILE_SIZE_FULL, static_cast<std::uint64_t>(999)));
 	sf.AddTag(CECTag(EC_TAG_KNOWNFILE_MEDIA_LENGTH, static_cast<std::uint32_t>(1320)));
@@ -1762,17 +1781,18 @@ TEST(Refresher, SearchResultMediaDecode)
 	resp.AddTag(sf);
 	// A second hit with no media tags stays has_media=false.
 	CECTag sf2(EC_TAG_SEARCHFILE, static_cast<std::uint32_t>(81));
+	sf2.AddTag(CECTag(EC_TAG_SEARCH_ID, kSid));
 	sf2.AddTag(CECTag(EC_TAG_PARTFILE_NAME, std::string("nomedia.bin")));
 	sf2.AddTag(CECTag(EC_TAG_PARTFILE_SIZE_FULL, static_cast<std::uint64_t>(4)));
 	resp.AddTag(sf2);
 
-	ApplySearchFull(&resp, cache);
+	ApplySearchUnion(&resp, slots, owner);
 
 	const auto it = cache.find(80);
 	ASSERT_TRUE(it != cache.end());
 	ASSERT_TRUE(it->second.has_media);
-	ASSERT_EQUALS(static_cast<std::uint32_t>(1320), it->second.media.length_s);
-	ASSERT_EQUALS(static_cast<std::uint32_t>(2500), it->second.media.bitrate);
+	ASSERT_EQUALS(static_cast<std::uint32_t>(1320), it->second.media.duration_seconds);
+	ASSERT_EQUALS(static_cast<std::uint32_t>(2500), it->second.media.bitrate_kilobits_per_second);
 	ASSERT_EQUALS(std::string("h264"), it->second.media.codec);
 
 	const auto it2 = cache.find(81);
@@ -1787,16 +1807,21 @@ TEST(Refresher, SearchResultMediaDecode)
 // nested in children[]; the child ECIDs must not remain top-level.
 TEST(Refresher, SearchResultGroupingFoldsChildren)
 {
-	std::map<std::uint32_t, SearchResult> cache;
+	std::map<std::uint32_t, SearchSlot> slots;
+	std::map<std::uint32_t, std::uint32_t> owner;
+	slots[kSid];
+	std::map<std::uint32_t, SearchResult> &cache = slots[kSid].results;
 	CECPacket resp(EC_OP_SEARCH_RESULTS);
 
 	CECTag parent(EC_TAG_SEARCHFILE, static_cast<std::uint32_t>(100));
+	parent.AddTag(CECTag(EC_TAG_SEARCH_ID, kSid));
 	parent.AddTag(CECTag(EC_TAG_PARTFILE_NAME, std::string("best.mkv")));
 	parent.AddTag(CECTag(EC_TAG_PARTFILE_SIZE_FULL, static_cast<std::uint64_t>(123)));
 	parent.AddTag(CECTag(EC_TAG_PARTFILE_SOURCE_COUNT, static_cast<std::uint32_t>(30)));
 	resp.AddTag(parent);
 
 	CECTag c1(EC_TAG_SEARCHFILE, static_cast<std::uint32_t>(101));
+	c1.AddTag(CECTag(EC_TAG_SEARCH_ID, kSid));
 	c1.AddTag(CECTag(EC_TAG_PARTFILE_NAME, std::string("alt.name.mkv")));
 	c1.AddTag(CECTag(EC_TAG_PARTFILE_SIZE_FULL, static_cast<std::uint64_t>(123)));
 	c1.AddTag(CECTag(EC_TAG_PARTFILE_SOURCE_COUNT, static_cast<std::uint32_t>(10)));
@@ -1804,12 +1829,13 @@ TEST(Refresher, SearchResultGroupingFoldsChildren)
 	resp.AddTag(c1);
 
 	CECTag c2(EC_TAG_SEARCHFILE, static_cast<std::uint32_t>(102));
+	c2.AddTag(CECTag(EC_TAG_SEARCH_ID, kSid));
 	c2.AddTag(CECTag(EC_TAG_PARTFILE_NAME, std::string("third.mkv")));
 	c2.AddTag(CECTag(EC_TAG_PARTFILE_SIZE_FULL, static_cast<std::uint64_t>(123)));
 	c2.AddTag(CECTag(EC_TAG_SEARCH_PARENT, static_cast<std::uint32_t>(100)));
 	resp.AddTag(c2);
 
-	ApplySearchFull(&resp, cache);
+	ApplySearchUnion(&resp, slots, owner);
 
 	ASSERT_EQUALS(static_cast<size_t>(1), cache.size());
 	const auto it = cache.find(100);
@@ -1833,23 +1859,28 @@ TEST(Refresher, SearchResultGroupingFoldsChildren)
 // single parent and each must keep its own folder.
 TEST(Refresher, SearchResultDirectoryDecodesAndRidesEachChild)
 {
-	std::map<std::uint32_t, SearchResult> cache;
+	std::map<std::uint32_t, SearchSlot> slots;
+	std::map<std::uint32_t, std::uint32_t> owner;
+	slots[kSid];
+	std::map<std::uint32_t, SearchResult> &cache = slots[kSid].results;
 	CECPacket resp(EC_OP_SEARCH_RESULTS);
 
 	CECTag parent(EC_TAG_SEARCHFILE, static_cast<std::uint32_t>(200));
+	parent.AddTag(CECTag(EC_TAG_SEARCH_ID, kSid));
 	parent.AddTag(CECTag(EC_TAG_PARTFILE_NAME, std::string("shared.iso")));
 	parent.AddTag(CECTag(EC_TAG_PARTFILE_SIZE_FULL, static_cast<std::uint64_t>(4096)));
 	parent.AddTag(CECTag(EC_TAG_SEARCHFILE_DIRECTORY, std::string("Incoming/ISOs")));
 	resp.AddTag(parent);
 
 	CECTag child(EC_TAG_SEARCHFILE, static_cast<std::uint32_t>(201));
+	child.AddTag(CECTag(EC_TAG_SEARCH_ID, kSid));
 	child.AddTag(CECTag(EC_TAG_PARTFILE_NAME, std::string("shared-copy.iso")));
 	child.AddTag(CECTag(EC_TAG_PARTFILE_SIZE_FULL, static_cast<std::uint64_t>(4096)));
 	child.AddTag(CECTag(EC_TAG_SEARCH_PARENT, static_cast<std::uint32_t>(200)));
 	child.AddTag(CECTag(EC_TAG_SEARCHFILE_DIRECTORY, std::string("Backup/ISOs")));
 	resp.AddTag(child);
 
-	ApplySearchFull(&resp, cache);
+	ApplySearchUnion(&resp, slots, owner);
 
 	const auto it = cache.find(200);
 	ASSERT_TRUE(it != cache.end());
@@ -1863,13 +1894,17 @@ TEST(Refresher, SearchResultDirectoryEmptyOnOrdinaryHit)
 {
 	// A server/Kad hit never carries the tag, and must report an empty
 	// string rather than anything that could read as a real folder.
-	std::map<std::uint32_t, SearchResult> cache;
+	std::map<std::uint32_t, SearchSlot> slots;
+	std::map<std::uint32_t, std::uint32_t> owner;
+	slots[kSid];
+	std::map<std::uint32_t, SearchResult> &cache = slots[kSid].results;
 	CECPacket resp(EC_OP_SEARCH_RESULTS);
 	CECTag hit(EC_TAG_SEARCHFILE, static_cast<std::uint32_t>(300));
+	hit.AddTag(CECTag(EC_TAG_SEARCH_ID, kSid));
 	hit.AddTag(CECTag(EC_TAG_PARTFILE_NAME, std::string("remote.iso")));
 	resp.AddTag(hit);
 
-	ApplySearchFull(&resp, cache);
+	ApplySearchUnion(&resp, slots, owner);
 
 	const auto it = cache.find(300);
 	ASSERT_TRUE(it != cache.end());
@@ -2173,7 +2208,7 @@ TEST(Refresher, ClientDetailFieldsDecode)
 	const auto it = cache.find(50);
 	ASSERT_TRUE(it != cache.end());
 	const ClientSnapshot &cs = it->second;
-	ASSERT_EQUALS(static_cast<std::uint32_t>(0x04030201), cs.user_id_hybrid);
+	ASSERT_EQUALS(static_cast<std::uint32_t>(0x04030201), cs.ed2k_user_id);
 	ASSERT_TRUE(cs.high_id);
 	ASSERT_EQUALS(std::string("127.0.0.1"), cs.server_ip);
 	ASSERT_EQUALS(static_cast<std::uint16_t>(4242), cs.server_port);
@@ -2182,20 +2217,20 @@ TEST(Refresher, ClientDetailFieldsDecode)
 	ASSERT_EQUALS(static_cast<std::uint16_t>(4672), cs.kad_port);
 	ASSERT_EQUALS(std::string("kad"), cs.source_origin);
 	ASSERT_EQUALS(std::string("upload.iso"), cs.upload_file_name);
-	ASSERT_TRUE(cs.has_available_parts);
-	ASSERT_EQUALS(static_cast<std::uint32_t>(7), cs.available_parts);
-	ASSERT_EQUALS(std::string("mod-x"), cs.mod_version);
+	ASSERT_TRUE(cs.has_parts_offered_count);
+	ASSERT_EQUALS(static_cast<std::uint32_t>(7), cs.parts_offered_count);
+	ASSERT_EQUALS(std::string("mod-x"), cs.client_mod_name);
 	ASSERT_TRUE(cs.view_shared_disabled);
 	ASSERT_TRUE(cs.is_friend);
-	ASSERT_TRUE(cs.dl_up_modifier > 2.4 && cs.dl_up_modifier < 2.6);
+	ASSERT_TRUE(cs.credit_ratio > 2.4 && cs.credit_ratio < 2.6);
 
 	const auto it2 = cache.find(51);
 	ASSERT_TRUE(it2 != cache.end());
 	ASSERT_TRUE(!it2->second.high_id);
-	ASSERT_TRUE(!it2->second.has_available_parts);
+	ASSERT_TRUE(!it2->second.has_parts_offered_count);
 	// #423 fields absent on the wire => defaults preserved.
 	ASSERT_TRUE(!it2->second.is_friend);
-	ASSERT_TRUE(it2->second.dl_up_modifier == 0.0);
+	ASSERT_TRUE(it2->second.credit_ratio == 0.0);
 }
 
 // --- #437: extended EC preference categories decode ------------------
@@ -2204,7 +2239,7 @@ TEST(Refresher, ClientDetailFieldsDecode)
 // (share_hidden/exclude_patterns_use_regex -> GetInt()!=0) and bare presence
 // tags (ich_enabled/use_secident/endgame_enabled -> tag present == true), the
 // 3-state shared_files_visibility enum decoded from the wire int (#596, #655),
-// plus ints, strings, and the directories.shared string array.
+// plus ints, strings, and the directories.shared_paths string array.
 TEST(Refresher, PreferencesExtendedCategoriesDecode)
 {
 	CECPacket resp(EC_OP_SET_PREFERENCES);
@@ -2270,51 +2305,51 @@ TEST(Refresher, PreferencesExtendedCategoriesDecode)
 	std::vector<CategorySnapshot> cats;
 	ParsePreferencesFromPacket(&resp, p, cats);
 
-	ASSERT_EQUALS(std::string("/inc"), p.directories.incoming);
-	ASSERT_EQUALS(std::string("/tmp"), p.directories.temp);
-	ASSERT_EQUALS(static_cast<size_t>(2), p.directories.shared.size());
-	ASSERT_EQUALS(std::string("/a"), p.directories.shared[0]);
+	ASSERT_EQUALS(std::string("/inc"), p.directories.incoming_path);
+	ASSERT_EQUALS(std::string("/tmp"), p.directories.temp_path);
+	ASSERT_EQUALS(static_cast<size_t>(2), p.directories.shared_paths.size());
+	ASSERT_EQUALS(std::string("/a"), p.directories.shared_paths[0]);
 	ASSERT_TRUE(p.directories.share_hidden);
 	ASSERT_TRUE(p.directories.exclude_patterns_use_regex);
-	ASSERT_TRUE(!p.directories.auto_rescan); // absent -> false
+	ASSERT_TRUE(!p.directories.rescan_on_startup); // absent -> false
 
 	ASSERT_TRUE(p.files.ich_enabled);
-	ASSERT_TRUE(!p.files.aich_trust_every_hash); // absent presence tag -> false
-	ASSERT_TRUE(p.files.endgame_enabled);        // presence tag -> true (#596)
+	ASSERT_TRUE(!p.files.trust_unverified_aich_hashes); // absent presence tag -> false
+	ASSERT_TRUE(p.files.endgame_mode_enabled);          // presence tag -> true (#596)
 	ASSERT_EQUALS(static_cast<std::uint32_t>(512), p.files.min_free_space_mb);
 
-	ASSERT_EQUALS(static_cast<std::uint32_t>(5), p.servers.dead_server_retries);
+	ASSERT_EQUALS(static_cast<std::uint32_t>(5), p.servers.dead_server_retry_count);
 	ASSERT_EQUALS(std::string("http://srv"), p.servers.update_url);
 
 	// 3-state (#596): the middle/high value round-trips, not just 0/1, and
 	// decodes to its enum string rather than the wire int (#655).
 	ASSERT_EQUALS(std::string("nobody"), p.security.shared_files_visibility);
-	ASSERT_EQUALS(static_cast<std::uint32_t>(100), p.security.ipfilter_block_below_access_level);
-	ASSERT_TRUE(p.security.use_secident);
+	ASSERT_EQUALS(static_cast<std::uint32_t>(100), p.security.ipfilter_min_access_level);
+	ASSERT_TRUE(p.security.secure_identification_enabled);
 	ASSERT_TRUE(!p.security.obfuscation_required); // absent -> false
 
 	ASSERT_TRUE(p.message_filter.enabled);
-	ASSERT_TRUE(p.message_filter.show_in_log);
+	ASSERT_TRUE(p.message_filter.log_filtered_messages);
 	ASSERT_TRUE(p.message_filter.filter_comments);
 	ASSERT_TRUE(!p.message_filter.filter_all_messages); // absent -> false
 	ASSERT_EQUALS(std::string("spam,ads"), p.message_filter.keywords);
 	ASSERT_EQUALS(std::string("junk,scam"), p.message_filter.comment_keywords);
 
-	ASSERT_EQUALS(static_cast<std::uint32_t>(200), p.core_tweaks.max_new_connections_per_5s);
+	ASSERT_EQUALS(static_cast<std::uint32_t>(200), p.advanced.max_new_connections_per_5_seconds);
 	// EC carries milliseconds; the API speaks the minutes the core actually
 	// stores, so the decode divides by 60000 (#1159 section 5).
-	ASSERT_EQUALS(static_cast<std::uint32_t>(30), p.core_tweaks.kad_reask_minutes);
-	ASSERT_EQUALS(std::string("http://nodes"), p.kademlia.update_url);
+	ASSERT_EQUALS(static_cast<std::uint32_t>(30), p.advanced.kad_source_reask_minutes);
+	ASSERT_EQUALS(std::string("http://nodes"), p.kad.update_url);
 
-	ASSERT_TRUE(p.ip2country.supported);
-	ASSERT_TRUE(p.ip2country.enabled);
-	ASSERT_EQUALS(std::string("maxmind"), p.ip2country.source); // uint8 1 -> "maxmind"
-	ASSERT_EQUALS(std::string("http://geo"), p.ip2country.custom_url);
-	ASSERT_EQUALS(std::string("LICKEY"), p.ip2country.maxmind_license);
-	ASSERT_TRUE(!p.ip2country.auto_update); // absent -> false
-	ASSERT_TRUE(p.ip2country.db_loaded);
-	ASSERT_EQUALS(std::string("maxmind"), p.ip2country.loaded_source);
-	ASSERT_TRUE(!p.ip2country.download_in_progress); // absent -> false
+	ASSERT_TRUE(p.geoip.supported);
+	ASSERT_TRUE(p.geoip.enabled);
+	ASSERT_EQUALS(std::string("maxmind"), p.geoip.source); // uint8 1 -> "maxmind"
+	ASSERT_EQUALS(std::string("http://geo"), p.geoip.custom_update_url);
+	ASSERT_EQUALS(std::string("LICKEY"), p.geoip.maxmind_license);
+	ASSERT_TRUE(!p.geoip.auto_update); // absent -> false
+	ASSERT_TRUE(p.geoip.db_loaded);
+	ASSERT_EQUALS(std::string("maxmind"), p.geoip.loaded_source);
+	ASSERT_TRUE(!p.geoip.download_in_progress); // absent -> false
 }
 
 // --- #655: enum strings and the nested remote_controls shape ----------
@@ -2485,7 +2520,7 @@ TEST(Refresher, PrefsSchemaIrregularitiesStayContained)
 		}
 		if (f.read_group != 0) {
 			++foreign_group;
-			ASSERT_EQUALS(std::string("upnp_available"), std::string(f.key));
+			ASSERT_EQUALS(std::string("upnp_supported"), std::string(f.key));
 		}
 		if (f.access == PrefAccess::Bespoke) {
 			++bespoke;
@@ -2540,6 +2575,490 @@ TEST(Refresher, ServerPriorityMapsBothWays)
 // parser's return value is load-bearing: a reply it could not parse must be
 // rejected outright rather than handed back as an empty union, which the
 // caller would read as "every tracked search is gone" and retire in one pass.
+
+// --- The incremental contract -------------------------------------------
+//
+// Under EC_DETAIL_INC_UPDATE the daemon sends only what moved, so an absent
+// field means "unchanged". These pin that per field, because the failure mode
+// is silent: a guard forgotten on one field reverts it to its default on the
+// first quiet poll and nothing else notices.
+
+TEST(Refresher, SearchUnionSecondPollKeepsFieldsTheDiffOmits)
+{
+	std::map<std::uint32_t, SearchSlot> slots;
+	std::map<std::uint32_t, std::uint32_t> owner;
+	slots[kSid];
+
+	CECPacket first(EC_OP_SEARCH_RESULTS);
+	CECTag sf(EC_TAG_SEARCHFILE, static_cast<std::uint32_t>(70));
+	sf.AddTag(CECTag(EC_TAG_SEARCH_ID, kSid));
+	sf.AddTag(CECTag(EC_TAG_PARTFILE_NAME, std::string("cool.movie.mkv")));
+	sf.AddTag(CECTag(EC_TAG_PARTFILE_SIZE_FULL, static_cast<std::uint64_t>(123)));
+	sf.AddTag(CECTag(EC_TAG_PARTFILE_STATUS, static_cast<std::uint32_t>(2))); // QUEUED
+	sf.AddTag(CECTag(EC_TAG_PARTFILE_SOURCE_COUNT, static_cast<std::uint32_t>(9)));
+	first.AddTag(sf);
+	ApplySearchUnion(&first, slots, owner);
+
+	// A diff that moves only the source count. Everything else is absent,
+	// which is the daemon saying "unchanged", not "cleared".
+	CECPacket second(EC_OP_SEARCH_RESULTS);
+	CECTag d(EC_TAG_SEARCHFILE, static_cast<std::uint32_t>(70));
+	d.AddTag(CECTag(EC_TAG_PARTFILE_SOURCE_COUNT, static_cast<std::uint32_t>(11)));
+	second.AddTag(d);
+	ApplySearchUnion(&second, slots, owner);
+
+	const auto it = slots[kSid].results.find(70);
+	ASSERT_TRUE(it != slots[kSid].results.end());
+	ASSERT_EQUALS(static_cast<std::uint32_t>(11), it->second.source_count);
+	// The fields the diff said nothing about.
+	ASSERT_EQUALS(std::string("cool.movie.mkv"), it->second.name);
+	ASSERT_EQUALS(static_cast<std::uint64_t>(123), it->second.size);
+	ASSERT_EQUALS(std::string("queued"), it->second.status);
+	ASSERT_TRUE(it->second.already_downloaded);
+	ASSERT_EQUALS(std::string("video"), it->second.type);
+}
+
+TEST(Refresher, SearchUnionAppliesAStatusChangeOnAFinishedSearch)
+{
+	// The case #1187 section 2 is about: a hit gets downloaded after its
+	// search finished. Nothing here knows or cares that the search is over --
+	// which is the point, since the union polls it either way.
+	std::map<std::uint32_t, SearchSlot> slots;
+	std::map<std::uint32_t, std::uint32_t> owner;
+	slots[kSid];
+
+	CECPacket first(EC_OP_SEARCH_RESULTS);
+	CECTag sf(EC_TAG_SEARCHFILE, static_cast<std::uint32_t>(70));
+	sf.AddTag(CECTag(EC_TAG_SEARCH_ID, kSid));
+	sf.AddTag(CECTag(EC_TAG_PARTFILE_NAME, std::string("iso.img")));
+	sf.AddTag(CECTag(EC_TAG_PARTFILE_STATUS, static_cast<std::uint32_t>(0))); // NEW
+	first.AddTag(sf);
+	ApplySearchUnion(&first, slots, owner);
+	ASSERT_TRUE(!slots[kSid].results.find(70)->second.already_downloaded);
+
+	CECPacket second(EC_OP_SEARCH_RESULTS);
+	CECTag d(EC_TAG_SEARCHFILE, static_cast<std::uint32_t>(70));
+	d.AddTag(CECTag(EC_TAG_PARTFILE_STATUS, static_cast<std::uint32_t>(1))); // DOWNLOADED
+	second.AddTag(d);
+	ApplySearchUnion(&second, slots, owner);
+
+	const auto &r = slots[kSid].results.find(70)->second;
+	ASSERT_EQUALS(std::string("downloaded"), r.status);
+	ASSERT_TRUE(r.already_downloaded);
+}
+
+TEST(Refresher, SearchUnionQuietPollRemovesNothing)
+{
+	// Absence stopped meaning deletion: a poll that mentions a search not at
+	// all must leave its results alone. Sweeping here would empty every
+	// result set on the first tick where nothing changed.
+	std::map<std::uint32_t, SearchSlot> slots;
+	std::map<std::uint32_t, std::uint32_t> owner;
+	slots[kSid];
+
+	CECPacket first(EC_OP_SEARCH_RESULTS);
+	CECTag sf(EC_TAG_SEARCHFILE, static_cast<std::uint32_t>(70));
+	sf.AddTag(CECTag(EC_TAG_SEARCH_ID, kSid));
+	sf.AddTag(CECTag(EC_TAG_PARTFILE_NAME, std::string("still.here.bin")));
+	first.AddTag(sf);
+	ApplySearchUnion(&first, slots, owner);
+	ASSERT_EQUALS(static_cast<std::size_t>(1), slots[kSid].results.size());
+
+	const CECPacket quiet(EC_OP_SEARCH_RESULTS);
+	ApplySearchUnion(&quiet, slots, owner);
+	ASSERT_EQUALS(static_cast<std::size_t>(1), slots[kSid].results.size());
+	ASSERT_EQUALS(std::string("still.here.bin"), slots[kSid].results.find(70)->second.name);
+}
+
+TEST(Refresher, SearchUnionRemovesOnlyOnTheExplicitTombstone)
+{
+	std::map<std::uint32_t, SearchSlot> slots;
+	std::map<std::uint32_t, std::uint32_t> owner;
+	slots[kSid];
+
+	CECPacket first(EC_OP_SEARCH_RESULTS);
+	for (std::uint32_t ecid : { 70u, 71u }) {
+		CECTag sf(EC_TAG_SEARCHFILE, ecid);
+		sf.AddTag(CECTag(EC_TAG_SEARCH_ID, kSid));
+		sf.AddTag(CECTag(EC_TAG_PARTFILE_NAME, std::string("f.bin")));
+		first.AddTag(sf);
+	}
+	ApplySearchUnion(&first, slots, owner);
+	ASSERT_EQUALS(static_cast<std::size_t>(2), slots[kSid].results.size());
+
+	CECPacket second(EC_OP_SEARCH_RESULTS);
+	second.AddTag(CECTag(EC_TAG_FILE_REMOVED, static_cast<std::uint32_t>(71)));
+	ApplySearchUnion(&second, slots, owner);
+	ASSERT_EQUALS(static_cast<std::size_t>(1), slots[kSid].results.size());
+	ASSERT_TRUE(slots[kSid].results.find(70) != slots[kSid].results.end());
+	// The index loses it with the map, or a later reuse of the ECID would be
+	// attributed to a search that no longer holds it.
+	ASSERT_TRUE(owner.find(71) == owner.end());
+	ASSERT_TRUE(owner.find(70) != owner.end());
+}
+
+TEST(Refresher, SearchUnionAttributesDiffedTagsAcrossTwoSearches)
+{
+	// The index earns its keep here: the second poll carries no search id on
+	// either result, so both can only be placed by remembering who owns them.
+	const std::uint32_t sid_a = 1;
+	const std::uint32_t sid_b = 2 | 0x80000000u; // Kad ids carry the mask
+	std::map<std::uint32_t, SearchSlot> slots;
+	std::map<std::uint32_t, std::uint32_t> owner;
+	slots[sid_a];
+	slots[sid_b];
+
+	CECPacket first(EC_OP_SEARCH_RESULTS);
+	CECTag a(EC_TAG_SEARCHFILE, static_cast<std::uint32_t>(10));
+	a.AddTag(CECTag(EC_TAG_SEARCH_ID, sid_a));
+	a.AddTag(CECTag(EC_TAG_PARTFILE_NAME, std::string("a.bin")));
+	first.AddTag(a);
+	CECTag b(EC_TAG_SEARCHFILE, static_cast<std::uint32_t>(20));
+	b.AddTag(CECTag(EC_TAG_SEARCH_ID, sid_b));
+	b.AddTag(CECTag(EC_TAG_PARTFILE_NAME, std::string("b.bin")));
+	first.AddTag(b);
+	ApplySearchUnion(&first, slots, owner);
+
+	CECPacket second(EC_OP_SEARCH_RESULTS);
+	CECTag da(EC_TAG_SEARCHFILE, static_cast<std::uint32_t>(10));
+	da.AddTag(CECTag(EC_TAG_PARTFILE_SOURCE_COUNT, static_cast<std::uint32_t>(5)));
+	second.AddTag(da);
+	CECTag db(EC_TAG_SEARCHFILE, static_cast<std::uint32_t>(20));
+	db.AddTag(CECTag(EC_TAG_PARTFILE_SOURCE_COUNT, static_cast<std::uint32_t>(7)));
+	second.AddTag(db);
+	ApplySearchUnion(&second, slots, owner);
+
+	ASSERT_EQUALS(static_cast<std::uint32_t>(5), slots[sid_a].results.find(10)->second.source_count);
+	ASSERT_EQUALS(static_cast<std::uint32_t>(7), slots[sid_b].results.find(20)->second.source_count);
+	// And neither leaked into the other.
+	ASSERT_EQUALS(static_cast<std::size_t>(1), slots[sid_a].results.size());
+	ASSERT_EQUALS(static_cast<std::size_t>(1), slots[sid_b].results.size());
+}
+
+TEST(Refresher, SearchUnionDiffedChildStaysFoldedIntoItsParent)
+{
+	// A grouped child is addressable by its own ECID on the wire, so it gets
+	// diffed tags of its own -- which is why `raw` keeps children and the
+	// folded view is rebuilt from it rather than merged into.
+	std::map<std::uint32_t, SearchSlot> slots;
+	std::map<std::uint32_t, std::uint32_t> owner;
+	slots[kSid];
+
+	CECPacket first(EC_OP_SEARCH_RESULTS);
+	CECTag parent(EC_TAG_SEARCHFILE, static_cast<std::uint32_t>(100));
+	parent.AddTag(CECTag(EC_TAG_SEARCH_ID, kSid));
+	parent.AddTag(CECTag(EC_TAG_PARTFILE_NAME, std::string("movie.mkv")));
+	first.AddTag(parent);
+	CECTag child(EC_TAG_SEARCHFILE, static_cast<std::uint32_t>(101));
+	child.AddTag(CECTag(EC_TAG_SEARCH_ID, kSid));
+	child.AddTag(CECTag(EC_TAG_PARTFILE_NAME, std::string("movie.alt.mkv")));
+	child.AddTag(CECTag(EC_TAG_SEARCH_PARENT, static_cast<std::uint32_t>(100)));
+	first.AddTag(child);
+	ApplySearchUnion(&first, slots, owner);
+	ASSERT_EQUALS(static_cast<std::size_t>(1), slots[kSid].results.size());
+	ASSERT_EQUALS(static_cast<std::size_t>(1), slots[kSid].results.find(100)->second.children.size());
+
+	// The child's source count moves; it must still be nested, not promoted.
+	CECPacket second(EC_OP_SEARCH_RESULTS);
+	CECTag dc(EC_TAG_SEARCHFILE, static_cast<std::uint32_t>(101));
+	dc.AddTag(CECTag(EC_TAG_PARTFILE_SOURCE_COUNT, static_cast<std::uint32_t>(3)));
+	second.AddTag(dc);
+	ApplySearchUnion(&second, slots, owner);
+
+	ASSERT_EQUALS(static_cast<std::size_t>(1), slots[kSid].results.size());
+	const auto &kids = slots[kSid].results.find(100)->second.children;
+	ASSERT_EQUALS(static_cast<std::size_t>(1), kids.size());
+	ASSERT_EQUALS(static_cast<std::uint32_t>(3), kids[0].source_count);
+	ASSERT_EQUALS(std::string("movie.alt.mkv"), kids[0].name);
+}
+
+TEST(Refresher, SearchUnionSeesTheKadLookupEnd)
+{
+	// The daemon now always sends EC_TAG_PARTFILE_KAD_COMMENT_SEARCHING, and
+	// sends it through the valuemap, so the 1 -> 0 transition is itself a
+	// child tag and the result carrying it is not elided as unchanged. It
+	// used to be emitted only while the lookup ran or had notes, which made
+	// "finished, found nothing" a tag that simply stopped appearing -- and an
+	// incremental client cannot tell that from silence.
+	std::map<std::uint32_t, SearchSlot> slots;
+	std::map<std::uint32_t, std::uint32_t> owner;
+	slots[kSid];
+
+	CECPacket running(EC_OP_SEARCH_RESULTS);
+	CECTag sf(EC_TAG_SEARCHFILE, static_cast<std::uint32_t>(70));
+	sf.AddTag(CECTag(EC_TAG_SEARCH_ID, kSid));
+	sf.AddTag(CECTag(EC_TAG_PARTFILE_NAME, std::string("noted.bin")));
+	sf.AddTag(CECTag(EC_TAG_PARTFILE_KAD_COMMENT_SEARCHING, static_cast<std::uint64_t>(1)));
+	running.AddTag(sf);
+	ApplySearchUnion(&running, slots, owner);
+	ASSERT_TRUE(slots[kSid].results.find(70)->second.kad_comment_searching);
+
+	CECPacket done(EC_OP_SEARCH_RESULTS);
+	CECTag d(EC_TAG_SEARCHFILE, static_cast<std::uint32_t>(70));
+	d.AddTag(CECTag(EC_TAG_PARTFILE_KAD_COMMENT_SEARCHING, static_cast<std::uint64_t>(0)));
+	done.AddTag(d);
+	ApplySearchUnion(&done, slots, owner);
+
+	const auto &r = slots[kSid].results.find(70)->second;
+	ASSERT_TRUE(!r.kad_comment_searching);
+	// ...and the poll that carried it touched nothing else.
+	ASSERT_EQUALS(std::string("noted.bin"), r.name);
+}
+
+TEST(Refresher, SearchUnionCommentsAbsenceMeansNoNotes)
+{
+	// The comments container is the one field where absence is a value: it is
+	// built only when there are notes and added without the valuemap, so it is
+	// never diffed away. A poll that omits it is saying "no notes", not
+	// "unchanged" -- otherwise a note set could never shrink to empty.
+	std::map<std::uint32_t, SearchSlot> slots;
+	std::map<std::uint32_t, std::uint32_t> owner;
+	slots[kSid];
+
+	CECPacket withNotes(EC_OP_SEARCH_RESULTS);
+	CECTag sf(EC_TAG_SEARCHFILE, static_cast<std::uint32_t>(70));
+	sf.AddTag(CECTag(EC_TAG_SEARCH_ID, kSid));
+	sf.AddTag(CECTag(EC_TAG_PARTFILE_NAME, std::string("noted.bin")));
+	CECEmptyTag cont(EC_TAG_PARTFILE_COMMENTS);
+	cont.AddTag(CECTag(EC_TAG_PARTFILE_COMMENTS, std::string("someone")));
+	cont.AddTag(CECTag(EC_TAG_PARTFILE_COMMENTS, std::string("noted.bin")));
+	cont.AddTag(CECTag(EC_TAG_PARTFILE_COMMENTS, static_cast<std::uint64_t>(4)));
+	cont.AddTag(CECTag(EC_TAG_PARTFILE_COMMENTS, std::string("good file")));
+	sf.AddTag(cont);
+	withNotes.AddTag(sf);
+	ApplySearchUnion(&withNotes, slots, owner);
+	ASSERT_EQUALS(static_cast<std::size_t>(1), slots[kSid].results.find(70)->second.comments.size());
+
+	CECPacket without(EC_OP_SEARCH_RESULTS);
+	CECTag d(EC_TAG_SEARCHFILE, static_cast<std::uint32_t>(70));
+	d.AddTag(CECTag(EC_TAG_PARTFILE_SOURCE_COUNT, static_cast<std::uint32_t>(2)));
+	without.AddTag(d);
+	ApplySearchUnion(&without, slots, owner);
+	ASSERT_EQUALS(static_cast<std::size_t>(0), slots[kSid].results.find(70)->second.comments.size());
+}
+
+TEST(Refresher, SearchUnionIgnoresResultsForAnUnknownSearch)
+{
+	// Slot creation belongs to MarkSearchStarted / discovery, which also set
+	// the lifecycle state GET /search reports. Auto-creating one here would
+	// produce a search with results and no state behind it.
+	std::map<std::uint32_t, SearchSlot> slots;
+	std::map<std::uint32_t, std::uint32_t> owner;
+
+	CECPacket resp(EC_OP_SEARCH_RESULTS);
+	CECTag sf(EC_TAG_SEARCHFILE, static_cast<std::uint32_t>(70));
+	sf.AddTag(CECTag(EC_TAG_SEARCH_ID, static_cast<std::uint32_t>(999)));
+	sf.AddTag(CECTag(EC_TAG_PARTFILE_NAME, std::string("orphan.bin")));
+	resp.AddTag(sf);
+	ApplySearchUnion(&resp, slots, owner);
+
+	ASSERT_TRUE(slots.empty());
+	// And it is not left in the index pointing at a slot that never existed.
+	ASSERT_TRUE(owner.find(70) == owner.end());
+}
+
+TEST(Refresher, SearchUnionLeavesADetachedSlotAlone)
+{
+	// The daemon evicted the search from its ring. That makes it emit an
+	// EC_TAG_FILE_REMOVED for every result it had sent us -- but the tick has
+	// already detached the slot, precisely so those tombstones do not erase
+	// the results the retirement path means to keep for late reads.
+	std::map<std::uint32_t, SearchSlot> slots;
+	std::map<std::uint32_t, std::uint32_t> owner;
+	SearchSlot &slot = slots[kSid];
+	SearchResult keep;
+	keep.name = "kept.bin";
+	keep.status = "new";
+	slot.raw[70] = keep;
+	slot.results[70] = keep;
+	slot.detached = true;
+	owner[70] = kSid;
+
+	CECPacket resp(EC_OP_SEARCH_RESULTS);
+	resp.AddTag(CECTag(EC_TAG_FILE_REMOVED, static_cast<std::uint32_t>(70)));
+	ApplySearchUnion(&resp, slots, owner);
+
+	ASSERT_EQUALS(static_cast<size_t>(1), slots[kSid].raw.size());
+	ASSERT_EQUALS(static_cast<size_t>(1), slots[kSid].results.size());
+	ASSERT_EQUALS(std::string("kept.bin"), slots[kSid].results[70].name);
+	// The index entry stays too: nothing will re-establish it, and dropping
+	// it would strand the result it points at.
+	ASSERT_TRUE(owner.find(70) != owner.end());
+}
+
+TEST(Refresher, SearchUnionDoesNotUpdateADetachedSlot)
+{
+	// Same freeze in the other direction. A diffed tag arriving for a search
+	// the daemon no longer holds is the tail of an eviction, not news.
+	std::map<std::uint32_t, SearchSlot> slots;
+	std::map<std::uint32_t, std::uint32_t> owner;
+	SearchSlot &slot = slots[kSid];
+	SearchResult keep;
+	keep.name = "kept.bin";
+	keep.source_count = 3;
+	slot.raw[70] = keep;
+	slot.results[70] = keep;
+	slot.detached = true;
+	owner[70] = kSid;
+
+	CECPacket resp(EC_OP_SEARCH_RESULTS);
+	CECTag sf(EC_TAG_SEARCHFILE, static_cast<std::uint32_t>(70));
+	sf.AddTag(CECTag(EC_TAG_SEARCH_ID, kSid));
+	sf.AddTag(CECTag(EC_TAG_PARTFILE_SOURCE_COUNT, static_cast<uint32>(99)));
+	resp.AddTag(sf);
+	ApplySearchUnion(&resp, slots, owner);
+
+	ASSERT_EQUALS(static_cast<std::uint32_t>(3), slots[kSid].results[70].source_count);
+}
+
+TEST(Refresher, SearchUnionDefaultSidAdoptsAnIdLessReply)
+{
+	// The per-search EC_DETAIL_FULL fetch -- the resync path the differential
+	// union has no opcode for. Its reply carries no EC_TAG_SEARCH_ID at all,
+	// so every tag in it has to be attributed to the search that was asked
+	// for, and the ECID index built from that.
+	std::map<std::uint32_t, SearchSlot> slots;
+	std::map<std::uint32_t, std::uint32_t> owner;
+	slots[kSid];
+
+	CECPacket resp(EC_OP_SEARCH_RESULTS);
+	CECTag sf(EC_TAG_SEARCHFILE, static_cast<std::uint32_t>(71));
+	sf.AddTag(CECTag(EC_TAG_PARTFILE_NAME, std::string("seeded.bin")));
+	resp.AddTag(sf);
+	ApplySearchUnion(&resp, slots, owner, kSid);
+
+	ASSERT_EQUALS(static_cast<size_t>(1), slots[kSid].results.size());
+	ASSERT_EQUALS(std::string("seeded.bin"), slots[kSid].results[71].name);
+	ASSERT_EQUALS(kSid, owner[71]);
+}
+
+TEST(Refresher, SearchUnionLeavesNoIndexEntryForADetachedSlot)
+{
+	// The index is what eviction walks to clean up after a slot, and it walks
+	// it via the slot's own results. An entry written for a result that was
+	// then dropped on the detached guard is in neither place, so nothing ever
+	// removes it -- and a reused ECID would resolve through it to a search
+	// that is gone.
+	std::map<std::uint32_t, SearchSlot> slots;
+	std::map<std::uint32_t, std::uint32_t> owner;
+	SearchSlot &slot = slots[kSid];
+	slot.detached = true;
+
+	CECPacket resp(EC_OP_SEARCH_RESULTS);
+	CECTag sf(EC_TAG_SEARCHFILE, static_cast<std::uint32_t>(72));
+	sf.AddTag(CECTag(EC_TAG_SEARCH_ID, kSid));
+	sf.AddTag(CECTag(EC_TAG_PARTFILE_NAME, std::string("late.bin")));
+	resp.AddTag(sf);
+	ApplySearchUnion(&resp, slots, owner);
+
+	// Not merged, and no index entry left pointing at the slot that refused it.
+	ASSERT_TRUE(slots[kSid].raw.empty());
+	ASSERT_TRUE(owner.find(72) == owner.end());
+}
+
+TEST(Refresher, SearchUnionStillIndexesAResultItAccepts)
+{
+	// The guard above must not cost the normal path its index entry: that is
+	// what attributes every later diffed tag, which carries no search id.
+	std::map<std::uint32_t, SearchSlot> slots;
+	std::map<std::uint32_t, std::uint32_t> owner;
+	slots[kSid];
+
+	CECPacket resp(EC_OP_SEARCH_RESULTS);
+	CECTag sf(EC_TAG_SEARCHFILE, static_cast<std::uint32_t>(73));
+	sf.AddTag(CECTag(EC_TAG_SEARCH_ID, kSid));
+	sf.AddTag(CECTag(EC_TAG_PARTFILE_NAME, std::string("kept.bin")));
+	resp.AddTag(sf);
+	ApplySearchUnion(&resp, slots, owner);
+
+	ASSERT_EQUALS(kSid, owner[73]);
+	ASSERT_EQUALS(std::string("kept.bin"), slots[kSid].results[73].name);
+}
+
+TEST(Refresher, AMergingFullReplyLeavesTheResyncFlagSet)
+{
+	// The flag says "a union reply was lost, so this slot may hold rows the
+	// daemon has already dropped". Only a replace answers that: a merge
+	// re-reads what the daemon still has and cannot remove what it does not.
+	// Clearing it on a merge strands those rows for the life of the slot --
+	// the tombstones went out in the reply that was lost, and the daemon
+	// never mentions them again. The HTTP refresh path (RefreshSearchIfStale)
+	// takes exactly this mode, and it serves the same non-active slots the
+	// flag is set on.
+	std::map<std::uint32_t, SearchSlot> slots;
+	std::map<std::uint32_t, std::uint32_t> owner;
+	SearchSlot &slot = slots[kSid];
+	slot.needs_resync = true;
+	slot.raw[80].ecid = 80;
+	slot.raw[80].name = "dropped-by-the-daemon.bin";
+	owner[80] = kSid;
+
+	// A FULL reply that no longer carries ECID 80. No tombstone: a FULL reply
+	// has none to carry.
+	CECPacket resp(EC_OP_SEARCH_RESULTS);
+	CECTag sf(EC_TAG_SEARCHFILE, static_cast<std::uint32_t>(81));
+	sf.AddTag(CECTag(EC_TAG_PARTFILE_NAME, std::string("still-here.bin")));
+	resp.AddTag(sf);
+	ApplySearchFullReply(&resp, slots, owner, kSid, /*replace=*/false);
+
+	// The stale row survives the merge, which is precisely why the obligation
+	// must survive with it.
+	ASSERT_TRUE(slots[kSid].raw.find(80) != slots[kSid].raw.end());
+	ASSERT_TRUE(slots[kSid].needs_resync);
+}
+
+TEST(Refresher, AReplacingFullReplyDropsStaleRowsAndClearsTheFlag)
+{
+	// The re-seed the tick issues. Swapping the rows wholesale is the only
+	// way to express a deletion from a reply that carries no tombstones, and
+	// having done it the slot is authoritative again.
+	std::map<std::uint32_t, SearchSlot> slots;
+	std::map<std::uint32_t, std::uint32_t> owner;
+	SearchSlot &slot = slots[kSid];
+	slot.needs_resync = true;
+	slot.raw[80].ecid = 80;
+	slot.raw[80].name = "dropped-by-the-daemon.bin";
+	slot.results = slot.raw;
+	owner[80] = kSid;
+
+	CECPacket resp(EC_OP_SEARCH_RESULTS);
+	CECTag sf(EC_TAG_SEARCHFILE, static_cast<std::uint32_t>(81));
+	sf.AddTag(CECTag(EC_TAG_PARTFILE_NAME, std::string("still-here.bin")));
+	resp.AddTag(sf);
+	ApplySearchFullReply(&resp, slots, owner, kSid, /*replace=*/true);
+
+	ASSERT_TRUE(slots[kSid].raw.find(80) == slots[kSid].raw.end());
+	ASSERT_TRUE(slots[kSid].results.find(80) == slots[kSid].results.end());
+	// The index entry goes with the row, or a later result reusing the ECID
+	// resolves through it.
+	ASSERT_TRUE(owner.find(80) == owner.end());
+	ASSERT_EQUALS(std::string("still-here.bin"), slots[kSid].results[81].name);
+	ASSERT_TRUE(!slots[kSid].needs_resync);
+}
+
+TEST(Refresher, AnEmptyReplacingReplyClearsTheFoldedView)
+{
+	// The daemon reporting nothing left is a real answer, and the one an
+	// empty-reply merge cannot express: ApplySearchUnion refolds only slots
+	// it touched, so without the unconditional refold the stale fold would
+	// outlive the rows it was built from.
+	std::map<std::uint32_t, SearchSlot> slots;
+	std::map<std::uint32_t, std::uint32_t> owner;
+	SearchSlot &slot = slots[kSid];
+	slot.needs_resync = true;
+	slot.raw[80].ecid = 80;
+	slot.raw[80].name = "gone.bin";
+	slot.results = slot.raw;
+	owner[80] = kSid;
+
+	CECPacket resp(EC_OP_SEARCH_RESULTS);
+	ApplySearchFullReply(&resp, slots, owner, kSid, /*replace=*/true);
+
+	ASSERT_TRUE(slots[kSid].raw.empty());
+	ASSERT_TRUE(slots[kSid].results.empty());
+	ASSERT_TRUE(owner.empty());
+	ASSERT_TRUE(!slots[kSid].needs_resync);
+}
 
 TEST(Refresher, SearchProgressUnionParsesEveryEntry)
 {
@@ -2787,8 +3306,8 @@ TEST(Refresher, StatusOverheadAndFreeSpaceTagsDecode)
 	StatusSnapshot out;
 	ParseStatusFromPacket(&resp, out);
 
-	ASSERT_EQUALS(static_cast<std::uint64_t>(8700), out.download_overhead_bps);
-	ASSERT_EQUALS(static_cast<std::uint64_t>(1100), out.upload_overhead_bps);
+	ASSERT_EQUALS(static_cast<std::uint64_t>(8700), out.download_overhead_bytes_per_second);
+	ASSERT_EQUALS(static_cast<std::uint64_t>(1100), out.upload_overhead_bytes_per_second);
 	ASSERT_EQUALS(static_cast<std::int64_t>(48318382080LL), out.temp_free_bytes);
 	ASSERT_EQUALS(static_cast<std::int64_t>(24159191040LL), out.incoming_free_bytes);
 }
@@ -2824,8 +3343,8 @@ TEST(Refresher, StatusWithoutStatsTagsKeepsZeroOverheadAndUnknownDisk)
 	StatusSnapshot out;
 	ParseStatusFromPacket(&resp, out);
 
-	ASSERT_EQUALS(static_cast<std::uint64_t>(0), out.download_overhead_bps);
-	ASSERT_EQUALS(static_cast<std::uint64_t>(0), out.upload_overhead_bps);
+	ASSERT_EQUALS(static_cast<std::uint64_t>(0), out.download_overhead_bytes_per_second);
+	ASSERT_EQUALS(static_cast<std::uint64_t>(0), out.upload_overhead_bytes_per_second);
 	ASSERT_EQUALS(static_cast<std::int64_t>(-1), out.temp_free_bytes);
 	ASSERT_EQUALS(static_cast<std::int64_t>(-1), out.incoming_free_bytes);
 }

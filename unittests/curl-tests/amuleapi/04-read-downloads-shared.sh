@@ -90,7 +90,7 @@ echo "amuleapi 04-read-downloads-shared smoke @ $HOST"
 # --- 0. Log in. ----------------------------------------------------
 TOKEN=$(curl -s -X POST -H "Content-Type: application/json" \
 	-d "{\"password\":\"$ADMIN_PASS\"}" \
-	"$HOST/api/v0/auth/login?type=bearer" | jq -r .token)
+	"$HOST/api/v0/auth/login?include_token=true" | jq -r .token)
 [ -n "$TOKEN" ] && [ "$TOKEN" != "null" ] \
 	|| _die "could not log in for phase 4b tests"
 
@@ -123,8 +123,8 @@ if [ "$COUNT" -gt 0 ]; then
 		'/downloads[0] does not expose internal ecid'
 	_assert_json_eq '.downloads[0].name | type' string \
 		'/downloads[0].name is string'
-	_assert_json_eq '.downloads[0].size | type' number \
-		'/downloads[0].size is numeric'
+	_assert_json_eq '.downloads[0].size_bytes | type' number \
+		'/downloads[0].size_bytes is numeric'
 	_assert_json_eq '.downloads[0].status | test("^(downloading|paused|stopped|completed|hashing|erroneous|completing|allocating|waiting|insufficient_disk|unknown)$")' \
 		true '/downloads[0].status is a known enum value'
 	_assert_json_eq '.downloads[0].priority | test("^(very_low|low|normal|high|release|auto)$")' \
@@ -135,12 +135,12 @@ if [ "$COUNT" -gt 0 ]; then
 		'/downloads[0].sources is object'
 	_assert_json_eq '.downloads[0].sources.total | type' number \
 		'/downloads[0].sources.total is numeric'
-	_assert_json_eq '.downloads[0].kad_comment_search_running | type' boolean \
-		'/downloads[0].kad_comment_search_running is boolean (issue #434)'
+	_assert_json_eq '.downloads[0].kad_comment_lookup_running | type' boolean \
+		'/downloads[0].kad_comment_lookup_running is boolean (issue #434)'
 	# Moved onto the list by issue #1054 — it used to be detail-only, which
 	# left a list-driven client with no way to see a hash running.
-	_assert_json_eq '.downloads[0].hashing_progress | type' number \
-		'/downloads[0].hashing_progress is numeric (#1054)'
+	_assert_json_eq '.downloads[0].hashed_part_count | type' number \
+		'/downloads[0].hashed_part_count is numeric (#1054)'
 
 	# --- 4. /downloads/{hash} bare-object detail. -----------------
 	HASH=$(printf '%s' "$CURL_BODY" | jq -r '.downloads[0].hash')
@@ -154,42 +154,45 @@ if [ "$COUNT" -gt 0 ]; then
 	_assert_json_eq '.progress.percent | type' number \
 		'/downloads/{hash} carries progress.percent'
 	# Part-A detail fields (issue #417) — detail-only, type-tolerant.
-	_assert_json_eq '.part_count | type' number \
-		'/downloads/{hash} carries part_count'
+	_assert_json_eq '.parts_total_count | type' number \
+		'/downloads/{hash} carries parts_total_count'
 	# null when stalled/paused: nothing to compute an ETA from. It was -1,
 	# which a client had to know meant "unknown".
-	_assert_json_eq '(.remaining_time == null or (.remaining_time | type) == "number")' true \
-		'/downloads/{hash} remaining_time is a number or null'
+	_assert_json_eq '(.remaining_seconds == null or (.remaining_seconds | type) == "number")' true \
+		'/downloads/{hash} remaining_seconds is a number or null'
 	# Same rule: null, not a 0 that reads as 1970, when no complete copy of
 	# the file has ever been seen across the current sources.
-	_assert_json_eq '(.last_seen_complete == null or (.last_seen_complete | type) == "number")' true \
-		'/downloads/{hash} last_seen_complete is a number or null'
-	_assert_json_eq '.last_seen_complete != 0' true \
-		'/downloads/{hash} last_seen_complete never uses 0 as "never"'
-	_assert_json_eq '.aich_hash | type' string \
-		'/downloads/{hash} carries aich_hash'
-	_assert_json_eq '.met_file | type' string \
-		'/downloads/{hash} carries met_file'
-	_assert_json_eq '.path | type' string \
-		'/downloads/{hash} carries path (#417)'
-	_assert_json_eq '.queued_count | type' number \
-		'/downloads/{hash} carries queued_count'
-	_assert_json_eq '.comment | type' string \
-		'/downloads/{hash} carries comment'
-	_assert_json_eq '.rating | type' number \
-		'/downloads/{hash} carries rating'
+	_assert_json_eq '(.last_seen_complete_at == null or (.last_seen_complete_at | type) == "number")' true \
+		'/downloads/{hash} last_seen_complete_at is a number or null'
+	_assert_json_eq '.last_seen_complete_at != 0' true \
+		'/downloads/{hash} last_seen_complete_at never uses 0 as "never"'
+	# R10: null until the hashset exists, never the "" sentinel it used to be.
+	_assert_json_eq '(.aich_hash == null or (.aich_hash | type) == "string")' true \
+		'/downloads/{hash} aich_hash is a string or null, never ""'
+	_assert_json_eq '.aich_hash != ""' true \
+		'/downloads/{hash} aich_hash never uses the empty-string sentinel'
+	_assert_json_eq '.part_file_name | type' string \
+		'/downloads/{hash} carries part_file_name'
+	_assert_json_eq '.directory | type' string \
+		'/downloads/{hash} carries directory (#417)'
+	_assert_json_eq '.upload_queue_count | type' number \
+		'/downloads/{hash} carries upload_queue_count'
+	_assert_json_eq '.my_comment | type' string \
+		'/downloads/{hash} carries my_comment (yours, not comments[].comment)'
+	_assert_json_eq '.my_rating | type' number \
+		'/downloads/{hash} carries my_rating (yours, not comments[].rating)'
 	_assert_json_eq '.a4af_auto | type' boolean \
 		'/downloads/{hash} carries a4af_auto'
 
 	# Per-source comments sub-resource (issue #419).
 	_curl -H "Authorization: Bearer $TOKEN" "$HOST/api/v0/downloads/$HASH/comments"
 	_assert_status 200 "GET /downloads/{hash}/comments → 200"
-	_assert_json_eq '.count | type' number \
-		'/downloads/{hash}/comments carries numeric count'
+	_assert_json_eq '.total | type' number \
+		'/downloads/{hash}/comments carries numeric total'
 	_assert_json_eq '.comments | type' array \
 		'/downloads/{hash}/comments.comments is an array'
-	_assert_json_eq '.kad_comment_search_running | type' boolean \
-		'/downloads/{hash}/comments carries kad_comment_search_running flag'
+	_assert_json_eq '.kad_comment_lookup_running | type' boolean \
+		'/downloads/{hash}/comments carries kad_comment_lookup_running flag'
 
 	# Trigger an on-demand Kad notes lookup (issue #434). Async on the daemon;
 	# 202 Accepted (or 400 amuled_rejected if Kad is not connected in the smoke
@@ -284,24 +287,104 @@ if [ "$COUNT" -gt 0 ]; then
 	DLROWS=$(printf '%s' "$CURL_BODY" | jq '.clients | length')
 	echo "  --- /downloads/{hash}/clients returned $DLROWS row(s) ---"
 	if [ "$DLROWS" -gt 0 ]; then
-		_assert_json_eq '[.clients[] | select(.role as $r | ($r == null) or ((["source","peer","both","none"] | index($r)) == null))] | length' \
+		_assert_json_eq '[.clients[] | select(.role as $r | ($r == null) or ((["downloading_from","uploading_to","both","none"] | index($r)) == null))] | length' \
 			0 "every row has a valid role"
 		_assert_json_eq '[.clients[] | select(.a4af == null)] | length' 0 "every row has an a4af flag"
 		_assert_json_eq '[.clients[] | select(has("parts"))] | length' 0 "no parts bitmap without include_parts"
+		# The two part indices ride include_parts with the bitmap: an
+		# index into a bitmap the caller did not ask for is unreadable,
+		# so neither key may appear here either.
+		_assert_json_eq '[.clients[] | select(has("next_requested_part_index") or has("downloading_part_index"))] | length' \
+			0 "no part indices without include_parts"
 	else
 		_skip "row-shape checks: no peer is connected to the download"
 	fi
 
-	# Opt-in bitmaps are exactly part_count long for a row that has one.
+	# Opt-in bitmaps are exactly parts_total_count long for a row that has one.
 	PARTCOUNT=$(curl -s -H "Authorization: Bearer $TOKEN" "$HOST/api/v0/downloads/$HASH" | jq -r '.progress.parts | length')
 	_curl -H "Authorization: Bearer $TOKEN" "$HOST/api/v0/downloads/$HASH/clients?include_parts=true"
 	_assert_status 200 "GET /downloads/{hash}/clients?include_parts=true → 200"
 	DLBITMAPS=$(printf '%s' "$CURL_BODY" | jq '[.clients[] | select(has("parts"))] | length')
 	if [ "$DLBITMAPS" -gt 0 ]; then
 		_assert_json_eq "[.clients[] | select(has(\"parts\")) | select((.parts | length) != $PARTCOUNT)] | length" \
-			0 "every parts bitmap ($DLBITMAPS of them) is exactly part_count entries"
+			0 "every parts bitmap ($DLBITMAPS of them) is exactly parts_total_count entries"
 	else
 		_skip "parts-length check: no row carries a bitmap"
+	fi
+
+	# R7: a sort value is spelled exactly like the response key it orders by,
+	# so a field rename can never orphan one. These three moved with the keys;
+	# the old spellings must now be rejected rather than silently accepted.
+	for _sk in size_bytes progress.percent speed_bytes_per_second hash name status; do
+		_curl -H "Authorization: Bearer $TOKEN" "$HOST/api/v0/downloads?sort=$_sk&limit=1"
+		_assert_status 200 "/downloads?sort=$_sk (R7: sort value == response key) → 200"
+	done
+	for _sk in size progress speed; do
+		_curl -H "Authorization: Bearer $TOKEN" "$HOST/api/v0/downloads?sort=$_sk&limit=1"
+		_assert_status 400 "/downloads?sort=$_sk (pre-rename spelling) → 400"
+	done
+	# The two part indices the desktop's source bar paints over the bitmap.
+	# Under include_parts both keys are ALWAYS present on every row, null
+	# rather than omitted when the index does not apply, so one query yields
+	# one row shape -- assert presence separately from type, or a missing key
+	# and a null one both read as `null` and the test proves nothing.
+	#
+	# Re-issued rather than reusing the include_parts body fetched above: the
+	# sort loops in between have each overwritten $CURL_BODY, and the last of
+	# them left a 400 error envelope there. `.clients` on that is null, `null
+	# | length` is 0, and the whole block below would have skipped itself on
+	# every run while reporting "no peer is connected".
+	_curl -H "Authorization: Bearer $TOKEN" "$HOST/api/v0/downloads/$HASH/clients?include_parts=true"
+	_assert_status 200 "GET /downloads/{hash}/clients?include_parts=true (part-index block) → 200"
+	DLIDXROWS=$(printf '%s' "$CURL_BODY" | jq '.clients | length')
+	echo "  --- part-index block sees $DLIDXROWS row(s) ---"
+	if [ "$DLIDXROWS" -gt 0 ]; then
+		for k in next_requested_part_index downloading_part_index; do
+			_assert_json_eq "[.clients[] | select(has(\"$k\") | not)] | length" 0 \
+				"every row carries $k under include_parts"
+			# Number or null, never a string and never a bool: null is
+			# how "the peer never reported it", the 0xffff "nothing
+			# pending" sentinel, and a non-source row are all spelled.
+			_assert_json_eq "[.clients[] | select((.$k | type) as \$t | \$t != \"number\" and \$t != \"null\")] | length" \
+				0 "$k is a number or null on every row"
+			# 0 is a real chunk index, so an unknown value must be a
+			# JSON null and not a 0 standing in for one; and a known
+			# value must address a chunk of THIS file.
+			_assert_json_eq "[.clients[] | select(.$k != null) | select(.$k < 0 or .$k >= $PARTCOUNT)] | length" \
+				0 "$k, when not null, is an index inside [0, part_count)"
+		done
+		# A row that is not a source for this file has no download bitmap,
+		# so its indices belong to some other file: both must be null.
+		_assert_json_eq '[.clients[] | select(.role == "uploading_to" or .role == "none") | select(.next_requested_part_index != null or .downloading_part_index != null)] | length' \
+			0 "non-source rows report both part indices as null"
+		# An index is only meaningful against the bitmap it indexes, and
+		# role alone does not guarantee one: a source that has sent no
+		# part status yet, or whose decoded bitmap cannot cover the file,
+		# ships no `parts` key at all. Such a row is a stripe coordinate
+		# with no bar to paint it on, so both indices must be null there
+		# too. Count the rows that actually exercised it, so a green run
+		# with no such row cannot be read as having proved the gate.
+		DLNOBITS=$(printf '%s' "$CURL_BODY" | jq '[.clients[] | select(has("parts") | not)] | length')
+		_assert_json_eq '[.clients[] | select(has("parts") | not) | select(.next_requested_part_index != null or .downloading_part_index != null)] | length' \
+			0 "a row without a parts bitmap reports both part indices as null ($DLNOBITS such row(s))"
+		# The state guard: the daemon reports downloading_part_index as a
+		# stale 0 for a source that is merely connected or queued, which
+		# would have a renderer paint "downloading now" on chunk 0 of
+		# every idle row. Anything but download_state "downloading" must
+		# come back null -- and null, not 0, is what distinguishes it
+		# from a peer genuinely feeding chunk 0.
+		DLIDLE=$(printf '%s' "$CURL_BODY" | jq '[.clients[] | select(.role == "downloading_from" or .role == "both") | select(.download_state != "downloading")] | length')
+		if [ "$DLIDLE" -gt 0 ]; then
+			_assert_json_eq '[.clients[] | select(.role == "downloading_from" or .role == "both") | select(.download_state != "downloading") | select(.downloading_part_index != null)] | length' \
+				0 "a source that is not downloading reports downloading_part_index null, not 0 ($DLIDLE such row(s))"
+		else
+			_skip "idle-source downloading_part_index check: every source row is actively downloading"
+		fi
+		# Report which path the run actually exercised, so a green run
+		# cannot be read as having seen a live peer feeding a chunk.
+		echo "  --- non-null part indices observed: next=$(printf '%s' "$CURL_BODY" | jq '[.clients[] | select(.next_requested_part_index != null)] | length') last=$(printf '%s' "$CURL_BODY" | jq '[.clients[] | select(.downloading_part_index != null)] | length') of $DLIDXROWS row(s) ---"
+	else
+		_skip "part-index checks: no peer is connected to the download"
 	fi
 
 	_curl -H "Authorization: Bearer $TOKEN" "$HOST/api/v0/downloads/$HASH/clients?include_parts=maybe"
@@ -320,7 +403,7 @@ if [ "$COUNT" -gt 0 ]; then
 	# just the detail object — the desktop renders them as table columns.
 	_curl -H "Authorization: Bearer $TOKEN" "$HOST/api/v0/clients?limit=1"
 	if [ "$(echo "$CURL_BODY" | jq -r '.clients | length')" != "0" ]; then
-		for k in source_origin available_parts mod_version view_shared_disabled; do
+		for k in source_origin parts_offered_count client_mod_name shared_files_browsable; do
 			_assert_json_eq ".clients[0] | has(\"$k\")" true "/clients row carries $k"
 		done
 	fi
@@ -332,7 +415,7 @@ if [ "$COUNT" -gt 0 ]; then
 
 	# Per-source swap (issue #983): `client_ecid` narrows swap_this to one
 	# source. Validation is asserted here rather than the swap itself — a
-	# regtest daemon has no A4AF source to move, and the conflict/not-found
+	# regtest daemon has no A4AF source to move, and the rejection/not-found
 	# paths are the ones that must never silently succeed.
 	_curl -X POST -H "Authorization: Bearer $TOKEN" \
 		-H "Content-Type: application/json" \
@@ -354,7 +437,7 @@ if [ "$COUNT" -gt 0 ]; then
 		-d '{"action":"swap_this","client_ecid":4294967290}' "$HOST/api/v0/downloads/$HASH/a4af"
 	_assert_status 404 "POST a4af naming an unknown client_ecid → 404"
 
-	# A live peer that is not an A4AF source of this file is a conflict, not a
+	# A live client that is not an A4AF source of this file is a rejection, not a
 	# no-op: pick any client from /clients and ensure it is absent from the
 	# A4AF list before asserting.
 	OTHER_ECID=$(curl -s -H "Authorization: Bearer $TOKEN" "$HOST/api/v0/clients?limit=1" \
@@ -369,6 +452,8 @@ if [ "$COUNT" -gt 0 ]; then
 				-d "{\"action\":\"swap_this\",\"client_ecid\":$OTHER_ECID}" \
 				"$HOST/api/v0/downloads/$HASH/a4af"
 			_assert_status 409 "POST a4af for a non-A4AF client → 409"
+			_assert_json_eq '.error.code' not_a4af_source \
+				'the 409 names not_a4af_source, not a bare conflict'
 		fi
 	fi
 
@@ -405,30 +490,31 @@ if [ "$SHCOUNT" -gt 0 ]; then
 		'/shared[0].hash is 32-char hex'
 	_assert_json_eq '.shared[0].ecid | type' null \
 		'/shared[0] does not expose internal ecid'
-	_assert_json_eq '.shared[0].xfer | type' object \
-		'/shared[0].xfer is object'
-	_assert_json_eq '.shared[0].xfer.total | type' number \
-		'/shared[0].xfer.total is numeric'
+	# xfer / requests / accepts were flattened (R11).
+	_assert_json_eq '.shared[0] | has("xfer")' false \
+		'/shared[0] no longer wraps counters in xfer'
+	_assert_json_eq '.shared[0].uploaded_bytes_total | type' number \
+		'/shared[0].uploaded_bytes_total is numeric'
 	_assert_json_eq '.shared[0].priority | type' string \
 		'/shared[0].priority is string'
 	_assert_json_eq '.shared[0].priority_auto | type' boolean \
 		'/shared[0].priority_auto is boolean'
 	# Live upload activity (issue #466).
-	_assert_json_eq '.shared[0].upload_speed_bps | type' number \
-		'/shared[0].upload_speed_bps is numeric (#466)'
-	_assert_json_eq '.shared[0].uploading | type' number \
-		'/shared[0].uploading is numeric (#466)'
+	_assert_json_eq '.shared[0].upload_speed_bytes_per_second | type' number \
+		'/shared[0].upload_speed_bytes_per_second is numeric (#466)'
+	_assert_json_eq '.shared[0].uploading_client_count | type' number \
+		'/shared[0].uploading_client_count is numeric (#466)'
 	# null when never uploaded, or on a known.met entry predating the field.
-	_assert_json_eq '(.shared[0].last_upload == null or (.shared[0].last_upload | type) == "number")' true \
-		'/shared[0].last_upload is a number or null (#466)'
-	_assert_json_eq '(.shared[0].shared_since == null or (.shared[0].shared_since | type) == "number")' true \
-		'/shared[0].shared_since is a number or null (#466)'
+	_assert_json_eq '(.shared[0].last_upload_at == null or (.shared[0].last_upload_at | type) == "number")' true \
+		'/shared[0].last_upload_at is a number or null (#466)'
+	_assert_json_eq '(.shared[0].shared_since_at == null or (.shared[0].shared_since_at | type) == "number")' true \
+		'/shared[0].shared_since_at is a number or null (#466)'
 	# Hashing progress on the shared row (issue #1054). Parts hashed so far
 	# by a Verify Local Data / AICH rebuild, 0 when idle. Only the type is
 	# asserted: a smoke run has no hash in flight, and racing one would make
 	# the check flaky rather than stronger.
-	_assert_json_eq '.shared[0].hashing_progress | type' number \
-		'/shared[0].hashing_progress is numeric (#1054)'
+	_assert_json_eq '.shared[0].hashed_part_count | type' number \
+		'/shared[0].hashed_part_count is numeric (#1054)'
 
 	# --- 6b. GET /shared/{hash} detail endpoint (issue #417 Part B). ---
 	SHASH=$(printf '%s' "$CURL_BODY" | jq -r '.shared[0].hash')
@@ -440,23 +526,23 @@ if [ "$SHCOUNT" -gt 0 ]; then
 		'/shared/{hash} has no snapshot_at envelope (bare object)'
 	_assert_json_eq '.file_type | type' string \
 		'/shared/{hash} carries file_type'
-	_assert_json_eq '.share_ratio | type' number \
-		'/shared/{hash} carries share_ratio'
-	_assert_json_eq '.path | type' string \
-		'/shared/{hash} carries path'
-	_assert_json_eq '.complete_sources_range | type' object \
-		'/shared/{hash} carries complete_sources_range'
+	_assert_json_eq '.upload_ratio | type' number \
+		'/shared/{hash} carries upload_ratio'
+	_assert_json_eq '.directory | type' string \
+		'/shared/{hash} carries directory'
+	_assert_json_eq '.sources | type' object \
+		'/shared/{hash} carries sources'
 	_assert_json_eq '.aich_hash | type' string \
 		'/shared/{hash} carries aich_hash'
-	_assert_json_eq '.part_count | type' number \
-		'/shared/{hash} carries part_count'
-	_assert_json_eq '.hashing_progress | type' number \
-		'/shared/{hash} carries hashing_progress (#1054)'
-	_assert_json_eq '.comment | type' string \
-		'/shared/{hash} carries comment'
-	_assert_json_eq '.rating | type' number \
-		'/shared/{hash} carries rating'
-	SHPARTCOUNT=$(printf '%s' "$CURL_BODY" | jq -r '.part_count')
+	_assert_json_eq '.parts_total_count | type' number \
+		'/shared/{hash} carries parts_total_count'
+	_assert_json_eq '.hashed_part_count | type' number \
+		'/shared/{hash} carries hashed_part_count (#1054)'
+	_assert_json_eq '.my_comment | type' string \
+		'/shared/{hash} carries my_comment'
+	_assert_json_eq '.my_rating | type' number \
+		'/shared/{hash} carries my_rating'
+	SHPARTCOUNT=$(printf '%s' "$CURL_BODY" | jq -r '.parts_total_count')
 
 	# --- 6c. GET /shared/{hash}/clients: the upload-side half of the
 	# per-file client rows (issue #984). Same handler and same row shape as
@@ -473,14 +559,55 @@ if [ "$SHCOUNT" -gt 0 ]; then
 	SHROWS=$(printf '%s' "$CURL_BODY" | jq '.clients | length')
 	echo "  --- /shared/{hash}/clients returned $SHROWS row(s) ---"
 	if [ "$SHROWS" -gt 0 ]; then
-		_assert_json_eq '[.clients[] | select(.role as $r | ($r == null) or ((["source","peer","both","none"] | index($r)) == null))] | length' \
+		_assert_json_eq '[.clients[] | select(.role as $r | ($r == null) or ((["downloading_from","uploading_to","both","none"] | index($r)) == null))] | length' \
 			0 "every shared-side row has a valid role"
 		_assert_json_eq '[.clients[] | select(.a4af == null)] | length' 0 \
 			"every shared-side row has an a4af flag"
 		_assert_json_eq '[.clients[] | select(has("parts"))] | length' 0 \
 			"no parts bitmap on the shared route without include_parts"
+		_assert_json_eq '[.clients[] | select(has("next_requested_part_index") or has("downloading_part_index"))] | length' \
+			0 "no part indices on the shared route without include_parts"
 	else
 		_skip "shared-side row-shape checks: no peer is downloading the shared file"
+	fi
+
+	# Same two keys on the shared route, which is the same handler. A shared
+	# file's rows are overwhelmingly role "uploading_to" -- someone pulling from us --
+	# and a peer's download indices describe whatever IT is downloading, not
+	# this file, so the interesting case here is that they come back null.
+	_curl -H "Authorization: Bearer $TOKEN" "$HOST/api/v0/shared/$SHASH/clients?include_parts=true"
+	_assert_status 200 "GET /shared/{hash}/clients?include_parts=true → 200"
+	SHIDXROWS=$(printf '%s' "$CURL_BODY" | jq '.clients | length')
+	if [ "$SHIDXROWS" -gt 0 ]; then
+		for k in next_requested_part_index downloading_part_index; do
+			_assert_json_eq "[.clients[] | select(has(\"$k\") | not)] | length" 0 \
+				"every shared-side row carries $k under include_parts"
+			_assert_json_eq "[.clients[] | select((.$k | type) as \$t | \$t != \"number\" and \$t != \"null\")] | length" \
+				0 "$k is a number or null on every shared-side row"
+			_assert_json_eq "[.clients[] | select(.$k != null) | select(.$k < 0 or .$k >= $SHPARTCOUNT)] | length" \
+				0 "$k, when not null, indexes a chunk of the shared file"
+		done
+		_assert_json_eq '[.clients[] | select(.role == "uploading_to" or .role == "none") | select(.next_requested_part_index != null or .downloading_part_index != null)] | length' \
+			0 "shared-side non-source rows report both part indices as null"
+		# An index is only meaningful against the bitmap it indexes, and
+		# role alone does not guarantee one: a source that has sent no
+		# part status yet, or whose decoded bitmap cannot cover the file,
+		# ships no `parts` key at all. Such a row is a stripe coordinate
+		# with no bar to paint it on, so both indices must be null there
+		# too. Count the rows that actually exercised it, so a green run
+		# with no such row cannot be read as having proved the gate.
+		SHNOBITS=$(printf '%s' "$CURL_BODY" | jq '[.clients[] | select(has("parts") | not)] | length')
+		_assert_json_eq '[.clients[] | select(has("parts") | not) | select(.next_requested_part_index != null or .downloading_part_index != null)] | length' \
+			0 "a shared-side row without a parts bitmap reports both part indices as null ($SHNOBITS such row(s))"
+		SHIDLE=$(printf '%s' "$CURL_BODY" | jq '[.clients[] | select(.role == "downloading_from" or .role == "both") | select(.download_state != "downloading")] | length')
+		if [ "$SHIDLE" -gt 0 ]; then
+			_assert_json_eq '[.clients[] | select(.role == "downloading_from" or .role == "both") | select(.download_state != "downloading") | select(.downloading_part_index != null)] | length' \
+				0 "a shared-side source that is not downloading reports downloading_part_index null ($SHIDLE such row(s))"
+		else
+			_skip "shared-side idle-source downloading_part_index check: no idle source row"
+		fi
+	else
+		_skip "shared-side part-index checks: no peer is downloading the shared file"
 	fi
 
 	_curl -H "Authorization: Bearer $TOKEN" "$HOST/api/v0/shared/$SHASH/clients?include_parts=true"
@@ -488,7 +615,7 @@ if [ "$SHCOUNT" -gt 0 ]; then
 	SHBITMAPS=$(printf '%s' "$CURL_BODY" | jq '[.clients[] | select(has("parts"))] | length')
 	if [ "$SHBITMAPS" -gt 0 ]; then
 		_assert_json_eq "[.clients[] | select(has(\"parts\")) | select((.parts | length) != $SHPARTCOUNT)] | length" \
-			0 "every shared-side parts bitmap ($SHBITMAPS of them) is exactly part_count entries"
+			0 "every shared-side parts bitmap ($SHBITMAPS of them) is exactly parts_total_count entries"
 	else
 		_skip "shared-side parts-length check: no row carries a bitmap"
 	fi

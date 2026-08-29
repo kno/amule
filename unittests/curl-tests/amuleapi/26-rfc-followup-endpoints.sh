@@ -3,16 +3,16 @@
 # amuleapi 26-rfc-followup-endpoints — endpoints added to align with the RFC PR #132
 # review:
 #
-#   * GET    /status                       — `kad.network: {users,files,nodes}` rollup
+#   * GET    /status                       — `kad.network: {user_count,file_count,node_count}` rollup
 #   * POST   /shared_reload                — rescan share roots
 #   * POST   /servers_update               — refresh server list from server.met URL
 #   * POST   /servers/by-address/<ip>:<port>/connect — address-keyed route
 #   * DELETE /servers/by-address/<ip>:<port>         — address-keyed route
 #   * DELETE /logs/amule                   — clear amule log + in-process cache
-#   * DELETE /logs/serverinfo              — clear MOTD log + invalidate lazy cache
+#   * DELETE /logs/server_info              — clear MOTD log + invalidate lazy cache
 #   * POST   /downloads {"links":[...]}    — array body, the only spelling
 #   * POST   /networks/disconnect          — `{"network":"ed2k"|"kad"|"both"}` selector
-#   * GET    /clients?filter=uploads|downloads|active
+#   * GET    /clients?activity=uploading|downloading|active
 #   * GET    /events?channels=<csv>        — subscribe to a subset of event types
 #
 # All log-mutating tests verify that a *fast* GET immediately after the
@@ -64,7 +64,7 @@ fi
 echo "amuleapi 26-rfc-followup-endpoints smoke @ $HOST"
 
 ADMIN_TOKEN=$(curl -s -X POST -H "Content-Type: application/json" \
-	-d "{\"password\":\"$ADMIN_PASS\"}" "$HOST/api/v0/auth/login?type=bearer" | jq -r .token)
+	-d "{\"password\":\"$ADMIN_PASS\"}" "$HOST/api/v0/auth/login?include_token=true" | jq -r .token)
 [ -n "$ADMIN_TOKEN" ] && [ "$ADMIN_TOKEN" != "null" ] || _die "admin login failed"
 H_AUTH=(-H "Authorization: Bearer $ADMIN_TOKEN")
 sleep 4
@@ -76,7 +76,7 @@ if echo "$STATUS" | jq -e '.kad.network | type == "object"' >/dev/null 2>&1; the
 else
 	_fail "/status kad.network" "missing: $(echo "$STATUS" | jq -c .kad)"
 fi
-for f in users files nodes; do
+for f in user_count file_count node_count; do
 	if echo "$STATUS" | jq -e ".kad.network.$f | type == \"number\"" >/dev/null 2>&1; then
 		_pass "/status .kad.network.$f is a number"
 	else
@@ -109,7 +109,7 @@ else
 fi
 RC=$(curl -s -o /tmp/p11_su.json -w "%{http_code}" -X POST "${H_AUTH[@]}" \
 	-H "Content-Type: application/json" \
-	-d '{"servers_url":"ftp://nope"}' "$HOST/api/v0/servers_update")
+	-d '{"url":"ftp://nope"}' "$HOST/api/v0/servers_update")
 if [ "$RC" = "400" ]; then
 	_pass "POST /servers_update non-http url → 400"
 else
@@ -117,7 +117,7 @@ else
 fi
 RC=$(curl -s -o /tmp/p11_su.json -w "%{http_code}" -X POST "${H_AUTH[@]}" \
 	-H "Content-Type: application/json" \
-	-d '{"servers_url":"http://upd.emule-security.org/server.met"}' \
+	-d '{"url":"http://upd.emule-security.org/server.met"}' \
 	"$HOST/api/v0/servers_update")
 if [ "$RC" = "202" ]; then
 	_pass "POST /servers_update valid url → 202"
@@ -199,7 +199,7 @@ fi
 # Fast GET immediately after — must show empty / post-reset state.
 GET_BODY=$(curl -s "${H_AUTH[@]}" "$HOST/api/v0/logs/amule")
 LINES=$(echo "$GET_BODY" | jq -r '.lines | length' 2>/dev/null)
-TOTAL=$(echo "$GET_BODY" | jq -r '.total_cached' 2>/dev/null)
+TOTAL=$(echo "$GET_BODY" | jq -r '.total_lines' 2>/dev/null)
 if [ "$LINES" = "0" ] && [ "$TOTAL" = "0" ]; then
 	_pass "GET /logs/amule immediately after DELETE returns empty (no stale cache)"
 else
@@ -207,21 +207,21 @@ else
 		"lines=$LINES total=$TOTAL — expected 0/0"
 fi
 
-# --- 6. DELETE /logs/serverinfo + freshness (lazy cache!). -------
+# --- 6. DELETE /logs/server_info + freshness (lazy cache!). -------
 RC=$(curl -s -o /dev/null -w "%{http_code}" -X DELETE "${H_AUTH[@]}" \
-	"$HOST/api/v0/logs/serverinfo")
+	"$HOST/api/v0/logs/server_info")
 if [ "$RC" = "204" ]; then
-	_pass "DELETE /logs/serverinfo → 204"
+	_pass "DELETE /logs/server_info → 204"
 else
-	_fail "logs/serverinfo DELETE" "expected 204, got $RC"
+	_fail "logs/server_info DELETE" "expected 204, got $RC"
 fi
 # Fast GET immediately after — must show empty / post-reset.
-GET_BODY=$(curl -s "${H_AUTH[@]}" "$HOST/api/v0/logs/serverinfo")
+GET_BODY=$(curl -s "${H_AUTH[@]}" "$HOST/api/v0/logs/server_info")
 BYTES=$(echo "$GET_BODY" | jq -r '.total_bytes' 2>/dev/null)
 if [ "$BYTES" = "0" ]; then
-	_pass "GET /logs/serverinfo immediately after DELETE returns empty (lazy cache invalidated)"
+	_pass "GET /logs/server_info immediately after DELETE returns empty (lazy cache invalidated)"
 else
-	_fail "logs/serverinfo post-DELETE freshness" \
+	_fail "logs/server_info post-DELETE freshness" \
 		"total_bytes=$BYTES — expected 0"
 fi
 
@@ -276,7 +276,7 @@ for BODY in \
 	fi
 done
 if jq -e '.error.message | test("`links`")' /tmp/p11_dl_alias.json >/dev/null 2>&1; then
-	_pass "the ed2k_link 400 names `links` as the replacement"
+	_pass 'the ed2k_link 400 names `links` as the replacement'
 else
 	_fail "ed2k_link 400 message" "$(cat /tmp/p11_dl_alias.json)"
 fi
@@ -285,30 +285,30 @@ fi
 # Default (no body) = both
 RC=$(curl -s -o /tmp/p11_nd.json -w "%{http_code}" -X POST "${H_AUTH[@]}" \
 	"$HOST/api/v0/networks/disconnect")
-if [ "$RC" = "200" ]; then
-	_pass "POST /networks/disconnect (no body) → 200 default=both"
+if [ "$RC" = "202" ]; then
+	_pass "POST /networks/disconnect (no body) → 202 default=both"
 else
-	_fail "networks disconnect no-body" "expected 200, got $RC"
+	_fail "networks disconnect no-body" "expected 202, got $RC"
 fi
 sleep 2
 # selector=ed2k
 RC=$(curl -s -o /dev/null -w "%{http_code}" -X POST "${H_AUTH[@]}" \
 	-H "Content-Type: application/json" \
 	-d '{"network":"ed2k"}' "$HOST/api/v0/networks/disconnect")
-if [ "$RC" = "200" ]; then
-	_pass "POST /networks/disconnect {\"network\":\"ed2k\"} → 200"
+if [ "$RC" = "202" ]; then
+	_pass "POST /networks/disconnect {\"network\":\"ed2k\"} → 202"
 else
-	_fail "networks disconnect ed2k" "expected 200, got $RC"
+	_fail "networks disconnect ed2k" "expected 202, got $RC"
 fi
 sleep 1
 # selector=kad
 RC=$(curl -s -o /dev/null -w "%{http_code}" -X POST "${H_AUTH[@]}" \
 	-H "Content-Type: application/json" \
 	-d '{"network":"kad"}' "$HOST/api/v0/networks/disconnect")
-if [ "$RC" = "200" ]; then
-	_pass "POST /networks/disconnect {\"network\":\"kad\"} → 200"
+if [ "$RC" = "202" ]; then
+	_pass "POST /networks/disconnect {\"network\":\"kad\"} → 202"
 else
-	_fail "networks disconnect kad" "expected 200, got $RC"
+	_fail "networks disconnect kad" "expected 202, got $RC"
 fi
 # Invalid selector
 RC=$(curl -s -o /dev/null -w "%{http_code}" -X POST "${H_AUTH[@]}" \
@@ -324,54 +324,54 @@ fi
 # Get baseline first
 TOTAL_CLIENTS=$(curl -s "${H_AUTH[@]}" "$HOST/api/v0/clients" \
 	| jq '.clients | length')
-UP_CLIENTS=$(curl -s "${H_AUTH[@]}" "$HOST/api/v0/clients?filter=uploads" \
+UP_CLIENTS=$(curl -s "${H_AUTH[@]}" "$HOST/api/v0/clients?activity=uploading" \
 	| jq '.clients | length')
-DOWN_CLIENTS=$(curl -s "${H_AUTH[@]}" "$HOST/api/v0/clients?filter=downloads" \
+DOWN_CLIENTS=$(curl -s "${H_AUTH[@]}" "$HOST/api/v0/clients?activity=downloading" \
 	| jq '.clients | length')
-ACTIVE_CLIENTS=$(curl -s "${H_AUTH[@]}" "$HOST/api/v0/clients?filter=active" \
+ACTIVE_CLIENTS=$(curl -s "${H_AUTH[@]}" "$HOST/api/v0/clients?activity=active" \
 	| jq '.clients | length')
 if [ "$UP_CLIENTS" -le "$TOTAL_CLIENTS" ] 2>/dev/null \
    && [ "$DOWN_CLIENTS" -le "$TOTAL_CLIENTS" ] 2>/dev/null \
    && [ "$ACTIVE_CLIENTS" -le "$TOTAL_CLIENTS" ] 2>/dev/null; then
-	_pass "/clients filters: total=$TOTAL_CLIENTS up=$UP_CLIENTS down=$DOWN_CLIENTS active=$ACTIVE_CLIENTS (each ≤ total)"
+	_pass "/clients activity: total=$TOTAL_CLIENTS up=$UP_CLIENTS down=$DOWN_CLIENTS active=$ACTIVE_CLIENTS (each ≤ total)"
 else
-	_fail "clients filter sizing" \
+	_fail "clients activity sizing" \
 		"total=$TOTAL_CLIENTS up=$UP_CLIENTS down=$DOWN_CLIENTS active=$ACTIVE_CLIENTS"
 fi
-# `active` = |uploads ∪ downloads|, so it sits in
+# `active` = |uploading ∪ downloading|, so it sits in
 # [max(up, down), up+down]. The lower bound holds because every
-# uploads-or-downloads-only peer is in active; the upper bound holds
-# because a peer simultaneously in both states (upload_state=uploading
+# uploading-or-downloading-only client is in active; the upper bound holds
+# because a client simultaneously in both states (upload_state=uploading
 # AND download_state=downloading) gets counted once in active but
 # twice in (up + down). Exact equality is intentionally not asserted
-# because the intersection count is unobservable from filter results
+# because the intersection count is unobservable from activity results
 # alone.
 EXP_UPPER=$((UP_CLIENTS + DOWN_CLIENTS))
 if [ "$ACTIVE_CLIENTS" -ge "$UP_CLIENTS" ] 2>/dev/null \
    && [ "$ACTIVE_CLIENTS" -ge "$DOWN_CLIENTS" ] 2>/dev/null \
    && [ "$ACTIVE_CLIENTS" -le "$EXP_UPPER" ] 2>/dev/null; then
-	_pass "/clients?filter=active sits in [max(up,down), up+down]"
+	_pass "/clients?activity=active sits in [max(up,down), up+down]"
 else
 	_fail "clients active span" \
 		"active=$ACTIVE_CLIENTS up=$UP_CLIENTS down=$DOWN_CLIENTS (expected max..sum)"
 fi
-# Verify every entry in /clients?filter=uploads truly has upload_state=uploading
-BAD=$(curl -s "${H_AUTH[@]}" "$HOST/api/v0/clients?filter=uploads" \
+# Verify every entry in /clients?activity=uploading truly has upload_state=uploading
+BAD=$(curl -s "${H_AUTH[@]}" "$HOST/api/v0/clients?activity=uploading" \
 	| jq -r '.clients[] | select(.upload_state != "uploading") | .ecid' \
 	| head -1)
 if [ -z "$BAD" ]; then
-	_pass "/clients?filter=uploads only returns upload_state=uploading peers"
+	_pass "/clients?activity=uploading only returns upload_state=uploading clients"
 else
-	_fail "clients uploads filter content" \
+	_fail "clients activity=uploading content" \
 		"client_ecid $BAD has wrong upload_state"
 fi
 # Bogus filter → 400
 RC=$(curl -s -o /dev/null -w "%{http_code}" "${H_AUTH[@]}" \
-	"$HOST/api/v0/clients?filter=alphabetical")
+	"$HOST/api/v0/clients?activity=alphabetical")
 if [ "$RC" = "400" ]; then
-	_pass "/clients?filter=<bogus> → 400"
+	_pass "/clients?activity=<bogus> → 400"
 else
-	_fail "clients bogus filter" "expected 400, got $RC"
+	_fail "clients bogus activity" "expected 400, got $RC"
 fi
 
 # --- 9a-bis. Base transfer-filename fields on the LIST object -----
@@ -409,12 +409,12 @@ if [ -n "$FIRST_ECID" ]; then
 		(.ecid == $e)
 		and has("user_hash")
 		and has("upload_file_name") and has("download_file_name")
-		and has("user_id_hybrid") and has("high_id")
+		and has("ed2k_user_id") and has("high_id")
 		and has("server_ip") and has("server_port") and has("server_name")
 		and has("kad_port") and has("source_origin")
-		and has("available_parts") and has("mod_version")
-		and has("view_shared_disabled")
-		and has("is_friend") and has("dl_up_modifier")')
+		and has("parts_offered_count") and has("client_mod_name")
+		and has("shared_files_browsable")
+		and has("friend") and has("credit_ratio")')
 	if [ "$OK" = "true" ]; then
 		_pass "/clients/{ecid} returns detail superset (ecid=$FIRST_ECID)"
 	else

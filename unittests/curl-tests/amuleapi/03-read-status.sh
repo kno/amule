@@ -3,7 +3,7 @@
 # amuleapi 03-read-status — read endpoints, /status only. Validates the
 # refresher → state cache → handler chain end-to-end against a live
 # amuled. The remaining 12 endpoints (downloads, uploads, shared,
-# servers, kad, categories, logs/amule, logs/serverinfo, preferences,
+# servers, kad, categories, logs/amule, logs/server_info, preferences,
 # stats/tree, stats/graphs, search/results) land in subsequent
 # sub-phases (4b/4c/4d); their phase scripts share this directory.
 #
@@ -96,7 +96,7 @@ _assert_json_eq '.error.code' unauthorized \
 # --- 2. Log in as admin and capture the bearer. --------------------
 TOKEN=$(curl -s -X POST -H "Content-Type: application/json" \
 	-d "{\"password\":\"$ADMIN_PASS\"}" \
-	"$HOST/api/v0/auth/login?type=bearer" | jq -r .token)
+	"$HOST/api/v0/auth/login?include_token=true" | jq -r .token)
 [ -n "$TOKEN" ] && [ "$TOKEN" != "null" ] \
 	|| _die "could not log in for /status tests"
 
@@ -149,20 +149,35 @@ _assert_json_eq '.kad.state | test("^(connected|connecting|disabled)$")' \
 	true 'kad.state is a known enum value'
 # Named for the transport: this is the TCP half of the pair GET /kad reports,
 # not an overall verdict refined by firewalled_udp.
-_assert_json_eq '.kad.firewalled_tcp | type' boolean \
-	'kad.firewalled_tcp is boolean'
+# Gated on Kad being connected: the underlying connstate bit outlives a
+# disconnect, so this reported a reachability verdict for a network the daemon
+# was not on. Same rule as /kad's own copy of the field.
+_assert_json_eq '(.kad.state == "connected") or (.kad.firewalled_tcp == null)' true \
+	'kad.firewalled_tcp is null while Kad is not connected'
+_assert_json_eq '(.kad.state != "connected") or ((.kad.firewalled_tcp | type) == "boolean")' true \
+	'kad.firewalled_tcp is boolean while Kad is connected'
+# The network rollups, both sides. ed2k's summed the whole known SERVER LIST
+# rather than the attached server and nothing zeroed them, so a disconnected
+# daemon repeated its connected figures verbatim and indefinitely.
+for P in "ed2k user_count" "ed2k file_count" "kad user_count" "kad file_count" "kad node_count"; do
+	set -- $P
+	_assert_json_eq "(.$1.state == \"connected\") or (.$1.network.$2 == null)" true \
+		"$1.network.$2 is null while $1 is not connected"
+	_assert_json_eq "(.$1.state != \"connected\") or ((.$1.network.$2 | type) == \"number\")" true \
+		"$1.network.$2 is numeric while $1 is connected"
+done
 _assert_json_eq '.kad | has("firewalled")' false \
 	'kad.firewalled is gone, replaced by kad.firewalled_tcp'
 
 # speeds + queue subtrees.
-_assert_json_eq '.speeds.download_bps | type' number \
-	'speeds.download_bps is numeric'
-_assert_json_eq '.speeds.upload_bps | type' number \
-	'speeds.upload_bps is numeric'
-_assert_json_eq '.speeds.download_overhead_bps | type' number \
-	'speeds.download_overhead_bps is numeric'
-_assert_json_eq '.speeds.upload_overhead_bps | type' number \
-	'speeds.upload_overhead_bps is numeric'
+_assert_json_eq '.speeds.download_bytes_per_second | type' number \
+	'speeds.download_bytes_per_second is numeric'
+_assert_json_eq '.speeds.upload_bytes_per_second | type' number \
+	'speeds.upload_bytes_per_second is numeric'
+_assert_json_eq '.speeds.download_overhead_bytes_per_second | type' number \
+	'speeds.download_overhead_bytes_per_second is numeric'
+_assert_json_eq '.speeds.upload_overhead_bytes_per_second | type' number \
+	'speeds.upload_overhead_bytes_per_second is numeric'
 _assert_json_eq '.queue.upload_clients_waiting | type' number \
 	'queue.upload_clients_waiting is numeric'
 _assert_json_eq '.queue.download_sources_total | type' number \
@@ -186,7 +201,7 @@ _assert_json_eq '[paths | join(".")] | map(select(test("low_id|upload_queue_leng
 # --- 4. /status with guest bearer also works (any-role read gate). --
 GUEST_TOKEN=$(curl -s -X POST -H "Content-Type: application/json" \
 	-d "{\"password\":\"$GUEST_PASS\"}" \
-	"$HOST/api/v0/auth/login?type=bearer" | jq -r .token)
+	"$HOST/api/v0/auth/login?include_token=true" | jq -r .token)
 if [ -n "$GUEST_TOKEN" ] && [ "$GUEST_TOKEN" != "null" ]; then
 	_curl -H "Authorization: Bearer $GUEST_TOKEN" "$HOST/api/v0/status"
 	_assert_status 200 "GET /api/v0/status (guest bearer) → 200"

@@ -100,10 +100,10 @@ function Shell({ role, onLogout }) {
 }
 
 // Persistent alerts from the one-shot GET /version fetch, both linking to About:
-//   - version mismatch: amuleapi's build (amule_version) differs from the
+//   - version mismatch: amuleapi's build (amuleapi_version) differs from the
 //     connected amuled (daemon_version) — a config mismatch a toast would miss.
 //   - update available: the daemon's version check found a newer release
-//     (update.check_enabled && update.update_available).
+//     (update.check_enabled && update.available).
 // Lives in Shell so a dismiss sticks for the session; each row dismisses on its
 // own. daemon_version is empty when EC isn't connected; skip mismatch then.
 function VersionBanner() {
@@ -117,10 +117,10 @@ function VersionBanner() {
     api.get("version")
       .then((v) => {
         if (!alive) return;
-        if (v.daemon_version && v.amule_version !== v.daemon_version) {
-          setMismatch({ ui: v.amule_version, daemon: v.daemon_version });
+        if (v.daemon_version && v.amuleapi_version !== v.daemon_version) {
+          setMismatch({ ui: v.amuleapi_version, daemon: v.daemon_version });
         }
-        if (v.update && v.update.check_enabled && v.update.update_available === true) {
+        if (v.update && v.update.check_enabled && v.update.available === true) {
           setUpdate({ version: v.update.latest_version });
         }
       })
@@ -285,8 +285,8 @@ function StatusBar() {
 
   const kNet = (status && status.kad && status.kad.network) || {};
   const eNet = (status && status.ed2k && status.ed2k.network) || {};
-  const hasNet = kNet.users != null || kNet.files != null
-              || eNet.users != null || eNet.files != null;
+  const hasNet = kNet.user_count != null || kNet.file_count != null
+              || eNet.user_count != null || eNet.file_count != null;
 
   const groups = [
     hasNet ? html`<${NetworkInfo} status=${status} />` : null,
@@ -344,18 +344,18 @@ function ConnectionStatus({ status }) {
 function NetworkInfo({ status }) {
   const e = (status && status.ed2k && status.ed2k.network) || null;
   const k = (status && status.kad && status.kad.network) || null;
-  const eHas = e && (e.users != null || e.files != null);
-  const kHas = k && (k.users != null || k.files != null);
+  const eHas = e && (e.user_count != null || e.file_count != null);
+  const kHas = k && (k.user_count != null || k.file_count != null);
   if (!eHas && !kHas) return null;
 
   const both = eHas && kHas;
   const net = eHas ? e : k;
   const usersVal = both
-    ? html`<b>E:</b> ${formatInt(e.users)} <b>K:</b> ${formatInt(k.users)}`
-    : html`${formatInt(net.users)}`;
+    ? html`<b>E:</b> ${formatInt(e.user_count)} <b>K:</b> ${formatInt(k.user_count)}`
+    : html`${formatInt(net.user_count)}`;
   const filesVal = both
-    ? html`<b>E:</b> ${formatInt(e.files)} <b>K:</b> ${formatInt(k.files)}`
-    : html`${formatInt(net.files)}`;
+    ? html`<b>E:</b> ${formatInt(e.file_count)} <b>K:</b> ${formatInt(k.file_count)}`
+    : html`${formatInt(net.file_count)}`;
 
   return html`
     <span class="status-item status-extra">
@@ -369,8 +369,8 @@ function Speeds({ status }) {
   const sp = (status && status.speeds) || {};
   return html`
     <span class="status-item speeds">
-      <span class="speed dl"><${Icon} name="down" /> ${formatSpeed(sp.download_bps)}</span>
-      <span class="speed ul"><${Icon} name="up" /> ${formatSpeed(sp.upload_bps)}</span>
+      <span class="speed dl"><${Icon} name="down" /> ${formatSpeed(sp.download_bytes_per_second)}</span>
+      <span class="speed ul"><${Icon} name="up" /> ${formatSpeed(sp.upload_bytes_per_second)}</span>
     </span>`;
 }
 

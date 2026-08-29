@@ -269,14 +269,14 @@ TEST(EventDiff, StatusEventCarriesIdentityFields)
 	s.ed2k_high_id = true;
 	s.ed2k_user_id = 1234567890u;
 	s.ed2k_public_ip = "210.2.150.73";
-	s.download_overhead_bps = 8700;
+	s.download_overhead_bytes_per_second = 8700;
 
 	const std::string payload = EmitStatusAndGetPayload(s);
 
 	ASSERT_TRUE(payload.find("\"high_id\":true") != std::string::npos);
 	ASSERT_TRUE(payload.find("\"user_id\":1234567890") != std::string::npos);
 	ASSERT_TRUE(payload.find("\"public_ip\":\"210.2.150.73\"") != std::string::npos);
-	ASSERT_TRUE(payload.find("\"download_overhead_bps\":8700") != std::string::npos);
+	ASSERT_TRUE(payload.find("\"download_overhead_bytes_per_second\":8700") != std::string::npos);
 	// The retired spellings must not linger anywhere in the payload. A bare
 	// "id" would also match inside "user_id", so the quoted key is the test.
 	ASSERT_TRUE(payload.find("low_id") == std::string::npos);
@@ -293,6 +293,10 @@ TEST(EventDiff, StatusEventFiresWhenOnlyKadFirewalledTcpMoved)
 {
 	StatusSnapshot s;
 	s.kad_firewalled_tcp = true;
+	// The verdict only means anything while Kad is connected, so the payload
+	// prints it as a bool only when it was actually measured. Without this the
+	// field is `null` and the assertion below is about the wrong thing.
+	s.has_kad_firewalled_tcp = true;
 
 	const std::string payload = EmitStatusAndGetPayload(s);
 
@@ -302,18 +306,93 @@ TEST(EventDiff, StatusEventFiresWhenOnlyKadFirewalledTcpMoved)
 	ASSERT_TRUE(payload.find("\"firewalled\":") == std::string::npos);
 }
 
+// The disconnect edge is the one this whole gate exists for, and it is the one
+// a value-only comparator misses: the bool underneath keeps its last reading,
+// so only the has_ flag moves. If Equal(StatusSnapshot) ignores that flag the
+// event never fires and a subscriber keeps rendering a firewall verdict for a
+// network the daemon has left.
+TEST(EventDiff, StatusEventFiresWhenTheKadFirewallVerdictBecomesUnknown)
+{
+	CState state;
+	CEventBus bus;
+	LastSeenState prev;
+	EmitDiffsAndUpdate(bus, prev, state); // baseline tick
+
+	StatusSnapshot measured;
+	measured.kad_firewalled_tcp = true;
+	measured.has_kad_firewalled_tcp = true;
+	state.WriteStatus(measured);
+	EmitDiffsAndUpdate(bus, prev, state);
+	DrainAll(bus);
+
+	// Kad drops. The bool is deliberately left true -- that is exactly the
+	// stale reading the gate has to suppress, and comparing values alone would
+	// see no change at all here.
+	StatusSnapshot dropped;
+	dropped.kad_firewalled_tcp = true;
+	dropped.has_kad_firewalled_tcp = false;
+	state.WriteStatus(dropped);
+	EmitDiffsAndUpdate(bus, prev, state);
+
+	std::string payload;
+	for (const auto &ev : DrainAll(bus)) {
+		if (ev.name == "status_changed")
+			payload = ev.data;
+	}
+
+	ASSERT_TRUE(!payload.empty());
+	ASSERT_TRUE(payload.find("\"firewalled_tcp\":null") != std::string::npos);
+}
+
+// Same edge, the kad half. status_changed fires on
+// !Equal(status) || !Equal(kad), and kad.network.* is gated by the SECOND
+// comparator -- a fix applied only to Equal(StatusSnapshot) leaves this silent.
+TEST(EventDiff, StatusEventFiresWhenTheKadNetworkFiguresBecomeUnknown)
+{
+	CState state;
+	CEventBus bus;
+	LastSeenState prev;
+	EmitDiffsAndUpdate(bus, prev, state); // baseline tick
+
+	KadSnapshot measured;
+	measured.users = 45793;
+	measured.files = 4945644;
+	measured.nodes = 499;
+	measured.has_network = true;
+	state.WriteKad(measured);
+	EmitDiffsAndUpdate(bus, prev, state);
+	DrainAll(bus);
+
+	// Kad drops; the counts underneath are untouched, as the daemon leaves
+	// them. Only has_network moves.
+	KadSnapshot dropped = measured;
+	dropped.has_network = false;
+	state.WriteKad(dropped);
+	EmitDiffsAndUpdate(bus, prev, state);
+
+	std::string payload;
+	for (const auto &ev : DrainAll(bus)) {
+		if (ev.name == "status_changed")
+			payload = ev.data;
+	}
+
+	ASSERT_TRUE(!payload.empty());
+	ASSERT_TRUE(payload.find("\"node_count\":null") != std::string::npos);
+	ASSERT_TRUE(payload.find("\"node_count\":499") == std::string::npos);
+}
+
 // A tick where only the overhead moved still has to fire: the field is in the
 // REST body, so if the SSE twin stays silent the two diverge until something
 // else happens to move.
 TEST(EventDiff, StatusEventFiresWhenOnlyOverheadMoved)
 {
 	StatusSnapshot s;
-	s.download_overhead_bps = 8700;
+	s.download_overhead_bytes_per_second = 8700;
 
 	const std::string payload = EmitStatusAndGetPayload(s);
 
 	ASSERT_TRUE(!payload.empty());
-	ASSERT_TRUE(payload.find("\"download_overhead_bps\":8700") != std::string::npos);
+	ASSERT_TRUE(payload.find("\"download_overhead_bytes_per_second\":8700") != std::string::npos);
 }
 
 // EVENTS.md promises this payload is "identical to the REST /status envelope",
@@ -330,8 +409,8 @@ TEST(EventDiff, StatusEventCarriesBothConnectedSince)
 
 	const std::string payload = EmitStatusAndGetPayload(s);
 
-	ASSERT_TRUE(payload.find("\"connected_since\":1751000000") != std::string::npos);
-	ASSERT_TRUE(payload.find("\"connected_since\":1751000042") != std::string::npos);
+	ASSERT_TRUE(payload.find("\"connected_since_at\":1751000000") != std::string::npos);
+	ASSERT_TRUE(payload.find("\"connected_since_at\":1751000042") != std::string::npos);
 }
 
 // A reconnect can leave every other field identical -- same server, same id,
@@ -345,7 +424,7 @@ TEST(EventDiff, StatusEventFiresWhenOnlyConnectedSinceMoved)
 	const std::string payload = EmitStatusAndGetPayload(s);
 
 	ASSERT_TRUE(!payload.empty());
-	ASSERT_TRUE(payload.find("\"connected_since\":1751000000") != std::string::npos);
+	ASSERT_TRUE(payload.find("\"connected_since_at\":1751000000") != std::string::npos);
 }
 
 TEST(EventDiff, ClientAddedCarriesUploadFileName)
@@ -525,6 +604,136 @@ TEST(EventDiff, ServerFlagsJsonShape)
 	ASSERT_TRUE(webapi::ServerUdpFlagsJson(0x8000u).find("\"bitmask\":32768") != std::string::npos);
 }
 
+// --- search_result_updated: the fields that change after the search ends ---
+//
+// The window this closes: a finished search stops emitting search_progress,
+// so a hit downloaded from it, or a Kad notes lookup that lands afterwards,
+// used to be invisible until someone re-read the endpoint.
+namespace
+{
+// Seed one result and baseline it, so each case below starts from "the
+// subscriber already holds this row".
+void SeedOneResult(CState &state, CEventBus &bus, LastSeenState &prev)
+{
+	state.MarkSearchStarted(42, "global", "ubuntu");
+	EmitDiffsAndUpdate(bus, prev, state); // cold-start baseline
+	state.MutateSearch(42, [](std::map<std::uint32_t, SearchResult> &cache) {
+		SearchResult r;
+		r.ecid = 7;
+		r.hash = "8b54a3c28b54a3c28b54a3c28b54a3c2";
+		r.name = "ubuntu.iso";
+		r.size = 4096;
+		r.status = "new";
+		cache.emplace(r.ecid, r);
+	});
+	EmitDiffsAndUpdate(bus, prev, state); // the _added
+}
+
+std::size_t CountEvent(CEventBus &bus, const char *name)
+{
+	std::size_t n = 0;
+	for (const auto &e : DrainAll(bus))
+		if (e.name == name)
+			++n;
+	return n;
+}
+} // namespace
+
+TEST(EventDiff, SearchResultUpdatedFiresWhenADownloadStateChanges)
+{
+	CState state;
+	CEventBus bus;
+	LastSeenState prev;
+	SeedOneResult(state, bus, prev);
+	ASSERT_EQUALS(static_cast<size_t>(1), CountEvent(bus, "search_result_added"));
+	ASSERT_EQUALS(static_cast<size_t>(0), CountEvent(bus, "search_result_updated"));
+
+	// You start downloading the hit. On a finished search nothing else would
+	// ever tell a subscriber this.
+	state.MutateSearch(42, [](std::map<std::uint32_t, SearchResult> &cache) {
+		cache[7].status = "downloaded";
+		cache[7].already_downloaded = true;
+	});
+	EmitDiffsAndUpdate(bus, prev, state);
+
+	ASSERT_EQUALS(static_cast<size_t>(1), CountEvent(bus, "search_result_updated"));
+	// Still exactly one _added: the row was not re-announced as new.
+	ASSERT_EQUALS(static_cast<size_t>(1), CountEvent(bus, "search_result_added"));
+
+	std::string payload;
+	for (const auto &e : DrainAll(bus))
+		if (e.name == "search_result_updated")
+			payload = e.data;
+	// Same shape as _added, search_id first, carrying the new values.
+	ASSERT_TRUE(payload.compare(0, 15, "{\"search_id\":42") == 0);
+	ASSERT_TRUE(payload.find("\"status\":\"downloaded\"") != std::string::npos);
+	ASSERT_TRUE(payload.find("\"already_downloaded\":true") != std::string::npos);
+}
+
+TEST(EventDiff, SearchResultUpdatedFiresWhenKadNotesLand)
+{
+	CState state;
+	CEventBus bus;
+	LastSeenState prev;
+	SeedOneResult(state, bus, prev);
+
+	// The lookup starts...
+	state.MutateSearch(42,
+		[](std::map<std::uint32_t, SearchResult> &cache) { cache[7].kad_comment_searching = true; });
+	EmitDiffsAndUpdate(bus, prev, state);
+	ASSERT_EQUALS(static_cast<size_t>(1), CountEvent(bus, "search_result_updated"));
+
+	// ...and lands, bringing a note and the rating it aggregates into.
+	state.MutateSearch(42, [](std::map<std::uint32_t, SearchResult> &cache) {
+		cache[7].kad_comment_searching = false;
+		cache[7].rating = 4;
+		SearchResult::Comment c;
+		c.username = "alice";
+		c.filename = "ubuntu.iso";
+		c.rating = 4;
+		c.comment = "good";
+		cache[7].comments.push_back(c);
+	});
+	EmitDiffsAndUpdate(bus, prev, state);
+	ASSERT_EQUALS(static_cast<size_t>(2), CountEvent(bus, "search_result_updated"));
+}
+
+// The reason this is a restricted comparator rather than a full struct
+// compare: source counts move on essentially every tick of a running search,
+// and search_progress is already the re-read cue for them. Pushing them per
+// result would make this the loudest channel on the bus.
+TEST(EventDiff, SearchResultUpdatedIgnoresSourceCountChurn)
+{
+	CState state;
+	CEventBus bus;
+	LastSeenState prev;
+	SeedOneResult(state, bus, prev);
+
+	state.MutateSearch(42, [](std::map<std::uint32_t, SearchResult> &cache) {
+		cache[7].source_count = 99;
+		cache[7].complete_source_count = 42;
+	});
+	EmitDiffsAndUpdate(bus, prev, state);
+
+	ASSERT_EQUALS(static_cast<size_t>(0), CountEvent(bus, "search_result_updated"));
+}
+
+// A quiet tick must not emit: the comparator has to be a real comparison, not
+// "we saw this row again".
+TEST(EventDiff, SearchResultUpdatedStaysSilentOnAnUnchangedResult)
+{
+	CState state;
+	CEventBus bus;
+	LastSeenState prev;
+	SeedOneResult(state, bus, prev);
+
+	EmitDiffsAndUpdate(bus, prev, state);
+	EmitDiffsAndUpdate(bus, prev, state);
+
+	ASSERT_EQUALS(static_cast<size_t>(0), CountEvent(bus, "search_result_updated"));
+	ASSERT_EQUALS(static_cast<size_t>(1), CountEvent(bus, "search_result_added"));
+}
+
 // --- search_result_added is the results-list entry, verbatim ---------
 //
 // EVENTS.md promises the payload is byte-for-byte a
@@ -578,7 +787,7 @@ TEST(EventDiff, SearchResultAddedCarriesTheFullResultsEntry)
 	ASSERT_TRUE(payload.find("\"directory\":\"Backup/ISOs\"") != std::string::npos);
 	// The two fields the previously hand-rolled event payload omitted
 	// while the REST writer emitted them.
-	ASSERT_TRUE(payload.find("\"kad_comment_search_running\":false") != std::string::npos);
+	ASSERT_TRUE(payload.find("\"kad_comment_lookup_running\":false") != std::string::npos);
 	ASSERT_TRUE(payload.find("\"comments\":[]") != std::string::npos);
 }
 
@@ -634,7 +843,7 @@ TEST(EventDiff, SearchClosedFiresOnceWhenTheSlotIsFreed)
 // resource: it is derived rather than refreshed (it needs the part count of
 // the linked download, which lives in a different snapshot), so the diff pass
 // never computed it and the payload silently lacked a key the REST row had.
-// #1159 section 1. ClientSnapshot carries has_available_parts precisely so a
+// #1159 section 1. ClientSnapshot carries has_parts_offered_count precisely so a
 // peer that never reported its part map can be told apart from one reporting
 // zero -- and zero is a real answer, being what a fresh source looks like
 // before its map arrives. The field was emitted unconditionally, so nothing
@@ -646,7 +855,7 @@ TEST(EventDiff, ClientEventEmitsNullAvailablePartsWhenTheMapIsUnreported)
 		ClientSnapshot c;
 		c.ecid = 71;
 		c.client_name = "no-map";
-		// has_available_parts stays false: the tag never arrived.
+		// has_parts_offered_count stays false: the tag never arrived.
 		clients.emplace(c.ecid, c);
 	});
 
@@ -660,7 +869,7 @@ TEST(EventDiff, ClientEventEmitsNullAvailablePartsWhenTheMapIsUnreported)
 			payload = e.data;
 	}
 	ASSERT_TRUE(!payload.empty());
-	ASSERT_TRUE(payload.find("\"available_parts\":null") != std::string::npos);
+	ASSERT_TRUE(payload.find("\"parts_offered_count\":null") != std::string::npos);
 }
 
 // ...and a peer that did report zero still says zero.
@@ -671,8 +880,8 @@ TEST(EventDiff, ClientEventEmitsZeroAvailablePartsWhenTheMapSaysZero)
 		ClientSnapshot c;
 		c.ecid = 72;
 		c.client_name = "empty-map";
-		c.available_parts = 0;
-		c.has_available_parts = true;
+		c.parts_offered_count = 0;
+		c.has_parts_offered_count = true;
 		clients.emplace(c.ecid, c);
 	});
 
@@ -686,8 +895,8 @@ TEST(EventDiff, ClientEventEmitsZeroAvailablePartsWhenTheMapSaysZero)
 			payload = e.data;
 	}
 	ASSERT_TRUE(!payload.empty());
-	ASSERT_TRUE(payload.find("\"available_parts\":0") != std::string::npos);
-	ASSERT_TRUE(payload.find("\"available_parts\":null") == std::string::npos);
+	ASSERT_TRUE(payload.find("\"parts_offered_count\":0") != std::string::npos);
+	ASSERT_TRUE(payload.find("\"parts_offered_count\":null") == std::string::npos);
 }
 
 // The comparator has to see the flag too. null -> 0 is a visible change; with
@@ -708,8 +917,8 @@ TEST(EventDiff, ClientUpdateFiresWhenThePartMapFinallyArrivesReportingZero)
 
 	state.MutateClients([](std::map<std::uint32_t, ClientSnapshot> &clients) {
 		auto it = clients.find(73);
-		it->second.available_parts = 0;
-		it->second.has_available_parts = true;
+		it->second.parts_offered_count = 0;
+		it->second.has_parts_offered_count = true;
 	});
 	EmitDiffsAndUpdate(bus, prev, state);
 
@@ -731,13 +940,13 @@ TEST(EventDiff, ClientEventEmitsNullRemoteQueueRankWhenTheQueueIsFull)
 		ClientSnapshot full;
 		full.ecid = 74;
 		full.client_name = "full-queue";
-		full.remote_queue_rank = kRemoteQueueFullSentinel;
+		full.remote_queue_position = kRemoteQueueFullSentinel;
 		clients.emplace(full.ecid, full);
 
 		ClientSnapshot ranked;
 		ranked.ecid = 75;
 		ranked.client_name = "ranked";
-		ranked.remote_queue_rank = 12;
+		ranked.remote_queue_position = 12;
 		clients.emplace(ranked.ecid, ranked);
 	});
 
@@ -755,10 +964,10 @@ TEST(EventDiff, ClientEventEmitsNullRemoteQueueRankWhenTheQueueIsFull)
 			ranked_payload = e.data;
 	}
 	ASSERT_TRUE(!full_payload.empty());
-	ASSERT_TRUE(full_payload.find("\"remote_queue_rank\":null") != std::string::npos);
+	ASSERT_TRUE(full_payload.find("\"remote_queue_position\":null") != std::string::npos);
 	// A real position is still a number.
 	ASSERT_TRUE(!ranked_payload.empty());
-	ASSERT_TRUE(ranked_payload.find("\"remote_queue_rank\":12") != std::string::npos);
+	ASSERT_TRUE(ranked_payload.find("\"remote_queue_position\":12") != std::string::npos);
 }
 
 TEST(EventDiff, ClientEventCarriesPartProgressPercent)
@@ -780,8 +989,8 @@ TEST(EventDiff, ClientEventCarriesPartProgressPercent)
 		c.ecid = 7;
 		c.client_name = "peer";
 		c.download_file_hash = "8b54a3c28b54a3c28b54a3c28b54a3c2";
-		c.available_parts = 3;
-		c.has_available_parts = true;
+		c.parts_offered_count = 3;
+		c.has_parts_offered_count = true;
 		clients.emplace(c.ecid, c);
 	});
 
@@ -873,8 +1082,8 @@ TEST(EventDiff, SharedEventCarriesMediaWhenPresent)
 		f.size = kPartSizeBytes;
 		f.is_shared = true;
 		f.has_media = true;
-		f.media.length_s = 5400;
-		f.media.bitrate = 1500;
+		f.media.duration_seconds = 5400;
+		f.media.bitrate_kilobits_per_second = 1500;
 		f.media.codec = "h264";
 		files.emplace(f.ecid, f);
 	});
@@ -889,7 +1098,7 @@ TEST(EventDiff, SharedEventCarriesMediaWhenPresent)
 			payload = e.data;
 	}
 	ASSERT_TRUE(!payload.empty());
-	ASSERT_TRUE(payload.find("\"media\":{\"length_s\":5400") != std::string::npos);
+	ASSERT_TRUE(payload.find("\"media\":{\"duration_seconds\":5400") != std::string::npos);
 	ASSERT_TRUE(payload.find("\"codec\":\"h264\"") != std::string::npos);
 }
 
@@ -923,7 +1132,7 @@ TEST(EventDiff, SharedEventCarriesHashingProgressFromTheSharedSide)
 			payload = e.data;
 	}
 	ASSERT_TRUE(!payload.empty());
-	ASSERT_TRUE(payload.find("\"hashing_progress\":2") != std::string::npos);
+	ASSERT_TRUE(payload.find("\"hashed_part_count\":2") != std::string::npos);
 }
 
 TEST(EventDiff, SharedEventFallsBackToTheDownloadSideHashingProgress)
@@ -940,7 +1149,7 @@ TEST(EventDiff, SharedEventFallsBackToTheDownloadSideHashingProgress)
 		f.size = kPartSizeBytes * 4;
 		f.is_shared = true;
 		f.is_downloading = true;
-		f.download.hashing_progress = 3;
+		f.download.hashed_part_count = 3;
 		files.emplace(f.ecid, f);
 	});
 
@@ -954,7 +1163,7 @@ TEST(EventDiff, SharedEventFallsBackToTheDownloadSideHashingProgress)
 			payload = e.data;
 	}
 	ASSERT_TRUE(!payload.empty());
-	ASSERT_TRUE(payload.find("\"hashing_progress\":3") != std::string::npos);
+	ASSERT_TRUE(payload.find("\"hashed_part_count\":3") != std::string::npos);
 }
 
 TEST(EventDiff, SharedUpdatedFiresWhenOnlyHashingProgressMoved)
@@ -971,7 +1180,7 @@ TEST(EventDiff, SharedUpdatedFiresWhenOnlyHashingProgressMoved)
 		f.size = kPartSizeBytes * 4;
 		f.is_shared = true;
 		f.is_downloading = true;
-		f.download.hashing_progress = 1;
+		f.download.hashed_part_count = 1;
 		files.emplace(f.ecid, f);
 	});
 
@@ -980,7 +1189,7 @@ TEST(EventDiff, SharedUpdatedFiresWhenOnlyHashingProgressMoved)
 	EmitDiffsAndUpdate(bus, prev, state); // cold start: shared_added
 	DrainAll(bus);
 
-	state.MutateShared([](FileMap &files) { files.find(13)->second.download.hashing_progress = 2; });
+	state.MutateShared([](FileMap &files) { files.find(13)->second.download.hashed_part_count = 2; });
 	EmitDiffsAndUpdate(bus, prev, state);
 
 	std::string payload;
@@ -989,7 +1198,7 @@ TEST(EventDiff, SharedUpdatedFiresWhenOnlyHashingProgressMoved)
 			payload = e.data;
 	}
 	ASSERT_TRUE(!payload.empty());
-	ASSERT_TRUE(payload.find("\"hashing_progress\":2") != std::string::npos);
+	ASSERT_TRUE(payload.find("\"hashed_part_count\":2") != std::string::npos);
 }
 
 TEST(EventDiff, DownloadUpdatedFiresWhenOnlyHashingProgressMoved)
@@ -1013,7 +1222,7 @@ TEST(EventDiff, DownloadUpdatedFiresWhenOnlyHashingProgressMoved)
 	EmitDiffsAndUpdate(bus, prev, state);
 	DrainAll(bus);
 
-	state.MutateDownloads([](FileMap &files) { files.find(14)->second.download.hashing_progress = 5; });
+	state.MutateDownloads([](FileMap &files) { files.find(14)->second.download.hashed_part_count = 5; });
 	EmitDiffsAndUpdate(bus, prev, state);
 
 	std::string payload;
@@ -1022,7 +1231,7 @@ TEST(EventDiff, DownloadUpdatedFiresWhenOnlyHashingProgressMoved)
 			payload = e.data;
 	}
 	ASSERT_TRUE(!payload.empty());
-	ASSERT_TRUE(payload.find("\"hashing_progress\":5") != std::string::npos);
+	ASSERT_TRUE(payload.find("\"hashed_part_count\":5") != std::string::npos);
 }
 
 // A file leaving the map fires download_removed carrying its hash, and drops
@@ -1165,7 +1374,7 @@ TEST(EventDiff, RoleFlipRefreshesFieldsTheOtherRoleNeverCompared)
 		f.name = "reshared.iso";
 		f.size = kPartSizeBytes * 4;
 		f.is_shared = true;
-		f.download.size_done = 111;
+		f.download.completed_bytes = 111;
 		files.emplace(f.ecid, f);
 	});
 
@@ -1177,7 +1386,7 @@ TEST(EventDiff, RoleFlipRefreshesFieldsTheOtherRoleNeverCompared)
 	state.MutateShared([](FileMap &files) {
 		FileSnapshot &f = files.find(24)->second;
 		f.is_downloading = true;
-		f.download.size_done = 999;
+		f.download.completed_bytes = 999;
 	});
 	EmitDiffsAndUpdate(bus, prev, state);
 
@@ -1190,13 +1399,13 @@ TEST(EventDiff, RoleFlipRefreshesFieldsTheOtherRoleNeverCompared)
 	ASSERT_TRUE(payload.find("999") != std::string::npos);
 	ASSERT_TRUE(payload.find("111") == std::string::npos);
 	// And the baseline now carries it, so the next tick is silent.
-	ASSERT_EQUALS(static_cast<std::uint64_t>(999), prev.files.find(24)->second.download.size_done);
+	ASSERT_EQUALS(static_cast<std::uint64_t>(999), prev.files.find(24)->second.download.completed_bytes);
 }
 
 // --- comments_updated payload ---------------------------------------
 //
 // EVENTS.md promises the payload is the GET /downloads/{hash}/comments body
-// plus `hash`. It used to carry `hash` but NOT `kad_comment_search_running`,
+// plus `hash`. It used to carry `hash` but NOT `kad_comment_lookup_running`,
 // so a client that followed the document and fed the event into the view it
 // built from the endpoint silently lost the in-flight-lookup flag -- exactly
 // the flag it needs while a POST /downloads/{hash}/comments Kad lookup runs.
@@ -1240,8 +1449,8 @@ TEST(EventDiff, CommentsUpdatedIsASupersetOfTheRestBody)
 	}
 	ASSERT_TRUE(!payload.empty());
 	// The endpoint's three keys...
-	ASSERT_TRUE(payload.find("\"count\":1") != std::string::npos);
-	ASSERT_TRUE(payload.find("\"kad_comment_search_running\":true") != std::string::npos);
+	ASSERT_TRUE(payload.find("\"total\":1") != std::string::npos);
+	ASSERT_TRUE(payload.find("\"kad_comment_lookup_running\":true") != std::string::npos);
 	ASSERT_TRUE(payload.find("\"comments\":[") != std::string::npos);
 	// ...plus the one the event adds, because nothing else in the frame
 	// identifies the file.
@@ -1283,7 +1492,7 @@ TEST(EventDiff, CommentsUpdatedReportsAnIdleKadLookup)
 			payload = e.data;
 	}
 	ASSERT_TRUE(!payload.empty());
-	ASSERT_TRUE(payload.find("\"kad_comment_search_running\":false") != std::string::npos);
+	ASSERT_TRUE(payload.find("\"kad_comment_lookup_running\":false") != std::string::npos);
 }
 
 // The Kad lookup finishing is a comments_updated in its own right. The flag
@@ -1321,7 +1530,7 @@ TEST(EventDiff, CommentsUpdatedFiresWhenOnlyTheKadFlagClears)
 			payload = e.data;
 	}
 	ASSERT_TRUE(!payload.empty());
-	ASSERT_TRUE(payload.find("\"kad_comment_search_running\":false") != std::string::npos);
+	ASSERT_TRUE(payload.find("\"kad_comment_lookup_running\":false") != std::string::npos);
 }
 
 // Cold start with a lookup already running. The mirror of
@@ -1354,6 +1563,6 @@ TEST(EventDiff, CommentsUpdatedFiresWhenAFileArrivesMidKadLookup)
 			payload = e.data;
 	}
 	ASSERT_TRUE(!payload.empty());
-	ASSERT_TRUE(payload.find("\"kad_comment_search_running\":true") != std::string::npos);
-	ASSERT_TRUE(payload.find("\"count\":0") != std::string::npos);
+	ASSERT_TRUE(payload.find("\"kad_comment_lookup_running\":true") != std::string::npos);
+	ASSERT_TRUE(payload.find("\"total\":0") != std::string::npos);
 }

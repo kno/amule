@@ -187,6 +187,10 @@ private:
 	// falls back to the configured security.ipfilter_update_url.
 	CHttpServer::Response HandleIpfilterReload(const CHttpServer::Request &);
 	CHttpServer::Response HandleIpfilterUpdate(const CHttpServer::Request &);
+	// POST /geoip/update — fetch a fresh GeoIP database now. An action, so
+	// it is a route rather than the write-only `geoip.update_now` boolean
+	// it used to be inside PATCH /preferences.
+	CHttpServer::Response HandleGeoipUpdate(const CHttpServer::Request &);
 	// single shared-file detail (GET / HEAD). `key` = 32-char MD4 hash.
 	CHttpServer::Response HandleSharedDetail(const CHttpServer::Request &, const std::string &key);
 	// shared file priority PATCH. `key` = hash OR ECID.
@@ -197,6 +201,13 @@ private:
 	// `key` = 32-char MD4 hash. amuled schedules the hashing task and answers
 	// immediately, so this is accepted rather than completed.
 	CHttpServer::Response HandleSharedVerify(const CHttpServer::Request &, const std::string &key);
+	// the bytes of one completed shared file (GET / HEAD). `key` = 32-char
+	// MD4 hash. The only handler that answers with a streamed file window
+	// rather than a buffered body: it resolves and containment-checks the
+	// path itself, then hands the transport a CHttpServer::Response::file.
+	// Honours a single byte Range (206), ignores multi-range sets per RFC
+	// 7233 3.1, and refuses partfiles with 409.
+	CHttpServer::Response HandleSharedContent(const CHttpServer::Request &, const std::string &key);
 
 	// Static-frontend fallthrough. Resolves `url_path` under
 	// ServerCfg().static_root, returns the file with a content-type

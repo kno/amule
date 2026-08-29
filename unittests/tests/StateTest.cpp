@@ -114,16 +114,16 @@ TEST(State, WriteStatusRoundtrip)
 	in.ed2k_high_id = true;
 	in.ed2k_user_id = 1234567890u; // 210.2.150.73 packed LSB-first
 	in.ed2k_public_ip = "210.2.150.73";
-	in.download_overhead_bps = 8700;
-	in.upload_overhead_bps = 1100;
+	in.download_overhead_bytes_per_second = 8700;
+	in.upload_overhead_bytes_per_second = 1100;
 	in.temp_free_bytes = 48318382080LL;
 	in.incoming_free_bytes = -1; // unknown
 	in.kad_firewalled_tcp = false;
 	in.server_name = "Some Server";
 	in.server_ip = "192.0.2.42";
 	in.server_port = 4242;
-	in.download_bps = 12345;
-	in.upload_bps = 6789;
+	in.download_bytes_per_second = 12345;
+	in.upload_bytes_per_second = 6789;
 	in.ul_queue_len = 3;
 	in.total_src_count = 17;
 	s.WriteStatus(in);
@@ -134,8 +134,8 @@ TEST(State, WriteStatusRoundtrip)
 	ASSERT_TRUE(out.ed2k_high_id);
 	ASSERT_EQUALS(static_cast<std::uint32_t>(1234567890u), out.ed2k_user_id);
 	ASSERT_EQUALS(std::string("210.2.150.73"), out.ed2k_public_ip);
-	ASSERT_EQUALS(static_cast<std::uint64_t>(8700), out.download_overhead_bps);
-	ASSERT_EQUALS(static_cast<std::uint64_t>(1100), out.upload_overhead_bps);
+	ASSERT_EQUALS(static_cast<std::uint64_t>(8700), out.download_overhead_bytes_per_second);
+	ASSERT_EQUALS(static_cast<std::uint64_t>(1100), out.upload_overhead_bytes_per_second);
 	ASSERT_EQUALS(static_cast<std::int64_t>(48318382080LL), out.temp_free_bytes);
 	// -1 must survive the round trip as -1: it is what the handler turns
 	// into JSON null, and an unsigned slot would make it 1.8e19.
@@ -144,8 +144,8 @@ TEST(State, WriteStatusRoundtrip)
 	ASSERT_EQUALS(std::string("Some Server"), out.server_name);
 	ASSERT_EQUALS(std::string("192.0.2.42"), out.server_ip);
 	ASSERT_EQUALS(static_cast<std::uint32_t>(4242), out.server_port);
-	ASSERT_EQUALS(static_cast<std::uint64_t>(12345), out.download_bps);
-	ASSERT_EQUALS(static_cast<std::uint64_t>(6789), out.upload_bps);
+	ASSERT_EQUALS(static_cast<std::uint64_t>(12345), out.download_bytes_per_second);
+	ASSERT_EQUALS(static_cast<std::uint64_t>(6789), out.upload_bytes_per_second);
 	ASSERT_EQUALS(static_cast<std::uint32_t>(3), out.ul_queue_len);
 	ASSERT_EQUALS(static_cast<std::uint32_t>(17), out.total_src_count);
 }
@@ -189,7 +189,7 @@ TEST(State, MutateDownloadsRoundtripAndFind)
 		a.name = "foo.iso";
 		a.size = 1000;
 		a.is_downloading = true;
-		a.download.size_done = 250;
+		a.download.completed_bytes = 250;
 		a.download.priority = "high";
 		a.download.status = "downloading";
 		a.download.percent = 25.0;
@@ -607,7 +607,7 @@ TEST(State, MutateClientsAndSharedRoundtrip)
 		c.ecid = 10;
 		c.client_name = "peer-1";
 		c.upload_state = "uploading";
-		c.upload_speed_bps = 1234;
+		c.upload_speed_bytes_per_second = 1234;
 		cache.emplace(c.ecid, c);
 	});
 	ASSERT_EQUALS(static_cast<size_t>(1), s.Clients().size());
@@ -645,7 +645,7 @@ TEST(State, WriteKadAndPreferencesRoundtrip)
 	p.user_hash = "deadbeefdeadbeefdeadbeefdeadbeef";
 	p.tcp_port = 4662;
 	p.udp_port = 4672;
-	p.network_ed2k = true;
+	p.ed2k_enabled = true;
 	s.WritePreferences(p);
 
 	std::vector<CategorySnapshot> cats;
@@ -678,8 +678,8 @@ TEST(State, WriteKadAndPreferencesRoundtrip)
 	const auto p_out = s.Preferences();
 	ASSERT_EQUALS(std::string("tester"), p_out.nickname);
 	ASSERT_EQUALS(static_cast<std::uint16_t>(4662), p_out.tcp_port);
-	ASSERT_TRUE(p_out.network_ed2k);
-	ASSERT_FALSE(p_out.network_kad);
+	ASSERT_TRUE(p_out.ed2k_enabled);
+	ASSERT_FALSE(p_out.kad_enabled);
 
 	const auto c_out = s.Categories();
 	ASSERT_EQUALS(static_cast<size_t>(2), c_out.size());
@@ -867,8 +867,8 @@ TEST(State, WriteGraphsRoundtripAllSeries)
 	CState s;
 	StatsGraphs g;
 	g.interval_seconds = 1;
-	g.download_bps = { 100, 200, 300 };
-	g.upload_bps = { 10, 20, 30 };
+	g.download_bytes_per_second = { 100, 200, 300 };
+	g.upload_bytes_per_second = { 10, 20, 30 };
 	g.connections = { 1, 2, 3 };
 	g.kad_nodes = { 500, 600, 700 };
 	g.active_uploads = { 4, 5, 6 };
@@ -882,8 +882,8 @@ TEST(State, WriteGraphsRoundtripAllSeries)
 
 	const StatsGraphs out = s.Graphs();
 	ASSERT_EQUALS(static_cast<std::uint32_t>(1), out.interval_seconds);
-	ASSERT_EQUALS(static_cast<size_t>(3), out.download_bps.size());
-	ASSERT_EQUALS(static_cast<std::uint32_t>(300), out.download_bps[2]);
+	ASSERT_EQUALS(static_cast<size_t>(3), out.download_bytes_per_second.size());
+	ASSERT_EQUALS(static_cast<std::uint32_t>(300), out.download_bytes_per_second[2]);
 	ASSERT_EQUALS(static_cast<std::uint32_t>(700), out.kad_nodes[2]);
 	// The second data blob rides along point-aligned with the first.
 	ASSERT_EQUALS(static_cast<size_t>(3), out.active_uploads.size());
@@ -903,7 +903,7 @@ TEST(State, WriteGraphsWithoutConnBlobLeavesExtraSeriesEmpty)
 {
 	CState s;
 	StatsGraphs g;
-	g.download_bps = { 100, 200, 300 };
+	g.download_bytes_per_second = { 100, 200, 300 };
 	g.connections = { 1, 2, 3 };
 	s.WriteGraphs(g);
 
@@ -934,7 +934,7 @@ TEST(State, SearchResultsRoundtripAndOrderByEcid)
 		b.name = "first-by-ecid.iso";
 		b.size = 7000;
 		b.complete_source_count = 5;
-		b.already_have = true;
+		b.already_downloaded = true;
 		cache.emplace(b.ecid, b);
 	});
 
@@ -943,8 +943,8 @@ TEST(State, SearchResultsRoundtripAndOrderByEcid)
 	ASSERT_EQUALS(static_cast<size_t>(2), out.size());
 	ASSERT_EQUALS(std::string("first-by-ecid.iso"), out[0].name);
 	ASSERT_EQUALS(std::string("ascii-name.iso"), out[1].name);
-	ASSERT_TRUE(out[0].already_have);
-	ASSERT_FALSE(out[1].already_have);
+	ASSERT_TRUE(out[0].already_downloaded);
+	ASSERT_FALSE(out[1].already_downloaded);
 	// The query rides on the slot, so a results read can report what was
 	// searched for without a second lookup.
 	ASSERT_EQUALS(std::string("ubuntu"), s.SearchQuery(sid));
@@ -1298,7 +1298,7 @@ TEST(State, ConcurrentReadersDontTearSnapshot)
 	// a *self-consistent* snapshot (the four numeric fields below
 	// are written under one unique_lock, so a shared_lock reader
 	// must see them all from the same generation). A teared read
-	// would manifest as a mismatched (download_bps, upload_bps)
+	// would manifest as a mismatched (download_bytes_per_second, upload_bytes_per_second)
 	// pair, which we then assert against.
 
 	CState s;
@@ -1310,8 +1310,8 @@ TEST(State, ConcurrentReadersDontTearSnapshot)
 		std::uint64_t gen = 1;
 		while (!stop.load()) {
 			StatusSnapshot v;
-			v.download_bps = gen;
-			v.upload_bps = gen * 2;
+			v.download_bytes_per_second = gen;
+			v.upload_bytes_per_second = gen * 2;
 			v.ul_queue_len = static_cast<std::uint32_t>(gen & 0xffffffff);
 			v.total_src_count = static_cast<std::uint32_t>(gen & 0xffffffff);
 			s.WriteStatus(v);
@@ -1326,9 +1326,9 @@ TEST(State, ConcurrentReadersDontTearSnapshot)
 				StatusSnapshot r = s.Status();
 				observed.fetch_add(1);
 				// Invariants enforced by the writer's single
-				// unique_lock acquisition: upload_bps == 2 *
-				// download_bps; ul_queue_len == total_src_count.
-				if (r.upload_bps != 2 * r.download_bps)
+				// unique_lock acquisition: upload_bytes_per_second == 2 *
+				// download_bytes_per_second; ul_queue_len == total_src_count.
+				if (r.upload_bytes_per_second != 2 * r.download_bytes_per_second)
 					torn.fetch_add(1);
 				if (r.ul_queue_len != r.total_src_count)
 					torn.fetch_add(1);
@@ -1441,7 +1441,7 @@ TEST(State, MemoizableTargetExcludesEverythingElse)
 	ASSERT_TRUE(!MemoizableTarget("/api/v0/stats/tree"));
 	ASSERT_TRUE(!MemoizableTarget("/api/v0/stats/graphs/download_speed?width=3"));
 	ASSERT_TRUE(!MemoizableTarget("/api/v0/logs/amule"));
-	ASSERT_TRUE(!MemoizableTarget("/api/v0/logs/serverinfo"));
+	ASSERT_TRUE(!MemoizableTarget("/api/v0/logs/server_info"));
 	ASSERT_TRUE(!MemoizableTarget("/api/v0/search/7/results"));
 	// live EC roundtrip per read, and the bare collection a trailing-slash
 	// prefix could never match
@@ -1552,6 +1552,224 @@ TEST(State, ResetListsAdvancesTheRevision)
 // MarkTickSuccess stamps the timestamp; it deliberately does NOT advance the
 // revision, because RefresherTick owns that and the background loop calls
 // both. Pinning it so a future edit does not quietly double-count.
+// ResetLists fires when the PREVIOUS tick returned null against a socket that
+// is still up -- an actual dropped connection shuts amuleapi down instead. The
+// daemon's search registry is therefore alive, along with its record of what it
+// has already sent us, and the multi-search union has no resync opcode. Wiping
+// our side would leave every search permanently short by whatever it held when
+// one tick happened to fail.
+TEST(State, ResetListsKeepsSearchSlots)
+{
+	CState state;
+	state.MarkSearchStarted(42, "global", "ubuntu");
+	state.MutateAllSearches([](std::map<std::uint32_t, SearchSlot> &slots,
+					std::map<std::uint32_t, std::uint32_t> &owner) {
+		SearchResult r;
+		r.name = "ubuntu.iso";
+		slots[42].raw[70] = r;
+		slots[42].results[70] = r;
+		owner[70] = 42;
+	});
+
+	state.ResetLists();
+
+	ASSERT_TRUE(!state.AttachedSearchIds().empty());
+	ASSERT_EQUALS(static_cast<size_t>(1), state.Search(42).size());
+}
+
+// A restarted search must not show the previous one's hits through the gaps in
+// a diffed tag. `results` alone is not enough: `raw` is what the union merges
+// into, and RebuildFoldedResults would put any survivor straight back.
+TEST(State, MarkSearchStartedClearsTheRawResultsAndTheIndex)
+{
+	CState state;
+	state.MarkSearchStarted(42, "global", "ubuntu");
+	state.MutateAllSearches([](std::map<std::uint32_t, SearchSlot> &slots,
+					std::map<std::uint32_t, std::uint32_t> &owner) {
+		SearchResult r;
+		r.name = "stale.iso";
+		slots[42].raw[70] = r;
+		slots[42].results[70] = r;
+		owner[70] = 42;
+	});
+
+	state.MarkSearchStarted(42, "global", "debian");
+
+	state.MutateAllSearches([](std::map<std::uint32_t, SearchSlot> &slots,
+					std::map<std::uint32_t, std::uint32_t> &owner) {
+		ASSERT_TRUE(slots[42].raw.empty());
+		ASSERT_TRUE(slots[42].results.empty());
+		ASSERT_TRUE(owner.find(70) == owner.end());
+	});
+}
+
+// The union poll is gated on there being a slot the daemon could still speak
+// for. A detached slot is not one: its search is gone core-side, so polling on
+// its behalf is a roundtrip a second that can never return anything. Without
+// this, a user who runs one search and never deletes it keeps amuleapi polling
+// forever once the daemon's ring drops it.
+TEST(State, DetachedSlotsDoNotKeepTheUnionPollAlive)
+{
+	CState state;
+	state.MarkSearchStarted(42, "global", "ubuntu");
+	ASSERT_TRUE(!state.AttachedSearchIds().empty());
+
+	state.DetachSearch(42);
+	ASSERT_TRUE(state.AttachedSearchIds().empty());
+
+	// A second, still-attached slot re-opens it: the poll covers every search
+	// in one request, so one live slot is reason enough to send it.
+	state.MarkSearchStarted(43, "kad", "debian");
+	ASSERT_TRUE(!state.AttachedSearchIds().empty());
+}
+
+// Slots are capped, or a long-lived process watching a busy GUI accumulates one
+// result map per search forever. Active searches are never the victim, and a
+// detached one -- the daemon no longer holds it, so nothing is lost -- outranks
+// an attached one however much younger.
+TEST(State, SurplusSearchSlotsAreEvictedDetachedFirst)
+{
+	CState state;
+	// Two finished slots, oldest first, then fill well past the cap.
+	state.MarkSearchStarted(1, "global", "oldest-attached");
+	state.MarkSearchStarted(2, "global", "younger-detached");
+	state.WriteSearchProgress(1, SearchProgressSnapshot{});
+	state.WriteSearchProgress(2, SearchProgressSnapshot{});
+	state.DetachSearch(2);
+	for (std::uint32_t sid = 100; sid < 100 + 70; ++sid) {
+		state.MarkSearchStarted(sid, "global", "filler");
+		state.WriteSearchProgress(sid, SearchProgressSnapshot{});
+	}
+
+	const std::vector<std::uint32_t> left = state.AllSearchIds();
+	ASSERT_TRUE(left.size() <= 64);
+	// The detached one went even though slot 1 is older.
+	ASSERT_TRUE(std::find(left.begin(), left.end(), 2u) == left.end());
+}
+
+TEST(State, EvictionNeverTakesTheSlotBeingSeeded)
+{
+	// Eviction runs straight after the insert. With every other slot active
+	// -- never a victim -- the slot just created is the only eligible one, so
+	// without an exemption the seed evicts itself and the caller then applies
+	// a full re-read to a slot that is no longer there.
+	CState state;
+	for (std::uint32_t sid = 100; sid < 100 + 64; ++sid) {
+		SearchProgressSnapshot running;
+		running.active = true;
+		state.MarkSearchStarted(sid, "global", "busy");
+		state.WriteSearchProgress(sid, running);
+	}
+	// Discovered as finished, so it is the one slot that is not active.
+	state.MarkSearchDiscovered(4242, "global", "adopted", false, true, 100);
+
+	const std::vector<std::uint32_t> left = state.AllSearchIds();
+	ASSERT_TRUE(std::find(left.begin(), left.end(), 4242u) != left.end());
+}
+
+TEST(State, AttachedSearchIdsKeepsFinishedSlotsAndDropsDetachedOnes)
+{
+	// The tick polls THIS set for expiry. A finished search has to stay in it:
+	// it is the one the daemon's ring drops first, and the eviction tombstones
+	// its results, so a slot not detached by then has them erased -- which is
+	// exactly what detaching exists to prevent. A detached slot drops out
+	// because the daemon already has nothing to say about it.
+	CState state;
+	state.MarkSearchStarted(1, "global", "running");
+	SearchProgressSnapshot running;
+	running.active = true;
+	state.WriteSearchProgress(1, running);
+
+	state.MarkSearchStarted(2, "global", "finished");
+	SearchProgressSnapshot done;
+	done.active = false;
+	done.complete = true;
+	done.percent = 100;
+	state.WriteSearchProgress(2, done);
+
+	// Detached exactly the way the tick does it: the expiry branch detaches
+	// AND writes the terminal snapshot, so a detached slot is never left
+	// marked active. Detaching alone would be a state the product never
+	// produces, and asserting against it would prove nothing.
+	state.MarkSearchStarted(3, "global", "gone");
+	state.DetachSearch(3);
+	SearchProgressSnapshot retired;
+	retired.active = false;
+	retired.complete = true;
+	retired.percent = 100;
+	state.WriteSearchProgress(3, retired);
+
+	const std::vector<std::uint32_t> attached = state.AttachedSearchIds();
+	ASSERT_EQUALS(static_cast<size_t>(2), attached.size());
+	ASSERT_TRUE(std::find(attached.begin(), attached.end(), 1u) != attached.end());
+	ASSERT_TRUE(std::find(attached.begin(), attached.end(), 2u) != attached.end());
+	ASSERT_TRUE(std::find(attached.begin(), attached.end(), 3u) == attached.end());
+
+	// The active set is the narrower one the progress advance still uses.
+	const std::vector<std::uint32_t> active = state.ActiveSearchIds();
+	ASSERT_EQUALS(static_cast<size_t>(1), active.size());
+	ASSERT_EQUALS(1u, active[0]);
+}
+
+TEST(State, AFailedUnionFlagsEveryLiveSlotForResync)
+{
+	// The daemon commits its differential state while building a reply, so a
+	// reply we never applied is gone rather than repeated. Every slot it could
+	// have covered has to be re-seeded in full.
+	CState state;
+	state.MarkSearchStarted(1, "global", "alpha");
+	state.MarkSearchStarted(2, "kad", "beta");
+	state.MarkSearchStarted(3, "global", "gone");
+	state.DetachSearch(3);
+
+	state.MarkAllSearchesNeedResync();
+	const std::vector<std::uint32_t> pending = state.SearchesNeedingResync();
+
+	ASSERT_EQUALS(static_cast<size_t>(2), pending.size());
+	// Oldest slot first, and the detached one is skipped: the daemon holds
+	// nothing for it, so a full re-read would only come back expired.
+	ASSERT_EQUALS(1u, pending[0]);
+	ASSERT_EQUALS(2u, pending[1]);
+}
+
+TEST(State, ADetachedSlotDropsOutOfTheResyncList)
+{
+	// MarkAllSearchesNeedResync skips detached slots; the drain has to apply
+	// the same rule, because a slot can be flagged first and detached later.
+	// That is the ordinary sequence: the union fails and flags every live
+	// slot, then the next tick's retirement loop detaches the ones the daemon
+	// has expired -- before the resync loop runs. Left in, each costs a
+	// roundtrip that can only come back expired, and a replace-mode apply
+	// against a detached slot clears the last-known results the detach exists
+	// to preserve.
+	CState state;
+	state.MarkSearchStarted(11, "global", "alpha");
+	state.MarkSearchStarted(12, "global", "beta");
+
+	state.MarkAllSearchesNeedResync();
+	ASSERT_EQUALS(static_cast<size_t>(2), state.SearchesNeedingResync().size());
+
+	state.DetachSearch(12);
+
+	const std::vector<std::uint32_t> pending = state.SearchesNeedingResync();
+	ASSERT_EQUALS(static_cast<size_t>(1), pending.size());
+	ASSERT_EQUALS(11u, pending[0]);
+}
+
+TEST(State, ClearingTheResyncFlagStopsItBeingRequestedAgain)
+{
+	// The daemon answering "expired" is a definitive answer. Left set, the id
+	// would be re-requested on every tick for the life of the slot.
+	CState state;
+	state.MarkSearchStarted(7, "global", "alpha");
+	state.MarkAllSearchesNeedResync();
+	ASSERT_EQUALS(static_cast<size_t>(1), state.SearchesNeedingResync().size());
+
+	state.ClearSearchResyncFlag(7);
+
+	ASSERT_TRUE(state.SearchesNeedingResync().empty());
+}
+
 TEST(State, MarkTickSuccessDoesNotAdvanceTheRevision)
 {
 	CState state;

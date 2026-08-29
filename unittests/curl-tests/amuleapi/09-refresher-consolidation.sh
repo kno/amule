@@ -91,7 +91,7 @@ echo "amuleapi 09-refresher-consolidation smoke @ $HOST"
 
 TOKEN=$(curl -s -X POST -H "Content-Type: application/json" \
 	-d "{\"password\":\"$ADMIN_PASS\"}" \
-	"$HOST/api/v0/auth/login?type=bearer" | jq -r .token)
+	"$HOST/api/v0/auth/login?include_token=true" | jq -r .token)
 [ -n "$TOKEN" ] && [ "$TOKEN" != "null" ] || _die "login failed"
 
 # Let the refresher complete at least one full tick after auth so the
@@ -119,8 +119,8 @@ if [ "$DCOUNT" -gt 0 ]; then
 		'/downloads[0].hash is 32-char hex (identity from one tick)'
 	_assert_json_eq '.downloads[0].name | type'   string \
 		'/downloads[0].name is non-null string'
-	_assert_json_eq '.downloads[0].size | type'   number \
-		'/downloads[0].size is numeric'
+	_assert_json_eq '.downloads[0].size_bytes | type'   number \
+		'/downloads[0].size_bytes is numeric'
 	_assert_json_eq '.downloads[0].status | type' string \
 		'/downloads[0].status is string'
 	_assert_json_eq '.downloads[0].priority | type' string \
@@ -158,8 +158,8 @@ if [ "$SCOUNT" -gt 0 ]; then
 		'/shared[0].hash is 32-char hex'
 	_assert_json_eq '.shared[0].name | type'   string \
 		'/shared[0].name is string'
-	_assert_json_eq '.shared[0].size | type'   number \
-		'/shared[0].size is numeric'
+	_assert_json_eq '.shared[0].size_bytes | type'   number \
+		'/shared[0].size_bytes is numeric'
 	_assert_json_eq '.shared[0].priority | type' string \
 		'/shared[0].priority is string'
 	_assert_json_eq '.shared[0].priority_auto | type' boolean \

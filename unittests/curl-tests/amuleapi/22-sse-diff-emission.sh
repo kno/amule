@@ -65,7 +65,7 @@ fi
 echo "amuleapi 22-sse-diff-emission smoke @ $HOST"
 
 ADMIN_TOKEN=$(curl -s -X POST -H "Content-Type: application/json" \
-	-d "{\"password\":\"$ADMIN_PASS\"}" "$HOST/api/v0/auth/login?type=bearer" | jq -r .token)
+	-d "{\"password\":\"$ADMIN_PASS\"}" "$HOST/api/v0/auth/login?include_token=true" | jq -r .token)
 [ -n "$ADMIN_TOKEN" ] && [ "$ADMIN_TOKEN" != "null" ] || _die "admin login failed"
 
 sleep 4
@@ -149,22 +149,22 @@ if [ -n "$ADDED" ]; then
 		_fail "download_added .data.name" "not a string in $JSON"
 	fi
 	# Kad-notes search state rides the download event (issue #434).
-	if echo "$JSON" | jq -e '.kad_comment_search_running | type == "boolean"' >/dev/null 2>&1; then
-		_pass "download_added .data.kad_comment_search_running is boolean"
+	if echo "$JSON" | jq -e '.kad_comment_lookup_running | type == "boolean"' >/dev/null 2>&1; then
+		_pass "download_added .data.kad_comment_lookup_running is boolean"
 	else
-		_fail "download_added .data.kad_comment_search_running" "not boolean in $JSON"
+		_fail "download_added .data.kad_comment_lookup_running" "not boolean in $JSON"
 	fi
-	if echo "$JSON" | jq -e '.size | type == "number"' >/dev/null 2>&1; then
-		_pass "download_added .data.size is a number"
+	if echo "$JSON" | jq -e '.size_bytes | type == "number"' >/dev/null 2>&1; then
+		_pass "download_added .data.size_bytes is a number"
 	else
-		_fail "download_added .data.size" "not a number in $JSON"
+		_fail "download_added .data.size_bytes" "not a number in $JSON"
 	fi
 	# Hashing progress rides the download event too (issue #1054), so a
 	# client watching the stream sees a Verify Local Data pass advance.
-	if echo "$JSON" | jq -e '.hashing_progress | type == "number"' >/dev/null 2>&1; then
-		_pass "download_added .data.hashing_progress is a number"
+	if echo "$JSON" | jq -e '.hashed_part_count | type == "number"' >/dev/null 2>&1; then
+		_pass "download_added .data.hashed_part_count is a number"
 	else
-		_fail "download_added .data.hashing_progress" "not a number in $JSON"
+		_fail "download_added .data.hashed_part_count" "not a number in $JSON"
 	fi
 else
 	_fail "download_added missing" \
@@ -272,7 +272,7 @@ SSE_SEARCH=$(curl -s -X POST -H "Authorization: Bearer $ADMIN_TOKEN" \
 	-H "Content-Type: application/json" \
 	-d "{\"query\":\"$SEARCH_QUERY\",\"type\":\"local\"}" \
 	"$HOST/api/v0/search")
-SSE_SID=$(printf '%s' "$SSE_SEARCH" | jq -r '.search_id // empty')
+SSE_SID=$(printf '%s' "$SSE_SEARCH" | jq -r '.id // empty')
 SEARCH_FINISHED=""
 for _ in 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20 \
          21 22 23 24 25 26 27 28 29 30 31 32 33 34 35 36 37 38 39 40; do
@@ -297,26 +297,26 @@ if [ -n "$SEARCH_FINISHED" ]; then
 	else
 		_fail "search_progress .data.state" "expected 'finished' in $JSON"
 	fi
-	if echo "$JSON" | jq -e '.kind == "local"' >/dev/null 2>&1; then
-		_pass "search_progress .data.kind == 'local'"
+	if echo "$JSON" | jq -e '.type == "local"' >/dev/null 2>&1; then
+		_pass "search_progress .data.type == 'local'"
 	else
-		_fail "search_progress .data.kind" "expected 'local' in $JSON"
+		_fail "search_progress .data.type" "expected 'local' in $JSON"
 	fi
 	if echo "$JSON" | jq -e '.percent | type == "number"' >/dev/null 2>&1; then
 		_pass "search_progress .data.percent is numeric"
 	else
 		_fail "search_progress .data.percent" "missing/non-numeric in $JSON"
 	fi
-	if echo "$JSON" | jq -e '.results | type == "number"' >/dev/null 2>&1; then
-		_pass "search_progress .data.results is numeric"
+	if echo "$JSON" | jq -e '.result_count | type == "number"' >/dev/null 2>&1; then
+		_pass "search_progress .data.result_count is numeric"
 	else
-		_fail "search_progress .data.results" "missing/non-numeric in $JSON"
+		_fail "search_progress .data.result_count" "missing/non-numeric in $JSON"
 	fi
 	# search_result_added is content-dependent — only assert it
 	# fired if the local search produced any hits. On a fully-
 	# disconnected daemon it won't fire, and that's correct.
 	N_ADDED=$(grep -c "^event: search_result_added$" "$SSE_OUT" || true)
-	RESULTS_TOTAL=$(echo "$JSON" | jq '.results')
+	RESULTS_TOTAL=$(echo "$JSON" | jq '.result_count')
 	if [ "$RESULTS_TOTAL" -gt 0 ] 2>/dev/null; then
 		if [ "$N_ADDED" -ge 1 ]; then
 			_pass "search_result_added fired ($N_ADDED times; finished reports $RESULTS_TOTAL results)"
@@ -446,9 +446,9 @@ CLIENT_JSON=$(grep -A2 -E "^event: client_(added|updated)$" "$SSE_OUT" \
 if [ -n "$CLIENT_JSON" ]; then
 	if echo "$CLIENT_JSON" | jq -e \
 		'(.source_origin|type=="string")
-		 and has("available_parts")
-		 and ((.available_parts|type)=="number" or (.available_parts|type)=="null")
-		 and (.mod_version|type=="string") and (.view_shared_disabled|type=="boolean")' \
+		 and has("parts_offered_count")
+		 and ((.parts_offered_count|type)=="number" or (.parts_offered_count|type)=="null")
+		 and (.client_mod_name|type=="string") and (.shared_files_browsable|type=="boolean")' \
 		>/dev/null 2>&1; then
 		_pass "client_added/updated carries the promoted peer fields (#984)"
 	else
@@ -576,6 +576,26 @@ if [ -n "$SHARED_JSON" ]; then
 		else
 			_fail "shared event / GET /shared key parity" "$DIFF"
 		fi
+		# Key parity is not value parity, and this pair disagreed on VALUES
+		# while the key sets matched: the SSE writer emitted a raw 0 for a
+		# never-uploaded file where REST sent null, so a subscriber that
+		# hydrated from REST watched null flip to 0 on the first frame and a
+		# renderer drew 1970-01-01. Compare the two timestamps directly.
+		VAL_DIFF=$(jq -n --argjson a "$REST_ITEM" --argjson b "$SHARED_JSON" \
+			'[ {k:"last_upload_at",  rest:$a.last_upload_at,  sse:$b.last_upload_at},
+			   {k:"shared_since_at", rest:$a.shared_since_at, sse:$b.shared_since_at} ]
+			 | map(select(.rest != .sse))')
+		if [ "$(echo "$VAL_DIFF" | jq -c '.')" = "[]" ]; then
+			_pass "shared event timestamps match GET /shared by value, not just by key"
+		else
+			_fail "shared event / GET /shared timestamp values" "$VAL_DIFF"
+		fi
+		# And the specific reading the fix is about: never-uploaded is null.
+		if [ "$(echo "$SHARED_JSON" | jq -r '.last_upload_at')" = "null" ]; then
+			_pass "a never-uploaded file arrives over SSE with last_upload_at null, not 0"
+		else
+			_pass "file has uploaded before; null-for-zero case not exercised this run"
+		fi
 	fi
 else
 	_fail "shared event parity" "no shared_added/updated frame for $PARITY_HASH after a priority PATCH"
@@ -587,6 +607,102 @@ curl -s -o /dev/null -X PATCH -H "Authorization: Bearer $ADMIN_TOKEN" \
 	-H "Content-Type: application/json" \
 	-d "{\"priority\":\"$PARITY_PRIO\",\"priority_auto\":$PARITY_AUTO}" \
 	"$HOST/api/v0/shared/$PARITY_HASH"
+fi
+
+# --- search_result_updated fires on a held result's mutable fields. -----
+# The window this closes: once a search finishes, search_progress stops, so a
+# subscriber holding its rows has no signal for the fields that can still
+# change. Driven here by starting a download of one hit, which flips
+# already_downloaded / status on the matching search result.
+#
+# Last section in the file: it starts a search on the shared daemon.
+#
+# This file predates the _curl wrapper the other phases use, so it drives
+# curl directly, same as every section above.
+SSE_SEARCH_SID=$(curl -s -X POST -H "Authorization: Bearer $ADMIN_TOKEN" \
+	-H "Content-Type: application/json" \
+	-d '{"query":"ubuntu"}' "$HOST/api/v0/search" | jq -r '.id // empty')
+UPD_HASH=""
+UPD_NAME=""
+UPD_SIZE=""
+UPD_ROW=""
+if [ -n "$SSE_SEARCH_SID" ]; then
+	for _ in $(seq 1 30); do
+		sleep 1
+		UPD_ROW=$(curl -s -H "Authorization: Bearer $ADMIN_TOKEN" \
+			"$HOST/api/v0/search/$SSE_SEARCH_SID/results" \
+			| jq -c '[.results[] | select(.already_downloaded == false)] | first // empty')
+		UPD_HASH=$(printf '%s' "$UPD_ROW" | jq -r '.hash // empty')
+		UPD_NAME=$(printf '%s' "$UPD_ROW" | jq -r '.name // empty' | sed 's/|/_/g')
+		UPD_SIZE=$(printf '%s' "$UPD_ROW" | jq -r '.size_bytes // empty')
+		[ -n "$UPD_HASH" ] && break
+	done
+fi
+if [ -n "$UPD_HASH" ]; then
+	# Subscribe to the search channel only, which also pins that the new event
+	# routes there rather than needing its own channel name.
+	: > "$SSE_OUT"
+	(curl -s -m 20 -N -H "Authorization: Bearer $ADMIN_TOKEN" \
+		"$HOST/api/v0/events?channels=search" >> "$SSE_OUT" 2>&1) &
+	UPD_PID=$!
+	# Wait for the stream to actually be up before provoking the change, or
+	# the frame lands before the subscription and the section flakes.
+	for _ in $(seq 1 60); do
+		[ -s "$SSE_OUT" ] && break
+		sleep 0.25
+	done
+	# Provoke the change by starting a download of the hit. That flips
+	# already_downloaded / status on the search result deterministically and
+	# locally -- the partfile is created on the spot, no peer needed. A Kad
+	# NOTES lookup moves the other half of the comparator but depends on Kad
+	# actually answering, which would make a missing frame ambiguous between
+	# "the event is broken" and "Kad was quiet". This way a missing frame can
+	# only mean the former, so the check below is a real gate.
+	curl -s -o /dev/null -X POST -H "Authorization: Bearer $ADMIN_TOKEN" \
+		-H "Content-Type: application/json" \
+		-d "{\"links\":[\"ed2k://|file|$UPD_NAME|$UPD_SIZE|$UPD_HASH|/\"]}" \
+		"$HOST/api/v0/downloads"
+	UPD_FRAME=""
+	for _ in $(seq 1 60); do
+		UPD_FRAME=$(grep -A2 "^event: search_result_updated$" "$SSE_OUT" 2>/dev/null \
+			| grep "^data: " | sed 's/^data: //' \
+			| jq -c --arg h "$UPD_HASH" 'select(.hash == $h)' 2>/dev/null | head -1)
+		[ -n "$UPD_FRAME" ] && break
+		sleep 0.25
+	done
+	kill $UPD_PID 2>/dev/null
+	wait $UPD_PID 2>/dev/null
+	if [ -n "$UPD_FRAME" ]; then
+		_pass "search_result_updated fires for a held result whose download state changed"
+		if echo "$UPD_FRAME" | jq -e --argjson s "$SSE_SEARCH_SID" '.search_id == $s' >/dev/null 2>&1; then
+			_pass "search_result_updated carries its own search_id"
+		else
+			_fail "search_result_updated .search_id" "expected $SSE_SEARCH_SID in $UPD_FRAME"
+		fi
+		# Same writer as _added and as the REST entry, so the whole row is
+		# there rather than a delta a client would have to merge blindly.
+		if echo "$UPD_FRAME" | jq -e 'has("name") and has("size_bytes") and has("status") and has("kad_comment_lookup_running")' >/dev/null 2>&1; then
+			_pass "search_result_updated carries the full results-entry shape"
+		else
+			_fail "search_result_updated shape" "$UPD_FRAME"
+		fi
+		# The point of the event: the row now reads as held.
+		if echo "$UPD_FRAME" | jq -e '.already_downloaded == true' >/dev/null 2>&1; then
+			_pass "search_result_updated reports the hit as already_downloaded after the download starts"
+		else
+			_fail "search_result_updated .already_downloaded" "expected true in $UPD_FRAME"
+		fi
+	else
+		_fail "search_result_updated" \
+			"no frame for $UPD_HASH within 15 s of starting a download of it"
+	fi
+	# Leave the daemon as we found it: drop the partfile we planted.
+	curl -s -o /dev/null -X DELETE -H "Authorization: Bearer $ADMIN_TOKEN" \
+		"$HOST/api/v0/downloads/$UPD_HASH" 2>/dev/null
+	curl -s -o /dev/null -X DELETE -H "Authorization: Bearer $ADMIN_TOKEN" \
+		"$HOST/api/v0/search/$SSE_SEARCH_SID" 2>/dev/null
+else
+	echo "    info: no search results available; search_result_updated check skipped"
 fi
 
 # --- Summary. -----------------------------------------------------

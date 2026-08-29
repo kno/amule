@@ -118,7 +118,7 @@ All are readable only by you.
 curl -s http://127.0.0.1:4713/api/v0/health
 
 # Log in, then use the token.
-TOKEN=$(curl -s -X POST "http://127.0.0.1:4713/api/v0/auth/login?type=bearer" \
+TOKEN=$(curl -s -X POST "http://127.0.0.1:4713/api/v0/auth/login?include_token=true" \
     -H 'Content-Type: application/json' \
     -d '{"password":"mySecret123"}' | jq -r .token)
 
@@ -129,7 +129,7 @@ curl -s -H "Authorization: Bearer $TOKEN" http://127.0.0.1:4713/api/v0/status
 curl -s -H "Authorization: Bearer $TOKEN" http://127.0.0.1:4713/api/v0/version
 ```
 
-Browsers should call `/auth/login` *without* `?type=bearer` — they get a
+Browsers should call `/auth/login` *without* `?include_token=true` — they get a
 cookie instead, which keeps the token out of reach of page scripts.
 
 ## Reaching it from another machine
@@ -171,7 +171,10 @@ Either way you need a domain name pointing at the machine, with ports 80 and
 443 reachable — that is how the certificate authority checks you own the name.
 Event streams need no extra buffering or timeout settings: amuleapi already
 sends the header that turns nginx buffering off, and its 15-second heartbeat
-keeps idle connections from being dropped.
+keeps idle connections from being dropped. File downloads from
+`/shared/{hash}/content` send the same header, so nginx streams them straight
+through instead of spooling a gigabyte to its own disk first. A proxy that
+ignores `X-Accel-Buffering` wants `proxy_buffering off;` in that location.
 
 On a home network, with no domain name, an SSH tunnel does the same job with
 no certificate at all:
@@ -211,25 +214,36 @@ TokenLockoutSeconds=300
 
 [Streaming]
 EventBusRingCapacity=16384
+MaxConcurrentFileResponses=6   ; simultaneous downloads from /shared/{hash}/content
 ```
+
+`MaxConcurrentFileResponses` is how many clients can be pulling file content
+out of amuleapi at once; over it, the extra requests get a `503` telling them
+to retry rather than joining an unbounded queue. It accepts `1` to `256` and
+falls back to `6` for anything else. Six is sized for one mechanical disk that
+aMule is already hashing and uploading from — raise it on an SSD-backed box
+with several devices in the house, lower it on a Pi that downloads to the same
+USB disk it serves from. Note that it is a budget for the whole machine, not
+per client: behind a reverse proxy every request arrives from one address, so
+there is nothing to divide it up by.
 
 `--bind`, `--http-port`, `--host`, `--port` and `--config-dir` override the
 matching settings for one run.
 
 ## Web frontend
 
-amuleapi serves a web frontend at `/` when it can find one. Leave `StaticRoot` empty and it looks for the `amuleapi-static` folder that a normal install puts on disk, so a package install needs no configuration — open `http://127.0.0.1:4713/` and it is there. If nothing is found, `/` answers 404 and the REST API still works; an API-only deployment needs no frontend.
+amuleapi serves a web frontend at `/` when it can find one. Leave `StaticRoot` empty and it looks for an `amuleapi-static` folder in the usual places: inside the macOS `.app` bundle, next to its own executable, at the path it was configured with at build time, and in the platform's shared-data directory. A package install and the Linux static tarball both need no configuration — open `http://127.0.0.1:4713/` and it is there. If nothing is found, `/` answers 404 and the REST API still works; an API-only deployment needs no frontend.
 
-The static Linux daemon is the exception: it is a single binary and carries no files of its own, so there is nothing for it to find. Download `aMule-<version>-amuleapi-frontend.zip` from the release page, unzip it somewhere readable, and point `StaticRoot` at the unzipped folder:
+"Next to its own executable" is what makes the Linux static tarball work: it extracts to three binaries and an `amuleapi-static/` folder beside them, and amuleapi finds that folder wherever you put the directory. Keep them together and rename nothing. Note that this is the directory the binary lives in, not the directory you happen to run it from -- starting the daemon from elsewhere changes nothing.
+
+To serve the frontend from a location of your own, or to keep a modified copy separate from the installed one, copy the folder somewhere readable and point `StaticRoot` at it:
 
 ```ini
 [Server]
-StaticRoot=/opt/amule/aMule-3.1.0-amuleapi-frontend
+StaticRoot=/opt/amule/amuleapi-static
 ```
 
-The same zip works if you want to serve the frontend from a location of your own, or to keep a modified copy separate from the installed one.
-
-Unzip it as a unit and leave the layout alone. The page loads its stylesheet, its modules, the translations and the images by relative path, so moving or renaming anything inside the folder breaks it.
+Copy it as a unit and leave the layout alone. The page loads its stylesheet, its modules, the translations and the images by relative path, so moving or renaming anything inside the folder breaks it.
 
 ## CORS
 
@@ -252,14 +266,16 @@ Everything under `/api/v0/`, with full details in
 - **Downloads** — the queue: add, pause, cancel, clear completed, plus
   comments, filenames and alternate sources.
 - **Shared files** — list, verify, and the shared folders.
-- **Peers** — who you are connected to, and browsing their shared files.
+- **Clients** — who you are connected to, and browsing their shared files.
 - **Servers** — the ed2k server list, connecting, and refreshing it.
 - **Network** — connect and disconnect ed2k and Kad.
 - **Search** — start a search, read results, download one.
 - **Categories**, **preferences**, **logs** and **statistics**.
 
-Lists take `limit`, `offset`, `sort` and `order`. Bulk actions report each
-item's outcome separately rather than one overall result.
+Lists take `limit`, `offset`, `sort`, `order` and `after` (a keyset anchor for
+paging). `limit` defaults to 100, so a list request returns the first page
+unless it asks for more — see [`docs/api/REFERENCE.md`](api/REFERENCE.md). Bulk
+actions report each item's outcome separately rather than one overall result.
 
 `GET /api/v0/events` streams changes as they happen and can resume where it
 left off after a dropped connection — see

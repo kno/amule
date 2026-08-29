@@ -113,21 +113,25 @@ export function Section(rows, titleKey, actions) {
     </div>`;
 }
 
-// `path` is the directory only, so the file path has to be composed; separator
-// taken from the path itself since amuled may be on Windows. Names the *file*:
-// a partfile's bytes are still under `met_file`, so this is where the download
-// will land rather than what is on disk right now.
+// The directory only, so the file path has to be composed; separator taken from
+// the path itself since amuled may be on Windows. Names the *file*: a
+// partfile's bytes are still under `part_file_name`, so this is where the
+// download will land rather than what is on disk right now.
+//
+// Reads `directory` with a `path` fallback because this helper serves both
+// detail panels and only /downloads has been renamed so far. Drop the fallback
+// when /shared moves.
 function fullPath(file) {
-  const dir = file.path || "";
+  const dir = file.directory || file.path || "";
   return dir + (dir.includes("\\") ? "\\" : "/") + (file.name || "");
 }
 
 // Rejects "" (a path the daemon has not reported yet); accepts a POSIX path
 // or a Windows drive letter.
-const hasRealPath = (file) => /^([/\\]|[A-Za-z]:)/.test(file.path || "");
+const hasRealPath = (file) => /^([/\\]|[A-Za-z]:)/.test(file.directory || file.path || "");
 
 // The identity group shared by both detail panels: the hash plus extra fields
-// (path, met_file / parts), with the copy buttons as the group's action row.
+// (directory, part_file_name / parts), with the copy buttons as the group's action row.
 // `extra` is a list of statRow tuples; `titleKey` is forwarded to Section().
 export function IdentityLine({ file, copy, extra, titleKey }) {
   const hash = statRow("identity_hash",
@@ -356,7 +360,7 @@ export function magnetLink(d) {
   const h = (d.hash || "").toLowerCase();
   return "magnet:?dn=" + dn +
     "&xt=urn:ed2k:" + h + "&xt=urn:ed2khash:" + h +
-    "&xl=" + (d.size || 0);
+    "&xl=" + (d.size_bytes || 0);
 }
 
 // Copy to clipboard with a plain fallback for non-secure contexts (the web UI
@@ -419,7 +423,7 @@ function availShade(sources, lo, hi) {
 // while a re-hash runs over the file (Verify Local Data, or an AICH hashset
 // rebuild), mirroring the desktop's two-span bar. That pass reports only a
 // *count* of parts done, never a per-part map, so it is driven by
-// `total` (= part_count) + `hashed` instead of `parts`.
+// `total` (= parts_total_count) + `hashed` instead of `parts`.
 // Canvas rather than N <div>s so files with hundreds/thousands of parts redraw
 // cheaply on every live tick. Colours are read from the theme each draw.
 export function PiecesBar({ parts, mode = "download", total = 0, hashed = 0 }) {
