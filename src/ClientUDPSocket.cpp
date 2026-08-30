@@ -891,7 +891,11 @@ void CClientUDPSocket::ProcessPacket(
 		// The overhead accounting stays with the handler's own branches rather
 		// than being charged here, so that a message dropped for a reason is
 		// still counted the same way as one acted on.
-		ProcessNattControlFrame(opcode, packet, size < 0 ? 0 : (size_t)size, host, port);
+		// `size` is int16, which is a typedef for uint16_t in this tree (see
+		// Types.h) -- so it is already unsigned and there is no negative case
+		// to guard. A ternary here would read as a bounds check that is not
+		// one, which is worse than no check at all.
+		ProcessNattControlFrame(opcode, packet, (size_t)size, host, port);
 		break;
 
 	case OP_REASKCALLBACKUDP: {

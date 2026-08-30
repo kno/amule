@@ -77,9 +77,10 @@ enum Protocols
 // collides with an eD2k opcode that has nothing to do with NAT traversal. 0xA0
 // alone is OP_SERVER_LIST_REQ as a Client2Server UDP opcode and OP_BUDDYPONG as
 // a Client2Client TCP one. Under 0xC5 -- the client-to-client UDP space they
-// actually share -- they collide with nothing: those opcodes are 0x90..0x95 and
-// 0xFE. They live in src/NatRendezvousProtocol.h with the codec that reads them
-// and the bounds that limit them.
+// actually share -- they collide with nothing: those opcodes are 0x90..0x94 and
+// 0xFE (protocol/ed2k/Client2Client/UDP.h). They live in
+// src/NatRendezvousProtocol.h with the codec that reads them and the bounds
+// that limit them.
 //
 // The transports behind the remaining types do not exist here. QUIC is
 // amule-quic-transport; the capability and key frames have nothing to
