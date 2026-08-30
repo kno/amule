@@ -531,8 +531,19 @@ inline size_t EncodeRendezvousMessage(const uint8_t *peerHash,
 	// took the sender's word for the direction would let a crafted request onto
 	// the path that punches at the address in the datagram. See
 	// CClientUDPSocket::ProcessNattControlFrame().
-	out[NATT_PEER_HASH_LENGTH] = static_cast<uint8_t>(
-		CONNECT_OPT_NAT_TRAVERSAL_UTP | (tailLength != 0 ? CONNECT_OPT_NATT_ENDPOINT_HINT : 0));
+	// CONNECT_OPT_NATT_ENDPOINT_HINT is deliberately NOT set, even when a tail
+	// follows. The bit is eMuleAI's and it does not mean what the name suggests
+	// here: on their buddy-forward path it is a *request* -- "buddy, reply with
+	// the target's live endpoint" -- answered with a standalone
+	// OP_NATT_ENDPOINT_HINT datagram (ClientUDPSocket.cpp, their tree), not a
+	// marker that this body carries one. Setting it would ask a service of a
+	// peer, get an answer this build recognises and drops, and claim something
+	// we did not mean. Presence of the tail is signalled by remaining length,
+	// which is the rule their parser actually applies.
+	//
+	// Receiving is the other way round: a peer that sets it is honoured, since
+	// ParseRendezvousRequest() ignores the bit and goes by length either way.
+	out[NATT_PEER_HASH_LENGTH] = static_cast<uint8_t>(CONNECT_OPT_NAT_TRAVERSAL_UTP);
 
 	size_t cursor = NATT_RENDEZVOUS_FIXED_LENGTH;
 	for (size_t i = 0; i < fileHashLength; ++i) {

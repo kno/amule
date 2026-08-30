@@ -163,8 +163,10 @@ TEST(NatRendezvousProtocol, RendezvousRequestEncodesExactBytes)
 	for (int i = 0; i < 16; ++i) {
 		ASSERT_EQUALS(i, static_cast<int>(buffer[i]));
 	}
-	// 0x80 the traversal is uTP, 0x20 an endpoint follows. Not relayed.
-	ASSERT_EQUALS(0xA0, static_cast<int>(buffer[16]));
+	// 0x80, the traversal is uTP, and nothing else. 0x20 is eMuleAI's
+	// "reply with the target's endpoint" request, not "an endpoint follows",
+	// so this encoder never sets it -- see EncodeRendezvousRequest().
+	ASSERT_EQUALS(0x80, static_cast<int>(buffer[16]));
 	for (int i = 0; i < 16; ++i) {
 		ASSERT_EQUALS(0xF0 + i, static_cast<int>(buffer[17 + i]));
 	}
@@ -191,7 +193,7 @@ TEST(NatRendezvousProtocol, RendezvousWithoutAFileHashPutsTheEndpointAtSeventeen
 		hash, NULL, CNetworkAddress::FromString("192.0.2.10"), 4662, buffer, sizeof(buffer));
 
 	ASSERT_EQUALS(23u, written);
-	ASSERT_EQUALS(0xA0, static_cast<int>(buffer[16]));
+	ASSERT_EQUALS(0x80, static_cast<int>(buffer[16]));
 	ASSERT_EQUALS(192, static_cast<int>(buffer[17]));
 	ASSERT_EQUALS(0x36, static_cast<int>(buffer[22]));
 
@@ -349,8 +351,12 @@ TEST(NatRendezvousProtocol, OptionalBlocksAreDetectedByLengthAndNotByTheOptionsB
 // The bit is still emitted, though nothing here reads it. eMuleAI's own use of
 // 0x20 is unknown to this tree, so a client that does consult it sees the truth
 // rather than a cleared bit next to an endpoint that is present.
-TEST(NatRendezvousProtocol, TheEndpointBitStillStatesWhatWasActuallyEncoded)
+TEST(NatRendezvousProtocol, TheEndpointBitIsNeverSetWhateverTheTailCarries)
 {
+	// The bit is eMuleAI's and means "buddy, reply with the target's endpoint",
+	// not "an endpoint follows here". Setting it would ask a service of a peer
+	// and claim something this encoder does not mean, so it is never set --
+	// with a tail or without one. Presence is signalled by remaining length.
 	uint8_t hash[NATT_PEER_HASH_LENGTH];
 	FillHash(hash);
 
@@ -361,7 +367,7 @@ TEST(NatRendezvousProtocol, TheEndpointBitStillStatesWhatWasActuallyEncoded)
 		4662,
 		withEndpoint,
 		sizeof(withEndpoint));
-	ASSERT_EQUALS(0x20, static_cast<int>(withEndpoint[16] & 0x20));
+	ASSERT_EQUALS(0x00, static_cast<int>(withEndpoint[16] & 0x20));
 
 	uint8_t withoutEndpoint[NATT_RENDEZVOUS_MAX_LENGTH] = { 0 };
 	EncodeRendezvousRequest(
@@ -808,7 +814,7 @@ TEST(NatRendezvousProtocol, TheTwoDirectionsAreIndistinguishableOnTheWire)
 	// 0x80 traversal supported, 0x20 an endpoint follows, and nothing else. In
 	// particular not 0x40, which is eMuleAI's QUIC capability and which this
 	// build must never assert -- it cannot serve QUIC.
-	ASSERT_EQUALS(0xA0, static_cast<int>(relayed[16]));
+	ASSERT_EQUALS(0x80, static_cast<int>(relayed[16]));
 }
 
 // The two option bits this build emits are eMuleAI's, at eMuleAI's values.
