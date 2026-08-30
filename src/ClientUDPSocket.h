@@ -338,12 +338,15 @@ private:
 	CNatRendezvousManager m_natRendezvous;
 
 	/**
-	 * One relay budget for both directions.
+	 * The rendezvous budget, one object holding one table per direction.
 	 *
-	 * Deliberately one object rather than two: a peer that has spent its
-	 * budget asking this client to relay must not get a second allowance by
-	 * sending forwards instead. Two limiters would be two budgets for one
-	 * peer, which is the amplification this change exists to not be.
+	 * One object because the split is not this class's decision to make: the
+	 * role is chosen inside RelayRendezvousRequest() and
+	 * AcceptRelayedRendezvous(), where a test can drive it, so there is no
+	 * second member here to hand the wrong one to. See ERendezvousRole for why
+	 * relaying for a stranger and acting on a forward addressed to us must not
+	 * share a budget -- the short of it is that the service this client gives
+	 * away was throttling the capability it is the beneficiary of.
 	 */
 	CRendezvousRelayLimiter m_relayLimiter;
 };

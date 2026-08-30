@@ -132,6 +132,30 @@ enum ERelayDisposition
 constexpr size_t kRendezvousRelayBucketCap = 1024;
 
 /**
+ * Which of the two things this client is doing with an OP_RENDEZVOUS, for the
+ * purpose of the budget.
+ *
+ * They are not the same transaction and must not share one. Relaying is a
+ * service given away to strangers that this client gets nothing out of; acting
+ * on a forward is a capability this client is the BENEFICIARY of. A single
+ * budget lets the giveaway throttle the thing we need -- our own buddy asking
+ * us to relay five times in a window left nothing for the forward it sent us in
+ * the other direction. That is a category error, and no bucket count fixes a
+ * category error.
+ *
+ * The role is chosen inside RelayRendezvousRequest() and
+ * AcceptRelayedRendezvous() rather than by whoever calls them, so there is no
+ * wiring for a caller to get wrong.
+ */
+enum ERendezvousRole
+{
+	//! Relaying on someone else's behalf. The giveaway.
+	RENDEZVOUS_ROLE_RELAY_SERVICE,
+	//! Acting on a forward addressed to us. The capability.
+	RENDEZVOUS_ROLE_ACTING_ON_FORWARD
+};
+
+/**
  * Per-requester relay budget: kRendezvousMaxAttempts relays per
  * kRendezvousBackoffMs.
  *
@@ -167,7 +191,8 @@ public:
 	 *        budget itself is the same five per window either way.
 	 * @return true when the request is within budget.
 	 */
-	bool Admit(const CNetworkAddress &requester, uint64_t nowMs, bool requesterIsKnown)
+	bool Admit(
+		const CNetworkAddress &requester, uint64_t nowMs, bool requesterIsKnown, ERendezvousRole role)
 	{
 		const CNetworkAddress scope = PeerIdentity::RateLimitScope(requester);
 		if (scope.IsAbsent()) {
@@ -176,8 +201,11 @@ public:
 			return false;
 		}
 
-		const auto existing = m_buckets.find(scope);
-		if (existing != m_buckets.end()) {
+		BucketTable &buckets =
+			role == RENDEZVOUS_ROLE_RELAY_SERVICE ? m_relayService : m_actingOnForward;
+
+		const auto existing = buckets.find(scope);
+		if (existing != buckets.end()) {
 			SBucket &bucket = existing->second;
 			if (nowMs >= bucket.windowStartMs &&
 				nowMs - bucket.windowStartMs >= kRendezvousBackoffMs) {
@@ -195,10 +223,10 @@ public:
 			return true;
 		}
 
-		if (m_buckets.size() >= kRendezvousRelayBucketCap) {
-			PruneExpired(nowMs);
+		if (buckets.size() >= kRendezvousRelayBucketCap) {
+			PruneExpired(buckets, nowMs);
 		}
-		if (m_buckets.size() >= kRendezvousRelayBucketCap) {
+		if (buckets.size() >= kRendezvousRelayBucketCap) {
 			if (!requesterIsKnown) {
 				// The flooder's class, and the cap is doing what it was
 				// written for: memory does not grow, and the request is
@@ -208,7 +236,7 @@ public:
 			// A peer we already hold takes the slot of whichever bucket has
 			// been open longest -- the one closest to expiring anyway. The
 			// table does not grow, so the memory bound is unchanged.
-			if (!EvictOldest()) {
+			if (!EvictOldest(buckets)) {
 				return false;
 			}
 		}
@@ -216,12 +244,15 @@ public:
 		SBucket bucket;
 		bucket.windowStartMs = nowMs;
 		bucket.count = 1;
-		m_buckets[scope] = bucket;
+		buckets[scope] = bucket;
 		return true;
 	}
 
-	//! How many buckets are held. Exposed so the memory bound is assertable.
-	size_t BucketCount() const { return m_buckets.size(); }
+	//! How many buckets are held across both roles. Exposed so the memory bound
+	//! is assertable. Each table is capped separately, so the bound is twice
+	//! kRendezvousRelayBucketCap -- and the acting table holds one entry in
+	//! practice, because only a buddy reaches it.
+	size_t BucketCount() const { return m_relayService.size() + m_actingOnForward.size(); }
 
 private:
 	struct SBucket
@@ -229,6 +260,8 @@ private:
 		uint64_t windowStartMs = 0;
 		uint32_t count = 0;
 	};
+
+	typedef std::map<CNetworkAddress, SBucket> BucketTable;
 
 	/**
 	 * Drop the bucket whose window opened longest ago, to make room for one
@@ -239,37 +272,42 @@ private:
 	 *
 	 * @return false only for an empty table, which the caller cannot reach.
 	 */
-	bool EvictOldest()
+	static bool EvictOldest(BucketTable &buckets)
 	{
-		auto oldest = m_buckets.begin();
-		if (oldest == m_buckets.end()) {
+		auto oldest = buckets.begin();
+		if (oldest == buckets.end()) {
 			return false;
 		}
-		for (auto it = m_buckets.begin(); it != m_buckets.end(); ++it) {
+		for (auto it = buckets.begin(); it != buckets.end(); ++it) {
 			if (it->second.windowStartMs < oldest->second.windowStartMs) {
 				oldest = it;
 			}
 		}
-		m_buckets.erase(oldest);
+		buckets.erase(oldest);
 		return true;
 	}
 
 	//! Drop every bucket whose window has passed. Called only when the table is
 	//! full, so the ordinary path costs one map lookup.
-	void PruneExpired(uint64_t nowMs)
+	static void PruneExpired(BucketTable &buckets, uint64_t nowMs)
 	{
-		for (auto it = m_buckets.begin(); it != m_buckets.end();) {
+		for (auto it = buckets.begin(); it != buckets.end();) {
 			const bool expired = nowMs >= it->second.windowStartMs &&
 					     nowMs - it->second.windowStartMs >= kRendezvousBackoffMs;
 			if (expired) {
-				it = m_buckets.erase(it);
+				it = buckets.erase(it);
 			} else {
 				++it;
 			}
 		}
 	}
 
-	std::map<CNetworkAddress, SBucket> m_buckets;
+	//! One table per role, so the giveaway cannot spend the capability's budget.
+	//! Both are capped, because AcceptRelayedRendezvous() is a header function
+	//! and a future caller could answer senderIsOurBuddy true for more than the
+	//! one peer this client's socket ever does.
+	BucketTable m_relayService;
+	BucketTable m_actingOnForward;
 };
 
 //! The outcome of one relay request.
@@ -341,7 +379,7 @@ inline SRelayDecision RelayRendezvousRequest(const uint8_t *frame,
 	// Charged before the message is parsed, so garbage is not free. Five
 	// malformed requests spend the sender's own budget and its sixth request,
 	// valid or not, is throttled.
-	if (!limiter.Admit(source, nowMs, requesterHash != nullptr)) {
+	if (!limiter.Admit(source, nowMs, requesterHash != nullptr, RENDEZVOUS_ROLE_RELAY_SERVICE)) {
 		decision.disposition = RELAY_DISCARD_RATE_LIMITED;
 		return decision;
 	}
@@ -552,8 +590,13 @@ inline ENattRendezvousDirection ClassifyRendezvousDirection(
  *     RELAYED_REJECT_ENDPOINT_IS_THE_RELAY. This is a disambiguation between
  *     two honest uses, not a security guard -- an attacker chooses the endpoint
  *     freely, and is stopped by guard 1 before reaching here.
- *  3. **The same per-peer budget**, out of the same bucket a requester spends
- *     from, so a peer cannot get a second allowance by switching roles.
+ *  3. **A per-peer budget**, on the same terms a requester is held to but out
+ *     of its own table -- see ERendezvousRole. A peer therefore does get an
+ *     allowance in each role, which is deliberate and is what the roles cost:
+ *     the alternative had the service we give away to strangers throttling the
+ *     capability we are the beneficiary of, and one budget for two unrelated
+ *     transactions is the worse of the two errors. Each role is still bounded
+ *     at kRendezvousMaxAttempts per kRendezvousBackoffMs.
  *  4. **A usable endpoint that is not our own.**
  *  5. **An endpoint on the public internet.** The one gate that does not
  *     compare the named address against something this client holds, and so
@@ -671,7 +714,9 @@ struct SRelayedRendezvousDecision
  *        its own external address is the ordinary case behind NAT, and the
  *        other three guards do not depend on it.
  * @param nowMs a millisecond tick count.
- * @param limiter the same per-peer budget the relay path charges.
+ * @param limiter the per-peer budget. The same object the relay path charges,
+ *        but a different table inside it: see ERendezvousRole for why the two
+ *        directions must not share one.
  *
  * Emits nothing itself. The punch is CHolePunchSchedule's, which is what keeps
  * the bounds in one place instead of two.
@@ -693,7 +738,7 @@ inline SRelayedRendezvousDecision AcceptRelayedRendezvous(const uint8_t *frame,
 
 	// Charged before the message is parsed, on the same reasoning as the relay
 	// path: garbage from a peer spends that peer's own budget.
-	if (!limiter.Admit(relay, nowMs, senderIsOurBuddy)) {
+	if (!limiter.Admit(relay, nowMs, senderIsOurBuddy, RENDEZVOUS_ROLE_ACTING_ON_FORWARD)) {
 		decision.acceptance = RELAYED_REJECT_RATE_LIMITED;
 		return decision;
 	}
@@ -766,6 +811,13 @@ inline SRelayedRendezvousDecision AcceptRelayedRendezvous(const uint8_t *frame,
 	// would be a second thing to keep correct. It answers false for every IPv6
 	// address, which costs nothing here because the endpoint tail this hint
 	// arrives in carries four octets and cannot spell one.
+	//
+	// Complementary to the ourselves-check above, not a replacement for it, and
+	// neither may be deleted as covered by the other: routability rejects our
+	// loopback and our LAN address, which is what the ourselves-check misses
+	// when GetPublicIP() has nothing to give, while the ourselves-check rejects
+	// our own PUBLIC address when we do know it -- and that one is globally
+	// routable, so this test says nothing about it.
 	if (!request.hintAddress.IsGloballyRoutableIPv4()) {
 		decision.acceptance = RELAYED_REJECT_ENDPOINT_NOT_ROUTABLE;
 		return decision;

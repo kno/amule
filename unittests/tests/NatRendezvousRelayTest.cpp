@@ -795,17 +795,23 @@ TEST(NatRendezvousRelay, LimiterMemoryIsBoundedAndFailsClosedWhenFull)
 	for (uint32_t i = 0; i < kRendezvousRelayBucketCap; ++i) {
 		char text[64];
 		std::snprintf(text, sizeof(text), "2001:db8:%x:%x::1", (i >> 16) & 0xFFFF, i & 0xFFFF);
-		ASSERT_TRUE(limiter.Admit(CNetworkAddress::FromString(text), 1000, false));
+		ASSERT_TRUE(limiter.Admit(
+			CNetworkAddress::FromString(text), 1000, false, RENDEZVOUS_ROLE_RELAY_SERVICE));
 	}
 
 	ASSERT_EQUALS((size_t)kRendezvousRelayBucketCap, limiter.BucketCount());
-	ASSERT_FALSE(limiter.Admit(CNetworkAddress::FromString("2001:db8:ffff:ffff::1"), 1000, false));
+	ASSERT_FALSE(limiter.Admit(CNetworkAddress::FromString("2001:db8:ffff:ffff::1"),
+		1000,
+		false,
+		RENDEZVOUS_ROLE_RELAY_SERVICE));
 	ASSERT_EQUALS((size_t)kRendezvousRelayBucketCap, limiter.BucketCount());
 
 	// Once the window has passed, the expired buckets are reclaimed and the
 	// limiter serves again. Without this the first flood would be permanent.
-	ASSERT_TRUE(limiter.Admit(
-		CNetworkAddress::FromString("2001:db8:ffff:ffff::1"), 1000 + kRendezvousBackoffMs, false));
+	ASSERT_TRUE(limiter.Admit(CNetworkAddress::FromString("2001:db8:ffff:ffff::1"),
+		1000 + kRendezvousBackoffMs,
+		false,
+		RENDEZVOUS_ROLE_RELAY_SERVICE));
 }
 
 // Failing closed at the cap bounds memory, but on its own it hands an attacker
@@ -830,7 +836,8 @@ TEST(NatRendezvousRelay, AFloodOfUnknownSourcesCannotLockOutAPeerWeHold)
 	for (uint32_t i = 0; i < kRendezvousRelayBucketCap; ++i) {
 		char text[64];
 		std::snprintf(text, sizeof(text), "2001:db8:%x:%x::1", (i >> 16) & 0xFFFF, i & 0xFFFF);
-		ASSERT_TRUE(limiter.Admit(CNetworkAddress::FromString(text), 1000, false));
+		ASSERT_TRUE(limiter.Admit(
+			CNetworkAddress::FromString(text), 1000, false, RENDEZVOUS_ROLE_RELAY_SERVICE));
 	}
 	ASSERT_EQUALS((size_t)kRendezvousRelayBucketCap, limiter.BucketCount());
 
@@ -839,13 +846,17 @@ TEST(NatRendezvousRelay, AFloodOfUnknownSourcesCannotLockOutAPeerWeHold)
 	for (uint32_t i = 0; i < 32; ++i) {
 		char text[64];
 		std::snprintf(text, sizeof(text), "192.0.2.%u", i + 1);
-		ASSERT_TRUE(limiter.Admit(CNetworkAddress::FromString(text), 1000, true));
+		ASSERT_TRUE(limiter.Admit(
+			CNetworkAddress::FromString(text), 1000, true, RENDEZVOUS_ROLE_RELAY_SERVICE));
 		ASSERT_EQUALS((size_t)kRendezvousRelayBucketCap, limiter.BucketCount());
 	}
 
 	// And the flood's own class is still denied, so the cap still does the job
 	// it was written for.
-	ASSERT_FALSE(limiter.Admit(CNetworkAddress::FromString("2001:db8:ffff:ffff::1"), 1000, false));
+	ASSERT_FALSE(limiter.Admit(CNetworkAddress::FromString("2001:db8:ffff:ffff::1"),
+		1000,
+		false,
+		RENDEZVOUS_ROLE_RELAY_SERVICE));
 	ASSERT_EQUALS((size_t)kRendezvousRelayBucketCap, limiter.BucketCount());
 }
 
@@ -863,10 +874,13 @@ TEST(NatRendezvousRelay, AKnownPeerIsAdmittedInEveryWindowOfASustainedFlood)
 			char text[64];
 			std::snprintf(
 				text, sizeof(text), "2001:db8:%x:%x::1", (i >> 16) & 0xFFFF, i & 0xFFFF);
-			limiter.Admit(CNetworkAddress::FromString(text), nowMs, false);
+			limiter.Admit(CNetworkAddress::FromString(text),
+				nowMs,
+				false,
+				RENDEZVOUS_ROLE_RELAY_SERVICE);
 		}
 
-		ASSERT_TRUE(limiter.Admit(Requester(), nowMs, true));
+		ASSERT_TRUE(limiter.Admit(Requester(), nowMs, true, RENDEZVOUS_ROLE_RELAY_SERVICE));
 	}
 }
 
@@ -881,13 +895,14 @@ TEST(NatRendezvousRelay, AKnownPeerStillSpendsItsOwnBudget)
 	for (uint32_t i = 0; i < kRendezvousRelayBucketCap; ++i) {
 		char text[64];
 		std::snprintf(text, sizeof(text), "2001:db8:%x:%x::1", (i >> 16) & 0xFFFF, i & 0xFFFF);
-		ASSERT_TRUE(limiter.Admit(CNetworkAddress::FromString(text), 1000, false));
+		ASSERT_TRUE(limiter.Admit(
+			CNetworkAddress::FromString(text), 1000, false, RENDEZVOUS_ROLE_RELAY_SERVICE));
 	}
 
 	for (uint32_t i = 0; i < kRendezvousMaxAttempts; ++i) {
-		ASSERT_TRUE(limiter.Admit(Requester(), 1000, true));
+		ASSERT_TRUE(limiter.Admit(Requester(), 1000, true, RENDEZVOUS_ROLE_RELAY_SERVICE));
 	}
-	ASSERT_FALSE(limiter.Admit(Requester(), 1000, true));
+	ASSERT_FALSE(limiter.Admit(Requester(), 1000, true, RENDEZVOUS_ROLE_RELAY_SERVICE));
 }
 
 // End to end, on the function the socket actually calls: a request from a host
@@ -903,7 +918,8 @@ TEST(NatRendezvousRelay, ARequestFromAHostWeHoldIsRelayedDuringAFlood)
 	for (uint32_t i = 0; i < kRendezvousRelayBucketCap; ++i) {
 		char text[64];
 		std::snprintf(text, sizeof(text), "2001:db8:%x:%x::1", (i >> 16) & 0xFFFF, i & 0xFFFF);
-		ASSERT_TRUE(limiter.Admit(CNetworkAddress::FromString(text), 1000, false));
+		ASSERT_TRUE(limiter.Admit(
+			CNetworkAddress::FromString(text), 1000, false, RENDEZVOUS_ROLE_RELAY_SERVICE));
 	}
 
 	const std::vector<uint8_t> frame = Request(Requester(), kSourcePort);
@@ -934,13 +950,16 @@ TEST(NatRendezvousRelay, IPv6RequestersShareABudgetPerSixtyFour)
 	for (uint32_t i = 0; i < kRendezvousMaxAttempts; ++i) {
 		char text[64];
 		std::snprintf(text, sizeof(text), "2001:db8:1:1::%x", i + 1);
-		ASSERT_TRUE(limiter.Admit(CNetworkAddress::FromString(text), 1000, false));
+		ASSERT_TRUE(limiter.Admit(
+			CNetworkAddress::FromString(text), 1000, false, RENDEZVOUS_ROLE_RELAY_SERVICE));
 	}
 
 	// A sixth address in the same /64 is the same customer.
-	ASSERT_FALSE(limiter.Admit(CNetworkAddress::FromString("2001:db8:1:1::99"), 1000, false));
+	ASSERT_FALSE(limiter.Admit(
+		CNetworkAddress::FromString("2001:db8:1:1::99"), 1000, false, RENDEZVOUS_ROLE_RELAY_SERVICE));
 	// A different /64 is not.
-	ASSERT_TRUE(limiter.Admit(CNetworkAddress::FromString("2001:db8:1:2::1"), 1000, false));
+	ASSERT_TRUE(limiter.Admit(
+		CNetworkAddress::FromString("2001:db8:1:2::1"), 1000, false, RENDEZVOUS_ROLE_RELAY_SERVICE));
 }
 
 // A tick count that appears to move backwards must not hand out a fresh budget.
@@ -951,10 +970,10 @@ TEST(NatRendezvousRelay, BackwardsClockDoesNotResetABudget)
 	CRendezvousRelayLimiter limiter;
 
 	for (uint32_t i = 0; i < kRendezvousMaxAttempts; ++i) {
-		ASSERT_TRUE(limiter.Admit(Requester(), 100000, false));
+		ASSERT_TRUE(limiter.Admit(Requester(), 100000, false, RENDEZVOUS_ROLE_RELAY_SERVICE));
 	}
 
-	ASSERT_FALSE(limiter.Admit(Requester(), 1, false));
+	ASSERT_FALSE(limiter.Admit(Requester(), 1, false, RENDEZVOUS_ROLE_RELAY_SERVICE));
 }
 
 // Nothing in the forwarded bytes states which direction the message travels.
@@ -1193,9 +1212,107 @@ TEST(NatRendezvousRelay, RendezvousFromOurBuddyNamingItselfIsNotActedOn)
 	ASSERT_TRUE(decision.punchEndpoint.IsAbsent());
 }
 
-// The same budget bounds this direction. A relay that forwards more than its
-// share is throttled on exactly the terms a requester is, and out of the same
-// bucket -- so a peer cannot get a second allowance by switching roles.
+// One bucket table served both directions of this opcode, and the two are not
+// the same transaction. Relaying is a service this client gives away to
+// strangers and gets nothing from; acting on a forward is a capability this
+// client is the beneficiary of. Charging them to one budget lets the giveaway
+// throttle the thing we need, which is a category error no bucket count fixes:
+// our own buddy asking us to relay five times in a window left nothing for the
+// forward it sent us in the other direction.
+//
+// So the budget is per role. The role is chosen inside these two functions
+// rather than by whoever calls them, so there is no wiring for a caller to get
+// wrong -- the same reason ClassifyRendezvousDirection() lives here.
+TEST(NatRendezvousRelay, RelayingForOurBuddyDoesNotSpendWhatItsForwardsNeed)
+{
+	uint8_t requesterHash[NATT_PEER_HASH_LENGTH];
+	FillHash(requesterHash, 0x10);
+
+	const std::vector<uint8_t> ask = Request(Requester(), kSourcePort);
+	CRendezvousRelayLimiter limiter;
+	CFakeClientList clients(Target(), kTargetPort, 0x20);
+	CRecordingSender sender;
+
+	// Our buddy spends its entire relay-service budget asking us to relay.
+	for (uint32_t i = 0; i < kRendezvousMaxAttempts; ++i) {
+		const SRelayDecision served = RelayRendezvousRequest(ask.data(),
+			ask.size(),
+			Requester(),
+			kSourcePort,
+			requesterHash,
+			1000,
+			limiter,
+			clients,
+			sender);
+		ASSERT_EQUALS((int)RELAY_FORWARD, (int)served.disposition);
+	}
+
+	const SRelayDecision throttled = RelayRendezvousRequest(ask.data(),
+		ask.size(),
+		Requester(),
+		kSourcePort,
+		requesterHash,
+		1000,
+		limiter,
+		clients,
+		sender);
+	ASSERT_EQUALS((int)RELAY_DISCARD_RATE_LIMITED, (int)throttled.disposition);
+
+	// And the forward it sends us in the other direction, on the same limiter,
+	// is untouched by that. This is the assertion the shared table failed.
+	uint8_t peerHash[NATT_PEER_HASH_LENGTH];
+	FillHash(peerHash, 0x30);
+	uint8_t frame[NATT_RENDEZVOUS_MAX_LENGTH];
+	const size_t length =
+		EncodeRelayedRendezvous(peerHash, NULL, PunchTarget(), 4662, frame, sizeof(frame));
+
+	const SRelayedRendezvousDecision acted =
+		AcceptRelayedRendezvous(frame, length, Requester(), true, CNetworkAddress(), 1000, limiter);
+	ASSERT_EQUALS((int)RELAYED_ACCEPT, (int)acted.acceptance);
+}
+
+// And the other way round, so neither role is merely first past the post: a
+// buddy that has spent its forward budget can still ask us to relay.
+TEST(NatRendezvousRelay, ForwardsFromOurBuddyDoNotSpendWhatRelayingForItNeeds)
+{
+	uint8_t peerHash[NATT_PEER_HASH_LENGTH];
+	FillHash(peerHash, 0x30);
+	uint8_t frame[NATT_RENDEZVOUS_MAX_LENGTH];
+	const size_t length =
+		EncodeRelayedRendezvous(peerHash, NULL, PunchTarget(), 4662, frame, sizeof(frame));
+
+	CRendezvousRelayLimiter limiter;
+	for (uint32_t i = 0; i < kRendezvousMaxAttempts; ++i) {
+		const SRelayedRendezvousDecision acted = AcceptRelayedRendezvous(
+			frame, length, Requester(), true, CNetworkAddress(), 1000, limiter);
+		ASSERT_EQUALS((int)RELAYED_ACCEPT, (int)acted.acceptance);
+	}
+	const SRelayedRendezvousDecision throttled =
+		AcceptRelayedRendezvous(frame, length, Requester(), true, CNetworkAddress(), 1000, limiter);
+	ASSERT_EQUALS((int)RELAYED_REJECT_RATE_LIMITED, (int)throttled.acceptance);
+
+	uint8_t requesterHash[NATT_PEER_HASH_LENGTH];
+	FillHash(requesterHash, 0x10);
+	const std::vector<uint8_t> ask = Request(Requester(), kSourcePort);
+	CFakeClientList clients(Target(), kTargetPort, 0x20);
+	CRecordingSender sender;
+
+	const SRelayDecision served = RelayRendezvousRequest(ask.data(),
+		ask.size(),
+		Requester(),
+		kSourcePort,
+		requesterHash,
+		1000,
+		limiter,
+		clients,
+		sender);
+	ASSERT_EQUALS((int)RELAY_FORWARD, (int)served.disposition);
+}
+
+// A budget bounds this direction too. A relay that forwards more than its share
+// is throttled on exactly the terms a requester is -- five per window -- out of
+// the table belonging to this role. See ERendezvousRole for why it is not the
+// same table the relay service spends from.
 TEST(NatRendezvousRelay, RelayedRendezvousIsRateLimitedPerRelay)
 {
 	uint8_t peerHash[NATT_PEER_HASH_LENGTH];
