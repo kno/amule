@@ -227,11 +227,44 @@ enum ENattFrameTypeReason
 	NATT_FRAME_UTP_CAPABILITY_TIMED_OUT
 };
 
-//! Which OP_UDPRESERVEDPROT2 frame type carries the exchange right now.
+//! The transport a NAT-T exchange concluded on.
+//!
+//! Separate from the frame-type byte because they answer different questions
+//! for different callers: this one is "what did we negotiate", which a caller
+//! can log, gate on, or store, and the byte is "where do these particular bytes
+//! go". Making a caller compare a decision against 0x01 to learn the first is
+//! how a frame-type constant ends up standing in for a transport in code that
+//! has nothing to do with framing.
+enum ENattTransport : uint8_t
+{
+	NATT_TRANSPORT_UTP,
+	NATT_TRANSPORT_QUIC
+};
+
+/**
+ * Which OP_UDPRESERVEDPROT2 frame type carries the exchange's TRANSPORT DATA
+ * right now, and which transport that is.
+ *
+ * Transport data, and not the control messages. That distinction did not exist
+ * when this was written -- rendezvous and hole punches rode 0xB2 with a frame
+ * type too, so one byte answered both questions and the name was the whole
+ * truth. It is not any more: control messages ride 0xC5 with their opcode as
+ * the datagram's second byte (NATT_CONTROL_PROTOCOL, NatRendezvousProtocol.h),
+ * which is a constant with no inputs and nothing to negotiate.
+ *
+ * So the two questions the name used to conflate are now separated by shape.
+ * The one that depends on what the peer advertised and on the clock is this
+ * function; the one that depends on nothing is a constant. Neither can be
+ * mistaken for the other at a call site, which is the point.
+ */
 struct SNattFrameTypeDecision
 {
-	//! OP_NATT_FRAME_QUIC (0x01) or OP_NATT_FRAME_UTP (0x00).
+	//! OP_NATT_FRAME_QUIC (0x01) or OP_NATT_FRAME_UTP (0x00). The frame type
+	//! for transport data on 0xB2; never the envelope of a control message.
 	uint8_t frameType = OP_NATT_FRAME_UTP;
+	//! The same conclusion, said as a transport. Always consistent with
+	//! frameType -- they are one decision reported twice, not two.
+	ENattTransport transport = NATT_TRANSPORT_UTP;
 	//! True only while the QUIC frame type is still being given its chance,
 	//! i.e. inside the window with no capability frame yet. The caller should
 	//! re-ask after the wait rather than treating silence as a failure. A
@@ -355,6 +388,7 @@ inline SNattFrameTypeDecision SelectNattFrameType(const SNattFrameTypeInputs &in
 
 	if (inputs.quicCapabilityFrameSeen) {
 		decision.frameType = OP_NATT_FRAME_QUIC;
+		decision.transport = NATT_TRANSPORT_QUIC;
 		decision.waitingForQuic = false;
 		decision.reason = NATT_FRAME_QUIC_CONFIRMED;
 		return decision;
@@ -362,6 +396,7 @@ inline SNattFrameTypeDecision SelectNattFrameType(const SNattFrameTypeInputs &in
 
 	if (inputs.msSinceRendezvousStarted < kNattFrameTypeFallbackWaitMs) {
 		decision.frameType = OP_NATT_FRAME_QUIC;
+		decision.transport = NATT_TRANSPORT_QUIC;
 		decision.waitingForQuic = true;
 		decision.reason = NATT_FRAME_QUIC_AWAITING_CAPABILITY;
 		return decision;
@@ -369,6 +404,19 @@ inline SNattFrameTypeDecision SelectNattFrameType(const SNattFrameTypeInputs &in
 
 	decision.reason = NATT_FRAME_UTP_CAPABILITY_TIMED_OUT;
 	return decision;
+}
+
+/**
+ * Which transport the exchange concluded on: the "what did we negotiate" half.
+ *
+ * Delegates rather than deciding again, because two functions answering the
+ * same question from the same inputs is two functions that can disagree -- and
+ * the disagreement would be a transport chosen on one path and a frame type
+ * chosen on another, which is a stall with nothing logged on either side.
+ */
+inline ENattTransport SelectNattTransport(const SNattFrameTypeInputs &inputs)
+{
+	return SelectNattFrameType(inputs).transport;
 }
 
 //! One endpoint worth punching toward.

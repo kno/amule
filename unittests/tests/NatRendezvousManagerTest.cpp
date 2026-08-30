@@ -338,7 +338,7 @@ TEST(NatRendezvousManager, RelayedEndpointIsOneCandidateAfterTheKnownOnes)
 
 	uint8_t frame[NATT_RENDEZVOUS_MAX_LENGTH];
 	const size_t length = EncodeRelayedRendezvous(
-		peer, CNetworkAddress::FromString("198.51.100.7"), 4662, frame, sizeof(frame));
+		peer, NULL, CNetworkAddress::FromString("198.51.100.7"), 4662, frame, sizeof(frame));
 
 	CRendezvousRelayLimiter limiter;
 	const SRelayedRendezvousDecision accepted = AcceptRelayedRendezvous(frame,
@@ -375,7 +375,7 @@ TEST(NatRendezvousManager, RejectedRelayedRendezvousStartsNothing)
 	FillHash(targetHash, 0x30);
 	uint8_t frame[NATT_RENDEZVOUS_MAX_LENGTH];
 	const size_t length = EncodeRendezvousRequest(
-		targetHash, CNetworkAddress::FromString("198.51.100.200"), 4662, frame, sizeof(frame));
+		targetHash, NULL, CNetworkAddress::FromString("198.51.100.200"), 4662, frame, sizeof(frame));
 
 	CRendezvousRelayLimiter limiter;
 	const SRelayedRendezvousDecision rejected = AcceptRelayedRendezvous(frame,

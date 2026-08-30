@@ -228,8 +228,9 @@ struct SRelayDecision
 /**
  * Validate and, if it survives, relay one OP_RENDEZVOUS request.
  *
- * @param frame points at the OP_RENDEZVOUS opcode byte, i.e. past the 0xB2 and
- *        0x00 framing bytes.
+ * @param frame points at the OP_RENDEZVOUS body, i.e. past the 0xC5 protocol
+ *        byte and the opcode byte. The body carries no opcode of its own; see
+ *        the envelope comment in NatRendezvousProtocol.h.
  * @param frameLength bytes available from there.
  * @param source the address the datagram arrived from, at full width. Not a
  *        32-bit narrowing: a rendezvous can arrive over either family and
@@ -364,9 +365,21 @@ inline SRelayDecision RelayRendezvousRequest(const uint8_t *frame,
 	// and carries the endpoint we observed -- not the one that was claimed.
 	// Marked relayed, so the target acts on it instead of relaying it on, and
 	// so this same function refuses it if it ever comes back here.
+	// The file hash travels on exactly as it arrived, and it is the ONE field
+	// here that comes from the datagram. That is not a hole in the rule above:
+	// the rule guards the identity and the endpoint, because those are what a
+	// forged value would aim traffic with. A file hash names no host and is
+	// never dialled -- it is the subject line of the rendezvous -- and this
+	// relay has no other source for it. Its client list knows who the requester
+	// is, not what it wanted. A request that named no file is forwarded naming
+	// none, rather than naming a zero hash that is not the file in question.
 	uint8_t forwarded[NATT_RENDEZVOUS_MAX_LENGTH];
-	const size_t length =
-		EncodeRelayedRendezvous(requesterHash, source, sourcePort, forwarded, sizeof(forwarded));
+	const size_t length = EncodeRelayedRendezvous(requesterHash,
+		request.hasFileHash ? request.fileHash : nullptr,
+		source,
+		sourcePort,
+		forwarded,
+		sizeof(forwarded));
 	if (length == 0) {
 		// The observed endpoint could not be encoded -- an address family this
 		// hint format does not carry. Nothing is sent; a rendezvous with no
@@ -449,7 +462,8 @@ struct SRelayedRendezvousDecision
 /**
  * Validate one relayed OP_RENDEZVOUS.
  *
- * @param frame points at the OP_RENDEZVOUS opcode byte.
+ * @param frame points at the OP_RENDEZVOUS body, past the 0xC5 protocol byte
+ *        and the opcode byte.
  * @param frameLength bytes available from there.
  * @param relay the address the forward arrived from, at full width.
  * @param relayIsKnown whether this client holds an identity for that host. The

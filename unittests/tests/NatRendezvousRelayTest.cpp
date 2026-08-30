@@ -169,16 +169,42 @@ private:
 	uint8_t m_hash[NATT_PEER_HASH_LENGTH];
 };
 
+//! The file hash a request names, distinct from every peer hash seed used here
+//! so that a field swap shows up as a value and not as a length.
+void FillFileHash(uint8_t *out)
+{
+	for (uint8_t i = 0; i < NATT_FILE_HASH_LENGTH; ++i) {
+		out[i] = static_cast<uint8_t>(0xF0 + i);
+	}
+}
+
 //! A well-formed request from `Requester()` for the peer with hash seed 0x20,
-//! claiming `claimedEndpoint` as its own external endpoint.
+//! about the file `FillFileHash()` names, claiming `claimedEndpoint` as its own
+//! external endpoint.
 std::vector<uint8_t> Request(const CNetworkAddress &claimedEndpoint, uint16_t claimedPort)
+{
+	uint8_t targetHash[NATT_PEER_HASH_LENGTH];
+	FillHash(targetHash, 0x20);
+	uint8_t fileHash[NATT_FILE_HASH_LENGTH];
+	FillFileHash(fileHash);
+
+	std::vector<uint8_t> frame(NATT_RENDEZVOUS_MAX_LENGTH, 0);
+	const size_t written = EncodeRendezvousRequest(
+		targetHash, fileHash, claimedEndpoint, claimedPort, frame.data(), frame.size());
+	frame.resize(written);
+	return frame;
+}
+
+//! The same request with no file hash in it -- the legal shape for a requester
+//! that has none, and the one the greedy file-hash test must not misread.
+std::vector<uint8_t> RequestWithoutFileHash(const CNetworkAddress &claimedEndpoint, uint16_t claimedPort)
 {
 	uint8_t targetHash[NATT_PEER_HASH_LENGTH];
 	FillHash(targetHash, 0x20);
 
 	std::vector<uint8_t> frame(NATT_RENDEZVOUS_MAX_LENGTH, 0);
-	const size_t written =
-		EncodeRendezvousRequest(targetHash, claimedEndpoint, claimedPort, frame.data(), frame.size());
+	const size_t written = EncodeRendezvousRequest(
+		targetHash, NULL, claimedEndpoint, claimedPort, frame.data(), frame.size());
 	frame.resize(written);
 	return frame;
 }
@@ -221,10 +247,22 @@ TEST(NatRendezvousRelay, EndpointHintNamingAnUnrelatedHostEmitsNoPacketAtAll)
 	ASSERT_EQUALS(0, clients.m_lookups);
 }
 
-// The same, for a hint naming a host in a different family. An IPv6 hint from an
-// IPv4 requester is not "an address we cannot compare", it is an unrelated
-// address, and it is discarded on the same terms.
-TEST(NatRendezvousRelay, EndpointHintInAnotherFamilyEmitsNoPacketAtAll)
+// The same, for a hint naming a host in a different family -- but it is
+// rejected one step earlier now, and the difference is worth stating.
+//
+// The eMuleAI endpoint slot is IPv4 and has no family byte, so an IPv6 endpoint
+// is not encodable at all: the request goes out carrying no endpoint rather
+// than carrying an IPv6 one, and it never reaches the address comparison. The
+// disposition is therefore RELAY_DISCARD_NO_ENDPOINT_HINT and not
+// RELAY_DISCARD_HINT_NAMES_ANOTHER_HOST.
+//
+// The security property is unchanged -- no packet is emitted, to anyone -- and
+// what is lost is a capability rather than a defence: an IPv6 peer cannot state
+// an IPv6 endpoint in this format. Nothing in production could anyway, because
+// CClientUDPSocket::SendNattControlMessage() drops native-IPv6 destinations
+// before a control message is sent. Giving IPv6 a slot needs a length-prefixed
+// element, which is a wire-format proposal of its own.
+TEST(NatRendezvousRelay, AnIPv6EndpointHasNoSlotSoNoPacketIsEmitted)
 {
 	uint8_t requesterHash[NATT_PEER_HASH_LENGTH];
 	FillHash(requesterHash, 0x10);
@@ -245,7 +283,7 @@ TEST(NatRendezvousRelay, EndpointHintInAnotherFamilyEmitsNoPacketAtAll)
 		sender);
 
 	ASSERT_EQUALS(0u, sender.m_sent.size());
-	ASSERT_EQUALS((int)RELAY_DISCARD_HINT_NAMES_ANOTHER_HOST, (int)decision.disposition);
+	ASSERT_EQUALS((int)RELAY_DISCARD_NO_ENDPOINT_HINT, (int)decision.disposition);
 }
 
 // The one path that does emit. Exactly one packet, to the address the relay's
@@ -293,6 +331,88 @@ TEST(NatRendezvousRelay, ValidRequestForwardsTheObservedEndpointToTheTargetFromO
 	for (size_t i = 0; i < NATT_PEER_HASH_LENGTH; ++i) {
 		ASSERT_EQUALS((int)requesterHash[i], (int)forwarded.peerHash[i]);
 	}
+}
+
+// The file hash the request named travels on to the target, byte for byte.
+//
+// It is the one field in the forwarded message that DOES come from the
+// datagram, and that is deliberate rather than an oversight in the "never from
+// the datagram" rule. That rule exists for the requester identity and the
+// endpoint, because those are what a forged value would aim traffic with. A
+// file hash names no host and is never dialled; it is the subject line of the
+// rendezvous. The relay has no other source for it -- its client list knows who
+// the requester is, not what it wanted -- and inventing one would tell the
+// target this rendezvous is about a file it is not about.
+TEST(NatRendezvousRelay, TheFileHashTheRequestNamedIsForwardedVerbatim)
+{
+	uint8_t requesterHash[NATT_PEER_HASH_LENGTH];
+	FillHash(requesterHash, 0x10);
+
+	const std::vector<uint8_t> frame = Request(Requester(), 4662);
+	CRendezvousRelayLimiter limiter;
+	CFakeClientList clients(Target(), kTargetPort, 0x20);
+	CRecordingSender sender;
+
+	const SRelayDecision decision = RelayRendezvousRequest(frame.data(),
+		frame.size(),
+		Requester(),
+		kSourcePort,
+		requesterHash,
+		1000,
+		limiter,
+		clients,
+		sender);
+
+	ASSERT_TRUE(decision.emitted);
+	ASSERT_EQUALS(1u, sender.m_sent.size());
+
+	SNattRendezvousRequest forwarded;
+	ASSERT_TRUE(ParseRendezvousRequest(
+		sender.m_sent[0].payload.data(), sender.m_sent[0].payload.size(), forwarded));
+	ASSERT_TRUE(forwarded.hasFileHash);
+	for (size_t i = 0; i < NATT_FILE_HASH_LENGTH; ++i) {
+		ASSERT_EQUALS(0xF0 + (int)i, (int)forwarded.fileHash[i]);
+	}
+}
+
+// A request that named no file is forwarded naming no file. Not zero-filled:
+// sixteen zero bytes are a file hash, and it is not the file this rendezvous is
+// about. The forward is shorter by exactly those sixteen bytes, and its
+// endpoint still reads back as an endpoint -- the greedy file-hash test needs
+// sixteen bytes to fire and an endpoint tail is six, so the arithmetic cannot
+// reach it.
+TEST(NatRendezvousRelay, ARequestNamingNoFileIsForwardedNamingNoFile)
+{
+	uint8_t requesterHash[NATT_PEER_HASH_LENGTH];
+	FillHash(requesterHash, 0x10);
+
+	const std::vector<uint8_t> frame = RequestWithoutFileHash(Requester(), 4662);
+	CRendezvousRelayLimiter limiter;
+	CFakeClientList clients(Target(), kTargetPort, 0x20);
+	CRecordingSender sender;
+
+	const SRelayDecision decision = RelayRendezvousRequest(frame.data(),
+		frame.size(),
+		Requester(),
+		kSourcePort,
+		requesterHash,
+		1000,
+		limiter,
+		clients,
+		sender);
+
+	ASSERT_TRUE(decision.emitted);
+	ASSERT_EQUALS(1u, sender.m_sent.size());
+	ASSERT_EQUALS(
+		NATT_RENDEZVOUS_FIXED_LENGTH + NATT_ENDPOINT_TAIL_LENGTH, sender.m_sent[0].payload.size());
+
+	SNattRendezvousRequest forwarded;
+	ASSERT_TRUE(ParseRendezvousRequest(
+		sender.m_sent[0].payload.data(), sender.m_sent[0].payload.size(), forwarded));
+	ASSERT_FALSE(forwarded.hasFileHash);
+	ASSERT_TRUE(forwarded.hasEndpointHint);
+	ASSERT_TRUE(forwarded.hintAddress == Requester());
+	ASSERT_EQUALS(kSourcePort, forwarded.hintPort);
 }
 
 // An IPv4-mapped claim of the same IPv4 address is the same address respelled,
@@ -599,7 +719,9 @@ TEST(NatRendezvousRelay, RequestForATraversalThisBuildCannotServeEmitsNothing)
 	FillHash(requesterHash, 0x10);
 
 	std::vector<uint8_t> frame = Request(Requester(), kSourcePort);
-	frame[1] &= static_cast<uint8_t>(~CONNECT_OPT_NAT_TRAVERSAL_UTP);
+	// The options byte follows the peer hash; it is no longer the body's second
+	// byte, because the body no longer opens with an opcode.
+	frame[NATT_PEER_HASH_LENGTH] &= static_cast<uint8_t>(~CONNECT_OPT_NAT_TRAVERSAL_UTP);
 
 	CRendezvousRelayLimiter limiter;
 	CFakeClientList clients(Target(), kTargetPort, 0x20);
@@ -751,7 +873,7 @@ TEST(NatRendezvousRelay, AlreadyRelayedMessageIsNotRelayedAgain)
 
 	uint8_t frame[NATT_RENDEZVOUS_MAX_LENGTH];
 	const size_t length =
-		EncodeRelayedRendezvous(targetHash, Requester(), kSourcePort, frame, sizeof(frame));
+		EncodeRelayedRendezvous(targetHash, NULL, Requester(), kSourcePort, frame, sizeof(frame));
 
 	CRendezvousRelayLimiter limiter;
 	CFakeClientList clients(Target(), kTargetPort, 0x20);
@@ -783,7 +905,7 @@ TEST(NatRendezvousRelay, RelayedRendezvousFromAKnownRelayIsAccepted)
 
 	uint8_t frame[NATT_RENDEZVOUS_MAX_LENGTH];
 	const size_t length = EncodeRelayedRendezvous(
-		peerHash, CNetworkAddress::FromString("198.51.100.7"), 4662, frame, sizeof(frame));
+		peerHash, NULL, CNetworkAddress::FromString("198.51.100.7"), 4662, frame, sizeof(frame));
 
 	CRendezvousRelayLimiter limiter;
 	const SRelayedRendezvousDecision decision = AcceptRelayedRendezvous(
@@ -829,7 +951,7 @@ TEST(NatRendezvousRelay, RelayedRendezvousFromAnUnknownRelayIsRejected)
 
 	uint8_t frame[NATT_RENDEZVOUS_MAX_LENGTH];
 	const size_t length = EncodeRelayedRendezvous(
-		peerHash, CNetworkAddress::FromString("198.51.100.7"), 4662, frame, sizeof(frame));
+		peerHash, NULL, CNetworkAddress::FromString("198.51.100.7"), 4662, frame, sizeof(frame));
 
 	CRendezvousRelayLimiter limiter;
 	const SRelayedRendezvousDecision decision = AcceptRelayedRendezvous(
@@ -849,7 +971,7 @@ TEST(NatRendezvousRelay, RelayedRendezvousIsRateLimitedPerRelay)
 
 	uint8_t frame[NATT_RENDEZVOUS_MAX_LENGTH];
 	const size_t length = EncodeRelayedRendezvous(
-		peerHash, CNetworkAddress::FromString("198.51.100.7"), 4662, frame, sizeof(frame));
+		peerHash, NULL, CNetworkAddress::FromString("198.51.100.7"), 4662, frame, sizeof(frame));
 
 	CRendezvousRelayLimiter limiter;
 	for (uint32_t i = 0; i < kRendezvousMaxAttempts; ++i) {
@@ -878,7 +1000,7 @@ TEST(NatRendezvousRelay, RelayedRendezvousNamingOurOwnEndpointIsRejected)
 
 	uint8_t frame[NATT_RENDEZVOUS_MAX_LENGTH];
 	const size_t length = EncodeRelayedRendezvous(
-		peerHash, CNetworkAddress::FromString("192.0.2.10"), 4662, frame, sizeof(frame));
+		peerHash, NULL, CNetworkAddress::FromString("192.0.2.10"), 4662, frame, sizeof(frame));
 
 	CRendezvousRelayLimiter limiter;
 	const SRelayedRendezvousDecision decision = AcceptRelayedRendezvous(

@@ -369,6 +369,76 @@ TEST(NatTraversalPolicy, NoFrameTypeOutcomeIsEverAUserVisibleFailure)
 	}
 }
 
+// The question this function answers, restated now that it answers only one of
+// them.
+//
+// It used to be the whole story: control messages rode 0xB2 with a frame type,
+// so "which frame type" and "which transport" were the same byte and the same
+// decision. They are not any more. Control messages ride 0xC5 with their opcode
+// as the datagram's second byte -- see NATT_CONTROL_PROTOCOL -- and that is a
+// constant, with no inputs and nothing to select. What is left for this
+// function is the transport data frame on 0xB2, which is what its returned
+// frameType has always been.
+//
+// So the two questions are separated by shape rather than by convention: the
+// one with inputs is a function, the one without is a constant, and neither can
+// be mistaken for the other at a call site.
+TEST(NatTraversalPolicy, TheFrameTypeDecisionIsAboutTransportDataAndNotAboutControlMessages)
+{
+	SNattFrameTypeInputs inputs = QuicOnBothSides();
+	inputs.quicCapabilityFrameSeen = true;
+
+	// Whatever the transport negotiation concludes, a control message's
+	// envelope does not move with it.
+	ASSERT_EQUALS(0x01, (int)SelectNattFrameType(inputs).frameType);
+	ASSERT_EQUALS(0xC5, (int)NATT_CONTROL_PROTOCOL);
+
+	inputs.peerAdvertisesQuic = false;
+	ASSERT_EQUALS(0x00, (int)SelectNattFrameType(inputs).frameType);
+	ASSERT_EQUALS(0xC5, (int)NATT_CONTROL_PROTOCOL);
+}
+
+// And the transport half of the split, reported as a transport rather than as a
+// frame-type byte a caller would have to decode. A caller that wants to know
+// what was negotiated should not have to compare against 0x01 and know what
+// that means.
+TEST(NatTraversalPolicy, TheNegotiatedTransportIsReportedAsATransport)
+{
+	SNattFrameTypeInputs inputs = QuicOnBothSides();
+	inputs.quicCapabilityFrameSeen = true;
+	ASSERT_EQUALS((int)NATT_TRANSPORT_QUIC, (int)SelectNattTransport(inputs));
+	ASSERT_EQUALS((int)NATT_TRANSPORT_QUIC, (int)SelectNattFrameType(inputs).transport);
+
+	// The default build, and every macOS build: no QUIC transport here, so the
+	// negotiation concludes uTP whatever the peer advertised.
+	inputs.localCanServeQuic = false;
+	ASSERT_EQUALS((int)NATT_TRANSPORT_UTP, (int)SelectNattTransport(inputs));
+	ASSERT_EQUALS((int)NATT_TRANSPORT_UTP, (int)SelectNattFrameType(inputs).transport);
+}
+
+// The gate that must not move. aMule has no QUIC transport, so 0x01 is a frame
+// type it could not serve, and the two are locked together: a decision naming
+// the QUIC transport and a decision naming the QUIC frame type are the same
+// decision, and neither may be reached without CQuicContext::CanServeConnections().
+TEST(NatTraversalPolicy, TheQuicFrameTypeIsNeverSelectedWithoutTheQuicTransport)
+{
+	SNattFrameTypeInputs inputs = QuicOnBothSides();
+	inputs.localCanServeQuic = false;
+
+	const bool capabilityFrameSeen[2] = { false, true };
+	const uint32_t elapsed[3] = { 0, kNattFrameTypeFallbackWaitMs - 1, kNattFrameTypeFallbackWaitMs };
+	for (bool seen : capabilityFrameSeen) {
+		for (uint32_t ms : elapsed) {
+			inputs.quicCapabilityFrameSeen = seen;
+			inputs.msSinceRendezvousStarted = ms;
+
+			const SNattFrameTypeDecision decision = SelectNattFrameType(inputs);
+			ASSERT_EQUALS(0x00, (int)decision.frameType);
+			ASSERT_EQUALS((int)NATT_TRANSPORT_UTP, (int)decision.transport);
+		}
+	}
+}
+
 // Task 2.3 and 2.4. The hint is appended to what is already known, in that
 // order, and the known endpoint survives.
 TEST(NatTraversalPolicy, StaleHintDoesNotDisplaceAKnownAddress)

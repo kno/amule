@@ -64,15 +64,22 @@ enum Protocols
 // a frame type aMule does not serve a recognised drop rather than malformed
 // traffic.
 //
-// OP_NATT_FRAME_UTP is served: it carries uTP (src/UtpDatagramRouting.h) and,
-// for the payloads libutp declines, the rendezvous and hole-punch control
-// messages. Those three opcodes -- OP_RENDEZVOUS 0xA0, OP_HOLEPUNCH 0xA1,
+// OP_NATT_FRAME_UTP is served: it carries uTP transport data
+// (src/UtpDatagramRouting.h), and only that. It used to carry the rendezvous
+// and hole-punch control messages as well, and no longer does -- those are
+// eMule-protocol messages under OP_EMULEPROT with their opcode as the
+// datagram's second byte, which is where eMuleAI v1.6 reads them. A format only
+// aMule spoke could not rendezvous with anything.
+//
+// Those three opcodes -- OP_RENDEZVOUS 0xA0, OP_HOLEPUNCH 0xA1,
 // OP_NATT_ENDPOINT_HINT 0xAA -- are NOT in this file, and deliberately: they
-// are a third namespace, at a third offset, and every one of them collides with
-// an eD2k opcode that has nothing to do with NAT traversal. 0xA0 alone is
-// OP_SERVER_LIST_REQ as a Client2Server UDP opcode and OP_BUDDYPONG as a
-// Client2Client TCP one. They live in src/NatRendezvousProtocol.h with the
-// codec that reads them and the bounds that limit them.
+// are a separate namespace under a different protocol byte, and each of them
+// collides with an eD2k opcode that has nothing to do with NAT traversal. 0xA0
+// alone is OP_SERVER_LIST_REQ as a Client2Server UDP opcode and OP_BUDDYPONG as
+// a Client2Client TCP one. Under 0xC5 -- the client-to-client UDP space they
+// actually share -- they collide with nothing: those opcodes are 0x90..0x95 and
+// 0xFE. They live in src/NatRendezvousProtocol.h with the codec that reads them
+// and the bounds that limit them.
 //
 // The transports behind the remaining types do not exist here. QUIC is
 // amule-quic-transport; the capability and key frames have nothing to

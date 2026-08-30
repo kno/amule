@@ -49,6 +49,12 @@
  * this socket on the way out; RouteInboundDatagram() is the way in, and the
  * classification order it fixes -- uTP, then QUIC, then the ed2k parser -- lives
  * in UtpDatagramRouting.h rather than here.
+ *
+ * The NAT traversal SIGNALLING does not ride 0xB2 at all. Rendezvous and hole
+ * punches are eMule-protocol messages under OP_EMULEPROT, dispatched from
+ * ProcessPacket() like any other opcode, because that is eMuleAI v1.6's
+ * framing. They still leave from this port, so the mapping a punch opens is
+ * still the one the transports will use.
  */
 class CClientUDPSocket : public CMuleUDPSocket,
 			 public IUtpDatagramSink,
@@ -131,6 +137,12 @@ public:
 	/**
 	 * Ask a relay to reach @a peerHash on this client's behalf.
 	 *
+	 * @param fileHash the file the rendezvous is about, or NULL when the
+	 *        caller holds none. A parameter rather than something this
+	 *        function could look up: nothing in the socket knows which
+	 *        download or upload a traversal is being attempted for, and a
+	 *        zero-filled or borrowed hash would name a file the rendezvous is
+	 *        not about. NULL is a legal message; see EncodeRendezvousMessage().
 	 * @param ownEndpoint this client's believed external endpoint. Sent as a
 	 *        hint, and the relay is expected to ignore its value and forward
 	 *        what it observed instead -- which is what RelayRendezvousRequest()
@@ -138,8 +150,14 @@ public:
 	 *        validates the hint against the source, so a request without one
 	 *        is discarded.
 	 * @return whether a request went out.
+	 *
+	 * No production caller yet, and that is
+	 * LocalCanDiscoverRendezvousRelay()'s gap rather than an oversight here:
+	 * this client cannot pick a relay that could reach a firewalled peer. The
+	 * responder half of the exchange is live.
 	 */
 	bool SendRendezvousRequest(const uint8_t *peerHash,
+		const uint8_t *fileHash,
 		const CNetworkAddress &relay,
 		uint16_t relayPort,
 		const CNetworkAddress &ownEndpoint,
@@ -247,14 +265,13 @@ private:
 		const uint8_t *frame, size_t frameLength, const CNetworkAddress &peer, uint16 port);
 
 	/**
-	 * The rendezvous and hole-punch control messages, inside an
-	 * OP_NATT_FRAME_UTP frame.
+	 * The rendezvous and hole-punch control messages, under OP_EMULEPROT.
 	 *
-	 * Reached only after the uTP context declined the datagram, which is what
-	 * makes the two parsers on this frame type unambiguous: a libutp v1 header
-	 * cannot begin with 0xA0, 0xA1 or 0xAA, and none of those three can be a
-	 * libutp header -- see the classification argument in
-	 * NatRendezvousProtocol.h.
+	 * Reached from ProcessPacket(), because these are eMule-protocol messages
+	 * with an ordinary opcode -- that is eMuleAI v1.6's framing, and the
+	 * envelope this tree used before (0xB2 with a frame type) was one only
+	 * aMule spoke. The three opcodes do not collide with the ed2k
+	 * client-to-client UDP ones; see NatRendezvousProtocol.h.
 	 *
 	 * This function is dispatch and no policy. Every decision it appears to
 	 * make is made in a header that a test binary can link: the relay
@@ -264,17 +281,23 @@ private:
 	 * theApp and cannot be linked into a test at all, so anything decided here
 	 * could not be asserted anywhere.
 	 *
-	 * @param frame points at the control opcode, i.e. past the 0xB2 and 0x00
-	 *        framing bytes.
+	 * @param opcode the datagram's second byte, already classified as one of
+	 *        the three by the caller.
+	 * @param body points past the 0xC5 and the opcode byte. The body carries
+	 *        no opcode of its own.
 	 */
-	void ProcessNattControlFrame(
-		const uint8_t *frame, size_t frameLength, const CNetworkAddress &peer, uint16 port);
+	void ProcessNattControlFrame(uint8_t opcode,
+		const uint8_t *body,
+		size_t bodyLength,
+		const CNetworkAddress &peer,
+		uint16 port);
 
-	//! Frame and queue one control message on this socket: OP_UDPRESERVEDPROT2
-	//! then OP_NATT_FRAME_UTP, exactly as SendUtpDatagram() does, so the punch
-	//! opens the mapping uTP will use rather than one of its own.
+	//! Frame and queue one control message on this socket: OP_EMULEPROT then
+	//! @a opcode, which is where eMuleAI keeps them. It leaves from the ed2k
+	//! UDP port either way, so the punch still opens the mapping the transport
+	//! will use rather than one of its own.
 	void SendNattControlMessage(
-		const uint8_t *payload, size_t length, const CNetworkAddress &to, uint16_t port);
+		uint8_t opcode, const uint8_t *body, size_t length, const CNetworkAddress &to, uint16_t port);
 
 	//! One unknown-frame line per minute, with a suppressed count. A peer
 	//! speaking a frame type this build does not know retries, so the useful
