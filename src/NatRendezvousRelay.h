@@ -101,9 +101,33 @@ enum ERelayDisposition
  *
  * A limit that allocates a bucket per source address is itself an amplifier: a
  * single attacker delegated an IPv6 /64 has more source addresses than this
- * process has bytes. Past this cap the limiter denies rather than growing,
- * which is the safe direction -- a full table means a flood is in progress, and
- * the cost of denying a genuine request during one is a retry.
+ * process has bytes. Past this cap the limiter never grows.
+ *
+ * It does not simply deny past it, though, and the reason is that this relay
+ * never replies: a source address costs an attacker nothing to forge, so 1024
+ * spoofed sources renewed once per window -- about seventeen packets a second
+ * -- hold the table full indefinitely, and every peer without a bucket is
+ * denied for as long as that runs. That is an outage rather than the retry an
+ * earlier version of this comment claimed, and one bucket table serves both
+ * directions of this opcode, so the service given away to strangers was
+ * starving the capability this client needs for itself.
+ *
+ * So the cap bounds the class it was written for. A requester this client
+ * already holds an identity for is admitted even when the table is full, taking
+ * the slot of whichever bucket has been open longest; an unknown one is denied.
+ * Flooding is then no longer a matter of picking addresses: to deny anybody the
+ * attacker must be in this client's own client list at the source it sends
+ * from, which spoofing does not achieve.
+ *
+ * What that costs, because every eviction policy is itself an attack surface:
+ * an attacker in the client list can evict an honest peer's bucket and so RESET
+ * that peer's window, handing it up to one extra window of budget. It cannot do
+ * that to itself -- its own bucket is found before the table is consulted for
+ * room, so a throttled peer stays throttled -- and it cannot use eviction to
+ * emit anything, because a relay still needs a hint that matches the observed
+ * source and a target out of our own client list. The gain is bounded by
+ * kRendezvousMaxAttempts per honest identity per window; the alternative,
+ * denying every peer we know during any flood, costs the whole feature.
  */
 constexpr size_t kRendezvousRelayBucketCap = 1024;
 
@@ -136,9 +160,14 @@ public:
 	 *
 	 * @param requester the address the request arrived from.
 	 * @param nowMs a millisecond tick count.
+	 * @param requesterIsKnown whether this client already holds an identity for
+	 *        that host -- a user hash on the relay path, a buddy relation on
+	 *        the acting one. Answered from our own state, never from the
+	 *        datagram. It buys a slot in a full table and nothing else: the
+	 *        budget itself is the same five per window either way.
 	 * @return true when the request is within budget.
 	 */
-	bool Admit(const CNetworkAddress &requester, uint64_t nowMs)
+	bool Admit(const CNetworkAddress &requester, uint64_t nowMs, bool requesterIsKnown)
 	{
 		const CNetworkAddress scope = PeerIdentity::RateLimitScope(requester);
 		if (scope.IsAbsent()) {
@@ -168,7 +197,18 @@ public:
 
 		if (m_buckets.size() >= kRendezvousRelayBucketCap) {
 			PruneExpired(nowMs);
-			if (m_buckets.size() >= kRendezvousRelayBucketCap) {
+		}
+		if (m_buckets.size() >= kRendezvousRelayBucketCap) {
+			if (!requesterIsKnown) {
+				// The flooder's class, and the cap is doing what it was
+				// written for: memory does not grow, and the request is
+				// denied rather than served.
+				return false;
+			}
+			// A peer we already hold takes the slot of whichever bucket has
+			// been open longest -- the one closest to expiring anyway. The
+			// table does not grow, so the memory bound is unchanged.
+			if (!EvictOldest()) {
 				return false;
 			}
 		}
@@ -189,6 +229,30 @@ private:
 		uint64_t windowStartMs = 0;
 		uint32_t count = 0;
 	};
+
+	/**
+	 * Drop the bucket whose window opened longest ago, to make room for one
+	 * this limiter owes a slot to.
+	 *
+	 * Linear, and it runs only when the table is full and a known peer
+	 * arrives -- the same branch PruneExpired() already scans in.
+	 *
+	 * @return false only for an empty table, which the caller cannot reach.
+	 */
+	bool EvictOldest()
+	{
+		auto oldest = m_buckets.begin();
+		if (oldest == m_buckets.end()) {
+			return false;
+		}
+		for (auto it = m_buckets.begin(); it != m_buckets.end(); ++it) {
+			if (it->second.windowStartMs < oldest->second.windowStartMs) {
+				oldest = it;
+			}
+		}
+		m_buckets.erase(oldest);
+		return true;
+	}
 
 	//! Drop every bucket whose window has passed. Called only when the table is
 	//! full, so the ordinary path costs one map lookup.
@@ -277,7 +341,7 @@ inline SRelayDecision RelayRendezvousRequest(const uint8_t *frame,
 	// Charged before the message is parsed, so garbage is not free. Five
 	// malformed requests spend the sender's own budget and its sixth request,
 	// valid or not, is throttled.
-	if (!limiter.Admit(source, nowMs)) {
+	if (!limiter.Admit(source, nowMs, requesterHash != nullptr)) {
 		decision.disposition = RELAY_DISCARD_RATE_LIMITED;
 		return decision;
 	}
@@ -529,7 +593,7 @@ inline SRelayedRendezvousDecision AcceptRelayedRendezvous(const uint8_t *frame,
 
 	// Charged before the message is parsed, on the same reasoning as the relay
 	// path: garbage from a peer spends that peer's own budget.
-	if (!limiter.Admit(relay, nowMs)) {
+	if (!limiter.Admit(relay, nowMs, senderIsOurBuddy)) {
 		decision.acceptance = RELAYED_REJECT_RATE_LIMITED;
 		return decision;
 	}

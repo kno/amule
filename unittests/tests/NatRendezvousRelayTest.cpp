@@ -795,17 +795,133 @@ TEST(NatRendezvousRelay, LimiterMemoryIsBoundedAndFailsClosedWhenFull)
 	for (uint32_t i = 0; i < kRendezvousRelayBucketCap; ++i) {
 		char text[64];
 		std::snprintf(text, sizeof(text), "2001:db8:%x:%x::1", (i >> 16) & 0xFFFF, i & 0xFFFF);
-		ASSERT_TRUE(limiter.Admit(CNetworkAddress::FromString(text), 1000));
+		ASSERT_TRUE(limiter.Admit(CNetworkAddress::FromString(text), 1000, false));
 	}
 
 	ASSERT_EQUALS((size_t)kRendezvousRelayBucketCap, limiter.BucketCount());
-	ASSERT_FALSE(limiter.Admit(CNetworkAddress::FromString("2001:db8:ffff:ffff::1"), 1000));
+	ASSERT_FALSE(limiter.Admit(CNetworkAddress::FromString("2001:db8:ffff:ffff::1"), 1000, false));
 	ASSERT_EQUALS((size_t)kRendezvousRelayBucketCap, limiter.BucketCount());
 
 	// Once the window has passed, the expired buckets are reclaimed and the
 	// limiter serves again. Without this the first flood would be permanent.
 	ASSERT_TRUE(limiter.Admit(
-		CNetworkAddress::FromString("2001:db8:ffff:ffff::1"), 1000 + kRendezvousBackoffMs));
+		CNetworkAddress::FromString("2001:db8:ffff:ffff::1"), 1000 + kRendezvousBackoffMs, false));
+}
+
+// Failing closed at the cap bounds memory, but on its own it hands an attacker
+// an outage. The relay path never replies, so a source address costs nothing to
+// forge: 1024 distinct spoofed sources renewed once per window -- about
+// seventeen packets a second -- keep the table permanently full, and every peer
+// without a bucket is denied for as long as the flood runs. The header used to
+// call that cost "a retry"; a retry that cannot succeed is an outage.
+//
+// It reached further than the relay service, too. One bucket table serves both
+// directions of this opcode, so the service this client gives away to strangers
+// was starving the capability it needs for itself: our own buddy's forwarded
+// rendezvous was denied out of a table full of addresses that never existed.
+//
+// So the cap now bounds only the class it was written for. A source we already
+// hold an identity for is admitted even when the table is full, by evicting the
+// bucket whose window started longest ago. The table never grows past the cap.
+TEST(NatRendezvousRelay, AFloodOfUnknownSourcesCannotLockOutAPeerWeHold)
+{
+	CRendezvousRelayLimiter limiter;
+
+	for (uint32_t i = 0; i < kRendezvousRelayBucketCap; ++i) {
+		char text[64];
+		std::snprintf(text, sizeof(text), "2001:db8:%x:%x::1", (i >> 16) & 0xFFFF, i & 0xFFFF);
+		ASSERT_TRUE(limiter.Admit(CNetworkAddress::FromString(text), 1000, false));
+	}
+	ASSERT_EQUALS((size_t)kRendezvousRelayBucketCap, limiter.BucketCount());
+
+	// Distinct known peers, so each one needs a bucket the table does not have.
+	// Every one of them is admitted, and the table does not grow.
+	for (uint32_t i = 0; i < 32; ++i) {
+		char text[64];
+		std::snprintf(text, sizeof(text), "192.0.2.%u", i + 1);
+		ASSERT_TRUE(limiter.Admit(CNetworkAddress::FromString(text), 1000, true));
+		ASSERT_EQUALS((size_t)kRendezvousRelayBucketCap, limiter.BucketCount());
+	}
+
+	// And the flood's own class is still denied, so the cap still does the job
+	// it was written for.
+	ASSERT_FALSE(limiter.Admit(CNetworkAddress::FromString("2001:db8:ffff:ffff::1"), 1000, false));
+	ASSERT_EQUALS((size_t)kRendezvousRelayBucketCap, limiter.BucketCount());
+}
+
+// The measured shape of the outage: a flood renewed at every window boundary,
+// and our buddy asking for something across all of them. Before the reserved
+// admission this asserted false at every tick.
+TEST(NatRendezvousRelay, AKnownPeerIsAdmittedInEveryWindowOfASustainedFlood)
+{
+	CRendezvousRelayLimiter limiter;
+
+	for (uint32_t window = 0; window < 5; ++window) {
+		const uint64_t nowMs = 1000 + (uint64_t)window * kRendezvousBackoffMs;
+
+		for (uint32_t i = 0; i < kRendezvousRelayBucketCap; ++i) {
+			char text[64];
+			std::snprintf(
+				text, sizeof(text), "2001:db8:%x:%x::1", (i >> 16) & 0xFFFF, i & 0xFFFF);
+			limiter.Admit(CNetworkAddress::FromString(text), nowMs, false);
+		}
+
+		ASSERT_TRUE(limiter.Admit(Requester(), nowMs, true));
+	}
+}
+
+// The reserved admission is not a second budget. A known peer that has spent
+// its five is throttled on exactly the terms it was before, because its own
+// bucket is found before the table is ever consulted for room -- so it cannot
+// evict itself into a fresh window.
+TEST(NatRendezvousRelay, AKnownPeerStillSpendsItsOwnBudget)
+{
+	CRendezvousRelayLimiter limiter;
+
+	for (uint32_t i = 0; i < kRendezvousRelayBucketCap; ++i) {
+		char text[64];
+		std::snprintf(text, sizeof(text), "2001:db8:%x:%x::1", (i >> 16) & 0xFFFF, i & 0xFFFF);
+		ASSERT_TRUE(limiter.Admit(CNetworkAddress::FromString(text), 1000, false));
+	}
+
+	for (uint32_t i = 0; i < kRendezvousMaxAttempts; ++i) {
+		ASSERT_TRUE(limiter.Admit(Requester(), 1000, true));
+	}
+	ASSERT_FALSE(limiter.Admit(Requester(), 1000, true));
+}
+
+// End to end, on the function the socket actually calls: a request from a host
+// this client holds a user hash for is forwarded during a flood that has the
+// bucket table full. The identity is what buys the slot, and it is the same
+// value the relay would refuse to send without.
+TEST(NatRendezvousRelay, ARequestFromAHostWeHoldIsRelayedDuringAFlood)
+{
+	uint8_t requesterHash[NATT_PEER_HASH_LENGTH];
+	FillHash(requesterHash, 0x10);
+
+	CRendezvousRelayLimiter limiter;
+	for (uint32_t i = 0; i < kRendezvousRelayBucketCap; ++i) {
+		char text[64];
+		std::snprintf(text, sizeof(text), "2001:db8:%x:%x::1", (i >> 16) & 0xFFFF, i & 0xFFFF);
+		ASSERT_TRUE(limiter.Admit(CNetworkAddress::FromString(text), 1000, false));
+	}
+
+	const std::vector<uint8_t> frame = Request(Requester(), kSourcePort);
+	CFakeClientList clients(Target(), kTargetPort, 0x20);
+	CRecordingSender sender;
+
+	const SRelayDecision decision = RelayRendezvousRequest(frame.data(),
+		frame.size(),
+		Requester(),
+		kSourcePort,
+		requesterHash,
+		1000,
+		limiter,
+		clients,
+		sender);
+
+	ASSERT_EQUALS((int)RELAY_FORWARD, (int)decision.disposition);
+	ASSERT_EQUALS(1u, sender.m_sent.size());
 }
 
 // IPv6 budgets count per /64, exactly as every other per-peer limit in this
@@ -818,13 +934,13 @@ TEST(NatRendezvousRelay, IPv6RequestersShareABudgetPerSixtyFour)
 	for (uint32_t i = 0; i < kRendezvousMaxAttempts; ++i) {
 		char text[64];
 		std::snprintf(text, sizeof(text), "2001:db8:1:1::%x", i + 1);
-		ASSERT_TRUE(limiter.Admit(CNetworkAddress::FromString(text), 1000));
+		ASSERT_TRUE(limiter.Admit(CNetworkAddress::FromString(text), 1000, false));
 	}
 
 	// A sixth address in the same /64 is the same customer.
-	ASSERT_FALSE(limiter.Admit(CNetworkAddress::FromString("2001:db8:1:1::99"), 1000));
+	ASSERT_FALSE(limiter.Admit(CNetworkAddress::FromString("2001:db8:1:1::99"), 1000, false));
 	// A different /64 is not.
-	ASSERT_TRUE(limiter.Admit(CNetworkAddress::FromString("2001:db8:1:2::1"), 1000));
+	ASSERT_TRUE(limiter.Admit(CNetworkAddress::FromString("2001:db8:1:2::1"), 1000, false));
 }
 
 // A tick count that appears to move backwards must not hand out a fresh budget.
@@ -835,10 +951,10 @@ TEST(NatRendezvousRelay, BackwardsClockDoesNotResetABudget)
 	CRendezvousRelayLimiter limiter;
 
 	for (uint32_t i = 0; i < kRendezvousMaxAttempts; ++i) {
-		ASSERT_TRUE(limiter.Admit(Requester(), 100000));
+		ASSERT_TRUE(limiter.Admit(Requester(), 100000, false));
 	}
 
-	ASSERT_FALSE(limiter.Admit(Requester(), 1));
+	ASSERT_FALSE(limiter.Admit(Requester(), 1, false));
 }
 
 // The forwarded message is marked as relayed, which is what lets the peer that
