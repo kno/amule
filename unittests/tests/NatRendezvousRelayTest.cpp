@@ -957,10 +957,13 @@ TEST(NatRendezvousRelay, BackwardsClockDoesNotResetABudget)
 	ASSERT_FALSE(limiter.Admit(Requester(), 1, false));
 }
 
-// The forwarded message is marked as relayed, which is what lets the peer that
-// receives it act on it without having to guess the direction -- and what keeps
-// this relay from acting on a relay request as though it were one.
-TEST(NatRendezvousRelay, ForwardedMessageIsMarkedRelayed)
+// Nothing in the forwarded bytes states which direction the message travels.
+// The name of this test used to say the opposite, from when the options byte
+// carried a CONNECT_OPT_NATT_RELAYED bit; the bit is gone -- 0x40 is eMuleAI's
+// QUIC capability -- and the assertions below have always been about its
+// absence. The receiver decides the direction about its sender instead; see
+// ClassifyRendezvousDirection().
+TEST(NatRendezvousRelay, ForwardedMessageCarriesNoDirectionOnTheWire)
 {
 	uint8_t requesterHash[NATT_PEER_HASH_LENGTH];
 	FillHash(requesterHash, 0x10);
@@ -1030,6 +1033,76 @@ TEST(NatRendezvousRelay, ForwardFedBackIntoTheRelayPathIsNotRelayedAgain)
 
 	ASSERT_EQUALS((int)RELAY_DISCARD_HINT_NAMES_ANOTHER_HOST, (int)decision.disposition);
 	ASSERT_EQUALS(0u, sender.m_sent.size());
+}
+
+// The decision that routes a datagram between the two paths, and until now the
+// one part of this change no test could reach: it lived inline in
+// CClientUDPSocket, a class the suite cannot link. A branch that chooses
+// between "send toward an address out of our client list" and "punch at an
+// address out of the message" is the last one that should be untestable, so it
+// is a function over its inputs now.
+//
+// Everything that is not positively a forward from our buddy about a third host
+// is a relay request -- including a malformed body, which reaches
+// RelayRendezvousRequest() so that it is charged to its sender.
+TEST(NatRendezvousRelay, DirectionIsDecidedBySenderAndObservedAddressAlone)
+{
+	uint8_t peerHash[NATT_PEER_HASH_LENGTH];
+	FillHash(peerHash, 0x30);
+
+	uint8_t aboutAThirdHost[NATT_RENDEZVOUS_MAX_LENGTH];
+	const size_t aboutLength = EncodeRelayedRendezvous(
+		peerHash, NULL, PunchTarget(), 4662, aboutAThirdHost, sizeof(aboutAThirdHost));
+
+	// Our buddy, telling us where a third peer is: the acting path.
+	ASSERT_EQUALS((int)NATT_RENDEZVOUS_ACT_ON_FORWARD,
+		(int)ClassifyRendezvousDirection(aboutAThirdHost, aboutLength, Target(), true));
+
+	// The identical bytes from a stranger. The only fact that changed is one
+	// the datagram cannot touch, and it is the one that decides.
+	ASSERT_EQUALS((int)NATT_RENDEZVOUS_RELAY_FOR_SENDER,
+		(int)ClassifyRendezvousDirection(aboutAThirdHost, aboutLength, Requester(), false));
+
+	// Our buddy naming ITSELF is our buddy asking us to relay for it.
+	uint8_t aboutItself[NATT_RENDEZVOUS_MAX_LENGTH];
+	const size_t itselfLength = EncodeRelayedRendezvous(
+		peerHash, NULL, Target(), kTargetPort, aboutItself, sizeof(aboutItself));
+	ASSERT_EQUALS((int)NATT_RENDEZVOUS_RELAY_FOR_SENDER,
+		(int)ClassifyRendezvousDirection(aboutItself, itselfLength, Target(), true));
+
+	// A body with no endpoint in it names no host, so there is nothing for this
+	// client to act on and it belongs to the relay path.
+	uint8_t noEndpoint[NATT_RENDEZVOUS_MAX_LENGTH];
+	const size_t noEndpointLength =
+		EncodeRendezvousRequest(peerHash, NULL, CNetworkAddress(), 0, noEndpoint, sizeof(noEndpoint));
+	ASSERT_TRUE(noEndpointLength > 0);
+	ASSERT_EQUALS((int)NATT_RENDEZVOUS_RELAY_FOR_SENDER,
+		(int)ClassifyRendezvousDirection(noEndpoint, noEndpointLength, Target(), true));
+
+	// A malformed body from our buddy goes to the relay path too, so it is
+	// charged to its sender's budget rather than being free.
+	const uint8_t garbage[3] = { 0x00, CONNECT_OPT_NAT_TRAVERSAL_UTP, 0x00 };
+	ASSERT_EQUALS((int)NATT_RENDEZVOUS_RELAY_FOR_SENDER,
+		(int)ClassifyRendezvousDirection(garbage, sizeof(garbage), Target(), true));
+	ASSERT_EQUALS((int)NATT_RENDEZVOUS_RELAY_FOR_SENDER,
+		(int)ClassifyRendezvousDirection(NULL, 0, Target(), true));
+}
+
+// A dual-stack buddy that spells its own IPv4 address as ::ffff:a.b.c.d is
+// still naming itself. Compared unmapped for the same reason both other
+// address comparisons in this file are: the spelling is not the host.
+TEST(NatRendezvousRelay, MappedSpellingOfTheBuddysOwnAddressStillMeansRelayForIt)
+{
+	uint8_t peerHash[NATT_PEER_HASH_LENGTH];
+	FillHash(peerHash, 0x30);
+
+	uint8_t frame[NATT_RENDEZVOUS_MAX_LENGTH];
+	const size_t length =
+		EncodeRelayedRendezvous(peerHash, NULL, Target(), kTargetPort, frame, sizeof(frame));
+
+	ASSERT_EQUALS((int)NATT_RENDEZVOUS_RELAY_FOR_SENDER,
+		(int)ClassifyRendezvousDirection(
+			frame, length, CNetworkAddress::FromString("::ffff:203.0.113.5"), true));
 }
 
 // The other direction: what this client does with a rendezvous a relay

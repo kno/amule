@@ -453,6 +453,80 @@ inline SRelayDecision RelayRendezvousRequest(const uint8_t *frame,
 	return decision;
 }
 
+//! Which path an arriving OP_RENDEZVOUS belongs on. The two directions share an
+//! opcode and a body, so this is decided about the sender, never read out of
+//! the message.
+enum ENattRendezvousDirection
+{
+	//! A relay forwarded it: our buddy telling us where a third peer is. The
+	//! acting path -- AcceptRelayedRendezvous().
+	NATT_RENDEZVOUS_ACT_ON_FORWARD,
+	//! Everything else, including a malformed body: the sender is asking this
+	//! client to relay for it -- RelayRendezvousRequest().
+	NATT_RENDEZVOUS_RELAY_FOR_SENDER
+};
+
+/**
+ * Which of the two things an arriving OP_RENDEZVOUS is.
+ *
+ * A relay request (A to R) and a relayed rendezvous (R to B) carry the same
+ * opcode and the same fields and mean opposite things, so something has to
+ * choose. This tree used to spell the difference with an option bit the sender
+ * set, which was wrong twice over: 0x40 is eMuleAI's QUIC capability bit and
+ * never ours to take (see ENattConnectOptions), and a bit the sender sets is a
+ * claim -- the acting path punches toward an address out of the datagram, so "I
+ * was forwarded by a relay" is the first thing a crafted request would say.
+ *
+ * So the direction comes from one fact this client holds and one it observed,
+ * and from nothing the sender wrote. It lives here, as a function over its
+ * inputs, rather than inline in the socket class: the socket cannot be linked
+ * into the test suite, and a decision that routes a datagram between "send
+ * toward an address in our client list" and "punch at an address in the
+ * message" is exactly the kind that must not be the one part of this change
+ * nobody can drive. See NatRendezvousRelayTest.
+ *
+ * @param frame the OP_RENDEZVOUS body, past the 0xC5 and the opcode byte.
+ * @param frameLength bytes available from there.
+ * @param source the address the datagram arrived from.
+ * @param senderIsOurBuddy whether this client holds that sender as its buddy.
+ *        The guard, and the only one: a stranger reaches the relay path
+ *        whatever it writes, and the relay path sends only toward addresses out
+ *        of our own client list. Read the caveat on AcceptRelayedRendezvous()
+ *        for how much that fact is worth over UDP.
+ * @return the path this datagram belongs on. Everything that is not positively
+ *         a forward from our buddy about a third host is a relay request --
+ *         including a malformed body, which goes to RelayRendezvousRequest() so
+ *         that it is charged against its sender's budget rather than being
+ *         free.
+ */
+inline ENattRendezvousDirection ClassifyRendezvousDirection(
+	const uint8_t *frame, size_t frameLength, const CNetworkAddress &source, bool senderIsOurBuddy)
+{
+	if (!senderIsOurBuddy) {
+		return NATT_RENDEZVOUS_RELAY_FOR_SENDER;
+	}
+
+	// Peeked without charging the limiter: whichever path is chosen charges
+	// once for this datagram, and a second charge would halve a legitimate
+	// buddy's budget.
+	SNattRendezvousRequest peeked;
+	if (!ParseRendezvousRequest(frame, frameLength, peeked) || !peeked.hasEndpointHint) {
+		return NATT_RENDEZVOUS_RELAY_FOR_SENDER;
+	}
+
+	// Our buddy naming ITSELF is our buddy asking us to relay for it, which is
+	// the other honest use it has for this opcode. Compared unmapped, so a
+	// dual-stack buddy spelling its own IPv4 address as ::ffff:a.b.c.d is still
+	// naming itself. This separates two honest uses and carries no weight of
+	// its own -- a sender picks the endpoint it names freely, and is stopped by
+	// senderIsOurBuddy before reaching here.
+	if (peeked.hintAddress.Unmapped() == source.Unmapped()) {
+		return NATT_RENDEZVOUS_RELAY_FOR_SENDER;
+	}
+
+	return NATT_RENDEZVOUS_ACT_ON_FORWARD;
+}
+
 /**
  * What this client may do with a rendezvous a relay forwarded to it.
  *

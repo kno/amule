@@ -672,50 +672,31 @@ void CClientUDPSocket::ProcessNattControlFrame(
 		// Which direction this is, and why nothing in the datagram decides it.
 		//
 		// A relay request (A to R) and a relayed rendezvous (R to B) carry the
-		// same opcode and the same fields and mean opposite things. This tree
-		// used to spell the difference with an option bit the sender set, which
-		// was wrong twice over: 0x40 is eMuleAI's QUIC capability bit and never
-		// ours to take (see ENattConnectOptions), and a bit the sender sets is
-		// a claim -- the acting path below punches toward an address out of the
-		// datagram, so "I was forwarded by a relay" is the first thing a
-		// crafted request would say.
+		// same opcode and the same fields and mean opposite things. The rule
+		// that tells them apart is ClassifyRendezvousDirection(), in
+		// NatRendezvousRelay.h along with its reasoning, and it is there rather
+		// than here so that a test can drive it: this class cannot be linked
+		// into the suite, and a branch that chooses between sending toward an
+		// address out of our own client list and punching at one out of the
+		// message is the last that should go unexercised.
 		//
-		// So the direction is decided by two things this client already holds
-		// and one it observed, and by nothing the sender wrote:
-		//
-		//   * the sender is our buddy, established over Kad long before this
-		//     datagram, looked up by the endpoint the datagram arrived from;
-		//   * the endpoint named is not that same sender's.
-		//
-		// The first is the guard. A stranger reaches the relay path only,
-		// whatever it writes, and the relay path sends toward addresses from
-		// our own client list and never toward one in the message. The second
-		// only separates our buddy's two honest uses of the opcode -- telling
-		// us where a third peer is, versus asking us to relay for it -- and
-		// carries no weight on its own, since a sender picks the endpoint it
-		// names.
+		// What this function contributes is the one input that needs theApp --
+		// whether the host the datagram arrived from is our buddy.
 		//
 		// eMuleAI reaches the same place by a different road: it accepts a
 		// forwarded rendezvous only from a serving or served buddy
 		// (srchybrid/ListenSocket.cpp), having carried it over the buddy's TCP
 		// connection rather than as a datagram. The gate is the same fact about
 		// the sender; only where it is checked differs.
-		//
-		// Peeked without charging the limiter, because whichever path is
-		// chosen charges once for this datagram and a second charge would halve
-		// a legitimate buddy's budget.
-		SNattRendezvousRequest peeked;
-		const bool parsed = ParseRendezvousRequest(body, bodyLength, peeked);
-
 		const CUpDownClient *sender = theApp->clientlist->FindClientByUDPEndpoint(peer, port);
 		// By the datagram's source port, which is the only port we hold for
 		// this sender: a buddy is known here as a UDP peer, not as something we
-		// could dial back on its ed2k TCP port.
+		// could dial back on its ed2k TCP port. It is also all this answer
+		// rests on -- see the caveat on AcceptRelayedRendezvous().
 		const bool senderIsOurBuddy = sender != NULL && sender == theApp->clientlist->GetBuddy();
-		const bool namesAnotherHost =
-			parsed && peeked.hasEndpointHint && peeked.hintAddress.Unmapped() != peer.Unmapped();
 
-		if (senderIsOurBuddy && namesAnotherHost) {
+		if (ClassifyRendezvousDirection(body, bodyLength, peer, senderIsOurBuddy) ==
+			NATT_RENDEZVOUS_ACT_ON_FORWARD) {
 			// Our buddy forwarded a rendezvous to us. Acted on within the same
 			// per-peer budget a requester spends from.
 			const CNetworkAddress ownEndpoint =

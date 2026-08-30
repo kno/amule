@@ -519,23 +519,65 @@ TEST(NatRendezvousProtocol, ABodyCutInsideAnOptionalBlockDropsThatBlockRatherTha
 	const size_t written = EncodeRendezvousRequest(
 		hash, fileHash, CNetworkAddress::FromString("192.0.2.10"), 4662, buffer, sizeof(buffer));
 
+	// What the first six bytes of the file-hash block spell when they are read
+	// as an endpoint instead. Taken from the buffer rather than assumed, so
+	// this test says what the format does and not what one filler happens to
+	// produce: a filler whose sixth and seventh bytes are zero spells port 0,
+	// which is no endpoint at all and makes the whole body malformed.
+	SNattEndpointHint asAnEndpoint;
+	const bool fileHashBytesSpellAnEndpoint =
+		ParseEndpointTail(buffer + NATT_RENDEZVOUS_FIXED_LENGTH, asAnEndpoint);
+
 	for (size_t length = NATT_RENDEZVOUS_FIXED_LENGTH; length <= written; ++length) {
 		const size_t remaining = length - NATT_RENDEZVOUS_FIXED_LENGTH;
 
 		SNattRendezvousRequest request;
-		if (remaining >= NATT_FILE_HASH_LENGTH && remaining - NATT_FILE_HASH_LENGTH > 0 &&
+		if (remaining < NATT_ENDPOINT_TAIL_LENGTH) {
+			// Nothing optional fits whole. Any bytes there are a transport
+			// hint, which is one byte and cannot be short.
+			ASSERT_TRUE(ParseRendezvousRequest(buffer, length, request));
+			ASSERT_FALSE(request.hasFileHash);
+			ASSERT_FALSE(request.hasEndpointHint);
+			continue;
+		}
+
+		if (remaining < NATT_FILE_HASH_LENGTH) {
+			// Six to fifteen bytes left. Too few for the file hash, enough
+			// for an endpoint -- so the parser reads an ENDPOINT out of the
+			// leading bytes of the file hash, and reports a hint the sender
+			// never wrote. That is the remaining-length format working as
+			// specified rather than a defect: length is the only thing that
+			// says which block is which, so a truncated body IS a different
+			// message. It is asserted here because it is the surprising half
+			// of the rule and because that synthesised endpoint is the one
+			// field in this format that becomes a destination -- guarded, on
+			// the paths that dial it, by AcceptRelayedRendezvous().
+			ASSERT_EQUALS(fileHashBytesSpellAnEndpoint,
+				ParseRendezvousRequest(buffer, length, request));
+			if (!fileHashBytesSpellAnEndpoint) {
+				continue;
+			}
+			ASSERT_FALSE(request.hasFileHash);
+			ASSERT_TRUE(request.hasEndpointHint);
+			ASSERT_TRUE(request.hintAddress == asAnEndpoint.address);
+			ASSERT_EQUALS((int)asAnEndpoint.port, (int)request.hintPort);
+			continue;
+		}
+
+		if (remaining - NATT_FILE_HASH_LENGTH > 0 &&
 			remaining - NATT_FILE_HASH_LENGTH < NATT_ENDPOINT_TAIL_LENGTH) {
 			// The endpoint slot is not all there, so what is left of it is a
 			// transport hint. That is the remaining-length rule, not an
 			// accident of it: those bytes are read as the last block that
 			// fits, never as a partial endpoint.
 			ASSERT_TRUE(ParseRendezvousRequest(buffer, length, request));
+			ASSERT_TRUE(request.hasFileHash);
 			ASSERT_FALSE(request.hasEndpointHint);
 			continue;
 		}
 
 		ASSERT_TRUE(ParseRendezvousRequest(buffer, length, request));
-		ASSERT_EQUALS(remaining >= NATT_FILE_HASH_LENGTH, request.hasFileHash);
+		ASSERT_TRUE(request.hasFileHash);
 	}
 }
 
