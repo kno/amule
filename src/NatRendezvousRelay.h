@@ -94,7 +94,7 @@ enum ERelayDisposition
 	RELAY_DISCARD_TARGET_IS_REQUESTER,
 	//! We hold no address for the named target.
 	RELAY_DISCARD_UNKNOWN_TARGET,
-	//! The message already carries CONNECT_OPT_NATT_RELAYED. It is a forward
+	//! The message already carries NATT_OPT_RELAYED. It is a forward
 	//! addressed to this client, not a request to relay, and forwarding a
 	//! forward is a loop between two willing relays that only the rate limit
 	//! would stop -- and only after both had spent their budgets.
@@ -414,7 +414,7 @@ enum ERelayedAcceptance
 	RELAYED_ACCEPT,
 	//! Not a well-formed OP_RENDEZVOUS message.
 	RELAYED_REJECT_MALFORMED,
-	//! CONNECT_OPT_NATT_RELAYED is clear, so this is a request to relay and
+	//! NATT_OPT_RELAYED is clear, so this is a request to relay and
 	//! not a forward. The crafted-packet case.
 	RELAYED_REJECT_NOT_RELAYED,
 	//! No usable address for the relay itself.

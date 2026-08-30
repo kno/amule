@@ -91,10 +91,23 @@ enum ENattControlOpcodes : uint8_t
 };
 
 //! Bits in the connect-options byte that follows a control opcode.
+//!
+//! Read eMuleAI v1.6 before adding one. Their GetMyConnectOptions()
+//! (OtherFunctions.cpp) returns a single byte -- named byCryptOptions -- that
+//! carries the crypt-layer bits AND the NAT-T bits together, and the rendezvous
+//! body writes exactly that byte. So this is not a private namespace: it is
+//! theirs, and they allocate in it.
+//!
+//!   0x01 crypt supported   0x02 crypt requested   0x04 crypt required
+//!   0x08 direct callback   0x20 endpoint hint     0x40 QUIC NAT-T
+//!   0x80 legacy uTP NAT-T                         0x10 free
+//!
+//! Their own comment calls 0x20 and 0x10 reserved; 0x20 is in fact allocated
+//! and used, so treat that comment as stale and the table above as the code.
 enum ENattConnectOptions : uint8_t
 {
 	//! An OP_NATT_ENDPOINT_HINT element follows the fixed part of the message.
-	CONNECT_OPT_NATT_ENDPOINT_HINT = 0x20,
+	NATT_OPT_ENDPOINT_HINT = 0x20,
 	/**
 	 * This OP_RENDEZVOUS was forwarded by a relay: act on it, do not relay it
 	 * on.
@@ -107,15 +120,31 @@ enum ENattConnectOptions : uint8_t
 	 * direction is explicit, and the *absence* of this bit is what the relay
 	 * path requires -- a crafted request cannot reach the acting path at all.
 	 *
-	 * 0x40 is the one value in this header the proposal does not pin, and
-	 * eMuleAI's use of that bit is unknown to this tree. It travels only inside
-	 * a message that exists only between peers that advertised
-	 * MOD_MISCOPT_NAT_TRAVERSAL, so no unaware client parses it -- but it is
-	 * the value an interop check against eMuleAI could contradict, and the
-	 * alternative (inferring the direction from local state) would have left
-	 * the acting path reachable by a crafted request.
+	 * 0x40 COLLIDES with eMuleAI's CONNECT_OPT_NAT_TRAVERSAL_QUIC, in the same
+	 * byte. This was previously recorded here as "not a clash, they use a
+	 * different byte" -- that was wrong, and wrong in the direction that hurts:
+	 * their byCryptOptions IS this byte (Opcodes.h:214-221, and the rendezvous
+	 * body writes GetMyConnectOptions(...) | CONNECT_OPT_NATT_ENDPOINT_HINT).
+	 *
+	 * Both readings are damaging once the framing converges. They would read our
+	 * relayed rendezvous as "this peer supports QUIC" and burn a 1500 ms
+	 * capability window on a peer that has none. We would read a QUIC-capable
+	 * peer's request as "already forwarded by a relay: act on it", and start
+	 * punching toward the address inside the datagram -- the exact reflection the
+	 * relay validation exists to prevent, caused by the bit that guards against
+	 * it.
+	 *
+	 * So this value must move before the converged framing ships. It is left here
+	 * unchanged for now because changing it is a design decision, not a renumber:
+	 * 0x10 is the only free bit in a byte whose allocation is eMuleAI's to extend,
+	 * and distinguishing a relay request from a relayed rendezvous by opcode
+	 * rather than by a flag may be the better answer. Tracked in
+	 * amule-org/amule#1177.
+	 *
+	 * The direction must stay explicit either way: inferring it from local state
+	 * would leave the acting path reachable by a crafted request.
 	 */
-	CONNECT_OPT_NATT_RELAYED = 0x40,
+	NATT_OPT_RELAYED = 0x40,
 	//! The traversal being asked for is the uTP one. Set on every message this
 	//! build sends, because uTP is the only transport it can serve.
 	CONNECT_OPT_NAT_TRAVERSAL_UTP = 0x80
@@ -190,10 +219,10 @@ struct SNattRendezvousRequest
 	uint8_t peerHash[NATT_PEER_HASH_LENGTH] = { 0 };
 	//! CONNECT_OPT_NAT_TRAVERSAL_UTP was set.
 	bool requestsUtpTraversal = false;
-	//! CONNECT_OPT_NATT_RELAYED was set: a relay forwarded this, so it is to be
+	//! NATT_OPT_RELAYED was set: a relay forwarded this, so it is to be
 	//! acted on rather than relayed on.
 	bool isRelayed = false;
-	//! CONNECT_OPT_NATT_ENDPOINT_HINT was set *and* a well-formed hint
+	//! NATT_OPT_ENDPOINT_HINT was set *and* a well-formed hint
 	//! followed. The two are never reported apart: a set bit with nothing
 	//! behind it is a malformed message and ParseRendezvousRequest() rejects
 	//! the whole thing rather than reporting a hint it did not read.
@@ -393,9 +422,8 @@ inline size_t EncodeRendezvousMessage(const uint8_t *peerHash,
 	}
 
 	out[0] = OP_RENDEZVOUS;
-	out[1] = static_cast<uint8_t>(CONNECT_OPT_NAT_TRAVERSAL_UTP |
-				      (relayed ? CONNECT_OPT_NATT_RELAYED : 0) |
-				      (hintLength != 0 ? CONNECT_OPT_NATT_ENDPOINT_HINT : 0));
+	out[1] = static_cast<uint8_t>(CONNECT_OPT_NAT_TRAVERSAL_UTP | (relayed ? NATT_OPT_RELAYED : 0) |
+				      (hintLength != 0 ? NATT_OPT_ENDPOINT_HINT : 0));
 	for (size_t i = 0; i < NATT_PEER_HASH_LENGTH; ++i) {
 		out[2 + i] = peerHash[i];
 	}
@@ -451,12 +479,12 @@ inline bool ParseRendezvousRequest(const uint8_t *frame, size_t frameLength, SNa
 
 	SNattRendezvousRequest parsed;
 	parsed.requestsUtpTraversal = (frame[1] & CONNECT_OPT_NAT_TRAVERSAL_UTP) != 0;
-	parsed.isRelayed = (frame[1] & CONNECT_OPT_NATT_RELAYED) != 0;
+	parsed.isRelayed = (frame[1] & NATT_OPT_RELAYED) != 0;
 	for (size_t i = 0; i < NATT_PEER_HASH_LENGTH; ++i) {
 		parsed.peerHash[i] = frame[2 + i];
 	}
 
-	if ((frame[1] & CONNECT_OPT_NATT_ENDPOINT_HINT) != 0) {
+	if ((frame[1] & NATT_OPT_ENDPOINT_HINT) != 0) {
 		SNattEndpointHint hint;
 		if (!ParseEndpointHint(frame + NATT_RENDEZVOUS_FIXED_LENGTH,
 			    frameLength - NATT_RENDEZVOUS_FIXED_LENGTH,

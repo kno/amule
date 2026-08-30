@@ -82,7 +82,7 @@ TEST(NatRendezvousProtocol, OpcodesAndOptionBitsAreTheirPinnedValues)
 	ASSERT_EQUALS(0xA0, static_cast<int>(OP_RENDEZVOUS));
 	ASSERT_EQUALS(0xA1, static_cast<int>(OP_HOLEPUNCH));
 	ASSERT_EQUALS(0xAA, static_cast<int>(OP_NATT_ENDPOINT_HINT));
-	ASSERT_EQUALS(0x20, static_cast<int>(CONNECT_OPT_NATT_ENDPOINT_HINT));
+	ASSERT_EQUALS(0x20, static_cast<int>(NATT_OPT_ENDPOINT_HINT));
 	ASSERT_EQUALS(0x80, static_cast<int>(CONNECT_OPT_NAT_TRAVERSAL_UTP));
 }
 
@@ -291,7 +291,7 @@ TEST(NatRendezvousProtocol, RendezvousRequestClaimingAHintItDoesNotCarryIsReject
 	uint8_t buffer[NATT_RENDEZVOUS_MAX_LENGTH] = { 0 };
 	const size_t written =
 		EncodeRendezvousRequest(hash, CNetworkAddress::Absent(), 4662, buffer, sizeof(buffer));
-	buffer[1] |= CONNECT_OPT_NATT_ENDPOINT_HINT;
+	buffer[1] |= NATT_OPT_ENDPOINT_HINT;
 
 	SNattRendezvousRequest request;
 	ASSERT_FALSE(ParseRendezvousRequest(buffer, written, request));
@@ -434,14 +434,17 @@ TEST(NatRendezvousProtocol, EncodersRefuseAnOutputBufferThatIsTooSmall)
 // to prevent. So the direction is explicit rather than inferred from local
 // state, and the ABSENCE of the bit is what the relay path requires.
 //
-// 0x40 is not a value the proposal pins, and eMuleAI's use of that bit is
-// unknown to this tree. It travels only inside a message that only exists
-// between peers that advertised MOD_MISCOPT_NAT_TRAVERSAL, so it widens nothing
-// that an unaware client parses -- but it is the one value here that interop
-// against eMuleAI could contradict.
+// 0x40 COLLIDES with eMuleAI's CONNECT_OPT_NAT_TRAVERSAL_QUIC, in the same
+// byte: their GetMyConnectOptions() returns one byte carrying both the crypt
+// bits and the NAT-T bits, and their rendezvous body writes it. An earlier
+// version of this comment said there was no clash because they used a different
+// byte. That was wrong. This test still pins 0x40 because the value has not
+// moved yet -- moving it is a design decision tracked in amule-org/amule#1177,
+// not a renumber -- so the assertion below records what the wire carries today,
+// not what it should carry once the framing converges.
 TEST(NatRendezvousProtocol, RelayedBitIsItsPinnedValue)
 {
-	ASSERT_EQUALS(0x40, static_cast<int>(CONNECT_OPT_NATT_RELAYED));
+	ASSERT_EQUALS(0x40, static_cast<int>(NATT_OPT_RELAYED));
 }
 
 TEST(NatRendezvousProtocol, RelayedRendezvousSetsTheRelayedBitAndAnOrdinaryRequestDoesNot)

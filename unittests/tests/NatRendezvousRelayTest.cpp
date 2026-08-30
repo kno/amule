@@ -893,7 +893,7 @@ TEST(NatRendezvousRelay, RelayedRendezvousNamingOurOwnEndpointIsRejected)
 // the acceptance code still cannot dial anything.
 TEST(NatRendezvousRelay, MalformedRelayedRendezvousYieldsNoEndpoint)
 {
-	const uint8_t garbage[3] = { OP_RENDEZVOUS, CONNECT_OPT_NATT_RELAYED, 0x00 };
+	const uint8_t garbage[3] = { OP_RENDEZVOUS, NATT_OPT_RELAYED, 0x00 };
 
 	CRendezvousRelayLimiter limiter;
 	const SRelayedRendezvousDecision decision = AcceptRelayedRendezvous(garbage,
