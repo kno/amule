@@ -669,28 +669,60 @@ void CClientUDPSocket::ProcessNattControlFrame(
 
 	switch (ClassifyNattControlMessage(opcode)) {
 	case NATT_CONTROL_RENDEZVOUS: {
-		// Which direction this is comes off the wire, never from local state.
-		// A relay request and a relayed rendezvous carry the same opcode and
-		// mean opposite things, and inferring the direction would leave the
-		// acting path reachable by a crafted request -- which is precisely the
-		// reflection the relay validation exists to prevent.
+		// Which direction this is, and why nothing in the datagram decides it.
+		//
+		// A relay request (A to R) and a relayed rendezvous (R to B) carry the
+		// same opcode and the same fields and mean opposite things. This tree
+		// used to spell the difference with an option bit the sender set, which
+		// was wrong twice over: 0x40 is eMuleAI's QUIC capability bit and never
+		// ours to take (see ENattConnectOptions), and a bit the sender sets is
+		// a claim -- the acting path below punches toward an address out of the
+		// datagram, so "I was forwarded by a relay" is the first thing a
+		// crafted request would say.
+		//
+		// So the direction is decided by two things this client already holds
+		// and one it observed, and by nothing the sender wrote:
+		//
+		//   * the sender is our buddy, established over Kad long before this
+		//     datagram, looked up by the endpoint the datagram arrived from;
+		//   * the endpoint named is not that same sender's.
+		//
+		// The first is the guard. A stranger reaches the relay path only,
+		// whatever it writes, and the relay path sends toward addresses from
+		// our own client list and never toward one in the message. The second
+		// only separates our buddy's two honest uses of the opcode -- telling
+		// us where a third peer is, versus asking us to relay for it -- and
+		// carries no weight on its own, since a sender picks the endpoint it
+		// names.
+		//
+		// eMuleAI reaches the same place by a different road: it accepts a
+		// forwarded rendezvous only from a serving or served buddy
+		// (srchybrid/ListenSocket.cpp), having carried it over the buddy's TCP
+		// connection rather than as a datagram. The gate is the same fact about
+		// the sender; only where it is checked differs.
+		//
+		// Peeked without charging the limiter, because whichever path is
+		// chosen charges once for this datagram and a second charge would halve
+		// a legitimate buddy's budget.
 		SNattRendezvousRequest peeked;
 		const bool parsed = ParseRendezvousRequest(body, bodyLength, peeked);
 
-		if (parsed && peeked.isRelayed) {
-			// A relay forwarded a rendezvous to us. Acted on only from a
-			// peer already in the client list, and only within the same
+		const CUpDownClient *sender = theApp->clientlist->FindClientByUDPEndpoint(peer, port);
+		// By the datagram's source port, which is the only port we hold for
+		// this sender: a buddy is known here as a UDP peer, not as something we
+		// could dial back on its ed2k TCP port.
+		const bool senderIsOurBuddy = sender != NULL && sender == theApp->clientlist->GetBuddy();
+		const bool namesAnotherHost =
+			parsed && peeked.hasEndpointHint && peeked.hintAddress.Unmapped() != peer.Unmapped();
+
+		if (senderIsOurBuddy && namesAnotherHost) {
+			// Our buddy forwarded a rendezvous to us. Acted on within the same
 			// per-peer budget a requester spends from.
-			// By the datagram's source port, which is the only port we hold
-			// for this sender: the relay is known here as a UDP peer, not as
-			// something we could dial back on its ed2k TCP port.
-			const bool relayIsKnown =
-				theApp->clientlist->FindClientByUDPEndpoint(peer, port) != NULL;
 			const CNetworkAddress ownEndpoint =
 				CNetworkAddress::FromIPv4NetworkOrderOrAbsent(theApp->GetPublicIP(false));
 
 			const SRelayedRendezvousDecision decision = AcceptRelayedRendezvous(
-				body, bodyLength, peer, relayIsKnown, ownEndpoint, nowMs, m_relayLimiter);
+				body, bodyLength, peer, senderIsOurBuddy, ownEndpoint, nowMs, m_relayLimiter);
 			if (!decision.punch) {
 				AddDebugLogLineN(logClientUDP,
 					CFormat("Dropping relayed rendezvous from %s:%u: reason %d") %
@@ -726,17 +758,16 @@ void CClientUDPSocket::ProcessNattControlFrame(
 			return;
 		}
 
-		// Otherwise it is a request to relay -- including a malformed one,
+		// Otherwise it is a request to relay. That includes a malformed one,
 		// which reaches RelayRendezvousRequest() so that it is charged against
-		// its sender's budget rather than being free.
+		// its sender's budget rather than being free; and it includes one from
+		// our own buddy naming itself, which is that buddy asking us to relay.
 		//
 		// The requester's identity comes from our own client list, never from
 		// the datagram: it is the value the forwarded message carries, so a
 		// datagram that could set it would make this relay vouch for anyone.
-		const CUpDownClient *requester = theApp->clientlist->FindClientByUDPEndpoint(peer, port);
-		const uint8_t *requesterHash = requester != NULL && requester->HasValidHash()
-						       ? requester->GetUserHash().GetHash()
-						       : NULL;
+		const uint8_t *requesterHash =
+			sender != NULL && sender->HasValidHash() ? sender->GetUserHash().GetHash() : NULL;
 
 		const SRelayDecision decision = RelayRendezvousRequest(
 			body,

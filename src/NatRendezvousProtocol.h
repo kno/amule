@@ -138,37 +138,45 @@ enum ENattControlOpcodes : uint8_t
 	OP_NATT_ENDPOINT_HINT = 0xAA
 };
 
-//! Bits in the connect-options byte. Emitted to describe the body; never read
-//! to decide what the body contains -- see the file comment.
+/**
+ * Bits in the connect-options byte. Emitted to describe the body; never read to
+ * decide what the body contains -- see the file comment.
+ *
+ * The byte is eMuleAI's, whole. Their GetMyConnectOptions()
+ * (srchybrid/OtherFunctions.cpp) builds ONE byte carrying the crypt-layer bits
+ * and the NAT-T bits together, and BaseClient.cpp writes exactly that byte into
+ * the rendezvous body. There is no separate namespace for this message, so a
+ * bit taken here is a bit taken from them. Their allocation, in full
+ * (srchybrid/Opcodes.h):
+ *
+ *     0x01  CONNECT_OPT_CRYPT_SUPPORTED
+ *     0x02  CONNECT_OPT_CRYPT_REQUESTED
+ *     0x04  CONNECT_OPT_CRYPT_REQUIRED
+ *     0x08  CONNECT_OPT_DIRECT_UDP_CALLBACK
+ *     0x10  reserved, and reserved is not free
+ *     0x20  CONNECT_OPT_NATT_ENDPOINT_HINT
+ *     0x40  CONNECT_OPT_NAT_TRAVERSAL_QUIC
+ *     0x80  CONNECT_OPT_NAT_TRAVERSAL_UTP
+ *
+ * Check that table before taking a bit. This tree already took 0x40 once, for a
+ * "this was forwarded by a relay" flag, and 0x40 is their QUIC capability: they
+ * would have read our forwards as "peer supports QUIC" and spent a capability
+ * window on it, and we would have read a QUIC-capable peer's request as "already
+ * relayed, act on it" and punched toward the address in the datagram -- which is
+ * precisely the reflection the relay validation exists to prevent. The flag is
+ * gone rather than relocated: see CClientUDPSocket::ProcessNattControlFrame()
+ * for where the direction of a rendezvous is decided now, and why it is not
+ * decided by anything the sender writes.
+ */
 enum ENattConnectOptions : uint8_t
 {
 	//! An endpoint was encoded into the tail. Informational only on receipt.
+	//! Kept, and not deleted as redundant under the length rule: this is
+	//! eMuleAI's 0x20 with eMuleAI's meaning, and their buddy-forward path
+	//! gates on it (srchybrid/ClientUDPSocket.cpp). Their standalone parser
+	//! goes by remaining length while that path goes by the flag, so a
+	//! receiver has to honour whichever mechanism the frame it is reading uses.
 	CONNECT_OPT_NATT_ENDPOINT_HINT = 0x20,
-	/**
-	 * This OP_RENDEZVOUS was forwarded by a relay: act on it, do not relay it
-	 * on.
-	 *
-	 * A relay request (A to R) and a relayed rendezvous (R to B) carry the same
-	 * opcode and the same fields and mean opposite things. Confusing them is
-	 * not a cosmetic error: a client that read a relay request as a forward
-	 * would start punching toward the address inside the datagram, which is
-	 * exactly the reflection the relay validation exists to prevent. So the
-	 * direction is explicit, and the *absence* of this bit is what the relay
-	 * path requires -- a crafted request cannot reach the acting path at all.
-	 *
-	 * Unlike the endpoint bit this one IS read, and has to be: it is a
-	 * statement about direction, which no amount of length arithmetic can
-	 * recover from the body.
-	 *
-	 * 0x40 is the one value in this header the proposal does not pin, and
-	 * eMuleAI's use of that bit is unknown to this tree. It travels only inside
-	 * a message that exists only between peers that advertised
-	 * MOD_MISCOPT_NAT_TRAVERSAL, so no unaware client parses it -- but it is
-	 * the value an interop check against eMuleAI could contradict, and the
-	 * alternative (inferring the direction from local state) would have left
-	 * the acting path reachable by a crafted request.
-	 */
-	CONNECT_OPT_NATT_RELAYED = 0x40,
 	//! The traversal being asked for is the uTP one. Set on every message this
 	//! build sends, because uTP is the only transport it can serve.
 	CONNECT_OPT_NAT_TRAVERSAL_UTP = 0x80
@@ -268,9 +276,6 @@ struct SNattRendezvousRequest
 	uint8_t peerHash[NATT_PEER_HASH_LENGTH] = { 0 };
 	//! CONNECT_OPT_NAT_TRAVERSAL_UTP was set.
 	bool requestsUtpTraversal = false;
-	//! CONNECT_OPT_NATT_RELAYED was set: a relay forwarded this, so it is to be
-	//! acted on rather than relayed on.
-	bool isRelayed = false;
 	/**
 	 * A file hash was present AND named a file.
 	 *
@@ -492,7 +497,7 @@ inline size_t EncodeRendezvousMessage(const uint8_t *peerHash,
 	const uint8_t *fileHash,
 	const CNetworkAddress &endpoint,
 	uint16_t port,
-	bool relayed,
+	bool endpointRequired,
 	uint8_t *out,
 	size_t outLength)
 {
@@ -507,7 +512,7 @@ inline size_t EncodeRendezvousMessage(const uint8_t *peerHash,
 	uint8_t tail[NATT_ENDPOINT_TAIL_LENGTH];
 	const size_t tailLength = EncodeEndpointTail(endpoint, port, tail, sizeof(tail));
 
-	if (relayed && tailLength == 0) {
+	if (endpointRequired && tailLength == 0) {
 		// A forward with no endpoint in it gives the receiver nothing to punch
 		// toward, so it is not encoded at all rather than encoded empty.
 		return 0;
@@ -521,9 +526,13 @@ inline size_t EncodeRendezvousMessage(const uint8_t *peerHash,
 	for (size_t i = 0; i < NATT_PEER_HASH_LENGTH; ++i) {
 		out[i] = peerHash[i];
 	}
+	// Nothing here states which direction the message travels. The two
+	// directions are byte-identical on the wire, deliberately: a receiver that
+	// took the sender's word for the direction would let a crafted request onto
+	// the path that punches at the address in the datagram. See
+	// CClientUDPSocket::ProcessNattControlFrame().
 	out[NATT_PEER_HASH_LENGTH] = static_cast<uint8_t>(
-		CONNECT_OPT_NAT_TRAVERSAL_UTP | (relayed ? CONNECT_OPT_NATT_RELAYED : 0) |
-		(tailLength != 0 ? CONNECT_OPT_NATT_ENDPOINT_HINT : 0));
+		CONNECT_OPT_NAT_TRAVERSAL_UTP | (tailLength != 0 ? CONNECT_OPT_NATT_ENDPOINT_HINT : 0));
 
 	size_t cursor = NATT_RENDEZVOUS_FIXED_LENGTH;
 	for (size_t i = 0; i < fileHashLength; ++i) {
@@ -536,9 +545,23 @@ inline size_t EncodeRendezvousMessage(const uint8_t *peerHash,
 	return total;
 }
 
-//! A rendezvous request: A asking a relay to reach the peer named by
-//! @a peerHash, about the file named by @a fileHash, and stating its own
-//! believed external endpoint.
+/**
+ * A rendezvous request: A asking a relay to reach the peer named by
+ * @a peerHash, about the file named by @a fileHash, and stating its own
+ * believed external endpoint.
+ *
+ * The bytes are indistinguishable from EncodeRelayedRendezvous()' output, and
+ * the two functions exist for the caller's sake rather than the wire's: they
+ * differ only in whether an endpoint is mandatory. What separates the two
+ * directions is not in the message at all -- see
+ * CClientUDPSocket::ProcessNattControlFrame().
+ *
+ * The endpoint is optional HERE because a request without one is a request the
+ * relay will discard for want of anything to validate against the source, which
+ * is a decision for RelayRendezvousRequest() and not for this encoder. The
+ * caller that has no endpoint to name declines to send instead; see
+ * CClientUDPSocket::SendRendezvousRequest().
+ */
 inline size_t EncodeRendezvousRequest(const uint8_t *peerHash,
 	const uint8_t *fileHash,
 	const CNetworkAddress &ownEndpoint,
@@ -561,7 +584,9 @@ inline size_t EncodeRendezvousRequest(const uint8_t *peerHash,
  *        reflection vectors -- a file hash names no host and is never dialled.
  *        The relay has no other source for it and must not invent one.
  * @param observedEndpoint the endpoint the relay OBSERVED the request arrive
- *        from -- never one the request claimed.
+ *        from -- never one the request claimed. Mandatory here, unlike in a
+ *        request: a forward with no endpoint gives its receiver nothing to
+ *        punch toward, so it is not sent at all rather than sent empty.
  */
 inline size_t EncodeRelayedRendezvous(const uint8_t *peerHash,
 	const uint8_t *fileHash,
@@ -604,7 +629,6 @@ inline bool ParseRendezvousRequest(const uint8_t *body, size_t bodyLength, SNatt
 	}
 	const uint8_t options = body[NATT_PEER_HASH_LENGTH];
 	parsed.requestsUtpTraversal = (options & CONNECT_OPT_NAT_TRAVERSAL_UTP) != 0;
-	parsed.isRelayed = (options & CONNECT_OPT_NATT_RELAYED) != 0;
 
 	// From here it is length arithmetic and nothing else. CONNECT_OPT_NATT_-
 	// ENDPOINT_HINT is deliberately not consulted: see the file comment.

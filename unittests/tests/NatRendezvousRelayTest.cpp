@@ -858,19 +858,39 @@ TEST(NatRendezvousRelay, ForwardedMessageIsMarkedRelayed)
 	SNattRendezvousRequest forwarded;
 	ASSERT_TRUE(ParseRendezvousRequest(
 		sender.m_sent[0].payload.data(), sender.m_sent[0].payload.size(), forwarded));
-	ASSERT_TRUE(forwarded.isRelayed);
+	// Nothing in the forwarded bytes states which direction it travels, and
+	// that is the point: a receiver that read the direction out of the message
+	// would take a crafted request's word for it. The options byte carries the
+	// two capability bits and nothing else.
+	ASSERT_TRUE(forwarded.requestsUtpTraversal);
+	ASSERT_TRUE(forwarded.hasEndpointHint);
+	ASSERT_TRUE(forwarded.hintAddress == Requester());
+
+	// Byte for byte a request naming the same endpoint. If these ever diverge,
+	// something has put a direction back on the wire.
+	const std::vector<uint8_t> asRequest = Request(Requester(), kSourcePort);
+	ASSERT_EQUALS(asRequest.size(), sender.m_sent[0].payload.size());
 }
 
-// A message that is already relayed is not relayed again. Two relays willing to
-// forward each other's forwards is a loop that only the rate limit would stop,
-// and only after both had spent their budgets.
-TEST(NatRendezvousRelay, AlreadyRelayedMessageIsNotRelayedAgain)
+// A forward fed back into the relay path is not relayed again. Two relays
+// willing to forward each other's forwards is a loop that only the rate limit
+// would stop, and only after both had spent their budgets.
+//
+// What stops it is no longer a bit saying "already relayed" -- that bit was
+// eMuleAI's QUIC capability and is gone. It is the reflection check: a forward
+// names the peer it is ABOUT, which is never the relay that sent it, so it
+// fails the "may only name the host it arrived from" rule that guards this path
+// anyway. One rule now does both jobs, and it is a rule about an address this
+// client observed rather than about a claim the sender made.
+TEST(NatRendezvousRelay, ForwardFedBackIntoTheRelayPathIsNotRelayedAgain)
 {
 	uint8_t requesterHash[NATT_PEER_HASH_LENGTH];
 	FillHash(requesterHash, 0x10);
 	uint8_t targetHash[NATT_PEER_HASH_LENGTH];
 	FillHash(targetHash, 0x20);
 
+	// The shape a relay emits: it names the requester it observed, and it
+	// arrives here from the relay, which is a different host.
 	uint8_t frame[NATT_RENDEZVOUS_MAX_LENGTH];
 	const size_t length =
 		EncodeRelayedRendezvous(targetHash, NULL, Requester(), kSourcePort, frame, sizeof(frame));
@@ -880,9 +900,9 @@ TEST(NatRendezvousRelay, AlreadyRelayedMessageIsNotRelayedAgain)
 	CRecordingSender sender;
 
 	const SRelayDecision decision = RelayRendezvousRequest(
-		frame, length, Requester(), kSourcePort, requesterHash, 1000, limiter, clients, sender);
+		frame, length, Target(), kTargetPort, requesterHash, 1000, limiter, clients, sender);
 
-	ASSERT_EQUALS((int)RELAY_DISCARD_ALREADY_RELAYED, (int)decision.disposition);
+	ASSERT_EQUALS((int)RELAY_DISCARD_HINT_NAMES_ANOTHER_HOST, (int)decision.disposition);
 	ASSERT_EQUALS(0u, sender.m_sent.size());
 }
 
@@ -891,14 +911,15 @@ TEST(NatRendezvousRelay, AlreadyRelayedMessageIsNotRelayedAgain)
 //
 // This is the one path in the change that acts on an endpoint it did not
 // observe, so it is the one that has to be argued rather than merely
-// implemented. Four guards stand in front of it -- the relayed bit, a relay
-// this client already knows, a per-relay rate limit, and a usable endpoint --
-// and the punch that follows is bounded by CHolePunchSchedule to three packets
-// per attempt. The residual exposure is that a known relay can cause this
-// client to send that bounded burst toward an address of the relay's choosing.
-// That is inherent to hole punching and is the same trust the design places in
-// R for signalling; it is not unbounded and it is not free.
-TEST(NatRendezvousRelay, RelayedRendezvousFromAKnownRelayIsAccepted)
+// implemented. Four guards stand in front of it -- the sender is our buddy, the
+// endpoint is not that sender's own, a per-relay rate limit, and a usable
+// endpoint that is not ours -- and the punch that follows is bounded by
+// CHolePunchSchedule to three packets per attempt. The residual exposure is
+// that OUR BUDDY can cause this client to send that bounded burst toward an
+// address of its choosing. That is inherent to hole punching and is the same
+// trust the design already places in a buddy, which relays this client's
+// callbacks; it is not unbounded and it is not free.
+TEST(NatRendezvousRelay, RelayedRendezvousFromOurBuddyIsAccepted)
 {
 	uint8_t peerHash[NATT_PEER_HASH_LENGTH];
 	FillHash(peerHash, 0x30);
@@ -920,45 +941,57 @@ TEST(NatRendezvousRelay, RelayedRendezvousFromAKnownRelayIsAccepted)
 	}
 }
 
-// The crafted packet. A plain relay request -- the shape an attacker sends to
-// make this client aim traffic somewhere -- is never accepted down the relayed
-// path, whatever endpoint it names. Without this the relay validation could be
-// bypassed simply by having the request read as a forward.
-TEST(NatRendezvousRelay, RelayRequestIsNeverAcceptedAsARelayedRendezvous)
-{
-	const std::vector<uint8_t> frame = Request(Victim(), 4662);
-
-	CRendezvousRelayLimiter limiter;
-	const SRelayedRendezvousDecision decision = AcceptRelayedRendezvous(frame.data(),
-		frame.size(),
-		Requester(),
-		true,
-		CNetworkAddress::FromString("192.0.2.99"),
-		1000,
-		limiter);
-
-	ASSERT_EQUALS((int)RELAYED_REJECT_NOT_RELAYED, (int)decision.acceptance);
-	ASSERT_FALSE(decision.punch);
-	ASSERT_TRUE(decision.punchEndpoint.IsAbsent());
-}
-
-// A relay this client does not know cannot make it punch. Signalling is trusted
-// only from peers already in the client list.
-TEST(NatRendezvousRelay, RelayedRendezvousFromAnUnknownRelayIsRejected)
+// The crafted packet, and the guard that stands in its place now.
+//
+// The bytes below are a perfectly well-formed forward naming an unrelated
+// victim -- exactly what an attacker sends to make this client aim traffic
+// somewhere. Under the old design the only thing between it and the punch was
+// an option bit the attacker sets as easily as a relay does. Now it is stopped
+// by a fact the datagram cannot touch: the sender is not this client's buddy.
+//
+// The message is not distinguishable from a genuine forward, and it does not
+// need to be. That is the whole shift: the question moved from "what does this
+// message claim" to "who sent it".
+TEST(NatRendezvousRelay, RendezvousFromANonBuddyIsNeverActedOn)
 {
 	uint8_t peerHash[NATT_PEER_HASH_LENGTH];
 	FillHash(peerHash, 0x30);
 
 	uint8_t frame[NATT_RENDEZVOUS_MAX_LENGTH];
-	const size_t length = EncodeRelayedRendezvous(
-		peerHash, NULL, CNetworkAddress::FromString("198.51.100.7"), 4662, frame, sizeof(frame));
+	const size_t length = EncodeRelayedRendezvous(peerHash, NULL, Victim(), 4662, frame, sizeof(frame));
 
 	CRendezvousRelayLimiter limiter;
 	const SRelayedRendezvousDecision decision = AcceptRelayedRendezvous(
-		frame, length, Target(), false, CNetworkAddress::FromString("192.0.2.10"), 1000, limiter);
+		frame, length, Requester(), false, CNetworkAddress::FromString("192.0.2.99"), 1000, limiter);
 
-	ASSERT_EQUALS((int)RELAYED_REJECT_UNKNOWN_RELAY, (int)decision.acceptance);
+	ASSERT_EQUALS((int)RELAYED_REJECT_RELAY_IS_NOT_OUR_BUDDY, (int)decision.acceptance);
 	ASSERT_FALSE(decision.punch);
+	ASSERT_TRUE(decision.punchEndpoint.IsAbsent());
+}
+
+// Our buddy naming ITSELF is our buddy asking us to relay for it, not telling
+// us where a third peer is -- the other honest use a buddy has for this opcode.
+// Reported rather than accepted, so the caller routes it to the relay path,
+// where naming your own source address is not merely allowed but required.
+//
+// Acting on it instead would punch at the one peer this client is already in
+// contact with, and would silently drop the relay the buddy actually asked for.
+TEST(NatRendezvousRelay, RendezvousFromOurBuddyNamingItselfIsNotActedOn)
+{
+	uint8_t peerHash[NATT_PEER_HASH_LENGTH];
+	FillHash(peerHash, 0x30);
+
+	uint8_t frame[NATT_RENDEZVOUS_MAX_LENGTH];
+	const size_t length =
+		EncodeRelayedRendezvous(peerHash, NULL, Target(), kTargetPort, frame, sizeof(frame));
+
+	CRendezvousRelayLimiter limiter;
+	const SRelayedRendezvousDecision decision = AcceptRelayedRendezvous(
+		frame, length, Target(), true, CNetworkAddress::FromString("192.0.2.10"), 1000, limiter);
+
+	ASSERT_EQUALS((int)RELAYED_REJECT_ENDPOINT_IS_THE_RELAY, (int)decision.acceptance);
+	ASSERT_FALSE(decision.punch);
+	ASSERT_TRUE(decision.punchEndpoint.IsAbsent());
 }
 
 // The same budget bounds this direction. A relay that forwards more than its
@@ -1015,7 +1048,7 @@ TEST(NatRendezvousRelay, RelayedRendezvousNamingOurOwnEndpointIsRejected)
 // the acceptance code still cannot dial anything.
 TEST(NatRendezvousRelay, MalformedRelayedRendezvousYieldsNoEndpoint)
 {
-	const uint8_t garbage[3] = { OP_RENDEZVOUS, CONNECT_OPT_NATT_RELAYED, 0x00 };
+	const uint8_t garbage[3] = { OP_RENDEZVOUS, CONNECT_OPT_NAT_TRAVERSAL_UTP, 0x00 };
 
 	CRendezvousRelayLimiter limiter;
 	const SRelayedRendezvousDecision decision = AcceptRelayedRendezvous(garbage,

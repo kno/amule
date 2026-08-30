@@ -370,22 +370,25 @@ TEST(NatRendezvousManager, RelayedEndpointIsOneCandidateAfterTheKnownOnes)
 // one place.
 TEST(NatRendezvousManager, RejectedRelayedRendezvousStartsNothing)
 {
-	// A plain relay request: the crafted-packet shape.
+	// The crafted-packet shape: a well-formed forward naming an unrelated
+	// victim, sent by someone who is not this client's buddy. Indistinguishable
+	// from a genuine forward, and rejected on who sent it rather than on
+	// anything it says.
 	uint8_t targetHash[NATT_PEER_HASH_LENGTH];
 	FillHash(targetHash, 0x30);
 	uint8_t frame[NATT_RENDEZVOUS_MAX_LENGTH];
-	const size_t length = EncodeRendezvousRequest(
+	const size_t length = EncodeRelayedRendezvous(
 		targetHash, NULL, CNetworkAddress::FromString("198.51.100.200"), 4662, frame, sizeof(frame));
 
 	CRendezvousRelayLimiter limiter;
 	const SRelayedRendezvousDecision rejected = AcceptRelayedRendezvous(frame,
 		length,
 		CNetworkAddress::FromString("203.0.113.5"),
-		true,
+		false,
 		CNetworkAddress::FromString("192.0.2.1"),
 		1000,
 		limiter);
-	ASSERT_EQUALS((int)RELAYED_REJECT_NOT_RELAYED, (int)rejected.acceptance);
+	ASSERT_EQUALS((int)RELAYED_REJECT_RELAY_IS_NOT_OUR_BUDDY, (int)rejected.acceptance);
 
 	CNatRendezvousManager manager;
 	ASSERT_FALSE(manager.OnRelayedRendezvous(rejected, CNattCandidateSet(), 1000));

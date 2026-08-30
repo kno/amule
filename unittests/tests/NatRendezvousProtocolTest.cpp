@@ -277,7 +277,6 @@ TEST(NatRendezvousProtocol, RendezvousRequestRoundTrips)
 	ASSERT_TRUE(FileHashIsTheOne(request.fileHash));
 	ASSERT_TRUE(request.hasFileHash);
 	ASSERT_TRUE(request.requestsUtpTraversal);
-	ASSERT_FALSE(request.isRelayed);
 	ASSERT_TRUE(request.hasEndpointHint);
 	ASSERT_EQUALS(4662, static_cast<int>(request.hintPort));
 	ASSERT_TRUE(request.hintAddress == CNetworkAddress::FromString("192.0.2.10"));
@@ -728,23 +727,22 @@ TEST(NatRendezvousProtocol, AnAbsentEndpointOrAZeroPortEncodesNoEndpoint)
 // The bit that separates the two directions of the exchange.
 //
 // A relay request (A to R) and a relayed rendezvous (R to B) are the same
-// opcode carrying the same fields, and they must not be confused: a client that
-// read a relay request as a relayed rendezvous would start punching toward the
-// address in the datagram, which is the reflection the relay validation exists
-// to prevent. So the direction is explicit rather than inferred from local
-// state, and the ABSENCE of the bit is what the relay path requires.
+// opcode carrying the same fields, and NOTHING in the bytes tells them apart.
 //
-// 0x40 is not a value the proposal pins, and eMuleAI's use of that bit is
-// unknown to this tree. It travels only inside a message that only exists
-// between peers that advertised MOD_MISCOPT_NAT_TRAVERSAL, so it widens nothing
-// that an unaware client parses -- but it is the one value here that interop
-// against eMuleAI could contradict.
-TEST(NatRendezvousProtocol, RelayedBitIsItsPinnedValue)
-{
-	ASSERT_EQUALS(0x40, static_cast<int>(CONNECT_OPT_NATT_RELAYED));
-}
-
-TEST(NatRendezvousProtocol, RelayedRendezvousSetsTheRelayedBitAndAnOrdinaryRequestDoesNot)
+// This tree used to spell the difference with a CONNECT_OPT_NATT_RELAYED bit at
+// 0x40. That was wrong twice. 0x40 is eMuleAI's CONNECT_OPT_NAT_TRAVERSAL_QUIC
+// -- one byte, one namespace, theirs -- so they would have read our forwards as
+// "peer supports QUIC" and we would have read a QUIC-capable peer's request as
+// "already relayed, act on it". And a bit the sender sets is a claim: the path
+// it unlocked punches toward the address in the datagram, so it is the first
+// thing a crafted request would set.
+//
+// The direction is decided by the receiver from what it already holds -- is the
+// sender my buddy -- and never from the message. See
+// CClientUDPSocket::ProcessNattControlFrame(). This test pins the consequence
+// at the codec: the two directions are byte-identical, so nothing can start
+// reading a direction out of them again without failing here.
+TEST(NatRendezvousProtocol, TheTwoDirectionsAreIndistinguishableOnTheWire)
 {
 	uint8_t hash[NATT_PEER_HASH_LENGTH];
 	FillHash(hash);
@@ -755,21 +753,29 @@ TEST(NatRendezvousProtocol, RelayedRendezvousSetsTheRelayedBitAndAnOrdinaryReque
 	const size_t relayedLength = EncodeRelayedRendezvous(
 		hash, fileHash, CNetworkAddress::FromString("192.0.2.10"), 4662, relayed, sizeof(relayed));
 	ASSERT_EQUALS(39u, relayedLength);
-	// 0x80 traversal, 0x40 relayed, 0x20 an endpoint follows.
-	ASSERT_EQUALS(0xE0, static_cast<int>(relayed[16]));
-
-	SNattRendezvousRequest parsedRelayed;
-	ASSERT_TRUE(ParseRendezvousRequest(relayed, relayedLength, parsedRelayed));
-	ASSERT_TRUE(parsedRelayed.isRelayed);
 
 	uint8_t request[NATT_RENDEZVOUS_MAX_LENGTH] = { 0 };
 	const size_t requestLength = EncodeRendezvousRequest(
 		hash, fileHash, CNetworkAddress::FromString("192.0.2.10"), 4662, request, sizeof(request));
-	ASSERT_EQUALS(0xA0, static_cast<int>(request[16]));
 
-	SNattRendezvousRequest parsedRequest;
-	ASSERT_TRUE(ParseRendezvousRequest(request, requestLength, parsedRequest));
-	ASSERT_FALSE(parsedRequest.isRelayed);
+	ASSERT_EQUALS(relayedLength, requestLength);
+	for (size_t i = 0; i < relayedLength; ++i) {
+		ASSERT_EQUALS(static_cast<int>(request[i]), static_cast<int>(relayed[i]));
+	}
+
+	// 0x80 traversal supported, 0x20 an endpoint follows, and nothing else. In
+	// particular not 0x40, which is eMuleAI's QUIC capability and which this
+	// build must never assert -- it cannot serve QUIC.
+	ASSERT_EQUALS(0xA0, static_cast<int>(relayed[16]));
+}
+
+// The two option bits this build emits are eMuleAI's, at eMuleAI's values.
+// Pinned as literals rather than checked against their header, because their
+// header is not ours to include: an interop break has to fail here.
+TEST(NatRendezvousProtocol, OptionBitsAreEmuleAiValues)
+{
+	ASSERT_EQUALS(0x20, static_cast<int>(CONNECT_OPT_NATT_ENDPOINT_HINT));
+	ASSERT_EQUALS(0x80, static_cast<int>(CONNECT_OPT_NAT_TRAVERSAL_UTP));
 }
 
 // A relayed rendezvous with no endpoint in it is useless -- there is nothing to
