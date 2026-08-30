@@ -44,11 +44,15 @@
  *     [1] ..    the control opcode
  *     [2] ..    the body, which carries no opcode of its own
  *
- * That is eMuleAI v1.6's framing, and the reason it is not this tree's older
- * one (0xB2 OP_UDPRESERVEDPROT2 with a 0x00 frame type and the opcode inline)
- * is simply that nobody else speaks the older one. A format only one client
- * emits cannot rendezvous with anything, and a rendezvous that reaches no peer
- * is indistinguishable from a NAT that does not open.
+ * That is eMuleAI v1.6's framing, and the older envelope this tree used --
+ * 0xB2 OP_UDPRESERVEDPROT2 with a 0x00 frame type and the opcode inline -- was
+ * worse than merely private. eMuleAI uses BOTH protocol bytes, for different
+ * jobs: 0xC5 for this signalling, and 0xB2 for transport data and capability
+ * negotiation, where frame type 0x00 is its uTP DATA frame. So the old framing
+ * did not just fail to be understood -- it put control messages on the frame
+ * type the peer hands straight to its uTP parser. A rendezvous that reaches no
+ * peer is indistinguishable from a NAT that does not open, which is how this
+ * went unnoticed.
  *
  * The move costs nothing on the transport side, because the *transport* frames
  * stay where they were: 0xB2/0x00 still carries uTP and 0xB2/0x01 still carries
@@ -201,6 +205,31 @@ constexpr size_t NATT_ENDPOINT_TAIL_LENGTH = 6;
 //! SNattRendezvousRequest::transportHint.
 constexpr size_t NATT_TRANSPORT_HINT_LENGTH = 1;
 
+/**
+ * Values for that byte. These are eMuleAI's ENatTraversalTransport
+ * (srchybrid/UpdownClient.h), not a numbering of this tree's own.
+ *
+ * Pinned here because the obvious wrong move is to reuse one of the option bits
+ * above: CONNECT_OPT_NAT_TRAVERSAL_UTP is 0x80, and eMuleAI's parser accepts
+ * only 0x01 and 0x02 and silently discards everything else. A hint byte of 0x80
+ * would therefore be dropped without a word on either side, which is the
+ * failure mode this whole file exists to avoid.
+ */
+enum ENattTransportHint : uint8_t
+{
+	NATT_TRANSPORT_HINT_NONE = 0x00,
+	NATT_TRANSPORT_HINT_UTP = 0x01,
+	NATT_TRANSPORT_HINT_QUIC = 0x02
+};
+
+//! Whether a received hint byte is one eMuleAI would have acted on. Their
+//! parser takes only UTP and QUIC -- NONE included, it rejects -- so a byte
+//! outside that pair is worth logging and nothing else.
+inline bool IsRecognisedNattTransportHint(uint8_t hint)
+{
+	return hint == NATT_TRANSPORT_HINT_UTP || hint == NATT_TRANSPORT_HINT_QUIC;
+}
+
 //! hash, options. Everything after this is optional and detected by length.
 constexpr size_t NATT_RENDEZVOUS_FIXED_LENGTH = NATT_PEER_HASH_LENGTH + 1;
 
@@ -242,9 +271,22 @@ struct SNattRendezvousRequest
 	//! CONNECT_OPT_NATT_RELAYED was set: a relay forwarded this, so it is to be
 	//! acted on rather than relayed on.
 	bool isRelayed = false;
-	//! A file hash was present. Absent is legal: the greedy test is
-	//! `remaining >= 16` and the longest endpoint-and-hint tail is seven bytes,
-	//! so a body without a file hash can never be misread as one carrying it.
+	/**
+	 * A file hash was present AND named a file.
+	 *
+	 * Absent is legal twice over. Structurally, the greedy test is
+	 * `remaining >= 16` and the longest endpoint-and-hint tail is seven bytes,
+	 * so a body without a file hash can never be misread as one carrying it.
+	 * Semantically, eMuleAI's handler gates only two source-enrichment blocks
+	 * on it and processes the rendezvous either way -- a message naming no file
+	 * is not an error there.
+	 *
+	 * eMuleAI's own encoder always writes the field, using an all-zero hash
+	 * when it has no file, and its parser calls that absent via isnulmd4().
+	 * This parser reaches the same answer from either spelling: an all-zero
+	 * hash reports false here, exactly as a missing field does. Encoding is the
+	 * other way round -- see EncodeRendezvousMessage().
+	 */
 	bool hasFileHash = false;
 	//! The file the rendezvous is about. Zero unless hasFileHash, and never
 	//! fabricated: a wrong file hash on the wire is worse than none.
@@ -262,15 +304,20 @@ struct SNattRendezvousRequest
 	//! A trailing transport-hint byte was present.
 	bool hasTransportHint = false;
 	/**
-	 * Its value, recorded and not acted on.
+	 * Its raw value, recorded and not acted on. See ENattTransportHint for the
+	 * two values eMuleAI defines, and IsRecognisedNattTransportHint() for the
+	 * test their own parser applies.
 	 *
-	 * eMuleAI's encoding for this byte is not known to this tree, and a byte
-	 * whose meaning is a guess must not select a transport: guessing "QUIC"
-	 * here would put an exchange onto a frame type this build has no context
-	 * for, and the symptom would be a traversal that stalls with nothing
-	 * logged. This build emits no transport hint for the same reason. The
-	 * transport it can serve is already stated by
-	 * CONNECT_OPT_NAT_TRAVERSAL_UTP.
+	 * Kept raw rather than filtered so a byte outside that pair survives into a
+	 * log line instead of vanishing into a zero, which is the one place the
+	 * next revision of their format would first show up.
+	 *
+	 * Not acted on because there is nothing here for it to decide. This build
+	 * serves one transport, and a peer's preference cannot conjure the other:
+	 * a hint of QUIC would have to be refused anyway
+	 * (LocalCanServeQuicNatTraversal()). This build emits no hint for the
+	 * mirror-image reason -- the transport it can serve is already stated by
+	 * CONNECT_OPT_NAT_TRAVERSAL_UTP, which eMuleAI reads.
 	 */
 	uint8_t transportHint = 0;
 };
@@ -278,12 +325,39 @@ struct SNattRendezvousRequest
 //! A parsed OP_HOLEPUNCH body.
 struct SNattHolePunch
 {
+	/**
+	 * Whether the punch named its sender at all.
+	 *
+	 * False for eMuleAI's punches, which carry an EMPTY body: their sender
+	 * builds `new Packet(OP_EMULEPROT)` with only the opcode set, and their
+	 * receiver matches by the address the datagram arrived from rather than by
+	 * anything inside it. A punch from an eMuleAI peer is therefore a valid
+	 * message with no identity in it, and a caller that needs one has to say so
+	 * rather than reading a zeroed hash.
+	 */
+	bool hasSenderHash = false;
 	//! Who sent it, so the receiver can pair the packet with the rendezvous it
 	//! agreed to rather than with the address it arrived from -- which is
-	//! precisely the thing a NAT rewrites.
+	//! precisely the thing a NAT rewrites. Zero unless hasSenderHash.
 	uint8_t senderHash[NATT_PEER_HASH_LENGTH] = { 0 };
 	bool requestsUtpTraversal = false;
 };
+
+//! An all-zero ed2k hash, which names no file and no peer. eMuleAI spells an
+//! absent file hash this way (isnulmd4()), so a parser that did not test for it
+//! would report a file context of sixteen zero bytes as if it were a file.
+inline bool IsNullNattHash(const uint8_t *hash)
+{
+	if (hash == nullptr) {
+		return true;
+	}
+	for (size_t i = 0; i < NATT_PEER_HASH_LENGTH; ++i) {
+		if (hash[i] != 0) {
+			return false;
+		}
+	}
+	return true;
+}
 
 /**
  * Classify a datagram's control opcode.
@@ -393,11 +467,23 @@ inline bool ParseEndpointTail(const uint8_t *tail, SNattEndpointHint &out)
  * @param peerHash NATT_PEER_HASH_LENGTH bytes naming the other side of the
  *        pair.
  * @param fileHash NATT_FILE_HASH_LENGTH bytes naming the file this rendezvous
- *        is about, or NULL when the caller holds none. NULL is a legal body and
- *        not a degraded one -- see SNattRendezvousRequest::hasFileHash for why
- *        the greedy test cannot misread it -- and it is the only honest answer
- *        when there is no file hash in scope. A zero-filled or borrowed hash
- *        would name a file this rendezvous is not about.
+ *        is about, or NULL when the caller holds none.
+ *
+ *        NULL is a legal body and not a degraded one. eMuleAI's handler gates
+ *        only two source-enrichment blocks on the file hash and processes the
+ *        rendezvous either way, so omitting it costs the enrichment and nothing
+ *        else; and the greedy test cannot misread the shorter body, because it
+ *        needs sixteen bytes of tail and the longest endpoint-and-hint tail is
+ *        seven.
+ *
+ *        eMuleAI itself writes an all-zero hash here rather than omitting the
+ *        field, and its parser calls that absent. Both spellings reach the same
+ *        conclusion at both ends, and this encoder picks omission for a reason
+ *        that outlives the compatibility: sixteen zero bytes are still a hash
+ *        to any reader that does not know the convention, while a field that is
+ *        not there cannot be misread as one naming a file. Never a borrowed
+ *        hash either -- that would name a file this rendezvous is not about,
+ *        which is worse than naming none.
  * @param endpoint this end's believed external address, or an absent address
  *        when it is not known.
  * @return bytes written, 0 on failure with the buffer untouched.
@@ -529,10 +615,17 @@ inline bool ParseRendezvousRequest(const uint8_t *body, size_t bodyLength, SNatt
 	// though six of them could also spell an endpoint -- which is why an
 	// encoder must never leave a sixteen-byte-or-longer tail that is not one.
 	if (remaining >= NATT_FILE_HASH_LENGTH) {
-		for (size_t i = 0; i < NATT_FILE_HASH_LENGTH; ++i) {
-			parsed.fileHash[i] = body[cursor + i];
+		// The bytes are consumed either way -- they occupy the slot and the
+		// endpoint's position depends on it -- but an all-zero hash is reported
+		// as no file, which is how eMuleAI spells "I have no file context".
+		// Consuming without reporting is the whole distinction: skipping the
+		// advance would push the endpoint read sixteen bytes early.
+		if (!IsNullNattHash(body + cursor)) {
+			for (size_t i = 0; i < NATT_FILE_HASH_LENGTH; ++i) {
+				parsed.fileHash[i] = body[cursor + i];
+			}
+			parsed.hasFileHash = true;
 		}
-		parsed.hasFileHash = true;
 		cursor += NATT_FILE_HASH_LENGTH;
 		remaining -= NATT_FILE_HASH_LENGTH;
 	}
@@ -588,10 +681,29 @@ inline size_t EncodeHolePunch(const uint8_t *ownHash, uint8_t *out, size_t outLe
 	return NATT_HOLEPUNCH_LENGTH;
 }
 
-//! Read an OP_HOLEPUNCH body. Same trailing-bytes rule as
-//! ParseRendezvousRequest().
+/**
+ * Read an OP_HOLEPUNCH body. Same trailing-bytes rule as
+ * ParseRendezvousRequest().
+ *
+ * An EMPTY body is valid and is the shape eMuleAI actually sends -- see
+ * SNattHolePunch::hasSenderHash. Demanding the full fixed part here would drop
+ * every punch a real eMuleAI peer emits, and a dropped punch behind a NAT looks
+ * exactly like the NAT not opening, so the failure would have been invisible.
+ *
+ * A body that is present but shorter than the fixed part is still rejected.
+ * Nobody emits one, and half a user hash is not a user hash: accepting it would
+ * mean pairing a punch against an identity read partly out of adjacent memory.
+ *
+ * @return false only for that partial case. On success, check hasSenderHash
+ *         before using senderHash.
+ */
 inline bool ParseHolePunch(const uint8_t *body, size_t bodyLength, SNattHolePunch &out)
 {
+	if (bodyLength == 0) {
+		out = SNattHolePunch();
+		return true;
+	}
+
 	if (body == nullptr || bodyLength < NATT_HOLEPUNCH_LENGTH) {
 		return false;
 	}
@@ -599,6 +711,7 @@ inline bool ParseHolePunch(const uint8_t *body, size_t bodyLength, SNattHolePunc
 	for (size_t i = 0; i < NATT_PEER_HASH_LENGTH; ++i) {
 		out.senderHash[i] = body[i];
 	}
+	out.hasSenderHash = true;
 	out.requestsUtpTraversal = (body[NATT_PEER_HASH_LENGTH] & CONNECT_OPT_NAT_TRAVERSAL_UTP) != 0;
 	return true;
 }

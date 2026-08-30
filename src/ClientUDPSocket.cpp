@@ -796,6 +796,26 @@ void CClientUDPSocket::ProcessNattControlFrame(
 			return;
 		}
 
+		if (!punchMessage.hasSenderHash) {
+			// A well-formed punch that names nobody, which is what eMuleAI
+			// v1.6 sends: its punches carry an empty body and its receiver
+			// pairs them by the address they arrived from.
+			//
+			// CNatRendezvousManager is keyed by identity, deliberately -- the
+			// address is exactly what the NAT under test rewrites -- so there
+			// is nothing here to look the punch up by, and it is dropped with
+			// that said rather than being paired against a guess. Pairing by
+			// observed endpoint instead is a change to how a punch is matched,
+			// not to how it is framed, and it belongs to whoever decides that
+			// question rather than to this dispatch.
+			AddDebugLogLineN(logClientUDP,
+				CFormat("Hole punch from %s:%u carries no sender identity: nothing to pair "
+					"it "
+					"with in this build") %
+					peerText % port);
+			return;
+		}
+
 		// Matched against the pairs already in flight, and it may not create
 		// one: a peer this client never punched toward gets no schedule and no
 		// budget out of sending a punch. The mapping it arrived from is

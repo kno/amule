@@ -230,6 +230,36 @@ TEST(NatRendezvousProtocol, RendezvousWithAFileHashAndNoEndpointRoundTrips)
 	ASSERT_EQUALS(0, static_cast<int>(request.hintPort));
 }
 
+// eMuleAI's encoder always writes the file-hash field and spells "no file" as
+// sixteen zero bytes; its parser calls that absent via isnulmd4(). So a
+// rendezvous from a real eMuleAI peer with no file context arrives as a
+// 33-byte body whose file hash is all zeros, and reporting that as a file would
+// hand the rest of this tree a file hash naming nothing.
+//
+// The bytes are still CONSUMED -- the endpoint's position depends on the slot
+// being there -- they are just not reported. Skipping the advance instead would
+// read the endpoint sixteen bytes early, which is the misparse in miniature.
+TEST(NatRendezvousProtocol, AnAllZeroFileHashIsReportedAsNoFileButStillConsumed)
+{
+	uint8_t hash[NATT_PEER_HASH_LENGTH];
+	FillHash(hash);
+	uint8_t nullFileHash[NATT_FILE_HASH_LENGTH] = { 0 };
+
+	uint8_t buffer[NATT_RENDEZVOUS_MAX_LENGTH] = { 0 };
+	const size_t written = EncodeRendezvousRequest(
+		hash, nullFileHash, CNetworkAddress::FromString("192.0.2.10"), 4662, buffer, sizeof(buffer));
+	ASSERT_EQUALS(39u, written);
+
+	SNattRendezvousRequest request;
+	ASSERT_TRUE(ParseRendezvousRequest(buffer, written, request));
+	ASSERT_FALSE(request.hasFileHash);
+	// Consumed, not skipped: the endpoint is still read from offset 33.
+	ASSERT_TRUE(request.hasEndpointHint);
+	ASSERT_EQUALS(4662, static_cast<int>(request.hintPort));
+	ASSERT_TRUE(request.hintAddress == CNetworkAddress::FromString("192.0.2.10"));
+	ASSERT_FALSE(request.hasTransportHint);
+}
+
 TEST(NatRendezvousProtocol, RendezvousRequestRoundTrips)
 {
 	uint8_t hash[NATT_PEER_HASH_LENGTH];
@@ -397,6 +427,29 @@ TEST(NatRendezvousProtocol, ATrailingTransportHintIsReadWithoutDisturbingTheEndp
 	ASSERT_EQUALS(4662, static_cast<int>(request.hintPort));
 	ASSERT_TRUE(request.hasTransportHint);
 	ASSERT_EQUALS(0x07, static_cast<int>(request.transportHint));
+	// Recorded raw. 0x07 is not one of eMuleAI's two defined values, and their
+	// own parser silently discards anything that is not -- so it is kept for a
+	// log line and must not be turned into a transport.
+	ASSERT_FALSE(IsRecognisedNattTransportHint(request.transportHint));
+}
+
+// The transport-hint values are eMuleAI's ENatTraversalTransport
+// (srchybrid/UpdownClient.h): NONE 0, UTP 1, QUIC 2. Pinned as literals because
+// they are wire format, and pinned at all because the obvious wrong move is to
+// reuse one of this header's own option bits here -- CONNECT_OPT_NAT_TRAVERSAL_UTP
+// is 0x80, which their parser would discard without a word.
+TEST(NatRendezvousProtocol, TransportHintValuesAreEMuleAIsAndNotOurOptionBits)
+{
+	ASSERT_EQUALS(0x00, static_cast<int>(NATT_TRANSPORT_HINT_NONE));
+	ASSERT_EQUALS(0x01, static_cast<int>(NATT_TRANSPORT_HINT_UTP));
+	ASSERT_EQUALS(0x02, static_cast<int>(NATT_TRANSPORT_HINT_QUIC));
+
+	ASSERT_TRUE(IsRecognisedNattTransportHint(NATT_TRANSPORT_HINT_UTP));
+	ASSERT_TRUE(IsRecognisedNattTransportHint(NATT_TRANSPORT_HINT_QUIC));
+	// NONE is a value their enum defines and their parser still rejects: it
+	// accepts only UTP and QUIC.
+	ASSERT_FALSE(IsRecognisedNattTransportHint(NATT_TRANSPORT_HINT_NONE));
+	ASSERT_FALSE(IsRecognisedNattTransportHint(CONNECT_OPT_NAT_TRAVERSAL_UTP));
 }
 
 // Bytes past everything this build understands are ignored rather than
@@ -516,11 +569,44 @@ TEST(NatRendezvousProtocol, HolePunchRoundTrips)
 
 	SNattHolePunch punch;
 	ASSERT_TRUE(ParseHolePunch(buffer, written, punch));
+	ASSERT_TRUE(punch.hasSenderHash);
 	ASSERT_TRUE(HashIsTheOne(punch.senderHash));
 	ASSERT_TRUE(punch.requestsUtpTraversal);
 }
 
-TEST(NatRendezvousProtocol, TruncatedHolePunchIsRejectedAtEveryBoundary)
+// eMuleAI v1.6 sends a hole punch with an EMPTY body -- `new Packet(OP_EMULEPROT)`
+// with the opcode set and nothing after it, in bursts of six to twelve
+// (srchybrid/ClientUDPSocket.cpp and BaseClient.cpp). Its own receiver never
+// reads a body at all: it matches the sender by the address the datagram
+// arrived from and only logs the size.
+//
+// So a two-byte datagram is a VALID punch, and rejecting it -- which a parser
+// demanding seventeen bytes does -- drops every punch a real eMuleAI peer
+// sends. That is the exact interop failure this whole change exists to remove,
+// and it would have looked like a NAT that does not open.
+//
+// The body we send is kept, because it carries the sender's identity and that
+// is the only thing CNatRendezvousManager can pair a punch by. eMuleAI ignores
+// those bytes, which costs nothing.
+TEST(NatRendezvousProtocol, AnEmptyHolePunchBodyIsValidAndCarriesNoIdentity)
+{
+	SNattHolePunch punch;
+	ASSERT_TRUE(ParseHolePunch(NULL, 0, punch));
+	ASSERT_FALSE(punch.hasSenderHash);
+
+	const uint8_t empty[1] = { 0 };
+	SNattHolePunch fromEmpty;
+	ASSERT_TRUE(ParseHolePunch(empty, 0, fromEmpty));
+	ASSERT_FALSE(fromEmpty.hasSenderHash);
+	// Not fabricated into a usable identity: an all-zero hash is a hash, and a
+	// caller that ignored the flag must not be handed one.
+	ASSERT_FALSE(fromEmpty.requestsUtpTraversal);
+}
+
+// A body that is present but short of the fixed part is still rejected. Nobody
+// emits one, and half a user hash is not a user hash -- accepting it would mean
+// pairing a punch against an identity read partly out of adjacent memory.
+TEST(NatRendezvousProtocol, APartialHolePunchBodyIsRejected)
 {
 	uint8_t hash[NATT_PEER_HASH_LENGTH];
 	FillHash(hash);
@@ -528,7 +614,7 @@ TEST(NatRendezvousProtocol, TruncatedHolePunchIsRejectedAtEveryBoundary)
 	uint8_t buffer[NATT_HOLEPUNCH_LENGTH] = { 0 };
 	const size_t written = EncodeHolePunch(hash, buffer, sizeof(buffer));
 
-	for (size_t length = 0; length < written; ++length) {
+	for (size_t length = 1; length < written; ++length) {
 		SNattHolePunch punch;
 		ASSERT_FALSE(ParseHolePunch(buffer, length, punch));
 	}
