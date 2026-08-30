@@ -506,7 +506,26 @@ inline SRelayDecision RelayRendezvousRequest(const uint8_t *frame,
  * already places in a buddy, which relays this client's callbacks. It is not
  * unbounded, it is not free, and it is a trust one named peer holds rather than
  * every host in the client list.
-
+ *
+ * "Our buddy" has to be read exactly, though, because guard 1 is only as strong
+ * as the answer the caller gives it. That answer is the datagram's source
+ * address and port looked up in our client list -- see
+ * CClientUDPSocket::ProcessNattControlFrame() -- and nothing else. This opcode
+ * carries no nonce, no verify key and no signature: verify keys are read out of
+ * the Kad obfuscation header alone, under `if (kad)` in
+ * CEncryptedDatagramSocket::DecryptReceivedClient(); the ed2k obfuscation on
+ * this route derives its key from OUR OWN user hash, which every peer that ever
+ * handshook with us holds; and an unobfuscated 0xC5 datagram is passed through
+ * untouched anyway. So the sender's identity here is source attribution over
+ * unauthenticated UDP, and whoever learns or guesses our buddy's endpoint can
+ * forge it.
+ *
+ * That makes guard 1 a real narrowing -- from every host on the internet to
+ * hosts that know one address and port -- and not an authentication. What
+ * carries the weight behind it is that everything reachable through it stays
+ * bounded: guards 3 and 5, and CHolePunchSchedule. Closing it properly needs a
+ * value the far side cannot predict, which is a change to what this opcode
+ * carries and not something a check on this side can substitute for.
  */
 enum ERelayedAcceptance
 {
@@ -516,8 +535,10 @@ enum ERelayedAcceptance
 	RELAYED_REJECT_MALFORMED,
 	//! No usable address for the relay itself.
 	RELAYED_REJECT_UNUSABLE_RELAY,
-	//! The host that sent this is not this client's buddy. The crafted-packet
-	//! case, and the only guard that stands between a stranger and a punch.
+	//! The datagram did not arrive from the endpoint we hold our buddy at. The
+	//! crafted-packet case, and the only guard that stands between a stranger
+	//! and a punch -- which is why the comment above says plainly that it
+	//! narrows the field rather than authenticating anyone.
 	RELAYED_REJECT_RELAY_IS_NOT_OUR_BUDDY,
 	//! The relay has spent its budget for this window.
 	RELAYED_REJECT_RATE_LIMITED,
@@ -560,11 +581,16 @@ struct SRelayedRendezvousDecision
  *        and the opcode byte.
  * @param frameLength bytes available from there.
  * @param relay the address the forward arrived from, at full width.
- * @param senderIsOurBuddy whether that host is this client's buddy. The
- *        caller's own client list answers this, and nothing in the datagram
- *        can. It replaced a "this was forwarded" bit in the options byte, which
- *        an attacker sets as easily as a relay does -- and which collided with
- *        eMuleAI's QUIC capability bit besides; see ENattConnectOptions.
+ * @param senderIsOurBuddy whether that host is this client's buddy. Answered by
+ *        the caller from its own client list, keyed on the address and port the
+ *        datagram arrived from -- so the buddy RELATION is ours, but the match
+ *        of it to THIS sender is source attribution and is forgeable by anyone
+ *        who knows that endpoint; see the comment above. It replaced a "this
+ *        was forwarded" bit in the options byte, which an attacker sets as
+ *        easily as a relay does -- and which collided with eMuleAI's QUIC
+ *        capability bit besides; see ENattConnectOptions. Still the stronger of
+ *        the two: a bit costs an attacker nothing, an endpoint costs it a
+ *        guess.
  * @param ownEndpoint this client's own believed external address, so a forward
  *        naming us can be refused. An absent address disables that one check
  *        rather than failing the whole message -- a client that does not know
