@@ -91,6 +91,16 @@ CNetworkAddress Target()
 	return CNetworkAddress::FromString("203.0.113.5");
 }
 
+//! An address on the public internet, for the one field in this suite that
+//! becomes a destination: the endpoint a relayed rendezvous asks us to punch
+//! toward. Deliberately not one of the RFC 5737 documentation blocks the peer
+//! addresses above use -- AcceptRelayedRendezvous() refuses any endpoint that
+//! is not globally routable, and those blocks are not.
+CNetworkAddress PunchTarget()
+{
+	return CNetworkAddress::FromString("81.2.69.142");
+}
+
 void FillHash(uint8_t *out, uint8_t seed)
 {
 	for (size_t i = 0; i < NATT_PEER_HASH_LENGTH; ++i) {
@@ -925,8 +935,8 @@ TEST(NatRendezvousRelay, RelayedRendezvousFromOurBuddyIsAccepted)
 	FillHash(peerHash, 0x30);
 
 	uint8_t frame[NATT_RENDEZVOUS_MAX_LENGTH];
-	const size_t length = EncodeRelayedRendezvous(
-		peerHash, NULL, CNetworkAddress::FromString("198.51.100.7"), 4662, frame, sizeof(frame));
+	const size_t length =
+		EncodeRelayedRendezvous(peerHash, NULL, PunchTarget(), 4662, frame, sizeof(frame));
 
 	CRendezvousRelayLimiter limiter;
 	const SRelayedRendezvousDecision decision = AcceptRelayedRendezvous(
@@ -934,7 +944,7 @@ TEST(NatRendezvousRelay, RelayedRendezvousFromOurBuddyIsAccepted)
 
 	ASSERT_EQUALS((int)RELAYED_ACCEPT, (int)decision.acceptance);
 	ASSERT_TRUE(decision.punch);
-	ASSERT_TRUE(decision.punchEndpoint == CNetworkAddress::FromString("198.51.100.7"));
+	ASSERT_TRUE(decision.punchEndpoint == PunchTarget());
 	ASSERT_EQUALS(4662, (int)decision.punchPort);
 	for (size_t i = 0; i < NATT_PEER_HASH_LENGTH; ++i) {
 		ASSERT_EQUALS((int)peerHash[i], (int)decision.peerHash[i]);
@@ -1003,8 +1013,8 @@ TEST(NatRendezvousRelay, RelayedRendezvousIsRateLimitedPerRelay)
 	FillHash(peerHash, 0x30);
 
 	uint8_t frame[NATT_RENDEZVOUS_MAX_LENGTH];
-	const size_t length = EncodeRelayedRendezvous(
-		peerHash, NULL, CNetworkAddress::FromString("198.51.100.7"), 4662, frame, sizeof(frame));
+	const size_t length =
+		EncodeRelayedRendezvous(peerHash, NULL, PunchTarget(), 4662, frame, sizeof(frame));
 
 	CRendezvousRelayLimiter limiter;
 	for (uint32_t i = 0; i < kRendezvousMaxAttempts; ++i) {
@@ -1041,6 +1051,93 @@ TEST(NatRendezvousRelay, RelayedRendezvousNamingOurOwnEndpointIsRejected)
 
 	ASSERT_EQUALS((int)RELAYED_REJECT_ENDPOINT_IS_OURSELVES, (int)decision.acceptance);
 	ASSERT_FALSE(decision.punch);
+}
+
+// The punch target is the one address on this path that comes out of a
+// datagram, so it is the one that has to be somewhere a packet has business
+// going. Being our buddy's word for it is not enough: a buddy that names
+// 127.0.0.1 has this client punch at its own loopback services, and one that
+// names 10.0.0.5 or 192.168.1.1 has it punch at a host inside the operator's
+// LAN -- a network the sender cannot reach itself, which is exactly why it
+// would ask us. Broadcast and multicast turn the burst into a fan-out besides.
+//
+// The predicate is CNetworkAddress::IsGloballyRoutableIPv4(), which the
+// obfuscation policy already uses for the mirror-image question. A second
+// list of blocks here would be a second thing to keep correct.
+//
+// Asserted with an ABSENT ownEndpoint on purpose: a client behind NAT
+// frequently does not know its own public address, which switches the
+// "is this us" guard off. This one does not depend on it.
+TEST(NatRendezvousRelay, RelayedRendezvousNamingAnUnroutableEndpointIsRejected)
+{
+	uint8_t peerHash[NATT_PEER_HASH_LENGTH];
+	FillHash(peerHash, 0x30);
+
+	const char *const unroutable[] = { "127.0.0.1",
+		"10.0.0.5",
+		"192.168.1.1",
+		"172.16.0.1",
+		"169.254.1.1",
+		"100.64.0.1",
+		"224.0.0.1",
+		"255.255.255.255",
+		"198.51.100.7" };
+
+	for (size_t i = 0; i < sizeof(unroutable) / sizeof(unroutable[0]); ++i) {
+		uint8_t frame[NATT_RENDEZVOUS_MAX_LENGTH];
+		const size_t length = EncodeRelayedRendezvous(peerHash,
+			NULL,
+			CNetworkAddress::FromString(unroutable[i]),
+			4662,
+			frame,
+			sizeof(frame));
+		ASSERT_TRUE(length > 0);
+
+		// A fresh limiter per address: this test is about the endpoint, and
+		// sharing one budget across nine forwards would have the last four
+		// rejected for being throttled instead.
+		CRendezvousRelayLimiter limiter;
+		const SRelayedRendezvousDecision decision = AcceptRelayedRendezvous(
+			frame, length, Target(), true, CNetworkAddress(), 1000, limiter);
+
+		ASSERT_EQUALS((int)RELAYED_REJECT_ENDPOINT_NOT_ROUTABLE, (int)decision.acceptance);
+		ASSERT_FALSE(decision.punch);
+		ASSERT_TRUE(decision.punchEndpoint.IsAbsent());
+	}
+}
+
+// The boundary the check actually draws, asserted as such rather than left to
+// be inferred from the refusals above.
+//
+// 81.2.69.142 is a public address this client holds nothing about, has never
+// contacted, and has no relationship with -- and our buddy naming it gets a
+// punch burst aimed at it. That is ACCEPTED, deliberately, and this test exists
+// to say so out loud.
+//
+// Routability is a necessary condition on a punch target, not a sufficient one:
+// it stops the burst reaching our loopback, our LAN, link-local, CGNAT,
+// multicast and broadcast, and it does nothing about an arbitrary stranger on
+// the public internet. Constraining that would mean requiring the endpoint to
+// be one we already hold for the named peer, which is exactly the address the
+// hint exists to deliver -- the relay observed the peer's current NAT mapping
+// and we did not. So the harm is bounded by the burst (CHolePunchSchedule:
+// three packets per attempt, five attempts, 120 seconds) and by who may ask,
+// not by where. If that boundary ever moves, this test is the one to change.
+TEST(NatRendezvousRelay, AnArbitraryPublicEndpointFromOurBuddyIsAccepted)
+{
+	uint8_t peerHash[NATT_PEER_HASH_LENGTH];
+	FillHash(peerHash, 0x30);
+
+	uint8_t frame[NATT_RENDEZVOUS_MAX_LENGTH];
+	const size_t length =
+		EncodeRelayedRendezvous(peerHash, NULL, PunchTarget(), 4662, frame, sizeof(frame));
+
+	CRendezvousRelayLimiter limiter;
+	const SRelayedRendezvousDecision decision =
+		AcceptRelayedRendezvous(frame, length, Target(), true, CNetworkAddress(), 1000, limiter);
+
+	ASSERT_EQUALS((int)RELAYED_ACCEPT, (int)decision.acceptance);
+	ASSERT_TRUE(decision.punchEndpoint == PunchTarget());
 }
 
 // A malformed relayed message yields no punch and no endpoint. The endpoint

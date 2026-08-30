@@ -417,14 +417,32 @@ inline SRelayDecision RelayRendezvousRequest(const uint8_t *frame,
  *  3. **The same per-peer budget**, out of the same bucket a requester spends
  *     from, so a peer cannot get a second allowance by switching roles.
  *  4. **A usable endpoint that is not our own.**
+ *  5. **An endpoint on the public internet.** The one gate that does not
+ *     compare the named address against something this client holds, and so
+ *     the only one that still works when this client knows nothing about
+ *     itself. See RELAYED_REJECT_ENDPOINT_NOT_ROUTABLE.
+ *
+ * Guard 4 is weaker than it reads, and the weakness is worth stating rather
+ * than leaving for a reader to find: it is skipped whenever `ownEndpoint` is
+ * absent, and behind NAT -- the deployment this whole path exists for --
+ * CamuleApp::GetPublicIP() frequently has nothing to give. Guard 5 covers the
+ * half of it that matters there. A forward naming this client's loopback or its
+ * address on the LAN is refused as unroutable whether or not we know who we
+ * are; what is left uncovered is our own PUBLIC address while we do not know
+ * it, and a punch aimed at that is one bounded burst at ourselves through our
+ * own NAT -- no amplification, no third party, and nothing guard 4 could catch
+ * without an address it does not have. Inventing one, by trusting a peer's word
+ * for our address, would put the value an attacker chooses on both sides of the
+ * comparison.
  *
  * The residual exposure is that OUR BUDDY can cause this client to send a
  * bounded burst -- three packets per attempt, five attempts, 120 seconds, all
- * enforced by CHolePunchSchedule -- toward an address of its choosing. That is
- * inherent to hole punching and is the same trust the design already places in
- * a buddy, which relays this client's callbacks. It is not unbounded, it is not
- * free, and it is a trust one named peer holds rather than every host in the
- * client list.
+ * enforced by CHolePunchSchedule -- toward a globally routable address of its
+ * choosing. That is inherent to hole punching and is the same trust the design
+ * already places in a buddy, which relays this client's callbacks. It is not
+ * unbounded, it is not free, and it is a trust one named peer holds rather than
+ * every host in the client list.
+
  */
 enum ERelayedAcceptance
 {
@@ -446,6 +464,11 @@ enum ERelayedAcceptance
 	//! The endpoint is this client's own address: a small self-amplifier that
 	//! could accomplish nothing else.
 	RELAYED_REJECT_ENDPOINT_IS_OURSELVES,
+	//! The endpoint is not an address on the public internet: loopback, a
+	//! private or link-local block, CGNAT, documentation space, multicast or
+	//! broadcast. Our buddy naming one of those is asking this client to aim a
+	//! burst at its own loopback or at a host inside its operator's LAN.
+	RELAYED_REJECT_ENDPOINT_NOT_ROUTABLE,
 	//! The endpoint is the sender's own address, so this is our buddy asking us
 	//! to relay rather than telling us where a third peer is. Not a refusal of
 	//! the message: the caller hands it to RelayRendezvousRequest() instead.
@@ -554,6 +577,33 @@ inline SRelayedRendezvousDecision AcceptRelayedRendezvous(const uint8_t *frame,
 	if (!ownEndpoint.IsAbsent() && !ownEndpoint.IsUnspecified() &&
 		request.hintAddress.Unmapped() == ownEndpoint.Unmapped()) {
 		decision.acceptance = RELAYED_REJECT_ENDPOINT_IS_OURSELVES;
+		return decision;
+	}
+
+	// The last gate, and the one that does not need to know anything about
+	// this client to be right. Everything above compares the named endpoint
+	// with an address we hold; this asks whether the address is one a packet
+	// has any business reaching at all. Our buddy naming 127.0.0.1 has us punch
+	// at our own loopback services; naming 10.0.0.5 or 192.168.1.1 has us punch
+	// inside our operator's LAN, a network the buddy cannot reach itself, which
+	// is exactly why it would ask us to. Multicast and broadcast turn the
+	// bounded burst into a fan-out on top of that.
+	//
+	// Last rather than first on purpose. The two comparisons above name a
+	// specific host -- the relay, or us -- and those answers stay true for a
+	// peer on a private network, where an aMule pair on one LAN is an ordinary
+	// deployment. Reporting "not routable" for a forward that is really our
+	// buddy asking us to relay would send the caller down the wrong path with
+	// the right refusal.
+	//
+	// CNetworkAddress::IsGloballyRoutableIPv4() is the predicate, unchanged and
+	// unduplicated: UtpEncryptionPolicy.h already asks it the mirror-image
+	// question about our own address. A second list of blocks maintained here
+	// would be a second thing to keep correct. It answers false for every IPv6
+	// address, which costs nothing here because the endpoint tail this hint
+	// arrives in carries four octets and cannot spell one.
+	if (!request.hintAddress.IsGloballyRoutableIPv4()) {
+		decision.acceptance = RELAYED_REJECT_ENDPOINT_NOT_ROUTABLE;
 		return decision;
 	}
 

@@ -336,9 +336,13 @@ TEST(NatRendezvousManager, RelayedEndpointIsOneCandidateAfterTheKnownOnes)
 	uint8_t peer[NATT_PEER_HASH_LENGTH];
 	FillHash(peer, 0x30);
 
+	// A globally routable endpoint, not one of the RFC 5737 documentation
+	// blocks the peer addresses here use: AcceptRelayedRendezvous() refuses any
+	// punch target that is not somewhere a packet has business going, and those
+	// blocks are not.
 	uint8_t frame[NATT_RENDEZVOUS_MAX_LENGTH];
 	const size_t length = EncodeRelayedRendezvous(
-		peer, NULL, CNetworkAddress::FromString("198.51.100.7"), 4662, frame, sizeof(frame));
+		peer, NULL, CNetworkAddress::FromString("81.2.69.142"), 4662, frame, sizeof(frame));
 
 	CRendezvousRelayLimiter limiter;
 	const SRelayedRendezvousDecision accepted = AcceptRelayedRendezvous(frame,
@@ -361,7 +365,7 @@ TEST(NatRendezvousManager, RelayedEndpointIsOneCandidateAfterTheKnownOnes)
 	// preferred the relayed endpoint would stop reaching peers it used to
 	// reach, and the endpoint would look like the fix rather than the cause.
 	ASSERT_TRUE(puncher.m_sent[0].destination == CNetworkAddress::FromString("203.0.113.99"));
-	ASSERT_TRUE(puncher.m_sent[1].destination == CNetworkAddress::FromString("198.51.100.7"));
+	ASSERT_TRUE(puncher.m_sent[1].destination == CNetworkAddress::FromString("81.2.69.142"));
 }
 
 // A relayed rendezvous that was NOT accepted starts nothing. The guards live in
