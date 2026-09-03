@@ -94,9 +94,11 @@ function publishResultsSoon(id) {
 
 // --- reads ---------------------------------------------------------------
 
-// Authoritative re-read. Results are add-only on the stream and there is no
-// search_result_updated, so this is the ONLY way a hit's status, comments or
-// children[] ever change. amuleapi coalesces it behind a ~1 s TTL, so calling
+// Authoritative re-read: seeds a tab's results on activation and reconciles
+// against anything the stream did not push. search_result_updated now pushes a
+// held hit's status / already_downloaded / comments / rating live, but its
+// source counts and alternate names stay add-only on the stream, so this is
+// still how those refresh. amuleapi coalesces it behind a ~1 s TTL, so calling
 // it per tab activation is cheap.
 async function refresh(id) {
   const tab = tabs.get(id);
@@ -135,7 +137,7 @@ async function adopt() {
   list = list.slice().sort((a, b) => ord(a) - ord(b));
   let added = false;
   for (const s of list) {
-    const known = tabs.get(s.id);
+    const known = tabs.get(s.search_id);
     if (known) {
       if (!known.query && s.query) { known.query = s.query; known.label = known.label || s.query; }
       // Keep an unopened tab's badge current. Only while it holds no results
@@ -151,8 +153,8 @@ async function adopt() {
     // result_count is what makes an unopened tab show a real badge instead of
     // 0 after a reload; it is omitted by a daemon that does not report counts,
     // in which case the badge stays 0 until the tab is opened and fetched.
-    tabs.set(s.id, newTab({
-      id: s.id, query: s.query || "", kind: s.type || "global",
+    tabs.set(s.search_id, newTab({
+      id: s.search_id, query: s.query || "", kind: s.type || "global",
       state: s.state || "finished", startedAt: s.started_at || 0,
       count: typeof s.result_count === "number" ? s.result_count : 0,
     }));
@@ -161,7 +163,7 @@ async function adopt() {
   if (!tabs.has(activeId)) {
     const running = list.filter((s) => s.state === "running");
     const pick = (running.length ? running : list).slice(-1)[0];
-    if (pick) { setActive(pick.id); return; }
+    if (pick) { setActive(pick.search_id); return; }
     activeId = 0;
   }
   if (added) publishTabs();
@@ -178,7 +180,7 @@ function setActive(id) {
   publishTabs();
   if (!tabs.get(activeId)) return;
   publishResults(activeId); // whatever is already held, instantly
-  refresh(activeId);        // then reconcile, per the add-only rule above
+  refresh(activeId);        // then reconcile the fields the stream does not push
 }
 
 function drop(id, notify) {
@@ -223,7 +225,7 @@ function onProgress(p) {
   if (typeof p.result_count === "number") tab.count = p.result_count;
   publishTabsSoon();
   // Terminal frame: reconcile once against REST to pick up anything the
-  // stream dropped, and to land the final status/children of every row.
+  // stream dropped, and to land the final status/alternate_names of every row.
   if (wasRunning && tab.state === "finished") refresh(tab.id);
 }
 
@@ -306,7 +308,7 @@ export const searches = {
     // from what we asked for -- `kind` and `startedAt` in particular, which
     // the request only implies.
     const r = await api.post("search", body);
-    const id = r.id;
+    const id = r.search_id;
     tabs.set(id, newTab({
       id, query: r.query || body.query || "", label: label || "",
       kind: r.type || body.type || "global",
@@ -327,14 +329,14 @@ export const searches = {
   // filter, per-row category) for a browse that never restarted.
   async browse(ecid, name) {
     const r = await api.post("clients/" + ecid + "/shared_files");
-    const id = r.id;
+    const id = r.search_id;
     const open = tabs.get(id);
     if (open) {
       if (name) { open.query = name; open.label = name; }
     } else {
       tabs.set(id, newTab({
         id, query: name || r.query || "", label: name || r.query || "",
-        kind: r.kind || "browse",
+        kind: r.type || "browse",
         state: r.state || "running",
         startedAt: r.started_at || nowSec(),
       }));

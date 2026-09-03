@@ -316,7 +316,7 @@ Rows added or removed *during* a sweep are not missed: both emit an SSE event, s
 | `GET /friends`        | **`ecid`** (id), `name`, `online` |
 | `GET /chats`          | **`client_ecid`** (id), `last_message_at`, `name` |
 | `GET /search/{id}/results` | **`hash`** (id), `name`, `size_bytes`, `sources.total`, `rating`, `directory` |
-| `GET /search`         | **`id`** (id), `query`, `started_at`, `result_count` |
+| `GET /search`         | **`search_id`** (id), `query`, `started_at`, `result_count` |
 | `GET /categories`     | **`index`** (id), `name` |
 
 The column marked **id** is the endpoint's identity: immutable for the life of the row, and the only one `after` accepts. Note that `ecid` is stable **within a daemon session** only — `CECID` hands ids out from a counter that restarts with the process — which is enough for a bootstrap sweep, since a reconnect invalidates the sweep anyway and triggers a `resync`.
@@ -350,13 +350,13 @@ A malformed **request** (missing/empty `hashes`, an invalid patch field) is stil
 
 ### Unknown values
 
-A field whose value is not known is `null`, not a sentinel. `remaining_seconds` is `null` rather than `-1` when there is no ETA to compute; `last_upload`, `shared_since` and `last_seen_complete_at` are `null` rather than `0` when a file has never uploaded, has never been seen complete, or its `known.met` entry predates the field. On a client row, `parts_offered_count` is `null` when that client has not reported its part map -- distinct from `0`, which is a real answer and what a fresh source looks like -- and `remote_queue_position` is `null` when the client's queue is full, which the daemon signals with a `65535` sentinel rather than a position.
+A field whose value is not known is `null`, not a sentinel. `remaining_seconds` is `null` rather than `-1` when there is no ETA to compute; `last_upload_at`, `shared_since_at` and `last_seen_complete_at` are `null` rather than `0` when a file has never uploaded, has never been seen complete, or its `known.met` entry predates the field. On a client row, `parts_offered_count` is `null` when that client has not reported its part map -- distinct from `0`, which is a real answer and what a fresh source looks like -- and `remote_queue_position` is `null` when the client's queue is full, which the daemon signals with a `65535` sentinel rather than a position.
 
 A key is **omitted** only where absence itself is the meaning: something the daemon never reported, rather than something known to be absent. `started_at` on [`GET /search`](#get-apiv0search) is the example, missing for a search this process did not start, and `result_count` is missing when the daemon is too old to send it, which has to stay distinguishable from a search that found nothing.
 
 So: `null` means "no value", an absent key means "not reported", and neither is ever spelled `0` or `-1`.
 
-The rule now reaches the whole surface rather than just the download and shared objects. Keys that used to disappear and are `null` instead: `name`, `ip`, `port`, `kad_port`, `country_code`, `software`, `version`, `source_origin`, `obfuscation`, `first_seen` and `sessions` on [`GET /known_clients`](#get-apiv0known_clients); `part_progress_percent` and `parts_offered_count` on the client rows and the `client_*` events; `client_ecid` on [`GET /search`](#get-apiv0search); `last_message` on [`GET /chats`](#get-apiv0chats); `token`, `label_value` and `extra` on the statistics tree; and `media` everywhere it appears.
+The rule now reaches the whole surface rather than just the download and shared objects. Keys that used to disappear and are `null` instead: `name`, `ip`, `port`, `kad_port`, `country_code`, `software`, `version`, `source_origin`, `obfuscation`, `first_seen` and `sessions` on [`GET /known_clients`](#get-apiv0known_clients); `part_progress_percent` and `parts_offered_count` on the client rows and the `client_*` events; `client_ecid` on [`GET /search`](#get-apiv0search), [`GET /friends`](#get-apiv0friends) and the `friend_*` events; `last_message` on [`GET /chats`](#get-apiv0chats); `token`, `label_value` and `extra` on the statistics tree; and `media` everywhere it appears. The same pass reached the remaining address fields: `port` on [`GET /friends`](#get-apiv0friends) and the `friend_*` events, `ed2k.public_ip` and `ed2k.server_ip` on [`GET /status`](#get-apiv0status), and `public_ip` on [`GET /kad`](#get-apiv0kad); and `server_ip` / `server_port` on [`GET /clients/{ecid}`](#get-apiv0clientsecid), which used `""` for the same "unknown" its own snapshot field documents.
 
 `media` is the one place this reaches an **object** rather than a scalar, so a client tests `media === null` before reaching into it -- which it had to do regardless, since the object's own fields can be absent.
 
@@ -478,6 +478,8 @@ A byte rate is `_bytes_per_second`, not `_bps`. The abbreviation was considered 
 
 The same reasoning gives the media bitrate its full spelling. `media.bitrate_kilobits_per_second` really is kilo**bits** — `ParseBitrateKbps` divides ffprobe's bits/second by 1000 — so it is the one quantity on the surface that is not bytes, and the one place `kilo` means 1000 rather than 1024. Abbreviating it would put the surface's only bit-valued rate one character away from its byte-valued ones.
 
+The three bandwidth caps under `connection` are the one place a rate is not per-byte: `max_download_kibibytes_per_second`, `max_upload_kibibytes_per_second` and `upload_slot_min_kibibytes_per_second` carry the KiB/s figure the user types, unconverted, because the core stores and enforces it in those units (`GetMaxUpload() * 1024`). `kibibytes` is spelled out for the same reason every other unit is, and it says 1024 without the reader having to guess which `k` this is.
+
 ## Endpoint catalog
 
 The catalog below is grouped by resource. Each entry documents:
@@ -527,8 +529,8 @@ curl -s http://$HOST/api/v0/version
 {
   "service": "amuleapi",
   "api_version": "v0",
-  "amuleapi_version": "2.4.0-29-g...",
-  "daemon_version": "2.4.0-29-g...",
+  "amuleapi_version": "GIT rev. 3.0.1-773-g500293ba3",
+  "daemon_version": "GIT rev. 3.0.1-773-g500293ba3",
   "update": {
     "check_enabled": true,
     "checked": true,
@@ -543,8 +545,8 @@ curl -s http://$HOST/api/v0/version
 | --- | --- |
 | `name` | Always `"amuleapi"`. |
 | `api_version` | REST contract version served on this path (`"v0"`). |
-| `amuleapi_version` | amuleapi's **own** build version. |
-| `daemon_version` | Version of the **connected amuled**, from the EC handshake. Empty string when EC is not (yet) connected, or when the daemon is old enough not to advertise it. Normally equal to `amuleapi_version` (both are built from the same source tree), but they can differ if a mismatched amuleapi is pointed at a different amuled. |
+| `amuleapi_version` | amuleapi's **own** build version. On a tagged release this is the release number (`"3.0.1"`); on a development build it is `"GIT"` followed by the revision (`"GIT rev. 3.0.1-773-g500293ba3"`), because `"GIT"` alone is the same string for every snapshot and identifies nothing. |
+| `daemon_version` | Version of the **connected amuled**, from the EC handshake, in the same spelling as `amuleapi_version` above. Empty string when EC is not (yet) connected, or when the daemon is old enough not to advertise it. Normally equal to `amuleapi_version` (both are built from the same source tree), but they can differ if a mismatched amuleapi is pointed at a different amuled. On development builds the revision makes that comparison meaningful, which bare `"GIT"` could not. |
 | `update` | Update-availability, **relayed from the connected daemon** — amuleapi never contacts GitHub itself. See the sub-table. |
 
 The `update` object:
@@ -573,11 +575,11 @@ curl -s -X POST -H "Authorization: Bearer $TOKEN" http://$HOST/api/v0/version/ch
 
 | Status | `error.code` | When |
 | --- | --- | --- |
-| `409` | `update_check_unavailable` | The daemon can't check (`update.check_enabled` is `false`). |
-| `429` | `rate_limited` | A check ran too recently; retry shortly. |
+| `409` | `version_check_unavailable` | The daemon can't check (`update.check_enabled` is `false`). |
+| `429` | `version_check_throttled` | A check ran too recently; retry shortly. Distinct from the auth limiter's `rate_limited`, which also answers `429` but ends the session. |
 | `503` | `ec_unavailable` | The EC round-trip to amuled failed, or the first snapshot has not landed yet. |
 
-The snapshot gate matters at startup: `version_check_available` defaults to false, so before the first EC tick this route used to answer `409 update_check_unavailable`, blaming the daemon's configuration for amuleapi not having read it yet. It answers `503` there now, which is the condition a client can retry.
+The snapshot gate matters at startup: `version_check_available` defaults to false, so before the first EC tick this route used to answer `409 version_check_unavailable`, blaming the daemon's configuration for amuleapi not having read it yet. It answers `503` there now, which is the condition a client can retry.
 
 #### `GET /api/v0/status`
 
@@ -618,7 +620,7 @@ curl -s -H "Authorization: Bearer $TOKEN" http://$HOST/api/v0/status
     "upload_overhead_bytes_per_second": 1100
   },
   "disk": { "temp_free_bytes": 48318382080, "incoming_free_bytes": 48318382080 },
-  "queue": { "upload_clients_waiting": 12, "download_sources_total": 1843 }
+  "queue": { "waiting_upload_client_count": 12, "download_source_count": 1843 }
 }
 ```
 
@@ -630,9 +632,9 @@ curl -s -H "Authorization: Bearer $TOKEN" http://$HOST/api/v0/status
 
 **`kad.firewalled_tcp` is named for its transport.** It is the TCP half of a pair; [`GET /api/v0/kad`](#get-apiv0kad) reports `firewalled_udp` alongside it. The two are independent measurements taken by different mechanisms, not a verdict and a refinement of it. See the `/kad` field table for what each one measures and how their defaults differ.
 
-**Our eD2k identity.** `ed2k.user_id` is the id the connected server assigned us, and `ed2k.high_id` is `true` when it is a HighID — an id `>= 16777216`, the same threshold the client-side `high_id` on [`GET /clients/{ecid}`](#get-apiv0clientsecid) uses. A HighID **is** our public IPv4 packed into that integer, which is where `ed2k.public_ip` comes from; a LowID is a small number the server picked for a firewalled client and carries no address, so `public_ip` is `""` there.
+**Our eD2k identity.** `ed2k.user_id` is the id the connected server assigned us, and `ed2k.high_id` is `true` when it is a HighID — an id `>= 16777216`, the same threshold the client-side `high_id` on [`GET /clients/{ecid}`](#get-apiv0clientsecid) uses. A HighID **is** our public IPv4 packed into that integer, which is where `ed2k.public_ip` comes from; a LowID is a small number the server picked for a firewalled client and carries no address, so `public_ip` is `null` there.
 
-While disconnected `user_id` is `0`, `public_ip` is `""` and `high_id` is `false` — so read `high_id` **together with `state`**: `false` means "LowID" only once `state` is `"connected"`, and means "no id yet" otherwise. The transient `0xffffffff` the daemon sends mid-connect is normalized to `0` and never appears.
+While disconnected `user_id` is `0`, `public_ip` is `null` and `high_id` is `false` — so read `high_id` **together with `state`**: `false` means "LowID" only once `state` is `"connected"`, and means "no id yet" otherwise. The transient `0xffffffff` the daemon sends mid-connect is normalized to `0` and never appears.
 
 **`ed2k.user_id` is not the same encoding as a client's `ed2k_user_id`.** [`GET /api/v0/clients/{ecid}`](#get-apiv0clientsecid) reports `ed2k_user_id` for a remote client, and the similar name invites the assumption that the two are interchangeable. They are not. Ours is stored exactly as the server sent it and is read least-significant-byte-first to produce `public_ip`; a client's HighID is **byte-swapped** on the way in. A consumer that compares the two values, or feeds one through the other's IP decoder, gets a reversed address. The `>= 16777216` HighID threshold *is* common to both; the byte order is not.
 
@@ -642,7 +644,7 @@ While disconnected `user_id` is `0`, `public_ip` is `""` and `high_id` is `false
 
 The two are **equal whenever Temp and Incoming share a filesystem**, which is the default layout — that is correct, not a bug. `incoming_free_bytes` describes the **default category's** incoming directory; a category pointed at another filesystem is not covered, because the daemon publishes no per-category figure.
 
-To reproduce the desktop's low-space warning, compare `temp_free_bytes` against the bytes still to write across the queue (`size - completed_bytes` summed over [`GET /downloads`](#get-apiv0downloads)), or against the `files.min_free_space_mb` preference when `files.stop_on_low_disk_space` is on. Note that preference is in **MiB** while these fields are bytes.
+To reproduce the desktop's low-space warning, compare `temp_free_bytes` against the bytes still to write across the queue (`size - completed_bytes` summed over [`GET /downloads`](#get-apiv0downloads)), or against the `files.min_free_space_mebibytes` preference when `files.stop_on_low_disk_space` is on. Note that preference is in **MiB** while these fields are bytes.
 
 **Errors:** `503 ec_unavailable` if amuleapi hasn't received its first EC snapshot yet.
 
@@ -843,7 +845,9 @@ curl -s -H "Authorization: Bearer $TOKEN" "http://$HOST/api/v0/downloads"
       "sources":  { "total": 217, "unavailable": 23, "transferring": 8, "a4af": 4 },
       "progress": { "percent": 29.85 },
       "kad_comment_lookup_running": false,
-      "hashed_part_count": 0
+      "hashed_part_count": 0,
+      "parts_total_count": 394,
+      "source_ecids": [ 1234, 5678 ]
     }
   ]
 }
@@ -860,6 +864,8 @@ The list shape omits `progress.parts` to keep large libraries compact. Use the d
 `kad_comment_lookup_running` is `true` while an on-demand Kad notes lookup is in flight for the file (started by [`POST /downloads/{hash}/comments`](#post-apiv0downloadshashcomments)); it flips back to `false` when the lookup finishes. Because it lives on the download object, a client can watch the `download_updated` SSE event for the start → finish transition instead of polling.
 
 `hashed_part_count` is the number of parts hashed so far by a pass running over the file — a `hashing` status, an [`AICH`](#post-apiv0sharedhashverify) hashset rebuild — and `0` when nothing is hashing. It is a count of completed parts, not the index of the part in flight, so it runs `0` → `parts_total_count`; divide by `parts_total_count` (from the detail endpoint, or `ceil(size / 9728000)`) for a percentage.
+
+`source_ecids` are the ECIDs of the clients holding this file as an A4AF source — the same array, under the same name, that [`POST /downloads/{hash}/a4af`](#post-apiv0downloadshasha4af) returns, and `[]` when there are none. It is the one thing a per-file client list needs that [`GET /api/v0/clients`](#get-apiv0clients) and the `clients` SSE channel cannot say: A4AF is a relation between a client and a *file*, so it does not live on the client object. With it on the download event, a Clients panel driven by the `downloads` and `clients` channels can shade its A4AF rows from the stream instead of polling [`GET /downloads/{hash}/clients`](#get-apiv0downloadshashclients--get-apiv0sharedhashclients). Note the name is scoped to A4AF, not to sources at large — the count of *all* sources is `sources.total`.
 
 The SSE `download_added` / `download_updated` event payload matches this object byte-for-byte.
 
@@ -880,7 +886,7 @@ Same envelope as the list item, plus the detail-only fields below (all omitted f
 
 | Field | Type | Meaning |
 |---|---|---|
-| `progress.parts` | array | One entry per ~9.28 MiB chunk: `{ "state": string, "sources": int }` — `state` is `complete`/`incomplete`/`missing` -- complete when the chunk is done, otherwise whether any client offers it -- and `sources` counts clients offering that chunk. |
+| `progress.parts` | array | One entry per ~9.28 MiB chunk: `{ "state": string, "sources": int }` — `state` is `complete`/`pending`/`unavailable` -- `complete` when the chunk is done, `pending` when a gap remains and at least one client offers it, `unavailable` when a gap remains and none does -- and `sources` counts clients offering that chunk. |
 | `last_seen_complete_at` | int \| null | Unix ts a complete copy was last seen across sources; `null` when no complete copy has ever been seen, or the daemon does not report it. |
 | `last_received_at` | int | Unix ts the partfile last received data. |
 | `active_seconds` | int | Seconds spent actively downloading. |
@@ -908,7 +914,7 @@ The `media` object (on both `GET /downloads/{hash}` and `GET /shared/{hash}`) ca
 ```json
 "media": {
   "duration_seconds": 5400,
-  "bitrate": 1500,
+  "bitrate_kilobits_per_second": 1500,
   "codec": "h264",
   "artist": "…",
   "album": "…",
@@ -919,7 +925,7 @@ The `media` object (on both `GET /downloads/{hash}` and `GET /shared/{hash}`) ca
 | Field | Type | Meaning |
 |---|---|---|
 | `duration_seconds` | int | Duration in seconds. |
-| `bitrate` | int | Bitrate (kbps). |
+| `bitrate_kilobits_per_second` | int | Bitrate (kbps). |
 | `codec` | string | Codec identifier (e.g. `"h264"`). |
 | `artist` / `album` / `title` | string | Tag metadata; `""` when the file carries none. |
 
@@ -1021,7 +1027,7 @@ Each entry is the [`/clients`](#get-apiv0clients) list object plus five keys:
 
 `next_requested_part_index` and `downloading_part_index` are the two extra states the desktop paints on top of that bitmap — the chunk in flight in amber, the one queued behind it in pale yellow — turning a three-state bar into the desktop's five-state one. Both are `0`-based indices into `parts`, and both ride `include_parts` for the same reason: an index is meaningless without the bitmap it indexes, and a caller that did not ask for `parts` does not know the file's `parts_total_count`. Under the flag both keys are always present, `null` rather than omitted whenever the index does not apply, so one query returns one row shape. `null` covers every such case: the client never reported the value, it reported the `0xffff` "nothing pending" sentinel, the index does not address a chunk of this file, the row is not a source for this file at all (`role: "uploading_to"` or a pure A4AF row, whose indices belong to whatever else that client is downloading), or the row carries no `parts` bitmap for the index to point into. `downloading_part_index` carries one further rule: it is `null` unless the client's `download_state` is `"downloading"`, because the daemon reports a stale `0` for a source that is merely connected or queued — treat a number here as "this chunk is arriving right now", which is what makes it safe to paint, and which is why it is named for the present tense rather than for a previous part. Note that `0` is a real chunk index, never a stand-in for unknown — see [`Unknown values`](#unknown-values). Neither key ever appears in SSE payloads.
 
-The file's own three-state part view (`complete` / `incomplete` / `missing`) is on [`GET /downloads/{hash}`](#get-apiv0downloadshash); combine it with this bitmap and the two indices above to render the desktop's five-state per-source bar.
+The file's own three-state part view (`complete` / `pending` / `unavailable`) is on [`GET /downloads/{hash}`](#get-apiv0downloadshash); combine it with this bitmap and the two indices above to render the desktop's five-state per-source bar.
 
 Both routes accept `limit` / `offset` / `sort` / `order` exactly as `/clients` does. A partfile with at least one completed chunk is both a download and a shared file, and then **both routes return the same body** — they differ only in which collection the hash must belong to, which is what the `404` checks.
 
@@ -1059,9 +1065,9 @@ The swap moves the client between two files' source lists, so an SSE subscriber 
 { "a4af_auto": false, "source_ecids": [ 1234, 5678 ] }
 ```
 
-`source_ecids` are the ECIDs of the clients holding this file as an A4AF source, joinable against [`GET /api/v0/clients`](#get-apiv0clients). The array is the post-action state, so a `swap_this` naming a single client shows up as that ECID having left it. The same clients appear as rows with `"a4af": true` on [`GET /api/v0/downloads/{hash}/clients`](#get-apiv0downloadshashclients--get-apiv0sharedhashclients), which carries the whole client object rather than a bare ECID.
+`source_ecids` are the ECIDs of the clients holding this file as an A4AF source, joinable against [`GET /api/v0/clients`](#get-apiv0clients). The same array, under the same name, rides the download object and its `download_updated` SSE event, so a subscriber does not have to POST here to keep it current. The array is the post-action state, so a `swap_this` naming a single client shows up as that ECID having left it. The same clients appear as rows with `"a4af": true` on [`GET /api/v0/downloads/{hash}/clients`](#get-apiv0downloadshashclients--get-apiv0sharedhashclients), which carries the whole client object rather than a bare ECID.
 
-**Errors:** `400 bad_request` (missing or unknown `action`; `swap_this_auto`, which moved to `PATCH`; a non-integer `client_ecid`; `client_ecid` with the wrong action), `400 amuled_rejected` (the daemon refused the swap — most commonly because the client is actively sending data, which it will not be swapped away from), `404 not_found` (no download with that hash, or no client with that ECID), `409 conflict` (that client is not an A4AF source of this download), `503 ec_unavailable`.
+**Errors:** `400 bad_request` (missing or unknown `action`; `swap_this_auto`, which moved to `PATCH`; a non-integer `client_ecid`; `client_ecid` with the wrong action), `400 amuled_rejected` (the daemon refused the swap — most commonly because the client is actively sending data, which it will not be swapped away from), `404 not_found` (no download with that hash, or no client with that ECID), `409 not_a4af_source` (that client is not an A4AF source of this download), `503 ec_unavailable`.
 
 #### `POST /api/v0/downloads`
 
@@ -1279,8 +1285,8 @@ The last five were originally detail-only and were promoted onto this row (and o
 
 | Field | Values |
 |---|---|
-| `upload_state` | `uploading`, `queued`, `waitcallback`, `connecting`, `pending`, `lowtolowip`, `banned`, `error`, `idle`, `unknown` |
-| `download_state` | `downloading`, `onqueue`, `connected`, `connecting`, `waitcallback`, `waitcallbackkad`, `reqhashset`, `noneededparts`, `toomanyconns`, `toomanyconnskad`, `lowtolowip`, `banned`, `error`, `idle`, `remotequeuefull`, `unknown` |
+| `upload_state` | `uploading`, `queued`, `waiting_callback`, `connecting`, `pending`, `low_to_low_ip`, `banned`, `error`, `idle`, `unknown` |
+| `download_state` | `downloading`, `queued`, `connected`, `connecting`, `waiting_callback`, `waiting_callback_kad`, `requesting_hashset`, `no_needed_parts`, `too_many_connections`, `too_many_connections_kad`, `low_to_low_ip`, `banned`, `error`, `idle`, `remote_queue_full`, `unknown` |
 | `ident_state` | `not_available`, `id_needed`, `identified`, `id_failed`, `bad_guy`, `unknown` |
 | `obfuscation_state` | `undefined`, `enabled`, `supported`, `not_supported`, `disabled`, `unknown` |
 | `software` | `emule`, `cdonkey`, `lxmule`, `amule`, `shareaza`, `emule_plus`, `hydranode`, `mldonkey`, `lphant`, `edonkey_hybrid`, `edonkey`, `old_emule`, `compat`, `unknown` |
@@ -1352,7 +1358,7 @@ curl -s -H "Authorization: Bearer $TOKEN" \
 }
 ```
 
-The detail fields mirror the desktop "Client Details" modal. Five of the fields below — `source_origin`, `parts_offered_count`, `client_mod_name`, `shared_files_browsable` and `part_progress_percent` — are **not** detail-only: they are on the [`GET /clients`](#get-apiv0clients) row and the SSE payload too, and are described here because this is where the rest of their neighbours live. `ed2k_user_id` is the client's hybrid eD2k id; `high_id` is `true` for a HighID client (id ≥ `16777216`, i.e. `0x1000000`) and `false` for LowID — the same threshold and the same spelling as `ed2k.high_id` on [`GET /status`](#get-apiv0status), so the value means the same thing on both ends of the API. `server_ip` / `server_port` / `server_name` describe the eD2k server the client connects through (`server_ip` is `""` when unknown). `kad_port` is non-zero when the client is reachable on Kad. `source_origin` is how the client was discovered (values in the enumerated-fields table under [`GET /clients`](#get-apiv0clients)). (`upload_file_name` is part of the base field set — see [`GET /clients`](#get-apiv0clients) above.) `parts_offered_count` is the count of parts the client holds of the linked file, or `null` when the client has not reported a part map (see [Unknown values](#unknown-values)); `client_mod_name` is the client's client-mod string (often `""`); `shared_files_browsable` is `true` when the client forbids browsing its shared files. `friend` is `true` when the client is in your friends list (`CUpDownClient::IsFriend()`) — **distinct** from `friend_slot`, which is a *reserved upload slot* granted to a client and can be set for non-friends. `credit_ratio` is the upload score modifier the GUI labels "DL/UP modifier" (`GetScoreRatio()`). `part_progress_percent` is the client's completeness of the file we are downloading **from** them (`parts_offered_count` over that file's part count) and is `null` when there is no linked download or the part count is unknown (see [Unknown values](#unknown-values)).
+The detail fields mirror the desktop "Client Details" modal. Five of the fields below — `source_origin`, `parts_offered_count`, `client_mod_name`, `shared_files_browsable` and `part_progress_percent` — are **not** detail-only: they are on the [`GET /clients`](#get-apiv0clients) row and the SSE payload too, and are described here because this is where the rest of their neighbours live. `ed2k_user_id` is the client's hybrid eD2k id; `high_id` is `true` for a HighID client (id ≥ `16777216`, i.e. `0x1000000`) and `false` for LowID — the same threshold and the same spelling as `ed2k.high_id` on [`GET /status`](#get-apiv0status), so the value means the same thing on both ends of the API. `server_ip` / `server_port` / `server_name` describe the eD2k server the client connects through; `server_ip` and `server_port` are `null` together when the server is unknown. `kad_port` is non-zero when the client is reachable on Kad. `source_origin` is how the client was discovered (values in the enumerated-fields table under [`GET /clients`](#get-apiv0clients)). (`upload_file_name` is part of the base field set — see [`GET /clients`](#get-apiv0clients) above.) `parts_offered_count` is the count of parts the client holds of the linked file, or `null` when the client has not reported a part map (see [Unknown values](#unknown-values)); `client_mod_name` is the client's client-mod string (often `""`); `shared_files_browsable` is `true` when the client forbids browsing its shared files. `friend` is `true` when the client is in your friends list (`CUpDownClient::IsFriend()`) — **distinct** from `friend_slot`, which is a *reserved upload slot* granted to a client and can be set for non-friends. `credit_ratio` is the upload score modifier the GUI labels "DL/UP modifier" (`GetScoreRatio()`). `part_progress_percent` is the client's completeness of the file we are downloading **from** them (`parts_offered_count` over that file's part count) and is `null` when there is no linked download or the part count is unknown (see [Unknown values](#unknown-values)).
 
 > `friend` and `credit_ratio` ride two EC tags added for this endpoint. A webapi built against a newer core talking to an **older** amuled that doesn't send them degrades gracefully — `friend` reads `false` and `credit_ratio` reads `0`.
 
@@ -1384,7 +1390,7 @@ curl -s -X POST -H "Authorization: Bearer $TOKEN" \
 {
   "search_id":   17,
   "query":       "some client",
-  "kind":        "browse",
+  "type":        "browse",
   "state":       "running",
   "client_ecid": null,
   "started_at":  1750412400
@@ -1516,7 +1522,7 @@ curl -s -H "Authorization: Bearer $TOKEN" "http://$HOST/api/v0/shared"
       "hashed_part_count": 0,
       "media": {
         "duration_seconds": 212,
-        "bitrate":  320,
+        "bitrate_kilobits_per_second": 320,
         "codec":    "mp3",
         "artist":   "Some Artist",
         "album":    "Some Album",
@@ -1556,7 +1562,7 @@ curl -s -H "Authorization: Bearer $TOKEN" \
 
 | Field | Type | Meaning |
 |---|---|---|
-| `file_type` | string | Category token derived from the extension, lowercased: `"audio"`, `"videos"`, `"archives"`, `"cd-images"`, `"pictures"`, `"texts"`, `"programs"`, or `"any"` for unknown. |
+| `file_type` | string | Category token derived from the extension: `"audio"`, `"video"`, `"archive"`, `"cd_image"`, `"picture"`, `"text"`, `"program"`, or `"unknown"`. |
 | `upload_ratio` | number | `xfer.total / size`; `0` when `size == 0`. |
 | `directory` | string | Directory path of the on-disk file — the temp directory while the file is still an incomplete partfile, the destination directory once it has completed. Identical to `directory` on `/downloads/{hash}` for the same file. |
 | `incomplete` | bool | `true` while the file is still an incomplete partfile, `false` once complete. Always present. A download that has finished but has not been cleared yet reports `false`, since its data already sits in the destination directory. |
@@ -2073,7 +2079,7 @@ The friends list amuled persists to `emfriends.met`. The daemon ships the whole 
 }
 ```
 
-`client_ecid` is the live client this friend is currently linked to, joinable against [`GET /api/v0/clients`](#get-apiv0clients), and `0` when the friend is offline — `online` is the convenience form of that test. `user_hash` is `""` for a friend added by address only, and `ip` is `""` for a zero address.
+`client_ecid` is the live client this friend is currently linked to, joinable against [`GET /api/v0/clients`](#get-apiv0clients), and `null` when the friend is offline — `online` is the convenience form of that test. `user_hash` is `""` for a friend added by address only; `ip` and `port` are `null` for a zero address, and the `friend_*` events emit the same nulls.
 
 `friend_slot` reads `false` against a daemon predating the tag that carries it, the same way `friend` and `credit_ratio` degrade on `/clients`.
 
@@ -2253,18 +2259,18 @@ Returns every preference category amuled carries over EC. The `general` and `con
     "version_check_enabled": true
   },
   "connection": {
-    "max_upload_kbps":      50,
-    "max_download_kbps":    0,
-    "upload_slot_min_kbps": 3,
-    "tcp_port":             4662,
-    "udp_port":             4672,
+    "max_upload_kibibytes_per_second": 50,
+    "max_download_kibibytes_per_second": 0,
+    "upload_slot_min_kibibytes_per_second": 3,
+    "tcp_port": 4662,
+    "udp_port": 4672,
     "extended_udp_port_enabled": true,
     "max_sources_per_file_count": 250,
-    "max_connection_count":       400,
+    "max_connection_count": 400,
     "autoconnect": true,
     "reconnect_on_connection_loss": true,
     "ed2k_enabled": true,
-    "kad_enabled":  true,
+    "kad_enabled": true,
     "bind_address": "",
     "bind_interface": "",
     "proxy_enabled": false,
@@ -2295,7 +2301,7 @@ Returns every preference category amuled carries over EC. The `general` and `con
     "on_finished_start_next_in_same_category": false,
     "save_sources_for_rare_files": true, "preallocate_full_file_size": false,
     "mmap_supported": true, "mmap_enabled": false,
-    "stop_on_low_disk_space": true, "min_free_space_mb": 1, "create_sparse_files": true,
+    "stop_on_low_disk_space": true, "min_free_space_mebibytes": 1, "create_sparse_files": true,
     "on_finished_start_next_alphabetically": false, "endgame_mode_enabled": false,
     "media_metadata_enabled": true, "ffprobe_path": ""
   },
@@ -2414,9 +2420,9 @@ The two fields with a **step** accept only whole multiples of it: `file_buffer_b
 
 The three **clamped at daemon start** rows are the reason this is enforced on the write rather than left to the client to check. Their setters assign the value raw, so a `GET` right after the `PATCH` reports it back faithfully and only the next restart reveals that the daemon never kept it.
 
-**A low `connection.max_upload_kbps` caps `max_download_kbps`,** which is the one place a `PATCH` changes a field the request did not name. Below `4` kB/s up the download limit is forced to 3× the upload; below `10` it is forced to 4×. So `PATCH {"connection": {"max_upload_kbps": 3}}` also sets `max_download_kbps` to `9`. This is a deliberate anti-leech rule in the core rather than a defect, it applies whichever of the two you write, and the `PATCH` response echoes the whole preferences object so the adjusted value is visible in the reply.
+**A low `connection.max_upload_kibibytes_per_second` caps `max_download_kibibytes_per_second`,** which is the one place a `PATCH` changes a field the request did not name. Below `4` KiB/s up the download limit is forced to 3× the upload; below `10` it is forced to 4×. So `PATCH {"connection": {"max_upload_kibibytes_per_second": 3}}` also sets `max_download_kibibytes_per_second` to `9`. This is a deliberate anti-leech rule in the core rather than a defect, it applies whichever of the two you write, and the `PATCH` response echoes the whole preferences object so the adjusted value is visible in the reply.
 
-**Errors:** `400 bad_request` (unknown/mis-typed field, or a body with no recognized fields), `409 conflict` (the daemon was built without support for the option being set), `400 amuled_rejected`, `503 ec_unavailable`.
+**Errors:** `400 bad_request` (unknown/mis-typed field, or a body with no recognized fields), `409 option_not_supported` (the daemon was built without support for the option being set), `400 amuled_rejected`, `503 ec_unavailable`.
 
 ---
 
@@ -2433,10 +2439,10 @@ These endpoints drive amuled's connect/disconnect to the ed2k network, the Kad n
 **Response:** `202 Accepted`, with amuled's own account of what it did:
 
 ```json
-{ "message": "Connecting to eDonkey network..." }
+{ "message": "Connecting to eD2k...; Connecting to Kad..." }
 ```
 
-`message` is absent when the daemon said nothing. `202` rather than `200`: the request is handed to amuled over EC and returns before the effect is observable, which is as true of a disconnect as of a connect -- the two used to disagree on this for no reason a client could see.
+`message` is amuled's status text, verbatim; the two networks' lines are joined with `; ` when both act, and it is absent when the daemon said nothing. `202` rather than `200`: the request is handed to amuled over EC and returns before the effect is observable, which is as true of a disconnect as of a connect -- the two used to disagree on this for no reason a client could see.
 
 **Errors:** `400 bad_request` (unknown selector), `400 amuled_rejected` (the daemon refused the operation), `503 ec_unavailable`.
 
@@ -2449,10 +2455,10 @@ These endpoints drive amuled's connect/disconnect to the ed2k network, the Kad n
 **Response:** `202 Accepted`, with amuled's own account of what it did:
 
 ```json
-{ "message": "Connecting to eDonkey network..." }
+{ "message": "Disconnected from eD2k.; Disconnected from Kad." }
 ```
 
-`message` is absent when the daemon said nothing. `202` rather than `200`: the request is handed to amuled over EC and returns before the effect is observable, which is as true of a disconnect as of a connect -- the two used to disagree on this for no reason a client could see.
+`message` is amuled's status text, verbatim; the two networks' lines are joined with `; ` when both act, and it is absent when the daemon said nothing. `202` rather than `200`: the request is handed to amuled over EC and returns before the effect is observable, which is as true of a disconnect as of a connect -- the two used to disagree on this for no reason a client could see.
 
 **Errors:** `400 bad_request` (unknown selector), `400 amuled_rejected` (the daemon refused the operation), `503 ec_unavailable`.
 
@@ -2530,7 +2536,7 @@ Standalone view of the Kad subtree from `/status`, plus the detail fields the st
 | `state` | string | `disabled` / `connecting` / `connected`. `disabled` means Kad is not running at all, which is the condition several fields below key their "no measurement" value on. The same value `GET /api/v0/status` reports as `kad.state`. |
 | `node_id` | string | This node's own 128-bit Kademlia id, 32 lowercase hex characters (the desktop panel shows the same value uppercase). `""` while Kad is not running, which is exactly when `state` is `disabled`. Persisted by the daemon, so unlike the session-scoped ECIDs and the server-assigned eD2k id it is stable across restarts — the one identifier for the local node a consumer can key on. It is a DHT routing key, not a credential: every Kad contact the daemon talks to learns it. |
 | `connected_since_at` | int | Unix seconds of the most recent Kad connect, the same value `GET /api/v0/status` reports as `kad.connected_since`. `0` when not connected, so gate on `state` rather than trusting a `0`. |
-| `public_ip` | string | This node's externally-visible IPv4, as a remote Kad contact reported it back. Two "not known" cases, both matching what the desktop panel's *IP address* row shows: `""` while Kad is not connected (the daemon sends the field only then), and `0.0.0.0` while connected but not yet told its own address by any contact. **Two distinct "unknown" sentinels, one of them a syntactically valid address**: a consumer that only checks for `""` will treat `0.0.0.0` as a real IP. Distinct from `preferences.connection.bind_address`, which is the local interface the daemon binds to. Named `public_ip` rather than `ip` because `buddy.ip` in the same payload belongs to somebody else. |
+| `public_ip` | string | This node's externally-visible IPv4, as a remote Kad contact reported it back. Two "not known" cases, both matching what the desktop panel's *IP address* row shows: `null` while Kad is not connected (the daemon sends the field only then), and `0.0.0.0` while connected but not yet told its own address by any contact. **Two distinct "unknown" sentinels, one of them a syntactically valid address**: a consumer that only checks for `null` will treat `0.0.0.0` as a real IP. Distinct from `preferences.connection.bind_address`, which is the local interface the daemon binds to. Named `public_ip` rather than `ip` because `buddy.ip` in the same payload belongs to somebody else. |
 | `firewalled_tcp` | bool \| null | Whether this node is firewalled for **TCP**. The verdict is a **vote**: two distinct clients must confirm reachability by opening an incoming TCP connection carrying `OP_KAD_FWTCPCHECK_ACK` before it clears to `false`. With no verdict yet it reads **`true`**, the conservative assumption. During an IP recheck it freezes at its previous value rather than momentarily reporting a false LowID. **`null` unless `state` is `connected`** - the underlying bit outlives a disconnect, so this used to report a reachability verdict for a network the daemon was not on. Named for the transport because it is one half of a pair, not an overall verdict that `firewalled_udp` refines. |
 | `firewalled_udp` | bool \| null | Whether this node is firewalled for **UDP**, measured by an entirely different mechanism: a directed test with its own state, which can also declare firewalled **by timeout** after six minutes. **`null` unless `state` is `connected`.** It previously read `false` while Kad was down, which was the absence of a measurement dressed as "UDP is open" - the asymmetry with `firewalled_tcp`'s `true` made the pair actively misleading. Both are `null` now, so there is nothing to misread. |
 | `lan_mode` | bool \| null | `true` when the daemon is running Kad in LAN mode. It **forces both firewalled fields to `false`** regardless of any measurement, which is why it belongs beside them: a `false` on either flag is only meaningful once you have checked this one. `null` unless `state` is `connected`. |
@@ -2684,7 +2690,7 @@ The ed2k server-info log buffer. Unlike `/logs/amule`, amuled ships this one as 
 
 A tree mirroring amuled's "Statistics" tree (transfers, connections, clients, servers, downloads). Cached with a 1 s TTL.
 
-The envelope is `{ "nodes": [...] }`. Each node is `{ "key": "<id>", "label_value": "<value>", "label": "<template>", "values": [...], "children": [...] }`. A leaf is a node whose `children` array is empty. `key` and `label_value` are optional (see below).
+The envelope is `{ "nodes": [...] }`. Each node is `{ "key": "<id>", "label_value": "<value>", "label": "<template>", "values": [...], "children": [...] }`. A leaf is a node whose `children` array is empty. `key` is optional; `label_value` is always present, `null` unless the node's `label` is itself data (see below).
 
 `label` is the **untranslated English template** (e.g. `"Total uploaded: %s"`), and `values` are the **typed, raw** values that fill its `%s` placeholders in order — the client formats and localizes them. This keeps the response identical regardless of the amuleapi/amuled `--locale` (see [Response model](#response-model)). A container node (one that only groups children) has an empty `values` array.
 
@@ -2803,7 +2809,7 @@ Time-series points behind the desktop Statistics graphs.
 }
 ```
 
-Each point has `t` (ISO-8601 UTC), `at` (unix seconds) and `value`, spaced by `interval_seconds`. `unit` is `"bytes_per_second"` for the two speed graphs and `"count"` for the other two.
+Each point has `at` (unix seconds) and `value`, spaced by `interval_seconds`. `unit` is `"bytes_per_second"` for the two speed graphs and `"count"` for the other two.
 
 `max_points` is how many points this daemon can answer with before it starts repeating records; `points` is never longer than it. It is not a constant across daemons, so a client that wants the deepest window available should read it rather than assume 1800.
 
@@ -2834,9 +2840,9 @@ Lists every search amuled currently holds — including ones started by a **diff
 ```json
 {
   "searches": [
-    { "id": 42, "query": "ubuntu desktop iso", "type": "global", "state": "finished", "started_at": 1751000000, "result_count": 182 },
-    { "id": 43, "query": "debian",             "type": "kad",    "state": "running",  "started_at": 1751000042, "result_count": 57  },
-    { "id": 44, "query": "SomePeerNick",       "type": "browse", "state": "running",  "client_ecid": 621,       "result_count": 237 }
+    { "search_id": 42, "query": "ubuntu desktop iso", "type": "global", "state": "finished", "client_ecid": null, "started_at": 1751000000, "result_count": 182 },
+    { "search_id": 43, "query": "debian",             "type": "kad",    "state": "running",  "client_ecid": null, "started_at": 1751000042, "result_count": 57  },
+    { "search_id": 44, "query": "SomePeerNick",       "type": "browse", "state": "running",  "client_ecid": 621,  "result_count": 237 }
   ],
   "total": 3,
   "offset": 0,
@@ -2846,21 +2852,21 @@ Lists every search amuled currently holds — including ones started by a **diff
 
 This is a list endpoint like the others: it takes `?limit`, `?offset`, `?sort` and `?order`, and carries the same `total` / `offset` / `limit` trio. See [List pagination and sorting](#list-pagination-and-sorting); the sort keys are `search_id`, `query`, `started_at` and `result_count`.
 
-`id` is the value that fills `{id}` on every search-scoped path: [`GET /search/{id}/results`](#get-apiv0searchidresults) to read its hits, [`POST /search/{id}/stop`](#post-apiv0searchidstop) to stop it, [`DELETE /search/{id}`](#delete-apiv0searchid) to free it. `kind` is `"local"` | `"global"` | `"kad"` | `"browse"`. The first three are the vocabulary `POST /search`'s `type` accepts; `"browse"` is reported only, for a "View Files" listing of one client's share, which is started through the client endpoints rather than by a query. `state` is `"running"` | `"finished"` | `"idle"`, same vocabulary and meaning as `GET /search/{id}/results`'s `progress.state`.
+`search_id` is the value that fills `{id}` on every search-scoped path: [`GET /search/{id}/results`](#get-apiv0searchidresults) to read its hits, [`POST /search/{id}/stop`](#post-apiv0searchidstop) to stop it, [`DELETE /search/{id}`](#delete-apiv0searchid) to free it. `type` is `"local"` | `"global"` | `"kad"` | `"browse"`. The first three are the vocabulary `POST /search`'s `type` accepts; `"browse"` is reported only, for a "View Files" listing of one client's share, which is started through the client endpoints rather than by a query. `state` is `"running"` | `"finished"` | `"idle"`, same vocabulary and meaning as `GET /search/{id}/results`'s `progress.state`.
 
 For a `"browse"` entry, `state` and the results endpoint's `progress.percent` come from the browse's own lifecycle rather than from a query's: the request being sent is `"running"`, and the client having answered, denied the request, or disconnected mid-list is `"finished"` — a browse is never reported as `"idle"`. `percent` is the share of the client's directory list received so far, so it climbs while the listing streams in rather than jumping straight from `0` to `100`.
 
 Browsing a client that is **already being browsed** returns the id already in flight rather than starting a second one, so this list holds one entry per browsed client, not one per request.
 
-`query` is the daemon's name for the search. For a `"browse"` that is **the client's nickname**, not a query string — a browse has no query. `client_ecid` is the browsed client's ecid and is present **only** on browse entries, so a consumer can tell whose share is being listed and cross-reference [`GET /clients`](#get-apiv0clients); it is omitted entirely on an ordinary search.
+`query` is the daemon's name for the search. For a `"browse"` that is **the client's nickname**, not a query string — a browse has no query. `client_ecid` is the browsed client's ecid on a `"browse"` entry and `null` on an ordinary search, so a consumer can tell whose share is being listed and cross-reference [`GET /clients`](#get-apiv0clients); it is always present, `null` rather than omitted.
 
 `started_at` is the Unix second amuleapi started the search, and it is the **only recency signal on this list**: entries arrive ordered by `search_id`, and id order is not start order, because Kad search ids carry a high-bit mask and therefore always sort above eD2k ones. Ask for `?sort=started_at&order=desc` when you need "the newest search".
 
 It is **omitted** for any search this `amuleapi` process did not start itself — one begun by another client, by the desktop GUI, or restored from the daemon's on-disk ring after a restart. The daemon ships no timestamp of its own, so there is nothing to report for those; treat a missing `started_at` as *unknown*, not as oldest.
 
-`result_count` is how many results the daemon currently holds for that search. It matches the `total` that [`GET /search/{id}/results`](#get-apiv0searchidresults) reports for the same id once the search has finished; while one is still running the two can differ by a fetch, because this number comes straight off the daemon's live index and `total` counts what amuleapi last pulled into its cache. It counts top-level hits only: grouped alternative filenames ride their parent's `children[]` and are not counted separately. On a `"browse"` entry it is the files received from the client so far. Like every other field on this listing it is a snapshot at request time, so a running search's count climbs between calls.
+`result_count` is how many results the daemon currently holds for that search. It matches the `total` that [`GET /search/{id}/results`](#get-apiv0searchidresults) reports for the same id once the search has finished; while one is still running the two can differ by a fetch, because this number comes straight off the daemon's live index and `total` counts what amuleapi last pulled into its cache. It counts top-level hits only: grouped alternative filenames ride their parent's `alternate_names[]` and are not counted separately. On a `"browse"` entry it is the files received from the client so far. Like every other field on this listing it is a snapshot at request time, so a running search's count climbs between calls.
 
-It exists so a client that adopts the whole list and fetches each search's results lazily — on first activation of a tab, rather than all at once at load — has a number to label an unopened tab with. It is **omitted**, not zeroed, when the daemon does not report it: a daemon older than this field sends nothing, and "does not report counts" has to stay distinguishable from "this search found nothing". Same rule as `client_ecid` and `started_at` above.
+It exists so a client that adopts the whole list and fetches each search's results lazily — on first activation of a tab, rather than all at once at load — has a number to label an unopened tab with. It is **omitted**, not zeroed, when the daemon does not report it: a daemon older than this field sends nothing, and "does not report counts" has to stay distinguishable from "this search found nothing". Same rule as `started_at` above.
 
 amuled only tracks multiple concurrent searches for clients that advertise multi-search support; `amuleapi` does, so this always reflects the full live set. `searches` is an empty array when amuled holds no searches, never an error.
 
@@ -2892,7 +2898,7 @@ Only `query` is required. `type` defaults to `"global"`; valid values are `"loca
 
 ```json
 {
-  "id":         42,
+  "search_id":  42,
   "query":       "ubuntu desktop iso",
   "type":        "global",
   "state":       "running",
@@ -2901,7 +2907,7 @@ Only `query` is required. `type` defaults to `"global"`; valid values are `"loca
 }
 ```
 
-Keep the `id` to read this search's results/progress or to stop it. This is one of the two creations that answer with the resource, because `EC_OP_SEARCH_START` really does hand one back; the ones whose EC op answers success or failure and nothing more are a bare `202` with no body.
+Keep the `search_id` to read this search's results/progress or to stop it. This is one of the two creations that answer with the resource, because `EC_OP_SEARCH_START` really does hand one back; the ones whose EC op answers success or failure and nothing more are a bare `202` with no body.
 
 **Errors:** `502 amuled_rejected` (daemon returned no search_id), `503 ec_unavailable`.
 
@@ -2915,7 +2921,7 @@ Returns one search's results buffer at the moment of the call PLUS a progress en
 
 This endpoint does NOT busy-wait — it returns whatever amuled has in its result buffer right now. A client that wants to wait for completion should poll while `progress.state == "running"`. While a search is **running** the refresher polls amuled (`EC_OP_SEARCH_RESULTS` + `EC_OP_SEARCH_PROGRESS`, addressed by `search_id`) every tick, so this GET reads straight from that snapshot and successive polls see the growing result set with no extra EC roundtrip.
 
-A finished search keeps being refreshed. The daemon is polled for every search it holds in one incremental request per tick, so a search that has completed costs nothing to keep current and is not dropped from the poll set: a hit you download from it starts reading `status: "downloaded"` / `already_have: true` without anyone having to ask.
+A finished search keeps being refreshed. The daemon is polled for every search it holds in one incremental request per tick, so a search that has completed costs nothing to keep current and is not dropped from the poll set: a hit you download from it starts reading `status: "downloaded"` / `already_downloaded: true` without anyone having to ask.
 
 This endpoint additionally refreshes on read, coalesced by a ~1 s TTL, which covers the sub-tick window: a client that starts a Kad notes lookup and immediately re-reads sees the flag without waiting for the next tick. Repeated polling costs at most one EC roundtrip per second, not one per request.
 
@@ -2929,23 +2935,23 @@ amuled keeps a bounded ring of recent searches (20). A search evicted from that 
     {
       "hash":         "8b54a3c2...",
       "name":         "example-distribution-26.04-amd64.iso",
-      "size":         3825205248,
+      "size_bytes":   3825205248,
       "sources":      { "total": 217, "complete": 142 },
       "already_downloaded": false,
       "rating":       0,
       "status":       "new",
-      "type":         "videos",
+      "file_type":    "video",
       "directory":    "",
-      "media":        { "duration_seconds": 5400, "bitrate": 1500, "codec": "h264", "artist": "", "album": "", "title": "" },
+      "media":        { "duration_seconds": 5400, "bitrate_kilobits_per_second": 1500, "codec": "h264", "artist": "", "album": "", "title": "" },
       "alternate_names": [
-        { "ecid": 621, "name": "example-distribution-26.04.iso", "hash": "8b54a3c2...", "sources": { "total": 40, "complete": 22 }, "directory": "" },
-        { "ecid": 622, "name": "example_distro_2604_amd64.iso",  "hash": "8b54a3c2...", "sources": { "total": 10, "complete":  3 }, "directory": "" }
+        { "ecid": 621, "name": "example-distribution-26.04.iso", "sources": { "total": 40, "complete": 22 }, "directory": "" },
+        { "ecid": 622, "name": "example_distro_2604_amd64.iso",  "sources": { "total": 10, "complete":  3 }, "directory": "" }
       ],
       "kad_comment_lookup_running": false,
       "comments": []
     }
   ],
-  "id":         42,
+  "search_id":  42,
   "query": "ubuntu desktop iso",
   "progress": {
     "state":    "running",
@@ -2955,13 +2961,13 @@ amuled keeps a bounded ring of recent searches (20). A search evicted from that 
 }
 ```
 
-Each result carries `sources` as a nested `{total, complete}` object — `total` is the swarm size amuled reports and `complete` is how many of those hold the file complete. `already_downloaded` is `true` when you are currently downloading the file or already have it completed/shared; it is `false` for a fresh result and for one you have canceled/removed (a canceled result is re-downloadable, so it does not read as held). `rating` is amuled's aggregated quality rating (`0` when unrated). `status` is this result's download status on your node — `"new"` / `"downloaded"` / `"queued"` / `"canceled"` / `"queued_canceled"`. `type` is the file-type token derived from the filename extension (same tokens as the shared-detail [`file_type`](#get-apiv0sharedhash), e.g. `"videos"` / `"audio"`; `""` when the name has no extension). `media` is the audio/video [media metadata](#media-metadata) object (same shape as the file-detail endpoints), and is **`null`** for a hit that carries no metadata (most global/Kad results), matching the blank Length/Bitrate/Codec columns in the desktop search list. The key is always present. **Unlike `media` on `GET /downloads/{hash}` and `GET /shared/{hash}`, which amuled probed locally, `media` on a search result is whatever the responding server advertised.** It is not verified against the file and can contradict it — a `.pdf` reporting a runtime and a video codec is a real observed result — so treat it as a hint, not as probed metadata.
+Each result carries `sources` as a nested `{total, complete}` object — `total` is the swarm size amuled reports and `complete` is how many of those hold the file complete. `already_downloaded` is `true` when you are currently downloading the file or already have it completed/shared; it is `false` for a fresh result and for one you have canceled/removed (a canceled result is re-downloadable, so it does not read as held). `rating` is amuled's aggregated quality rating (`0` when unrated). `status` is this result's download status on your node — `"new"` / `"downloaded"` / `"queued"` / `"canceled"` / `"queued_canceled"`. `file_type` is the file-type token derived from the filename extension (same tokens as the shared-detail [`file_type`](#get-apiv0sharedhash), e.g. `"video"` / `"audio"`; `"unknown"` when the name has no recognised extension). `media` is the audio/video [media metadata](#media-metadata) object (same shape as the file-detail endpoints), and is **`null`** for a hit that carries no metadata (most global/Kad results), matching the blank Length/Bitrate/Codec columns in the desktop search list. The key is always present. **Unlike `media` on `GET /downloads/{hash}` and `GET /shared/{hash}`, which amuled probed locally, `media` on a search result is whatever the responding server advertised.** It is not verified against the file and can contradict it — a `.pdf` reporting a runtime and a video codec is a real observed result — so treat it as a hint, not as probed metadata.
 
-`directory` is the folder this file sits in **inside a browsed client's share** — the desktop search list's *Directories* column. It is populated only for results filed from a client's shared-file listing (see [client browse](#post-apiv0clientsecidshared_files)) and is `""` on every ordinary server/Kad hit, which never carries it. It is per-result rather than per-search: two copies of one file in different folders of the same share group under a single parent and each keeps its own folder, exactly as the desktop shows them, which is why `children[]` entries carry it too.
+`directory` is the folder this file sits in **inside a browsed client's share** — the desktop search list's *Directories* column. It is populated only for results filed from a client's shared-file listing (see [client browse](#post-apiv0clientsecidshared_files)) and is `""` on every ordinary server/Kad hit, which never carries it. It is per-result rather than per-search: two copies of one file in different folders of the same share group under a single parent and each keeps its own folder, exactly as the desktop shows them, which is why `alternate_names[]` entries carry it too.
 
 `search_id` and `query` identify the search these results belong to. `search_id` echoes the path so clients can key a view on the response alone; `query` is what the search was started with, so a client that adopted an id from [`GET /search`](#get-apiv0search) can label it without a second call. For a **browse**, `query` is the client's nickname rather than a query string. `query` is `""` only for a search discovered before amuled reported a name for it.
 
-`alternate_names` is the result-grouping tree: amuled collapses hits that are the **same file** (same ed2k hash **and** size) but advertised under **different filenames** into one parent row, and `children[]` holds the alternative names. Each child carries the parent's `hash` (that's why they group), its own `sources`, and a distinct `ecid` — pass that `ecid` to [`POST /search/results/{hash}/download`](#post-apiv0searchresultshashdownload) to download the file **under that chosen filename**. `alternate_names` is always present and is an empty array for a hit seen under a single name. The top-level `results[]` contains parents only — a child never appears as its own top-level entry.
+`alternate_names` is the result-grouping tree: amuled collapses hits that are the **same file** (same ed2k hash **and** size) but advertised under **different filenames** into one parent row, and `alternate_names[]` holds the alternative names. Every entry shares the parent's `hash` by construction — that is what groups them, so the `hash` is not repeated on each entry — and carries its own `name`, `sources`, `directory` and a distinct `ecid`; pass that `ecid` to [`POST /search/results/{hash}/download`](#post-apiv0searchresultshashdownload) to download the file **under that chosen filename**. `alternate_names` is always present and is an empty array for a hit seen under a single name. The top-level `results[]` contains parents only — an alternative never appears as its own top-level entry.
 
 `kad_comment_lookup_running` and `comments` carry the file's community ratings/comments fetched from Kad. Unlike a download — whose comments come from connected sources — a search result has no sources, so `comments` is populated purely by an on-demand Kad notes lookup you start with [`POST /search/results/{hash}/comments`](#post-apiv0searchresultshashcomments). `kad_comment_lookup_running` is `true` while that lookup is in flight and flips back to `false` when it finishes; `comments` is an empty array until notes arrive, each entry shaped like a download comment (`username` / `filename` / `rating` / `comment`, with `username` the responding node's IP or `Kad user`). Both fields are always present.
 
@@ -3037,7 +3043,7 @@ Not every server implements related search. Check the connected server's capabil
 
 Promote a search result into the transfer queue. Equivalent to clicking "Download" on a desktop search row.
 
-**Body:** `{ "category": 0, "ecid": 621 }` — both optional. `category` is the download category (default `0`). `ecid` selects one grouped **child** by its `results[].children[].ecid`, so the file downloads **under that child's filename**; omit it to download the parent (the aggregated/highest-source name). Since grouped children share the parent's hash, `{hash}` alone can't disambiguate them — `ecid` is how you pick a specific advertised name.
+**Body:** `{ "category": 0, "ecid": 621 }` — both optional. `category` is the download category (default `0`). `ecid` selects one grouped **alternative** by its `results[].alternate_names[].ecid`, so the file downloads **under that alternative's filename**; omit it to download the parent (the aggregated/highest-source name). Since grouped alternatives share the parent's hash, `{hash}` alone can't disambiguate them — `ecid` is how you pick a specific advertised name.
 
 **Response:** `202 Accepted`, no body. `hash` came from the URL and `category` is the value the request supplied; the download itself reports the category it landed in.
 
@@ -3051,7 +3057,7 @@ The route is deliberately **not** nested under a search id: amuled runs one Kad 
 
 ```json
 {
-  "count": 2,
+  "total": 2,
   "kad_comment_lookup_running": false,
   "comments": [
     { "username": "203.0.113.7", "filename": "example-distribution-26.04-amd64.iso", "rating": 5, "comment": "Verified good, fast sources." },
@@ -3256,10 +3262,11 @@ Every error code emitted by `/api/v0/*`, sorted by what triggered it. Two codes 
 | `not_completed` | 409 | `clear_completed` named a `hash` that is not a completed download. |
 | `download_completed` | 409 | A `DELETE /downloads` matched a completed download; use `clear_completed` for those. |
 | `kad_more_exhausted` | 409 | `POST /search/{id}/more` on a Kad search that can no longer be widened — its 4-reask budget is spent, or it has entered the stopping window Kad begins 20 s before a keyword search ends. Terminal for that search; re-run the query for more. |
-| `update_check_unavailable` | 409 | `POST /version/check` cannot run — the daemon has no update-check capability. |
+| `version_check_unavailable` | 409 | `POST /version/check` cannot run - the daemon has no update-check capability. |
 | `payload_too_large` | 413 | Request body exceeds the 1 MiB limit. The connection closes after the response. |
 | `range_not_satisfiable` | 416 | A `Range` on [`GET /shared/{hash}/content`](#get-apiv0sharedhashcontent) starts at or past EOF. `Content-Range: bytes */<size>` accompanies the response. |
-| `rate_limited` | 429 | Too many requests: the per-IP auth-failure bucket is full, or `POST /version/check` was throttled by the daemon. `Retry-After: <seconds>` accompanies the auth case. |
+| `rate_limited` | 429 | The per-IP auth-failure bucket is full, so the address is locked out of every authenticated route. `Retry-After: <seconds>` accompanies it. A client should treat this as the session ending. |
+| `version_check_throttled` | 429 | [`POST /version/check`](#post-apiv0versioncheck) arrived inside the daemon's 60 s cooldown. Affects that route only, so a client must not read it as a lost session. |
 | `headers_too_large` | 431 | Request headers exceed the 16 KiB limit. The connection closes after the response. |
 | `internal_error` | 500 | A server-side failure: a handler failed internally (hash decode, serialization) or threw and was caught by the HTTP layer. The body is generic; details land in the daemon's stderr. |
 | `amuled_response_invalid` | 502 | amuled returned an EC payload this endpoint could not decode. |

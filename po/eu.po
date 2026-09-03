@@ -10,8 +10,8 @@ msgid ""
 msgstr ""
 "Project-Id-Version: aMule\n"
 "Report-Msgid-Bugs-To: https://github.com/amule-org/amule/issues\n"
-"POT-Creation-Date: 2026-08-27 08:55+0000\n"
-"PO-Revision-Date: 2026-08-25 10:07+0000\n"
+"POT-Creation-Date: 2026-09-03 08:43+0200\n"
+"PO-Revision-Date: 2026-09-01 18:09+0000\n"
 "Last-Translator: Piarres Beobide <pi@beobide.net>\n"
 "Language-Team: Euskara <librezale@librezale.org>\n"
 "Language: eu\n"
@@ -772,6 +772,38 @@ msgid "Kad: Off"
 msgstr "Kad: Itzalia"
 
 #: src/amuleDlg.cpp
+msgid "Core"
+msgstr ""
+
+#: src/amuleDlg.cpp src/ClientHistoryListCtrl.cpp src/ClientsListCtrl.cpp
+#: src/ServerListCtrl.cpp src/SharedFilePeersListCtrl.cpp
+#: src/SourceListCtrl.cpp src/Statistics.cpp
+msgid "Version"
+msgstr "Bertsioa"
+
+#: src/amuleDlg.cpp
+msgid "The core and aMuleGUI are different versions."
+msgstr ""
+
+#: src/amuleDlg.cpp
+msgid "The core and aMuleGUI are the same version."
+msgstr ""
+
+#: src/amuleDlg.cpp src/ServerListCtrl.cpp
+msgid "Address"
+msgstr "Helbidea"
+
+#: src/amuleDlg.cpp
+#, fuzzy
+msgid "Encryption"
+msgstr "Azalpena"
+
+#: src/amuleDlg.cpp
+#, fuzzy
+msgid "aMuleGUI"
+msgstr "aMule erregistroa"
+
+#: src/amuleDlg.cpp
 #, fuzzy, c-format
 msgid "Up: %.1f%s (%.1f) | Down: %.1f%s (%.1f)"
 msgstr "Gora: %.1f(%.1f) | Behera: %.1f(%.1f)"
@@ -976,6 +1008,10 @@ msgstr ""
 msgid "Connection to the remote core was lost. Trying to reconnect..."
 msgstr ""
 
+#: src/amule-remote-gui.cpp src/ClientDetailDialog.cpp
+msgid "Disabled"
+msgstr "Ezgaitua"
+
 #: src/amule-remote-gui.cpp
 #, fuzzy
 msgid "Reconnected to the remote core."
@@ -1020,6 +1056,15 @@ msgstr ""
 #: src/amule-remote-gui.cpp src/ExternalConn.cpp
 msgid "Invalid link or already on list."
 msgstr "Lotura baliogabea edo zerrendan dagoeneko."
+
+#: src/amule-remote-gui.cpp
+msgid "The daemon refused the request."
+msgstr ""
+
+#: src/amule-remote-gui.cpp
+#, fuzzy, c-format
+msgid "Could not delete the category: %s"
+msgstr "Aldiroko deskarga fitxategientzat karpeta"
 
 #: src/amule-remote-gui.cpp
 #, c-format
@@ -1223,10 +1268,6 @@ msgid "Send message"
 msgstr "Mezua bidali"
 
 #: src/ClientContextActions.cpp
-msgid "Swap to this file"
-msgstr "Swap fitxategi honentzat"
-
-#: src/ClientContextActions.cpp
 #, fuzzy
 msgid ""
 "You are not allowed to set more than one friend slot.\n"
@@ -1291,10 +1332,6 @@ msgstr "Onartua"
 msgid "Not supported"
 msgstr "Ez da onartzen"
 
-#: src/ClientDetailDialog.cpp
-msgid "Disabled"
-msgstr "Ezgaitua"
-
 #: src/ClientDetailDialog.cpp src/MuleTrayIcon.cpp src/ServerWnd.cpp
 #: src/TextClient.cpp
 msgid "Connected"
@@ -1318,11 +1355,6 @@ msgstr "Izena:"
 #: src/ClientHistoryListCtrl.cpp src/ClientsListCtrl.cpp
 msgid "Software"
 msgstr ""
-
-#: src/ClientHistoryListCtrl.cpp src/ClientsListCtrl.cpp src/ServerListCtrl.cpp
-#: src/SharedFilePeersListCtrl.cpp src/SourceListCtrl.cpp src/Statistics.cpp
-msgid "Version"
-msgstr "Bertsioa"
 
 #: src/ClientHistoryListCtrl.cpp src/ClientsListCtrl.cpp
 #, fuzzy
@@ -2211,6 +2243,19 @@ msgstr ""
 
 #: src/ExternalConn.cpp
 #, fuzzy
+msgid "No such category."
+msgstr "Itxi elkarrizketa saio hau."
+
+#: src/ExternalConn.cpp
+msgid "Malformed category request."
+msgstr ""
+
+#: src/ExternalConn.cpp
+msgid "The default category cannot be deleted."
+msgstr ""
+
+#: src/ExternalConn.cpp
+#, fuzzy
 msgid "Missing chat session id"
 msgstr "Elkarrizketa saio berria hasia"
 
@@ -2785,6 +2830,52 @@ msgid ""
 msgstr ""
 "Ez duzu lagun-ataka bat baino gehiago ezartzeko baimenik.\n"
 " Ataka bat bakarrik dago sinaturik."
+
+#: src/GenericClientListCtrl.cpp
+#, fuzzy
+msgid "This source does not have the part"
+msgstr "Komando honek ez luke parametrorik eduki beharko."
+
+#: src/GenericClientListCtrl.cpp
+msgid "You and this source both have the part"
+msgstr ""
+
+#: src/GenericClientListCtrl.cpp
+msgid "Being downloaded from this source now"
+msgstr ""
+
+#: src/GenericClientListCtrl.cpp
+msgid "The next part that will be asked of this source"
+msgstr ""
+
+#: src/GenericClientListCtrl.cpp
+msgid "This source has the part and you still need it"
+msgstr ""
+
+#: src/GenericClientListCtrl.cpp
+msgid "This peer already has the part"
+msgstr ""
+
+#: src/GenericClientListCtrl.cpp
+msgid "This peer does not have the part"
+msgstr ""
+
+#: src/GenericClientListCtrl.cpp
+msgid "One block per part of the file being downloaded."
+msgstr ""
+
+#: src/GenericClientListCtrl.cpp
+#, fuzzy
+msgid "One block per part of the shared file."
+msgstr "Idatzi zerbitzariaren ataka hemen."
+
+#: src/GenericClientListCtrl.cpp
+msgid "Swap to this file"
+msgstr "Swap fitxategi honentzat"
+
+#: src/GenericClientListCtrl.cpp
+msgid "Colour legend"
+msgstr ""
 
 #: src/GenericClientListCtrl.cpp
 #, c-format
@@ -6929,10 +7020,6 @@ msgid "Server Name"
 msgstr "Zerbitzaria izena"
 
 #: src/ServerListCtrl.cpp
-msgid "Address"
-msgstr "Helbidea"
-
-#: src/ServerListCtrl.cpp
 msgid "Port"
 msgstr "Ataka"
 
@@ -7364,9 +7451,9 @@ msgstr[1] "%i ezagututako partekatutako fitxategi aurkiturik"
 msgid "User Name"
 msgstr "Erabiltzaile izena"
 
-#: src/SharedFilePeersListCtrl.cpp src/SourceListCtrl.cpp
-msgid "Available Parts"
-msgstr "Zati eskuragarriak"
+#: src/SharedFilePeersListCtrl.cpp
+msgid "Parts on Peer"
+msgstr ""
 
 #: src/SharedFilePeersListCtrl.cpp
 msgid "Upload Status"
@@ -7561,6 +7648,11 @@ msgstr "Partekatutako fitxategiak (%i)"
 #, fuzzy, c-format
 msgid "Reloading shared files: %u files scanned"
 msgstr "Partekatutako fitxategi zerrenda birkargatu."
+
+#: src/SourceListCtrl.cpp
+#, fuzzy
+msgid "Part Status"
+msgstr "Egoera"
 
 #: src/SourceListCtrl.cpp
 msgid "Remote File Name"
@@ -9256,6 +9348,9 @@ msgstr ""
 
 #~ msgid "ERROR: Could not listen to TCP port."
 #~ msgstr "ERROREA: Ezin da TCP ataka entzun."
+
+#~ msgid "Available Parts"
+#~ msgstr "Zati eskuragarriak"
 
 #, c-format
 #~ msgid "Found %i known shared file, %i unknown"

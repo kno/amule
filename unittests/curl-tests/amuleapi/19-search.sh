@@ -814,7 +814,7 @@ if [ -n "$CMT_HASH" ]; then
 	_curl -H "Authorization: Bearer $ADMIN_TOKEN" \
 		"$HOST/api/v0/search/results/$CMT_HASH/comments"
 	_assert_status 200 "GET /search/results/{hash}/comments → 200"
-	_assert_json_eq '.count | type' number 'search comments.count is numeric'
+	_assert_json_eq '.total | type' number 'search comments.total is numeric'
 	_assert_json_eq '.kad_comment_lookup_running | type' boolean \
 		'search comments carries kad_comment_lookup_running flag'
 	_assert_json_eq '.comments | type' array 'search comments.comments is an array'
@@ -1499,7 +1499,7 @@ fi
 # peer-dependent assertions in this suite.
 _curl -H "Authorization: Bearer $ADMIN_TOKEN" "$HOST/api/v0/clients"
 UNREACHABLE_ECID=$(printf '%s' "$CURL_BODY" \
-	| jq -r '[.clients[] | select(.download_state == "lowtolowip")][0].ecid // empty')
+	| jq -r '[.clients[] | select(.download_state == "low_to_low_ip")][0].ecid // empty')
 if [ -n "$UNREACHABLE_ECID" ]; then
 	_curl -X POST -H "Authorization: Bearer $ADMIN_TOKEN" \
 		"$HOST/api/v0/clients/$UNREACHABLE_ECID/shared_files"
@@ -1547,7 +1547,7 @@ if [ -n "$UNREACHABLE_ECID" ]; then
 		echo "    info: browse of $UNREACHABLE_ECID returned $CURL_STATUS — skipping"
 	fi
 else
-	echo "    info: no uncontactable (lowtolowip) peer — skipping the dead-browse check"
+	echo "    info: no uncontactable (low_to_low_ip) peer — skipping the dead-browse check"
 fi
 
 # --- Related-files search (docs contract). -------------------------

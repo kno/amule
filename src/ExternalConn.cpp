@@ -52,6 +52,7 @@
 #include "amule.h"      // Needed for theApp
 #include "SearchList.h" // Needed for GetSearchResults
 #include "ClientVersionString.h"
+#include "MuleVersion.h" // Needed for GetShortMuleVersion()
 #include "ClientList.h"
 #include "ChatSessionStore.h"
 #include "ClientCreditsList.h" // Needed for CClientCreditsList
@@ -1379,7 +1380,12 @@ const CECPacket *CECServerSocket::Authenticate(const CECPacket *request)
 				const std::vector<uint8_t> serverConfirm = ServerConfirm(authSecret);
 				ActivateAEAD();
 				response = new CECPacket(EC_OP_AUTH_OK);
-				response->AddTag(CECTag(EC_TAG_SERVER_VERSION, VERSION));
+				// Short form rather than bare VERSION: on a development
+				// build VERSION is the literal "GIT", so every snapshot
+				// would identify itself identically and a client could
+				// not tell which revision it is talking to. No change on
+				// a tagged release, where GITDATE is undefined.
+				response->AddTag(CECTag(EC_TAG_SERVER_VERSION, GetShortMuleVersion()));
 				// Our half of the proof. Travels inside the now-sealed
 				// AUTH_OK, so the client learns both that we hold the
 				// credential and that we hold the key, from one packet.
@@ -4207,6 +4213,22 @@ CECPacket *CECServerSocket::ProcessRequest2(const CECPacket *request)
 		if (request->GetTagCount() == 1) {
 			CEC_Category_Tag tag(
 				*static_cast<const CEC_Category_Tag *>(request->GetFirstTagSafe()));
+			if (tag.GetInt() >= theApp->glob_prefs->GetCatCount()) {
+				// No such category. Deliberately WITHOUT
+				// EC_TAG_CATEGORY_PATH: on a failed update that tag means
+				// "everything but the path was applied, and here is the
+				// path kept instead", which clients answer as a success
+				// (amule-org/amule#1213). Emitting it here would report a
+				// category that does not exist as updated. The index is
+				// whatever the client sent -- it used to be indexed
+				// straight into m_CatList (amule-org/amule#1227).
+				response = new CECPacket(EC_OP_FAILED);
+				response->AddTag(CECTag(EC_TAG_CATEGORY, tag.GetInt()));
+				response->AddTag(CECTag(EC_TAG_STRING, wxTRANSLATE("No such category.")));
+				// No Notify either: there is nothing to refresh, and the
+				// monolithic handler would index on this same value.
+				break;
+			}
 			if (tag.Apply()) {
 				response = new CECPacket(EC_OP_NOOP);
 			} else {
@@ -4220,12 +4242,32 @@ CECPacket *CECServerSocket::ProcessRequest2(const CECPacket *request)
 		}
 		break;
 	case EC_OP_DELETE_CATEGORY:
-		if (request->GetTagCount() == 1) {
-			uint32 cat = request->GetFirstTagSafe()->GetInt();
-			// this does not only update the gui, but actually deletes the cat
-			Notify_CategoryDelete(cat);
+		// Rejections answer EC_OP_FAILED, not the blanket EC_OP_NOOP this used
+		// to send: the guards downstream discard these silently, so a client
+		// could not tell a completed delete from a discarded one
+		// (amule-org/amule#1231). Never attach EC_TAG_CATEGORY_PATH -- on a
+		// failed category command clients read it as success (#1213).
+		if (request->GetTagCount() != 1) {
+			response = new CECPacket(EC_OP_FAILED);
+			response->AddTag(CECTag(EC_TAG_STRING, wxTRANSLATE("Malformed category request.")));
+		} else {
+			const uint32 cat = request->GetFirstTagSafe()->GetInt();
+			if (cat == 0) {
+				// The "all downloads" bucket, which CategoryDelete refuses.
+				response = new CECPacket(EC_OP_FAILED);
+				response->AddTag(CECTag(EC_TAG_CATEGORY, cat));
+				response->AddTag(CECTag(EC_TAG_STRING,
+					wxTRANSLATE("The default category cannot be deleted.")));
+			} else if (cat >= theApp->glob_prefs->GetCatCount()) {
+				response = new CECPacket(EC_OP_FAILED);
+				response->AddTag(CECTag(EC_TAG_CATEGORY, cat));
+				response->AddTag(CECTag(EC_TAG_STRING, wxTRANSLATE("No such category.")));
+			} else {
+				// this does not only update the gui, but actually deletes the cat
+				Notify_CategoryDelete(cat);
+				response = new CECPacket(EC_OP_NOOP);
+			}
 		}
-		response = new CECPacket(EC_OP_NOOP);
 		break;
 
 	//
@@ -4436,7 +4478,9 @@ CECPacket *CECServerSocket::ProcessRequest2(const CECPacket *request)
 			delete tree;
 		}
 		if (request->GetDetailLevel() == EC_DETAIL_WEB) {
-			response->AddTag(CECTag(EC_TAG_SERVER_VERSION, VERSION));
+			// Same short form as the AUTH_OK handshake above, so amuleweb
+			// and the GUI never see two spellings of one build.
+			response->AddTag(CECTag(EC_TAG_SERVER_VERSION, GetShortMuleVersion()));
 			response->AddTag(CECTag(EC_TAG_USER_NICK, thePrefs::GetUserNick()));
 		}
 		break;

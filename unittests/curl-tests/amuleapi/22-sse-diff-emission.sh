@@ -166,6 +166,20 @@ if [ -n "$ADDED" ]; then
 	else
 		_fail "download_added .data.hashed_part_count" "not a number in $JSON"
 	fi
+	# A4AF membership rides the download event: it is the only per-file
+	# client relation the `clients` channel cannot carry, and a per-file
+	# Clients panel polled /downloads/{hash}/clients purely to get it.
+	# Always an array, never absent (R10) — empty for a fresh download.
+	if echo "$JSON" | jq -e '.source_ecids | type == "array"' >/dev/null 2>&1; then
+		_pass "download_added .data.source_ecids is an array"
+	else
+		_fail "download_added .data.source_ecids" "not an array in $JSON"
+	fi
+	if echo "$JSON" | jq -e '[.source_ecids[] | type] | all(. == "number")' >/dev/null 2>&1; then
+		_pass "download_added .data.source_ecids holds only numeric ECIDs"
+	else
+		_fail "download_added .data.source_ecids" "non-numeric entry in $JSON"
+	fi
 else
 	_fail "download_added missing" \
 		"no event with the Ubuntu ISO hash within 12 s; stream sample: $(head -30 "$SSE_OUT")"
@@ -376,7 +390,7 @@ fi
 # is validated manually.
 CU=$(grep -A1 "^event: comments_updated$" "$SSE_OUT" | grep "^data: " | head -1 | sed 's/^data: //')
 if [ -n "$CU" ]; then
-	if echo "$CU" | jq -e '(.hash|type=="string") and (.count|type=="number") and (.comments|type=="array")' >/dev/null 2>&1; then
+	if echo "$CU" | jq -e '(.hash|type=="string") and (.total|type=="number") and (.comments|type=="array")' >/dev/null 2>&1; then
 		_pass "comments_updated payload shape valid"
 	else
 		_fail "comments_updated payload shape" "unexpected: $CU"

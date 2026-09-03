@@ -89,7 +89,8 @@
 
 #include "PicoJson_Inc.h"
 
-#include "config.h" // VERSION
+#include "config.h"      // VERSION
+#include "MuleVersion.h" // Needed for GetShortMuleVersion()
 
 #include "Types.h" // uint8 (required by libs/common/MD5Sum.h)
 #include <common/MD5Sum.h>
@@ -141,10 +142,11 @@ void WriteUIntOrNull(CJsonWriter &w, const char *key, bool known, std::uint64_t 
 		w.ValueNull();
 }
 
-// Siblings of WriteIntOrNull for the other two shapes the rule reaches. An
-// empty string is NOT the same as unknown -- `server_ip` is legitimately ""
-// when the peer has no server -- so callers pass the predicate rather than
-// letting this guess from the value.
+// Siblings of WriteIntOrNull for the other two shapes the rule reaches.
+// Callers pass the predicate rather than letting this guess from the value,
+// because "empty" and "unknown" are not always the same question: a count of 0
+// is a real answer (parts_offered_count), while "" on an address field is a
+// sentinel the rule spells null.
 // Bool half of the OrNull family. `false` and "not measured" are different
 // answers for a firewall verdict or a LAN-mode flag, and only one of them is
 // something a consumer should act on.
@@ -2086,7 +2088,11 @@ CHttpServer::Response CApiDispatcher::HandleVersion(const CHttpServer::Request &
 	// amuleapi binary was built from, which need not match the aMule daemon
 	// it is talking to. The old name said the opposite of what it holds.
 	w.Key("amuleapi_version");
-	w.ValueString(wxString::FromAscii(VERSION));
+	// Same short form the daemon reports for itself, so the two stay
+	// comparable: bare VERSION is the literal "GIT" on a development
+	// build, which would make this differ from daemon_version on every
+	// such build even when both come from the same tree.
+	w.ValueString(GetShortMuleVersion());
 	// Version of the connected amuled, from the EC handshake. Empty
 	// string when EC is not (yet) connected or the daemon predates the
 	// EC_TAG_SERVER_VERSION tag. Distinct from amuleapi_version above,
@@ -2643,15 +2649,18 @@ CHttpServer::Response CApiDispatcher::HandleStatus(const CHttpServer::Request &r
 	// the two must not be compared or fed through each other's decoder.
 	w.Key("user_id");
 	w.ValueInt(static_cast<int64_t>(s.ed2k_user_id));
-	w.Key("public_ip");
-	w.ValueString(wxString::FromUTF8(s.ed2k_public_ip.c_str()));
+	WriteStringOrNull(w, "public_ip", !s.ed2k_public_ip.empty(), s.ed2k_public_ip);
 	// 0 when not connected -- gate on ed2k.state, not on this being nonzero.
 	w.Key("connected_since_at");
 	w.ValueInt(static_cast<int64_t>(s.ed2k_connected_since));
 	w.Key("server_name");
 	w.ValueString(wxString::FromUTF8(s.server_name.c_str()));
-	w.Key("server_ip");
-	w.ValueString(wxString::FromUTF8(s.server_ip.c_str()));
+	// Null when not connected. The "an empty string is legitimately 'no
+	// server'" note on WriteStringOrNull is about a PEER's server_ip
+	// (WriteKnownClientObject, untouched): a connected peer can genuinely
+	// have none. This is our own connection, where ed2k.state already says
+	// whether there is a server, so "" here only ever meant "not connected".
+	WriteStringOrNull(w, "server_ip", !s.server_ip.empty(), s.server_ip);
 	w.Key("server_port");
 	w.ValueInt(static_cast<int64_t>(s.server_port));
 	// Network rollup, symmetric with kad.network below. Aggregate
@@ -2720,9 +2729,9 @@ CHttpServer::Response CApiDispatcher::HandleStatus(const CHttpServer::Request &r
 
 	w.Key("queue");
 	w.BeginObject();
-	w.Key("upload_clients_waiting");
+	w.Key("waiting_upload_client_count");
 	w.ValueInt(static_cast<int64_t>(s.ul_queue_len));
-	w.Key("download_sources_total");
+	w.Key("download_source_count");
 	w.ValueInt(static_cast<int64_t>(s.total_src_count));
 	w.EndObject();
 	// Nickname is a /preferences field, not a /status one.
@@ -2752,9 +2761,9 @@ namespace
 // branch's `EmitProgressParts` (WebServerApi.cpp:897-952):
 //  - count = ceil(size / PARTSIZE)
 //  - mark a part "has gap" if any byte-range in `gaps` covers it
-//  - state = "complete"   (no gap) /
-//            "incomplete" (gap + sources > 0) /
-//            "missing"    (gap + zero sources)
+//  - state = "complete"    (no gap) /
+//            "pending"     (gap + sources > 0) /
+//            "unavailable" (gap + zero sources)
 // `gaps` is flat (start, end) uint64 pairs. Both inclusive on amule's
 // side (CGapList::Encode semantics).
 void WriteProgressParts(CJsonWriter &w, const webapi::FileSnapshot &f)
@@ -2935,6 +2944,16 @@ void WriteDownloadObject(
 	const std::int64_t parts_total_count = static_cast<std::int64_t>(webapi::PartCountForSize(f.size));
 	w.Key("parts_total_count");
 	w.ValueInt(parts_total_count);
+	// On the list, not detail-only, so the SSE download event carries it:
+	// A4AF is a client-to-file relation, the one thing a per-file client
+	// list needs that the `clients` channel cannot say. Same spelling as on
+	// POST /downloads/{hash}/a4af (R6).
+	w.Key("source_ecids");
+	w.BeginArray();
+	for (const std::uint32_t ecid : f.download.a4af_sources) {
+		w.ValueInt(static_cast<int64_t>(ecid));
+	}
+	w.EndArray();
 	if (detail) {
 		// Detail-only fields (GET /downloads/{hash}); omitted from the
 		// list. `remaining_seconds` is computed here from the snapshot --
@@ -3212,10 +3231,14 @@ void WriteClientDetailObject(CJsonWriter &w, const webapi::ClientSnapshot &c)
 	w.ValueUInt(static_cast<uint64_t>(c.ed2k_user_id));
 	w.Key("high_id");
 	w.ValueBool(c.high_id);
-	w.Key("server_ip");
-	w.ValueString(wxString::FromUTF8(c.server_ip.c_str()));
-	w.Key("server_port");
-	w.ValueInt(static_cast<int64_t>(c.server_port));
+	// Paired and nulled together, like ip/port/kad_port on the base row.
+	// ClientSnapshot::server_ip is documented as `"" when unknown/0`, so the
+	// empty string here is the unknown case the R10 rule spells null -- and
+	// "" is not a value an address field can legitimately take, unlike the 0
+	// that parts_offered_count uses as a real answer.
+	const bool has_server = !c.server_ip.empty();
+	WriteStringOrNull(w, "server_ip", has_server, c.server_ip);
+	WriteIntOrNull(w, "server_port", has_server, static_cast<int64_t>(c.server_port));
 	w.Key("server_name");
 	w.ValueString(wxString::FromUTF8(c.server_name.c_str()));
 	w.Key("kad_port");
@@ -3460,10 +3483,10 @@ struct SearchListRow
 void WriteSearchListRow(CJsonWriter &w, const SearchListRow &row)
 {
 	w.BeginObject();
-	// `id`, not `search_id`: the object would be prefixing its own key with
-	// its own type. References from OUTSIDE keep the prefix -- the SSE
-	// payloads and the results envelope point into this object.
-	w.Key("id");
+	// `search_id`, the same key the SSE payloads and the results envelope
+	// already use for this value -- one spelling for a search's id across the
+	// whole surface, so a client never has to read it under two names.
+	w.Key("search_id");
 	w.ValueInt(static_cast<int64_t>(row.search_id));
 	w.Key("query");
 	w.ValueString(row.query);
@@ -3489,7 +3512,7 @@ void WriteSearchListRow(CJsonWriter &w, const SearchListRow &row)
 const ListComparators<SearchListRow> &SearchListComparators()
 {
 	static const ListComparators<SearchListRow> kComps = {
-		{ "id", SORT_BY(search_id), ANCHOR_ON_NUM(search_id) },
+		{ "search_id", SORT_BY(search_id), ANCHOR_ON_NUM(search_id) },
 		{ "query", SORT_BY(query) },
 		{ "started_at", SORT_BY(started_at) },
 		{ "result_count", SORT_BY(result_count) },
@@ -5053,7 +5076,7 @@ CHttpServer::Response CApiDispatcher::HandleVersionCheck(const CHttpServer::Requ
 	const auto prefs = m_state.Preferences();
 	if (!(prefs.version_check_available && prefs.version_check_enabled)) {
 		return ErrorResponse(409,
-			"update_check_unavailable",
+			"version_check_unavailable",
 			"version check is disabled or unavailable on the connected daemon");
 	}
 
@@ -5068,8 +5091,14 @@ CHttpServer::Response CApiDispatcher::HandleVersionCheck(const CHttpServer::Requ
 	if (failed) {
 		// The only expected failure past the gate above is the daemon's
 		// throttle. Report an English code; the daemon's message is not relayed.
-		return ErrorResponse(
-			429, "rate_limited", "version check was throttled by the daemon; try again shortly");
+		//
+		// Its own code, not the auth limiter's `rate_limited`: both answer 429,
+		// and a client that cannot tell them apart has to treat a throttled
+		// update check as a lost session. The Web UI did exactly that and logged
+		// the user out on "Check now".
+		return ErrorResponse(429,
+			"version_check_throttled",
+			"version check was throttled by the daemon; try again shortly");
 	}
 
 	// Accepted. The check runs asynchronously on the daemon; the result
@@ -5885,8 +5914,10 @@ void WriteFriendObject(CJsonWriter &w, const webapi::FriendSnapshot &f)
 	w.ValueString(wxString::FromUTF8(f.user_hash.c_str()));
 	// null rather than "" when the daemon has not reported an address (R10).
 	WriteStringOrNull(w, "ip", !f.ip.empty(), f.ip);
-	w.Key("port");
-	w.ValueInt(static_cast<int64_t>(f.port));
+	// Paired with ip, the way WriteKnownClientObject nulls ip/port/kad_port
+	// together: a 0 port on an address-less friend is the sentinel R10 removed
+	// everywhere else.
+	WriteIntOrNull(w, "port", !f.ip.empty(), static_cast<int64_t>(f.port));
 	// The live peer this friend is linked to, joinable against /clients. null
 	// when the friend is not connected, which is the common case and which
 	// `online` also reports. Deliberately not the 0 it used to be: the surface
@@ -7391,8 +7422,7 @@ CHttpServer::Response CApiDispatcher::HandleKad(const CHttpServer::Request &req)
 	w.ValueInt(static_cast<int64_t>(d.status.kad_connected_since));
 	// Ours, as opposed to `buddy.ip` below — which is why this one
 	// is not called plain `ip`.
-	w.Key("public_ip");
-	w.ValueString(wxString::FromUTF8(k.public_ip.c_str()));
+	WriteStringOrNull(w, "public_ip", !k.public_ip.empty(), k.public_ip);
 	WriteKadNetworkObject(w, k);
 	// Both objects are null-valued unless Kad is connected: amuled only ships
 	// these tags inside its own connected gate, so the numbers below were the
@@ -9222,16 +9252,14 @@ CHttpServer::Response CApiDispatcher::HandleGeoipUpdate(const CHttpServer::Reque
 
 	(void)RefresherTick(m_app, m_state);
 
-	// 202, like the three sibling fetch routes: the download runs in the
-	// daemon after the reply. Progress is observable on GET /preferences as
-	// geoip.download_in_progress, and the outcome as geoip.last_update_status.
+	// 202 with no body, like the three sibling fetch routes (UrlFetchOp): the
+	// download runs in the daemon after the reply. Progress is observable on
+	// GET /preferences as geoip.download_in_progress, and the outcome as
+	// geoip.last_update_status. This used to emit `{}`, which made four
+	// interchangeable routes answer in two different shapes.
 	CHttpServer::Response r;
 	r.status = 202;
-	r.content_type = "application/json";
-	CJsonWriter w;
-	w.BeginObject();
-	w.EndObject();
-	FinalizeJsonBody(w, r);
+	r.content_type.clear();
 	return r;
 }
 
@@ -11105,9 +11133,9 @@ CHttpServer::Response CApiDispatcher::HandleSearchStart(const CHttpServer::Reque
 	//    "type":  "local" | "global" | "kad" (default "global"),
 	//    "file_type":  string (optional, amule file-type label),
 	//    "extension":  string (optional, e.g. "mkv"),
-	//    "min_size":   uint64 bytes (optional, default 0),
-	//    "max_size":   uint64 bytes (optional, default 0 = no cap),
-	//    "min_avail":  uint32 (optional, default 0) }
+	//    "min_size_bytes":    uint64 (optional, default 0),
+	//    "max_size_bytes":    uint64 (optional, default 0 = no cap),
+	//    "min_source_count":  uint32 (optional, default 0) }
 	std::string query;
 	{
 		const auto it = obj.find("query");
@@ -11554,7 +11582,7 @@ CHttpServer::Response CApiDispatcher::HandleSearchComments(
 	r.content_type = "application/json";
 	CJsonWriter w;
 	w.BeginObject();
-	w.Key("count");
+	w.Key("total");
 	w.ValueInt(static_cast<int64_t>(hit.comments.size()));
 	w.Key("kad_comment_lookup_running");
 	w.ValueBool(hit.kad_comment_searching);

@@ -15,8 +15,8 @@ msgid ""
 msgstr ""
 "Project-Id-Version: aMule\n"
 "Report-Msgid-Bugs-To: https://github.com/amule-org/amule/issues\n"
-"POT-Creation-Date: 2026-08-27 08:55+0000\n"
-"PO-Revision-Date: 2026-08-25 10:15+0000\n"
+"POT-Creation-Date: 2026-09-03 08:43+0200\n"
+"PO-Revision-Date: 2026-09-01 18:23+0000\n"
 "Last-Translator: Marcelo Jimenez <mroberto@users.sourceforge.com>\n"
 "Language-Team: Português (Brasileiro) <pt@li.org>\n"
 "Language: pt_BR\n"
@@ -780,6 +780,36 @@ msgid "Kad: Off"
 msgstr "Kad: Desligado"
 
 #: src/amuleDlg.cpp
+msgid "Core"
+msgstr "Núcleo"
+
+#: src/amuleDlg.cpp src/ClientHistoryListCtrl.cpp src/ClientsListCtrl.cpp
+#: src/ServerListCtrl.cpp src/SharedFilePeersListCtrl.cpp
+#: src/SourceListCtrl.cpp src/Statistics.cpp
+msgid "Version"
+msgstr "Versão"
+
+#: src/amuleDlg.cpp
+msgid "The core and aMuleGUI are different versions."
+msgstr "O núcleo e o aMuleGUI são de versões diferentes."
+
+#: src/amuleDlg.cpp
+msgid "The core and aMuleGUI are the same version."
+msgstr "O núcleo e o aMuleGUI são da mesma versão."
+
+#: src/amuleDlg.cpp src/ServerListCtrl.cpp
+msgid "Address"
+msgstr "Endereço"
+
+#: src/amuleDlg.cpp
+msgid "Encryption"
+msgstr "Encriptar"
+
+#: src/amuleDlg.cpp
+msgid "aMuleGUI"
+msgstr "aMuleGUI"
+
+#: src/amuleDlg.cpp
 #, c-format
 msgid "Up: %.1f%s (%.1f) | Down: %.1f%s (%.1f)"
 msgstr "Up: %.1f%s (%.1f) | Down: %.1f%s (%.1f)"
@@ -987,6 +1017,10 @@ msgstr ""
 msgid "Connection to the remote core was lost. Trying to reconnect..."
 msgstr "A conexão com o núcleo remoto foi perdida. Tentando reconectar..."
 
+#: src/amule-remote-gui.cpp src/ClientDetailDialog.cpp
+msgid "Disabled"
+msgstr "Desabilitado"
+
 #: src/amule-remote-gui.cpp
 msgid "Reconnected to the remote core."
 msgstr "Reconectado ao núcleo remoto."
@@ -1028,6 +1062,15 @@ msgstr "O núcleo rejeitou as seguintes pastas compartilhadas: %s"
 #: src/amule-remote-gui.cpp src/ExternalConn.cpp
 msgid "Invalid link or already on list."
 msgstr "Link inválido ou já está na lista."
+
+#: src/amule-remote-gui.cpp
+msgid "The daemon refused the request."
+msgstr ""
+
+#: src/amule-remote-gui.cpp
+#, fuzzy, c-format
+msgid "Could not delete the category: %s"
+msgstr "Não foi possível salvar a senha da amuleapi: %s"
 
 #: src/amule-remote-gui.cpp
 #, c-format
@@ -1231,10 +1274,6 @@ msgid "Send message"
 msgstr "Enviar mensagem"
 
 #: src/ClientContextActions.cpp
-msgid "Swap to this file"
-msgstr "Trocar para esse arquivo"
-
-#: src/ClientContextActions.cpp
 msgid ""
 "You are not allowed to set more than one friend slot.\n"
 " Only one slot was assigned."
@@ -1298,10 +1337,6 @@ msgstr "Suportado"
 msgid "Not supported"
 msgstr "Não suportado"
 
-#: src/ClientDetailDialog.cpp
-msgid "Disabled"
-msgstr "Desabilitado"
-
 #: src/ClientDetailDialog.cpp src/MuleTrayIcon.cpp src/ServerWnd.cpp
 #: src/TextClient.cpp
 msgid "Connected"
@@ -1324,11 +1359,6 @@ msgstr "Nome"
 #: src/ClientHistoryListCtrl.cpp src/ClientsListCtrl.cpp
 msgid "Software"
 msgstr "Software"
-
-#: src/ClientHistoryListCtrl.cpp src/ClientsListCtrl.cpp src/ServerListCtrl.cpp
-#: src/SharedFilePeersListCtrl.cpp src/SourceListCtrl.cpp src/Statistics.cpp
-msgid "Version"
-msgstr "Versão"
 
 #: src/ClientHistoryListCtrl.cpp src/ClientsListCtrl.cpp
 msgid "IP Address"
@@ -2202,6 +2232,19 @@ msgid "Could not save the amuleapi password: %s"
 msgstr "Não foi possível salvar a senha da amuleapi: %s"
 
 #: src/ExternalConn.cpp
+#, fuzzy
+msgid "No such category."
+msgstr "Esta sessão de chat não existe"
+
+#: src/ExternalConn.cpp
+msgid "Malformed category request."
+msgstr ""
+
+#: src/ExternalConn.cpp
+msgid "The default category cannot be deleted."
+msgstr ""
+
+#: src/ExternalConn.cpp
 msgid "Missing chat session id"
 msgstr "Falta o id de sessão"
 
@@ -2782,6 +2825,50 @@ msgid ""
 msgstr ""
 "Você não pode definir mais de um slot para amigos.\n"
 " Apenas um foi definido."
+
+#: src/GenericClientListCtrl.cpp
+msgid "This source does not have the part"
+msgstr "Esta fonte não tem a parte"
+
+#: src/GenericClientListCtrl.cpp
+msgid "You and this source both have the part"
+msgstr "Você e esta fonte, ambos têm a parte"
+
+#: src/GenericClientListCtrl.cpp
+msgid "Being downloaded from this source now"
+msgstr "Sendo baixada agora desta fonte"
+
+#: src/GenericClientListCtrl.cpp
+msgid "The next part that will be asked of this source"
+msgstr "A pŕoxima parte que será pedida desta fonte"
+
+#: src/GenericClientListCtrl.cpp
+msgid "This source has the part and you still need it"
+msgstr "Esta fonte tem a parte e você ainda precisa dela"
+
+#: src/GenericClientListCtrl.cpp
+msgid "This peer already has the part"
+msgstr "Este par já tem a parte"
+
+#: src/GenericClientListCtrl.cpp
+msgid "This peer does not have the part"
+msgstr "Este par não tem a parte"
+
+#: src/GenericClientListCtrl.cpp
+msgid "One block per part of the file being downloaded."
+msgstr "Um bloco por parte do arquivo sendo baixado."
+
+#: src/GenericClientListCtrl.cpp
+msgid "One block per part of the shared file."
+msgstr "Um bloco por parte do arquivo compartilhado."
+
+#: src/GenericClientListCtrl.cpp
+msgid "Swap to this file"
+msgstr "Trocar para esse arquivo"
+
+#: src/GenericClientListCtrl.cpp
+msgid "Colour legend"
+msgstr "Legenda colorida"
 
 #: src/GenericClientListCtrl.cpp
 #, c-format
@@ -6868,10 +6955,6 @@ msgid "Server Name"
 msgstr "Nome do Servidor"
 
 #: src/ServerListCtrl.cpp
-msgid "Address"
-msgstr "Endereço"
-
-#: src/ServerListCtrl.cpp
 msgid "Port"
 msgstr "Porta"
 
@@ -7295,9 +7378,9 @@ msgstr[1] "Encontrados %u novos arquivos compartilhados"
 msgid "User Name"
 msgstr "Nome de Usuário"
 
-#: src/SharedFilePeersListCtrl.cpp src/SourceListCtrl.cpp
-msgid "Available Parts"
-msgstr "Partes Disponíveis"
+#: src/SharedFilePeersListCtrl.cpp
+msgid "Parts on Peer"
+msgstr "Partes no par"
 
 #: src/SharedFilePeersListCtrl.cpp
 msgid "Upload Status"
@@ -7490,6 +7573,10 @@ msgstr "Arquivos Compartilhados (%i)"
 #, c-format
 msgid "Reloading shared files: %u files scanned"
 msgstr "Recarregando arquivos compartilhados: %u arquivos encontrados"
+
+#: src/SourceListCtrl.cpp
+msgid "Part Status"
+msgstr "Estado da parte"
 
 #: src/SourceListCtrl.cpp
 msgid "Remote File Name"
@@ -9206,6 +9293,9 @@ msgstr "Removendo os dados do usuário em $APPDATA\\aMule..."
 
 #~ msgid "ERROR: Could not listen to TCP port."
 #~ msgstr "ERRO: Não pôde ouvir a porta TCP."
+
+#~ msgid "Available Parts"
+#~ msgstr "Partes Disponíveis"
 
 #, c-format
 #~ msgid "Found %i known shared file, %i unknown"
