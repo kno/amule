@@ -37,13 +37,13 @@ Downloads-list colour change, so that one is closed.
 
 ## Phase 0: Hard gate (before any source edit)
 
-- [ ] 0.1 Confirm `openspec/BASELINE.md` names HEAD. It names `36e28e73`; HEAD is
+- [x] 0.1 Confirm `openspec/BASELINE.md` names HEAD. It names `36e28e73`; HEAD is
       `a8da5183`. Re-establish with `packaging/linux/build.sh dev` on the
       **unmodified** tree and update `BASELINE.md`.
-- [ ] 0.2 If the unmodified tree does not build: report the environment failure and
+- [x] 0.2 If the unmodified tree does not build: report the environment failure and
       STOP. Do not modify source to make the build pass (`config.yaml` apply
       precondition).
-- [ ] 0.3 Cut the code branch from `upstream/master`, not the fork's `master`, so no
+- [x] 0.3 Cut the code branch from `upstream/master`, not the fork's `master`, so no
       `openspec/` tree enters an upstream PR (`context.md`). SDD artifacts stay on
       the fork's `master`.
 
