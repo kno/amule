@@ -23,8 +23,8 @@ ARG UBUNTU_BASE
 FROM ubuntu:${UBUNTU_BASE}
 
 ARG WX_VERSION
-ARG WX_TARBALL_URL
-ARG WX_SHA256
+ARG WX_GIT_URL
+ARG WX_COMMIT
 ARG LIBUPNP_VERSION
 ARG LIBUPNP_TARBALL_URL
 ARG LIBUPNP_SHA256
@@ -71,15 +71,22 @@ RUN wget -q -O pupnp.tar.gz "${LIBUPNP_TARBALL_URL}" \
     && cmake --install upnp-build \
     && rm -rf pupnp.tar.gz "pupnp-release-${LIBUPNP_VERSION}" upnp-build
 
-# wxWidgets (pinned) — checksum verified before use.
-RUN wget -q -O wx.tar.bz2 "${WX_TARBALL_URL}" \
-    && echo "${WX_SHA256}  wx.tar.bz2" | sha256sum -c - \
-    && tar xf wx.tar.bz2 \
-    && cd "wxWidgets-${WX_VERSION}" \
+# wxWidgets, pinned to a commit rather than a release, the way the appimage and
+# static targets already do it (packaging/linux/appimage/Dockerfile,
+# packaging/linux/static/Dockerfile): every 3.2.x tarball to date predates the
+# wxEpollDispatcher unregister fix amuled needs under wxWebRequest. Fetching the
+# SHA directly avoids cloning the full history; submodules supply wx's bundled
+# third-party sources. Revert to a tarball when 3.2.12 ships.
+RUN git init wx \
+    && cd wx \
+    && git remote add origin "${WX_GIT_URL}" \
+    && git fetch --depth 1 origin "${WX_COMMIT}" \
+    && git checkout FETCH_HEAD \
+    && git submodule update --init --depth 1 --recursive \
     && ./configure --with-gtk=3 --disable-shared --enable-unicode --prefix=/usr/local \
     && make -j"$(nproc)" \
     && make install \
-    && cd .. && rm -rf wx.tar.bz2 "wxWidgets-${WX_VERSION}"
+    && cd .. && rm -rf wx
 
 ENV PATH="/usr/lib/ccache:${PATH}"
 ENV LD_LIBRARY_PATH=/usr/local/lib

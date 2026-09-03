@@ -600,8 +600,8 @@ build_dev() {
         -f "${SCRIPT_DIR}/dev/Dockerfile" \
         --build-arg "UBUNTU_BASE=${UBUNTU_BASE}" \
         --build-arg "WX_VERSION=${WX_VERSION}" \
-        --build-arg "WX_TARBALL_URL=${WX_TARBALL_URL}" \
-        --build-arg "WX_SHA256=${WX_SHA256}" \
+        --build-arg "WX_GIT_URL=${WX_GIT_URL}" \
+        --build-arg "WX_COMMIT=${WX_COMMIT}" \
         --build-arg "LIBUPNP_VERSION=${LIBUPNP_VERSION}" \
         --build-arg "LIBUPNP_TARBALL_URL=${LIBUPNP_TARBALL_URL}" \
         --build-arg "LIBUPNP_SHA256=${LIBUPNP_SHA256}" \
