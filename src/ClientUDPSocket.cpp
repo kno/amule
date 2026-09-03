@@ -574,7 +574,7 @@ void CClientUDPSocket::SendNattControlMessage(
 	uint8_t opcode, const uint8_t *body, size_t length, const CNetworkAddress &to, uint16_t port)
 {
 	uint32_t ip = 0;
-	if (body == NULL || length == 0 || port == 0 || !to.ToIPv4NetworkOrder(ip)) {
+	if (body == nullptr || length == 0 || port == 0 || !to.ToIPv4NetworkOrder(ip)) {
 		// The same IPv4 narrowing SendUtpDatagram() has, and the same reason:
 		// this socket's send path takes a 32-bit address. A native IPv6 peer
 		// is not punched at rather than being punched at 0.0.0.0 -- see the
@@ -693,7 +693,7 @@ void CClientUDPSocket::ProcessNattControlFrame(
 		// this sender: a buddy is known here as a UDP peer, not as something we
 		// could dial back on its ed2k TCP port. It is also all this answer
 		// rests on -- see the caveat on AcceptRelayedRendezvous().
-		const bool senderIsOurBuddy = sender != NULL && sender == theApp->clientlist->GetBuddy();
+		const bool senderIsOurBuddy = sender != nullptr && sender == theApp->clientlist->GetBuddy();
 
 		if (ClassifyRendezvousDirection(body, bodyLength, peer, senderIsOurBuddy) ==
 			NATT_RENDEZVOUS_ACT_ON_FORWARD) {
@@ -747,8 +747,9 @@ void CClientUDPSocket::ProcessNattControlFrame(
 		// The requester's identity comes from our own client list, never from
 		// the datagram: it is the value the forwarded message carries, so a
 		// datagram that could set it would make this relay vouch for anyone.
-		const uint8_t *requesterHash =
-			sender != NULL && sender->HasValidHash() ? sender->GetUserHash().GetHash() : NULL;
+		const uint8_t *requesterHash = sender != nullptr && sender->HasValidHash()
+						       ? sender->GetUserHash().GetHash()
+						       : nullptr;
 
 		const SRelayDecision decision = RelayRendezvousRequest(
 			body,
