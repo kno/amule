@@ -101,12 +101,19 @@ jobs:
       - name: Zero ccache stats
         if: github.event_name != 'workflow_call'
         run: ccache --zero-stats
+      # buildx + a gha layer cache for the image build, matching the static
+      # track. wxWidgets is compiled inside the image, so ccache never sees
+      # it; without this every run rebuilds it from scratch.
+      - name: Set up Buildx
+        uses: docker/setup-buildx-action@v4
       - name: Build AppImage
+        env:
+          APPIMAGE_CACHE_SCOPE: ${{ github.event_name != 'workflow_call' && format('appimage-{0}', matrix.arch) || '' }}
         run: packaging/linux/build.sh appimage
       - name: Validate via cross-distro Docker matrix
         run: packaging/linux/build.sh validate
       - name: Save ccache
-        if: always() && github.event_name != 'workflow_call'
+        if: always() && github.event_name == 'push' && github.ref == 'refs/heads/master'
         uses: actions/cache/save@v6
         with:
           path: ${{ env.CCACHE_DIR }}
@@ -220,7 +227,7 @@ jobs:
       - name: Build Flatpak
         run: packaging/linux/build.sh flatpak
       - name: Save flatpak-builder ccache
-        if: always() && github.event_name != 'workflow_call'
+        if: always() && github.event_name == 'push' && github.ref == 'refs/heads/master'
         uses: actions/cache/save@v6
         with:
           path: ${{ env.CCACHE_DIR }}
@@ -271,11 +278,51 @@ jobs:
           # x86_64 Homebrew at /usr/local so we can fetch x86_64 bottles
           # for our deps. The native /opt/homebrew install is left alone.
           arch -x86_64 /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
+      - name: Update Homebrew
+        run: ${{ matrix.archcmd }} ${{ matrix.brew_prefix }}/bin/brew update
+      # Homebrew dropped macOS Intel support in September 2026, so pcre2
+      # and openssl@3 now publish arm64_* macOS tags only (plus
+      # x86_64_linux, a Linuxbrew ELF build unusable on a Mac). The
+      # x86_64 prefix cannot be filled from bottles alone: `brew install`
+      # aborts with "no bottle available!" before reaching the rest of
+      # the list. Building the two from source costs ~68 min, so the
+      # kegs are cached; only a version bump pays that again.
+      - name: Resolve x86_64 source-built versions
+        id: intelkegs
+        if: matrix.arch == 'x86_64'
+        run: |
+          # Key on the versions brew resolved after `update`, not a
+          # literal: a stale keg must never shadow a newer release.
+          V=$(${{ matrix.archcmd }} ${{ matrix.brew_prefix }}/bin/brew info --json=v2 pcre2 openssl@3 \
+              | python3 -c 'import sys,json;print("-".join(f["versions"]["stable"] for f in json.load(sys.stdin)["formulae"]))')
+          echo "vers=$V" >> "$GITHUB_OUTPUT"
+      - name: Restore x86_64 source-built kegs
+        if: matrix.arch == 'x86_64' && github.event_name != 'workflow_call'
+        uses: actions/cache/restore@v6
+        with:
+          path: |
+            /usr/local/Cellar/pcre2
+            /usr/local/Cellar/openssl@3
+            /usr/local/opt/pcre2
+            /usr/local/opt/openssl@3
+          key: ${{ runner.os }}-macos-intel-kegs-${{ steps.intelkegs.outputs.vers }}
       - name: Install Homebrew deps
         run: |
           BREW=${{ matrix.brew_prefix }}/bin/brew
-          ${{ matrix.archcmd }} $BREW update
-          ${{ matrix.archcmd }} $BREW install --quiet \
+          if [ "${{ matrix.arch }}" = "x86_64" ]; then
+              # No-op when the cache restored a keg of the same version.
+              ${{ matrix.archcmd }} $BREW install --build-from-source pcre2 openssl@3
+              # A restored keg has no /usr/local/{lib,include} symlinks --
+              # only the Cellar and opt paths are cached -- so relink or
+              # dependents will not find the headers. openssl@3 is keg-only
+              # and is found through its opt path, which is cached.
+              ${{ matrix.archcmd }} $BREW link --overwrite pcre2
+          fi
+          # NOT --quiet: when the next formula loses its Intel bottle,
+          # the reason has to be in the log. It was suppressed here, so
+          # this step failed with a bare exit 1 and the breakage only
+          # surfaced two steps later as "ccache: command not found".
+          ${{ matrix.archcmd }} $BREW install \
               cmake wxwidgets cryptopp libupnp gd gettext boost dylibbundler libmaxminddb \
               ccache
           # Prepend the matrix-selected brew prefix to PATH so every
@@ -284,6 +331,16 @@ jobs:
           # is keg-only on macOS; add msgfmt to PATH for the NLS probe.
           echo "${{ matrix.brew_prefix }}/bin" >> "$GITHUB_PATH"
           echo "${{ matrix.brew_prefix }}/opt/gettext/bin" >> "$GITHUB_PATH"
+      - name: Save x86_64 source-built kegs
+        if: matrix.arch == 'x86_64' && github.event_name != 'workflow_call'
+        uses: actions/cache/save@v6
+        with:
+          path: |
+            /usr/local/Cellar/pcre2
+            /usr/local/Cellar/openssl@3
+            /usr/local/opt/pcre2
+            /usr/local/opt/openssl@3
+          key: ${{ runner.os }}-macos-intel-kegs-${{ steps.intelkegs.outputs.vers }}
       - name: Restore ccache
         if: github.event_name != 'workflow_call'
         uses: actions/cache/restore@v6
@@ -323,7 +380,7 @@ jobs:
           [ -d "${MNT}/aMuleGUI.app" ] || { echo "aMuleGUI.app missing from per-arch dmg" >&2; exit 1; }
           hdiutil detach "${MNT}"
       - name: Save ccache
-        if: always() && github.event_name != 'workflow_call'
+        if: always() && github.event_name == 'push' && github.ref == 'refs/heads/master'
         uses: actions/cache/save@v6
         with:
           path: ${{ env.CCACHE_DIR }}
@@ -430,8 +487,7 @@ jobs:
           cp -R aMule.app    "${STAGE}/"
           cp -R aMuleGUI.app "${STAGE}/"
           ln -s /Applications "${STAGE}/Applications"
-          hdiutil create -volname "aMule ${VERSION}" \
-              -srcfolder "${STAGE}" -ov -format UDZO \
+          packaging/macos/create-dmg.sh "aMule ${VERSION}" "${STAGE}" \
               "dist/aMule-${VERSION}-macOS-universal2.dmg"
       - uses: actions/upload-artifact@v7
         with:
@@ -557,7 +613,7 @@ jobs:
           # any tagged-release banner ("aMuleD 3.0.0 ...", etc.).
           grep -q '^aMuleD ' /tmp/version.txt
       - name: Save ccache
-        if: always() && github.event_name != 'workflow_call'
+        if: always() && github.event_name == 'push' && github.ref == 'refs/heads/master'
         uses: actions/cache/save@v6
         with:
           path: ${{ env.CCACHE_DIR }}
@@ -626,7 +682,29 @@ jobs:
         # build.sh installer auto-discovers makensis at the standard
         # install dir, so no $GITHUB_PATH plumbing is needed.
         shell: pwsh
-        run: choco install -y --no-progress nsis
+        run: |
+          # choco exits 0 when the community feed is unreachable ("Unable to
+          # find package 'nsis'" after a 504), so the missing tool only
+          # surfaces two steps later as "makensis not on PATH". Verify what
+          # actually landed, at the paths build.sh searches, and retry the
+          # outage rather than trusting the exit code.
+          $nsis = @(
+            "C:\Program Files (x86)\NSIS\makensis.exe",
+            "C:\Program Files\NSIS\makensis.exe"
+          )
+          foreach ($attempt in 1..3) {
+            if ($nsis | Where-Object { Test-Path $_ }) { break }
+            if ($attempt -gt 1) {
+              Write-Host "NSIS still missing, retrying in 20s (attempt $attempt/3)"
+              Start-Sleep -Seconds 20
+            }
+            choco install -y --no-progress nsis
+          }
+          $found = $nsis | Where-Object { Test-Path $_ }
+          if (-not $found) {
+            throw "NSIS install reported success but makensis.exe is at neither $($nsis -join ' nor ')"
+          }
+          Write-Host "makensis: $($found[0])"
       - name: Configure git safe.directory for MSYS2 git
         run: git config --global --add safe.directory '*'
       - name: Download portable .zip from windows-zip job

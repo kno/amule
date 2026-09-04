@@ -9,8 +9,8 @@ msgid ""
 msgstr ""
 "Project-Id-Version: aMule\n"
 "Report-Msgid-Bugs-To: https://github.com/amule-org/amule/issues\n"
-"POT-Creation-Date: 2026-08-27 08:55+0000\n"
-"PO-Revision-Date: 2026-08-25 10:09+0000\n"
+"POT-Creation-Date: 2026-09-04 08:48+0200\n"
+"PO-Revision-Date: 2026-09-03 11:05+0000\n"
 "Last-Translator: Peace Kramer <kpeace1@gmail.com>\n"
 "Language-Team: Hebrew\n"
 "Language: he\n"
@@ -758,6 +758,38 @@ msgid "Kad: Off"
 msgstr "קאד: מכובה"
 
 #: src/amuleDlg.cpp
+msgid "Core"
+msgstr ""
+
+#: src/amuleDlg.cpp src/ClientHistoryListCtrl.cpp src/ClientsListCtrl.cpp
+#: src/ServerListCtrl.cpp src/SharedFilePeersListCtrl.cpp
+#: src/SourceListCtrl.cpp src/Statistics.cpp
+msgid "Version"
+msgstr "גירסא"
+
+#: src/amuleDlg.cpp
+msgid "The core and aMuleGUI are different versions."
+msgstr ""
+
+#: src/amuleDlg.cpp
+msgid "The core and aMuleGUI are the same version."
+msgstr ""
+
+#: src/amuleDlg.cpp src/ServerListCtrl.cpp
+msgid "Address"
+msgstr "כתובת"
+
+#: src/amuleDlg.cpp
+#, fuzzy
+msgid "Encryption"
+msgstr "תיאור"
+
+#: src/amuleDlg.cpp
+#, fuzzy
+msgid "aMuleGUI"
+msgstr "אֵימיול "
+
+#: src/amuleDlg.cpp
 #, fuzzy, c-format
 msgid "Up: %.1f%s (%.1f) | Down: %.1f%s (%.1f)"
 msgstr "מעלה: %.1f(%.1f) | מוריד: %.1f(%.1f)"
@@ -966,6 +998,10 @@ msgstr ""
 msgid "Connection to the remote core was lost. Trying to reconnect..."
 msgstr ""
 
+#: src/amule-remote-gui.cpp src/ClientDetailDialog.cpp
+msgid "Disabled"
+msgstr ""
+
 #: src/amule-remote-gui.cpp
 #, fuzzy
 msgid "Reconnected to the remote core."
@@ -1010,6 +1046,15 @@ msgstr ""
 #: src/amule-remote-gui.cpp src/ExternalConn.cpp
 msgid "Invalid link or already on list."
 msgstr "קישור לא תקף או שכבר נמצא ברשימה."
+
+#: src/amule-remote-gui.cpp
+msgid "The daemon refused the request."
+msgstr ""
+
+#: src/amule-remote-gui.cpp
+#, fuzzy, c-format
+msgid "Could not delete the category: %s"
+msgstr "אתה כבר מנסה להוריד את הקובץ %s"
 
 #: src/amule-remote-gui.cpp
 #, c-format
@@ -1214,10 +1259,6 @@ msgid "Send message"
 msgstr "שלך הודעה"
 
 #: src/ClientContextActions.cpp
-msgid "Swap to this file"
-msgstr "החלף לקובץ זה"
-
-#: src/ClientContextActions.cpp
 #, fuzzy
 msgid ""
 "You are not allowed to set more than one friend slot.\n"
@@ -1282,10 +1323,6 @@ msgstr ""
 msgid "Not supported"
 msgstr ""
 
-#: src/ClientDetailDialog.cpp
-msgid "Disabled"
-msgstr ""
-
 #: src/ClientDetailDialog.cpp src/MuleTrayIcon.cpp src/ServerWnd.cpp
 #: src/TextClient.cpp
 msgid "Connected"
@@ -1309,11 +1346,6 @@ msgstr "שם:"
 #: src/ClientHistoryListCtrl.cpp src/ClientsListCtrl.cpp
 msgid "Software"
 msgstr ""
-
-#: src/ClientHistoryListCtrl.cpp src/ClientsListCtrl.cpp src/ServerListCtrl.cpp
-#: src/SharedFilePeersListCtrl.cpp src/SourceListCtrl.cpp src/Statistics.cpp
-msgid "Version"
-msgstr "גירסא"
 
 #: src/ClientHistoryListCtrl.cpp src/ClientsListCtrl.cpp
 #, fuzzy
@@ -2206,6 +2238,19 @@ msgstr ""
 
 #: src/ExternalConn.cpp
 #, fuzzy
+msgid "No such category."
+msgstr "סגור את הצ'אט הנוכחי."
+
+#: src/ExternalConn.cpp
+msgid "Malformed category request."
+msgstr ""
+
+#: src/ExternalConn.cpp
+msgid "The default category cannot be deleted."
+msgstr ""
+
+#: src/ExternalConn.cpp
+#, fuzzy
 msgid "Missing chat session id"
 msgstr "צ'אט חדש החל."
 
@@ -2755,6 +2800,50 @@ msgid ""
 msgstr ""
 "אתה לא רשאי להגידר יותר ממשצת \"חבר\" אחת.\n"
 "רק משבצת אחת הוגדרה."
+
+#: src/GenericClientListCtrl.cpp
+msgid "This source does not have the part"
+msgstr ""
+
+#: src/GenericClientListCtrl.cpp
+msgid "You and this source both have the part"
+msgstr ""
+
+#: src/GenericClientListCtrl.cpp
+msgid "Being downloaded from this source now"
+msgstr ""
+
+#: src/GenericClientListCtrl.cpp
+msgid "The next part that will be asked of this source"
+msgstr ""
+
+#: src/GenericClientListCtrl.cpp
+msgid "This source has the part and you still need it"
+msgstr ""
+
+#: src/GenericClientListCtrl.cpp
+msgid "This peer already has the part"
+msgstr ""
+
+#: src/GenericClientListCtrl.cpp
+msgid "This peer does not have the part"
+msgstr ""
+
+#: src/GenericClientListCtrl.cpp
+msgid "One block per part of the file being downloaded."
+msgstr ""
+
+#: src/GenericClientListCtrl.cpp
+msgid "One block per part of the shared file."
+msgstr ""
+
+#: src/GenericClientListCtrl.cpp
+msgid "Swap to this file"
+msgstr "החלף לקובץ זה"
+
+#: src/GenericClientListCtrl.cpp
+msgid "Colour legend"
+msgstr ""
 
 #: src/GenericClientListCtrl.cpp
 #, fuzzy, c-format
@@ -6893,10 +6982,6 @@ msgid "Server Name"
 msgstr "שם שרת"
 
 #: src/ServerListCtrl.cpp
-msgid "Address"
-msgstr "כתובת"
-
-#: src/ServerListCtrl.cpp
 msgid "Port"
 msgstr "מבואה"
 
@@ -7334,10 +7419,9 @@ msgstr[1] "נמצא %i קובץ משותף מוכר"
 msgid "User Name"
 msgstr "שם משתמש"
 
-#: src/SharedFilePeersListCtrl.cpp src/SourceListCtrl.cpp
-#, fuzzy
-msgid "Available Parts"
-msgstr "זמין :"
+#: src/SharedFilePeersListCtrl.cpp
+msgid "Parts on Peer"
+msgstr ""
 
 #: src/SharedFilePeersListCtrl.cpp
 #, fuzzy
@@ -7536,6 +7620,11 @@ msgstr "קבצים משותפים (%i)"
 #, fuzzy, c-format
 msgid "Reloading shared files: %u files scanned"
 msgstr "טוען מחדש את רשימת הקבצים המשותפים."
+
+#: src/SourceListCtrl.cpp
+#, fuzzy
+msgid "Part Status"
+msgstr "מצב"
 
 #: src/SourceListCtrl.cpp
 #, fuzzy
@@ -9222,6 +9311,10 @@ msgstr ""
 #: packaging/windows/installer_strings.c
 msgid "Removing user data at $APPDATA\\aMule..."
 msgstr ""
+
+#, fuzzy
+#~ msgid "Available Parts"
+#~ msgstr "זמין :"
 
 #, fuzzy, c-format
 #~ msgid "Found %i known shared file, %i unknown"

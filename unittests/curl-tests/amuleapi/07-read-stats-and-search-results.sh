@@ -78,7 +78,7 @@ sleep 4
 # script starts one rather than relying on a removed implicit default.
 _curl -X POST -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/json' \
 	-d '{"query":"amuleapi-phase07","type":"local"}' "$HOST/api/v0/search"
-SID=$(printf '%s' "$CURL_BODY" | jq -r '.id // empty')
+SID=$(printf '%s' "$CURL_BODY" | jq -r '.search_id // empty')
 [ -n "$SID" ] || _die "POST /search returned no search_id"
 
 # --- 1. Auth gate. -------------------------------------------------
@@ -123,9 +123,12 @@ _assert_json_eq '[.. | objects | select(.key? == "ul_dl_ratio") | .values[0].typ
 	string '/stats/tree ratio node still carries its composite string value'
 # ...and when the daemon can compute it, exposes numeric ratio fields. Absent
 # on a freshly-started daemon with no transfer, so assert shape, not presence.
-_assert_json_eq '[.. | objects | select(has("ratio")) | .ratio | (.session, .total)
+_assert_json_eq '[.. | objects | (.ratio_session, .ratio_total)
 	| select(. != null) | type] | all(. == "number")' \
 	true '/stats/tree ratio fields, when present, are numbers'
+# Flattened per R11: the window belongs in the key, so there is no wrapper left.
+_assert_json_eq '[.. | objects | select(has("ratio"))] | length' 0 \
+	'/stats/tree emits no wrapping ratio object'
 # label_value: the untranslated version/OS value on per-client-software rows.
 # `null` on every other node rather than absent, so the presence test is
 # `!= null` -- the key is always there. Assert shape, not presence: it is only
@@ -171,32 +174,37 @@ _assert_json_eq '.unit' count '/stats/graphs/connections reports unit=count'
 # Session object: the two byte counters are scaled back from the KiB the
 # daemon sends, kad is node-seconds rather than bytes, and duration is what
 # turns any of them into an average.
-_assert_json_eq '.session | has("download_bytes") and has("upload_bytes")
+_assert_json_eq '.session | has("downloaded_bytes") and has("uploaded_bytes")
 	and has("kad_node_seconds") and has("duration_seconds")' true \
 	'/stats/graphs session carries the four corrected fields'
+# Past tense, like downloaded_bytes_session / uploaded_bytes_session on the
+# client and shared rows: the `session` wrapper scopes the quantity, it does
+# not license a second spelling of it.
+_assert_json_eq '.session | has("download_bytes") or has("upload_bytes")' false \
+	'/stats/graphs session no longer reports the present-tense spellings'
 _assert_json_eq '.session | has("kad_bytes")' false \
 	'/stats/graphs session no longer reports the misnamed kad_bytes'
 
 # The connections graph carries the second data blob's two series when the
 # daemon reports it; the other graphs never do.
 if [ "$(printf '%s' "$CURL_BODY" | jq '.points | length')" -gt 0 ]; then
-	_assert_json_eq '[.points[] | has("active_uploads")] | (all(.) or (any(.) | not))' true \
+	_assert_json_eq '[.points[] | has("active_upload_count")] | (all(.) or (any(.) | not))' true \
 		'/stats/graphs/connections active_uploads is present on all points or none'
 fi
 _curl -H "Authorization: Bearer $TOKEN" "$HOST/api/v0/stats/graphs/download_speed"
-_assert_json_eq '[.points[]? | has("active_uploads")] | any(.) | not' true \
+_assert_json_eq '[.points[]? | has("active_upload_count")] | any(.) | not' true \
 	'/stats/graphs/download_speed never carries the connections-only series'
 
-# --- 3b. ?interval=N and its validation. ---------------------------
-_curl -H "Authorization: Bearer $TOKEN" "$HOST/api/v0/stats/graphs/download_speed?interval=10"
-_assert_status 200 "GET /stats/graphs/download_speed?interval=10 → 200"
+# --- 3b. ?interval_seconds=N and its validation. ---------------------------
+_curl -H "Authorization: Bearer $TOKEN" "$HOST/api/v0/stats/graphs/download_speed?interval_seconds=10"
+_assert_status 200 "GET /stats/graphs/download_speed?interval_seconds=10 → 200"
 _assert_json_eq '.interval_seconds' 10 \
-	'/stats/graphs?interval=10 reports the interval it applied'
+	'/stats/graphs?interval_seconds=10 reports the interval it applied'
 for bad in 0 3601 abc; do
-	_curl -H "Authorization: Bearer $TOKEN" "$HOST/api/v0/stats/graphs/download_speed?interval=$bad"
-	_assert_status 400 "GET /stats/graphs/download_speed?interval=$bad → 400"
+	_curl -H "Authorization: Bearer $TOKEN" "$HOST/api/v0/stats/graphs/download_speed?interval_seconds=$bad"
+	_assert_status 400 "GET /stats/graphs/download_speed?interval_seconds=$bad → 400"
 	_assert_json_eq '.error.code' bad_request \
-		"/stats/graphs?interval=$bad carries error.code=bad_request"
+		"/stats/graphs?interval_seconds=$bad carries error.code=bad_request"
 done
 
 # --- 3c. /stats/tree ?max_client_versions=N and its validation. ----

@@ -183,7 +183,7 @@ _assert_eq "401" "$(curl -s -o /dev/null -w '%{http_code}' --max-time 5 "$HOST/a
 # ---------------------------------------------------------------------------
 # Each parameter used to be parsed by hand and each site picked its own rule, so
 # the same typo was a hard error on one parameter and a silent behaviour change
-# on its neighbour -- `interval=abc` was a 400 while `width=abc` was a 200 that
+# on its neighbour -- `interval_seconds=abc` was a 400 while `width=abc` was a 200 that
 # quietly meant "everything", on the same endpoint. These assert the wiring: the
 # unit tests pin ParseBoundedUint/ParseBoolValue, but only a live request shows
 # that a handler routes through them.
@@ -210,10 +210,10 @@ _qp "downloads?limit=500"   200 "limit=500 -> 200 (the cap itself is valid)"
 _qp "downloads?limit="      400 "limit= (empty) -> 400, not an omission"
 
 # Two numeric parameters on one endpoint used to disagree with each other.
-_qp "stats/graphs/download_speed?interval=abc" 400 "interval=abc -> 400"
+_qp "stats/graphs/download_speed?interval_seconds=abc" 400 "interval_seconds=abc -> 400"
 _qp "stats/graphs/download_speed?width=abc"    400 "width=abc -> 400 (was a silent 200)"
 _qp "stats/graphs/download_speed?width=99999"  400 "width=99999 -> 400 (was a silent clamp)"
-_qp "stats/graphs/download_speed?interval=0"   400 "interval=0 -> 400 (below the documented minimum)"
+_qp "stats/graphs/download_speed?interval_seconds=0"   400 "interval_seconds=0 -> 400 (below the documented minimum)"
 
 # The log tail clamped silently too.
 _qp "logs/amule?tail=abc"    400 "tail=abc -> 400"
@@ -851,14 +851,14 @@ PREFS="$HOST/api/v0/preferences"
 curl -s -o "$BODY_FILE" -D "$HDR_FILE" --max-time 10 "${AUTH[@]}" "$PREFS" >/dev/null
 PREF_ETAG=$(_hdr ETag)
 PREF_BEFORE=$(cat "$BODY_FILE")
-ORIG_UP=$(printf '%s' "$PREF_BEFORE" | jq -r '.connection.max_upload_kbps // 0' 2>/dev/null)
+ORIG_UP=$(printf '%s' "$PREF_BEFORE" | jq -r '.connection.max_upload_kibibytes_per_second // 0' 2>/dev/null)
 if [ -z "$PREF_ETAG" ] || [ -z "$ORIG_UP" ]; then
 	_skip "mutation-changes-validator check (no ETag or no readable preferences)"
 else
 	NEW_UP=$((ORIG_UP + 7))
 	curl -s -o /dev/null --max-time 10 "${AUTH[@]}" -X PATCH \
 		-H "Content-Type: application/json" \
-		-d "{\"connection\":{\"max_upload_kbps\":$NEW_UP}}" "$PREFS" >/dev/null
+		-d "{\"connection\":{\"max_upload_kibibytes_per_second\":$NEW_UP}}" "$PREFS" >/dev/null
 	curl -s -o "$BODY_FILE" -D "$HDR_FILE" --max-time 10 "${AUTH[@]}" "$PREFS" >/dev/null
 	PREF_AFTER=$(cat "$BODY_FILE")
 	PREF_ETAG2=$(_hdr ETag)
@@ -879,7 +879,7 @@ else
 	# put it back
 	curl -s -o /dev/null --max-time 10 "${AUTH[@]}" -X PATCH \
 		-H "Content-Type: application/json" \
-		-d "{\"connection\":{\"max_upload_kbps\":$ORIG_UP}}" "$PREFS" >/dev/null
+		-d "{\"connection\":{\"max_upload_kibibytes_per_second\":$ORIG_UP}}" "$PREFS" >/dev/null
 fi
 
 # --- 7d. An authenticated body is not shared cache material. ---------

@@ -169,7 +169,7 @@ struct FileSnapshot
 		std::uint32_t last_seen_complete_at = 0;       // unix ts; 0 = unknown
 		std::uint32_t last_received_at = 0;            // unix ts of last change
 		std::uint32_t active_seconds = 0;              // seconds downloading
-		std::uint16_t parts_available_count = 0;       // parts across sources
+		std::uint16_t available_part_count = 0;        // parts across sources
 		std::uint16_t hashed_part_count = 0;           // parts hashed so far; 0 = idle
 		std::uint64_t lost_to_corruption_bytes = 0;    // bytes
 		std::uint64_t gained_by_compression_bytes = 0; // bytes
@@ -378,7 +378,7 @@ struct ClientSnapshot
 	// State machine values. We decode the raw US_*/DS_*/IS_* ints
 	// into wire strings so consumers don't reach into amule's enums.
 	std::string upload_state;   // "uploading" | "queued" | "banned" | "connecting" | "idle" | ...
-	std::string download_state; // "downloading" | "onqueue" | "noneededparts" | ... | "idle"
+	std::string download_state; // "downloading" | "queued" | "no_needed_parts" | ... | "idle"
 	// Complete set, see ClientIdentStateName() in Refresher.cpp:
 	std::string ident_state; // "not_available" | "id_needed" | "identified" | "id_failed" | "bad_guy" |
 				 // "unknown"
@@ -1141,9 +1141,9 @@ struct PreferencesSnapshot
 	bool version_check_available = false;
 
 	// [Connection]
-	std::uint32_t max_upload_kbps = 0;
-	std::uint32_t max_download_kbps = 0;
-	std::uint32_t upload_slot_min_kbps = 0;
+	std::uint32_t max_upload_kibibytes_per_second = 0;
+	std::uint32_t max_download_kibibytes_per_second = 0;
+	std::uint32_t upload_slot_min_kibibytes_per_second = 0;
 	std::uint16_t tcp_port = 0;
 	std::uint16_t udp_port = 0;
 	// Positive sense: true = the extended UDP port (Kad / global search) is on.
@@ -1223,7 +1223,7 @@ struct PreferencesSnapshot
 		bool mmap_supported = false;
 		bool mmap_enabled = false;
 		bool stop_on_low_disk_space = false;
-		std::uint32_t min_free_space_mb = 0;
+		std::uint32_t min_free_space_mebibytes = 0;
 		// Positive sense (#655): true = part files are created sparse, so
 		// blocks are allocated on demand. The core stores exactly this
 		// (s_createFilesSparse, default on); it is only the EC layer that
@@ -1265,8 +1265,8 @@ struct PreferencesSnapshot
 		// s_iSeeShares: 0 = everybody, 1 = friends only, 2 = nobody); the
 		// API spells it out, and the name says it is not a yes/no question.
 		std::string shared_files_visibility = "everybody";
-		bool ipfilter_clients = false;
-		bool ipfilter_servers = false;
+		bool ipfilter_clients_enabled = false;
+		bool ipfilter_servers_enabled = false;
 		bool ipfilter_auto_update = false;
 		std::string ipfilter_update_url;
 		std::uint32_t ipfilter_min_access_level = 0;
@@ -1336,9 +1336,9 @@ struct PreferencesSnapshot
 		std::uint32_t max_new_connections_per_5_seconds = 0;
 		bool verbose_logging = false;
 		std::uint32_t file_buffer_bytes = 0;
-		std::uint32_t max_upload_queue_clients = 0;
+		std::uint32_t max_upload_queue_client_count = 0;
 		std::uint32_t server_keepalive_timeout_minutes = 0;
-		std::uint32_t kad_max_concurrent_source_searches = 0;
+		std::uint32_t kad_max_concurrent_source_search_count = 0;
 		std::uint32_t kad_source_reask_minutes = 0;
 		std::uint32_t source_reask_minutes = 0;
 	} advanced;
@@ -1699,7 +1699,14 @@ public:
 	//! `first` past the end gives an empty tail, which with `total` is how the
 	//! caller sees a truncation. Copies nothing when nothing was appended,
 	//! which the per-tick log diff needs and AmuleLog() cannot do.
-	std::vector<std::string> AmuleLogFrom(std::size_t first, std::size_t &total) const;
+	//! `generation`, when asked for, is read under the same lock as the window
+	//! and is bumped by every ClearAmuleLog(). Size alone cannot detect a
+	//! clear: a buffer cleared and refilled past its old length between two
+	//! ticks looks like growth, and the diff would then publish a mid-buffer
+	//! slice as a tail. Taking it here rather than from a second call is what
+	//! keeps a concurrent DELETE from tearing the pair.
+	std::vector<std::string> AmuleLogFrom(
+		std::size_t first, std::size_t &total, std::uint64_t *generation = nullptr) const;
 	ServerInfoLog ServerInfo() const;
 
 	// Flat list views. Reads the ECID-keyed map under shared_lock and
@@ -2085,6 +2092,7 @@ private:
 	std::vector<ChatSessionSnapshot> m_chats;
 	std::uint32_t m_chat_cursor = 0;
 	std::vector<std::string> m_amule_log_lines;
+	std::uint64_t m_amule_log_generation = 0;
 	ServerInfoLog m_server_info;
 	StatsTreeNode m_stats_tree;
 	StatsGraphs m_graphs;

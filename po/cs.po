@@ -9,8 +9,8 @@ msgid ""
 msgstr ""
 "Project-Id-Version: aMule\n"
 "Report-Msgid-Bugs-To: https://github.com/amule-org/amule/issues\n"
-"POT-Creation-Date: 2026-08-27 08:55+0000\n"
-"PO-Revision-Date: 2026-08-28 20:01+0000\n"
+"POT-Creation-Date: 2026-09-04 08:48+0200\n"
+"PO-Revision-Date: 2026-09-03 11:02+0000\n"
 "Last-Translator: David Watzke <david@watzke.cz>\n"
 "Language-Team: cs <cs@li.org>\n"
 "Language: cs\n"
@@ -773,6 +773,38 @@ msgid "Kad: Off"
 msgstr "Kad: vypnut"
 
 #: src/amuleDlg.cpp
+msgid "Core"
+msgstr ""
+
+#: src/amuleDlg.cpp src/ClientHistoryListCtrl.cpp src/ClientsListCtrl.cpp
+#: src/ServerListCtrl.cpp src/SharedFilePeersListCtrl.cpp
+#: src/SourceListCtrl.cpp src/Statistics.cpp
+msgid "Version"
+msgstr "Verze"
+
+#: src/amuleDlg.cpp
+msgid "The core and aMuleGUI are different versions."
+msgstr ""
+
+#: src/amuleDlg.cpp
+msgid "The core and aMuleGUI are the same version."
+msgstr ""
+
+#: src/amuleDlg.cpp src/ServerListCtrl.cpp
+msgid "Address"
+msgstr "Adresa"
+
+#: src/amuleDlg.cpp
+#, fuzzy
+msgid "Encryption"
+msgstr "Popis"
+
+#: src/amuleDlg.cpp
+#, fuzzy
+msgid "aMuleGUI"
+msgstr "Log aMule"
+
+#: src/amuleDlg.cpp
 #, c-format
 msgid "Up: %.1f%s (%.1f) | Down: %.1f%s (%.1f)"
 msgstr "Odesílání: %.1f%s (%.1f) | Stahování: %.1f%s (%.1f)"
@@ -980,6 +1012,10 @@ msgstr ""
 msgid "Connection to the remote core was lost. Trying to reconnect..."
 msgstr "Připojení ke vzdálenému jádru bylo ztraceno. Probíhá pokus o opětovné připojení..."
 
+#: src/amule-remote-gui.cpp src/ClientDetailDialog.cpp
+msgid "Disabled"
+msgstr "Zakázáno"
+
 #: src/amule-remote-gui.cpp
 msgid "Reconnected to the remote core."
 msgstr "Znovu připojeno ke vzdálenému jádru."
@@ -1021,6 +1057,15 @@ msgstr "Jádro odmítlo tyto sdílené složky:%s"
 #: src/amule-remote-gui.cpp src/ExternalConn.cpp
 msgid "Invalid link or already on list."
 msgstr "Neplatný odkaz, nebo je již v seznamu."
+
+#: src/amule-remote-gui.cpp
+msgid "The daemon refused the request."
+msgstr ""
+
+#: src/amule-remote-gui.cpp
+#, fuzzy, c-format
+msgid "Could not delete the category: %s"
+msgstr "Nepodařilo se uložit heslo amuleapi: %s"
 
 #: src/amule-remote-gui.cpp
 #, c-format
@@ -1226,10 +1271,6 @@ msgid "Send message"
 msgstr "Poslat zprávu"
 
 #: src/ClientContextActions.cpp
-msgid "Swap to this file"
-msgstr "Swapovat do tohoto souboru"
-
-#: src/ClientContextActions.cpp
 msgid ""
 "You are not allowed to set more than one friend slot.\n"
 " Only one slot was assigned."
@@ -1295,10 +1336,6 @@ msgstr "Podporováno"
 msgid "Not supported"
 msgstr "Nepodporováno"
 
-#: src/ClientDetailDialog.cpp
-msgid "Disabled"
-msgstr "Zakázáno"
-
 #: src/ClientDetailDialog.cpp src/MuleTrayIcon.cpp src/ServerWnd.cpp
 #: src/TextClient.cpp
 msgid "Connected"
@@ -1321,11 +1358,6 @@ msgstr "Název"
 #: src/ClientHistoryListCtrl.cpp src/ClientsListCtrl.cpp
 msgid "Software"
 msgstr "Software"
-
-#: src/ClientHistoryListCtrl.cpp src/ClientsListCtrl.cpp src/ServerListCtrl.cpp
-#: src/SharedFilePeersListCtrl.cpp src/SourceListCtrl.cpp src/Statistics.cpp
-msgid "Version"
-msgstr "Verze"
 
 #: src/ClientHistoryListCtrl.cpp src/ClientsListCtrl.cpp
 msgid "IP Address"
@@ -2203,6 +2235,19 @@ msgstr "Nepodařilo se uložit heslo amuleapi: %s"
 
 #: src/ExternalConn.cpp
 #, fuzzy
+msgid "No such category."
+msgstr "Zavře tento chat."
+
+#: src/ExternalConn.cpp
+msgid "Malformed category request."
+msgstr ""
+
+#: src/ExternalConn.cpp
+msgid "The default category cannot be deleted."
+msgstr ""
+
+#: src/ExternalConn.cpp
+#, fuzzy
 msgid "Missing chat session id"
 msgstr "Zahájeno nové sezení v chatu"
 
@@ -2786,6 +2831,52 @@ msgid ""
 msgstr ""
 "Nemůžete založit více než jeden kamarádský slot.\n"
 " Byl přidělen pouze jeden slot."
+
+#: src/GenericClientListCtrl.cpp
+#, fuzzy
+msgid "This source does not have the part"
+msgstr "Tento příkaz by neměl mít parametry."
+
+#: src/GenericClientListCtrl.cpp
+msgid "You and this source both have the part"
+msgstr ""
+
+#: src/GenericClientListCtrl.cpp
+msgid "Being downloaded from this source now"
+msgstr ""
+
+#: src/GenericClientListCtrl.cpp
+msgid "The next part that will be asked of this source"
+msgstr ""
+
+#: src/GenericClientListCtrl.cpp
+msgid "This source has the part and you still need it"
+msgstr ""
+
+#: src/GenericClientListCtrl.cpp
+msgid "This peer already has the part"
+msgstr ""
+
+#: src/GenericClientListCtrl.cpp
+msgid "This peer does not have the part"
+msgstr ""
+
+#: src/GenericClientListCtrl.cpp
+msgid "One block per part of the file being downloaded."
+msgstr ""
+
+#: src/GenericClientListCtrl.cpp
+#, fuzzy
+msgid "One block per part of the shared file."
+msgstr "Zadejte port serveru."
+
+#: src/GenericClientListCtrl.cpp
+msgid "Swap to this file"
+msgstr "Swapovat do tohoto souboru"
+
+#: src/GenericClientListCtrl.cpp
+msgid "Colour legend"
+msgstr ""
 
 #: src/GenericClientListCtrl.cpp
 #, c-format
@@ -6242,7 +6333,7 @@ msgstr "aMule zpracovává pouze magnety kompatibilní s eD2k. Pokud nahradíte 
 #: src/PrefsUnifiedDlg.cpp
 #, c-format
 msgid "Another application currently opens .emulecollection files (%s). Replace it with aMule?"
-msgstr ""
+msgstr "Soubory .emulecollection nyní otevírá jiná aplikace (%s). Nahradit ji aMule?"
 
 #: src/PrefsUnifiedDlg.cpp
 #, c-format
@@ -6251,12 +6342,11 @@ msgstr "Výchozím obslužným programem/ovladačem těchto odkazů je momentál
 
 #: src/PrefsUnifiedDlg.cpp
 msgid "Could not register aMule for .emulecollection files. The registration store may be read-only."
-msgstr ""
+msgstr "Nepodařilo se zaregistrovat aMule pro soubory .emulecollection. Úložiště registrací může být pouze pro čtení."
 
 #: src/PrefsUnifiedDlg.cpp
-#, fuzzy
 msgid "Could not remove the file type registration."
-msgstr "Soubor %s se již pokoušíte stáhnout"
+msgstr "Nepodařilo se odebrat registraci typu souboru."
 
 #: src/PrefsUnifiedDlg.cpp
 msgid "Could not register aMule as the URL handler. The registration store may be read-only."
@@ -6267,9 +6357,8 @@ msgid "Could not remove the URL handler registration."
 msgstr "Nepodařilo se odstranit registraci ovladače URL."
 
 #: src/PrefsUnifiedDlg.cpp
-#, fuzzy
 msgid "The web server and aMule API require external connections to be enabled."
-msgstr "Heslo nastaveno a externí připojení povoleno."
+msgstr "Webový server a aMule API vyžadují povolení externích připojení."
 
 #: src/PrefsUnifiedDlg.cpp
 msgid "The aMule web server is deprecated. Consider running the aMule API instead."
@@ -6281,6 +6370,9 @@ msgid ""
 "Please fill in at least one URL to point to a valid server.met file.\n"
 "Click on the button \"List\" by this checkbox to enter an URL."
 msgstr ""
+"Váš seznam pro automatickou aktualizaci serverů je prázdný.\n"
+"Zadejte prosím alespoň jednu URL adresu odkazující na platný soubor server.met.\n"
+"Kliknutím na tlačítko \"Seznam\" vedle tohoto zaškrtávacího políčka zadáte URL."
 
 #: src/PrefsUnifiedDlg.cpp
 msgid "Temporary files"
@@ -6300,12 +6392,12 @@ msgid "Choose a folder for %s"
 msgstr "Zvolte složku pro %s"
 
 #: src/PrefsUnifiedDlg.cpp
-#, fuzzy, c-format
+#, c-format
 msgid "Would exclude %u of %u shared file"
 msgid_plural "Would exclude %u of %u shared files"
-msgstr[0] "Znovu načíst vaše sdílené soubory"
-msgstr[1] "Znovu načíst vaše sdílené soubory"
-msgstr[2] "Znovu načíst vaše sdílené soubory"
+msgstr[0] "Bylo by vyloučeno %u z %u sdíleného souboru"
+msgstr[1] "Bylo by vyloučeno %u z %u sdílených souborů"
+msgstr[2] "Bylo by vyloučeno %u z %u sdílených souborů"
 
 #: src/PrefsUnifiedDlg.cpp
 msgid "Browse for videoplayer"
@@ -6316,9 +6408,8 @@ msgid "Select browser"
 msgstr "Výběr prohlížeče"
 
 #: src/PrefsUnifiedDlg.cpp
-#, fuzzy
 msgid "Select ffprobe binary"
-msgstr "Výběr prohlížeče"
+msgstr "Vybrat binární soubor ffprobe"
 
 #: src/PrefsUnifiedDlg.cpp
 #, c-format
@@ -6327,7 +6418,7 @@ msgstr "Spustitelný soubor %s"
 
 #: src/PrefsUnifiedDlg.cpp
 msgid "ffprobe not found on PATH or in the standard install locations. Install ffmpeg (which ships ffprobe) or use Browse to pick a binary manually."
-msgstr ""
+msgstr "ffprobe nebyl nalezen v PATH ani ve standardních instalačních umístěních. Nainstalujte ffmpeg (který obsahuje ffprobe), nebo pomocí tlačítka Procházet vyberte binární soubor ručně."
 
 #: src/PrefsUnifiedDlg.cpp
 msgid "Reset the settings on this page to their default values?"
@@ -6355,34 +6446,33 @@ msgstr ""
 
 #: src/PrefsUnifiedDlg.cpp
 msgid "Data by MaxMind GeoLite2"
-msgstr ""
+msgstr "Data od MaxMind GeoLite2"
 
 #: src/PrefsUnifiedDlg.cpp
-#, fuzzy
 msgid "Custom source"
-msgstr "Kompletní zdroje"
+msgstr "Vlastní zdroj"
 
 #: src/PrefsUnifiedDlg.cpp
 msgid "Data by DB-IP.com"
-msgstr ""
+msgstr "Data od DB-IP.com"
 
 #: src/PrefsUnifiedDlg.cpp
-#, fuzzy, c-format
+#, c-format
 msgid "Status: Loaded%s"
-msgstr "Stav:"
+msgstr "Stav: načteno%s"
 
 #: src/PrefsUnifiedDlg.cpp
-#, fuzzy, c-format
+#, c-format
 msgid "Status: Loaded%s - %s"
-msgstr "Stav:"
+msgstr "Stav: načteno%s - %s"
 
 #: src/PrefsUnifiedDlg.cpp
 msgid "Status: Failed to load - click 'Update now' to refresh."
-msgstr ""
+msgstr "Stav: načtení selhalo – kliknutím na „Aktualizovat nyní“ proveďte aktualizaci."
 
 #: src/PrefsUnifiedDlg.cpp
 msgid "Status: Not found - click 'Update now' to download."
-msgstr ""
+msgstr "Stav: databáze nenalezena – kliknutím na „Aktualizovat nyní“ ji stáhnete."
 
 #: src/PrefsUnifiedDlg.cpp
 #, c-format
@@ -6393,25 +6483,25 @@ msgstr[1] ""
 msgstr[2] ""
 
 #: src/PrefsUnifiedDlg.cpp
-#, fuzzy, c-format
+#, c-format
 msgid "Time for average graph: %d minute"
 msgid_plural "Time for average graph: %d minutes"
-msgstr[0] "Čas pro průměrný graf: %d minut"
-msgstr[1] "Čas pro průměrný graf: %d minut"
-msgstr[2] ""
+msgstr[0] "Čas pro graf průměru: %d minuta"
+msgstr[1] "Čas pro graf průměru: %d minuty"
+msgstr[2] "Čas pro graf průměru: %d minut"
 
 #: src/PrefsUnifiedDlg.cpp
 #, c-format
 msgid "Connections Graph Scale: %d"
-msgstr ""
+msgstr "Měřítko grafu připojení: %d"
 
 #: src/PrefsUnifiedDlg.cpp
-#, fuzzy, c-format
+#, c-format
 msgid "File Buffer Size: %d byte"
 msgid_plural "File Buffer Size: %d bytes"
-msgstr[0] "Velikost zásobníku pro soubory: %d bajtů"
-msgstr[1] "Velikost zásobníku pro soubory: %d bajtů"
-msgstr[2] ""
+msgstr[0] "Velikost zásobníku souborů: %d bajt"
+msgstr[1] "Velikost zásobníku souborů: %d bajty"
+msgstr[2] "Velikost zásobníku souborů: %d bajtů"
 
 #: src/PrefsUnifiedDlg.cpp
 #, fuzzy, c-format
@@ -6910,10 +7000,6 @@ msgid "Server Name"
 msgstr "Název serveru"
 
 #: src/ServerListCtrl.cpp
-msgid "Address"
-msgstr "Adresa"
-
-#: src/ServerListCtrl.cpp
 msgid "Port"
 msgstr "Port"
 
@@ -7357,9 +7443,9 @@ msgstr[2] "Znovu načíst vaše sdílené soubory"
 msgid "User Name"
 msgstr "Uživatelské jméno"
 
-#: src/SharedFilePeersListCtrl.cpp src/SourceListCtrl.cpp
-msgid "Available Parts"
-msgstr "Dostupné části"
+#: src/SharedFilePeersListCtrl.cpp
+msgid "Parts on Peer"
+msgstr ""
 
 #: src/SharedFilePeersListCtrl.cpp
 #, fuzzy
@@ -7564,6 +7650,11 @@ msgstr "Sdílené soubory (%i)"
 #, fuzzy, c-format
 msgid "Reloading shared files: %u files scanned"
 msgstr "Znovu načte seznam sdílených souborů."
+
+#: src/SourceListCtrl.cpp
+#, fuzzy
+msgid "Part Status"
+msgstr "Stav"
 
 #: src/SourceListCtrl.cpp
 #, fuzzy
@@ -9235,6 +9326,9 @@ msgstr ""
 
 #~ msgid "ERROR: Could not listen to TCP port."
 #~ msgstr "CHYBA: Nemohu naslouchat na TCP portu"
+
+#~ msgid "Available Parts"
+#~ msgstr "Dostupné části"
 
 #, fuzzy, c-format
 #~ msgid "Found %i known shared file, %i unknown"

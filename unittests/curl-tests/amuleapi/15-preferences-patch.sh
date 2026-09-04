@@ -94,22 +94,22 @@ HAVE_GUEST=0
 sleep 4
 
 # Save the pre-mutation state so we can restore everything at the
-# end. We only modify two fields (max_upload_kbps + autoconnect) so
+# end. We only modify two fields (max_upload_kibibytes_per_second + autoconnect) so
 # the operator's daemon doesn't end the smoke in an unexpected state.
 _curl -H "Authorization: Bearer $ADMIN_TOKEN" "$HOST/api/v0/preferences"
-SAVED_MAX_UPLOAD=$(printf '%s' "$CURL_BODY" | jq -r '.connection.max_upload_kbps')
+SAVED_MAX_UPLOAD=$(printf '%s' "$CURL_BODY" | jq -r '.connection.max_upload_kibibytes_per_second')
 SAVED_AUTOCONNECT=$(printf '%s' "$CURL_BODY" | jq -r '.connection.autoconnect')
-echo "    info: saved state max_upload_kbps=$SAVED_MAX_UPLOAD autoconnect=$SAVED_AUTOCONNECT"
+echo "    info: saved state max_upload_kibibytes_per_second=$SAVED_MAX_UPLOAD autoconnect=$SAVED_AUTOCONNECT"
 
 # --- 1. Auth + admin gate. -----------------------------------------
 _curl -X PATCH -H "Content-Type: application/json" \
-	-d '{"connection":{"max_upload_kbps":42}}' "$HOST/api/v0/preferences"
+	-d '{"connection":{"max_upload_kibibytes_per_second":42}}' "$HOST/api/v0/preferences"
 _assert_status 401 "PATCH /preferences (no token) → 401"
 
 if [ "$HAVE_GUEST" = "1" ]; then
 	_curl -X PATCH -H "Authorization: Bearer $GUEST_TOKEN" \
 		-H "Content-Type: application/json" \
-		-d '{"connection":{"max_upload_kbps":42}}' "$HOST/api/v0/preferences"
+		-d '{"connection":{"max_upload_kibibytes_per_second":42}}' "$HOST/api/v0/preferences"
 	_assert_status 403 "PATCH /preferences (guest) → 403"
 else
 	echo "    info: no guest pass; admin-gate skipped"
@@ -118,15 +118,15 @@ fi
 # --- 2. PATCH numeric field — response + no-stale GET. -------------
 _curl -X PATCH -H "Authorization: Bearer $ADMIN_TOKEN" \
 	-H "Content-Type: application/json" \
-	-d '{"connection":{"max_upload_kbps":42}}' "$HOST/api/v0/preferences"
-_assert_status 200 "PATCH max_upload_kbps=42 → 200"
-_assert_json_eq '.connection.max_upload_kbps' 42 \
-	'PATCH response.connection.max_upload_kbps == 42'
+	-d '{"connection":{"max_upload_kibibytes_per_second":42}}' "$HOST/api/v0/preferences"
+_assert_status 200 "PATCH max_upload_kibibytes_per_second=42 → 200"
+_assert_json_eq '.connection.max_upload_kibibytes_per_second' 42 \
+	'PATCH response.connection.max_upload_kibibytes_per_second == 42'
 
 # Immediate GET — no stale cache.
 _curl -H "Authorization: Bearer $ADMIN_TOKEN" "$HOST/api/v0/preferences"
-_assert_json_eq '.connection.max_upload_kbps' 42 \
-	'IMMEDIATE GET after PATCH shows max_upload_kbps=42 (no stale cache)'
+_assert_json_eq '.connection.max_upload_kibibytes_per_second' 42 \
+	'IMMEDIATE GET after PATCH shows max_upload_kibibytes_per_second=42 (no stale cache)'
 
 # --- 3. PATCH boolean field — bool tags need DETAIL_FULL on EC. ----
 _curl -X PATCH -H "Authorization: Bearer $ADMIN_TOKEN" \
@@ -149,13 +149,13 @@ _assert_json_eq '.connection.autoconnect' true \
 # --- 4. Combined PATCH — multiple fields in one body. -------------
 _curl -X PATCH -H "Authorization: Bearer $ADMIN_TOKEN" \
 	-H "Content-Type: application/json" \
-	-d '{"connection":{"max_upload_kbps":77,"autoconnect":false}}' \
+	-d '{"connection":{"max_upload_kibibytes_per_second":77,"autoconnect":false}}' \
 	"$HOST/api/v0/preferences"
 _assert_status 200 "PATCH combined (max_upload + autoconnect) → 200"
-_assert_json_eq '.connection.max_upload_kbps' 77    'combined PATCH response max_upload_kbps=77'
+_assert_json_eq '.connection.max_upload_kibibytes_per_second' 77    'combined PATCH response max_upload_kibibytes_per_second=77'
 _assert_json_eq '.connection.autoconnect'     false 'combined PATCH response autoconnect=false'
 _curl -H "Authorization: Bearer $ADMIN_TOKEN" "$HOST/api/v0/preferences"
-_assert_json_eq '.connection.max_upload_kbps' 77    'IMMEDIATE GET max_upload_kbps=77'
+_assert_json_eq '.connection.max_upload_kibibytes_per_second' 77    'IMMEDIATE GET max_upload_kibibytes_per_second=77'
 _assert_json_eq '.connection.autoconnect'     false 'IMMEDIATE GET autoconnect=false'
 
 # --- 5. Error paths. -----------------------------------------------
@@ -171,8 +171,8 @@ _assert_status 400 "PATCH general non-object → 400"
 
 _curl -X PATCH -H "Authorization: Bearer $ADMIN_TOKEN" \
 	-H "Content-Type: application/json" \
-	-d '{"connection":{"max_upload_kbps":"forty-two"}}' "$HOST/api/v0/preferences"
-_assert_status 400 "PATCH max_upload_kbps as string → 400"
+	-d '{"connection":{"max_upload_kibibytes_per_second":"forty-two"}}' "$HOST/api/v0/preferences"
+_assert_status 400 "PATCH max_upload_kibibytes_per_second as string → 400"
 
 # Saved because the 65532 probe below is a real write: leaving the daemon's
 # ed2k port on the ceiling would outlive the script.
@@ -221,7 +221,7 @@ _assert_json_eq '(.online_signature|type)' object '/preferences has online_signa
 _assert_json_eq '(.advanced|type)' object '/preferences has advanced object'
 _assert_json_eq '(.kad|type)' object '/preferences has kad object'
 _assert_json_eq '(.directories.shared_paths|type)' array 'directories.shared_paths is an array'
-_assert_json_eq '(.files.min_free_space_mb|type)' number 'files.min_free_space_mb is numeric'
+_assert_json_eq '(.files.min_free_space_mebibytes|type)' number 'files.min_free_space_mebibytes is numeric'
 # Passwords are write-only — no password key ever appears on GET
 # (user_hash is the identity hash, deliberately not matched here).
 _assert_json_eq '[paths(scalars) as $p | select($p[-1]|tostring|test("password";"i"))] | length' \
@@ -243,8 +243,8 @@ _assert_json_eq '.servers.dead_server_retry_count' 9 'servers.dead_server_retry_
 
 # Wrong type on a new-category field → 400.
 _curl -X PATCH -H "Authorization: Bearer $ADMIN_TOKEN" -H "Content-Type: application/json" \
-	-d '{"files":{"min_free_space_mb":"lots"}}' "$HOST/api/v0/preferences"
-_assert_status 400 "PATCH files.min_free_space_mb as string → 400"
+	-d '{"files":{"min_free_space_mebibytes":"lots"}}' "$HOST/api/v0/preferences"
+_assert_status 400 "PATCH files.min_free_space_mebibytes as string → 400"
 
 # Restore the #437 fields we touched.
 _curl -X PATCH -H "Authorization: Bearer $ADMIN_TOKEN" -H "Content-Type: application/json" \
@@ -493,11 +493,11 @@ _assert_status 200 "PATCH (restore newly-wired fields) → 200"
 # --- 6. Restore pre-mutation state. --------------------------------
 _curl -X PATCH -H "Authorization: Bearer $ADMIN_TOKEN" \
 	-H "Content-Type: application/json" \
-	-d "{\"connection\":{\"max_upload_kbps\":$SAVED_MAX_UPLOAD,\"autoconnect\":$SAVED_AUTOCONNECT}}" \
+	-d "{\"connection\":{\"max_upload_kibibytes_per_second\":$SAVED_MAX_UPLOAD,\"autoconnect\":$SAVED_AUTOCONNECT}}" \
 	"$HOST/api/v0/preferences"
 _assert_status 200 "PATCH (restore pre-mutation state) → 200"
-_assert_json_eq '.connection.max_upload_kbps' "$SAVED_MAX_UPLOAD" \
-	'restored max_upload_kbps to saved value'
+_assert_json_eq '.connection.max_upload_kibibytes_per_second' "$SAVED_MAX_UPLOAD" \
+	'restored max_upload_kibibytes_per_second to saved value'
 _assert_json_eq '.connection.autoconnect' "$SAVED_AUTOCONNECT" \
 	'restored autoconnect to saved value'
 
@@ -561,11 +561,11 @@ _assert_status 200 "PATCH online_signature.update_frequency_seconds=65535 -> 200
 # an endpoint. Restored with the rest at the end of the file.
 _curl -H "Authorization: Bearer $ADMIN_TOKEN" "$HOST/api/v0/preferences"
 SAVED_FILEBUF=$(printf '%s' "$CURL_BODY" | jq -r '.advanced.file_buffer_bytes')
-SAVED_ULQUEUE=$(printf '%s' "$CURL_BODY" | jq -r '.advanced.max_upload_queue_clients')
+SAVED_ULQUEUE=$(printf '%s' "$CURL_BODY" | jq -r '.advanced.max_upload_queue_client_count')
 SAVED_CONN5=$(printf '%s' "$CURL_BODY" | jq -r '.advanced.max_new_connections_per_5_seconds')
-SAVED_KADSEARCH=$(printf '%s' "$CURL_BODY" | jq -r '.advanced.kad_max_concurrent_source_searches')
-SAVED_MAXUL=$(printf '%s' "$CURL_BODY" | jq -r '.connection.max_upload_kbps')
-SAVED_MAXDL=$(printf '%s' "$CURL_BODY" | jq -r '.connection.max_download_kbps')
+SAVED_KADSEARCH=$(printf '%s' "$CURL_BODY" | jq -r '.advanced.kad_max_concurrent_source_search_count')
+SAVED_MAXUL=$(printf '%s' "$CURL_BODY" | jq -r '.connection.max_upload_kibibytes_per_second')
+SAVED_MAXDL=$(printf '%s' "$CURL_BODY" | jq -r '.connection.max_download_kibibytes_per_second')
 
 # --- #1174: every numeric domain that is narrower than its type. ---
 #
@@ -580,11 +580,11 @@ for CASE in \
 	"advanced file_buffer_bytes 4000000 150000_uint8_wrap" \
 	"advanced file_buffer_bytes 14999 0_divided_away" \
 	"advanced file_buffer_bytes 20000 15000_truncated_to_the_step" \
-	"advanced max_upload_queue_clients 30000 4400_uint8_wrap" \
-	"advanced max_upload_queue_clients 250 200_truncated_to_the_step" \
+	"advanced max_upload_queue_client_count 30000 4400_uint8_wrap" \
+	"advanced max_upload_queue_client_count 250 200_truncated_to_the_step" \
 	"advanced max_new_connections_per_5_seconds 70000 4464_uint16_wrap" \
-	"advanced kad_max_concurrent_source_searches 100000 34464_uint16_wrap" \
-	"advanced kad_max_concurrent_source_searches 1 5_clamped_at_next_start" \
+	"advanced kad_max_concurrent_source_search_count 100000 34464_uint16_wrap" \
+	"advanced kad_max_concurrent_source_search_count 1 5_clamped_at_next_start" \
 	"advanced source_reask_minutes 7 15_clamped_at_next_start" \
 	; do
 	set -- $CASE
@@ -614,11 +614,11 @@ for CASE in \
 	"advanced file_buffer_bytes 3825000" \
 	"advanced file_buffer_bytes 15000" \
 	"advanced file_buffer_bytes 0" \
-	"advanced max_upload_queue_clients 25500" \
-	"advanced max_upload_queue_clients 100" \
+	"advanced max_upload_queue_client_count 25500" \
+	"advanced max_upload_queue_client_count 100" \
 	"advanced max_new_connections_per_5_seconds 65535" \
-	"advanced kad_max_concurrent_source_searches 5" \
-	"advanced kad_max_concurrent_source_searches 50" \
+	"advanced kad_max_concurrent_source_search_count 5" \
+	"advanced kad_max_concurrent_source_search_count 50" \
 	"advanced source_reask_minutes 15" \
 	"advanced source_reask_minutes 60" \
 	"advanced kad_source_reask_minutes 30" \
@@ -639,11 +639,11 @@ done
 # cannot alter it silently.
 _curl -X PATCH -H "Authorization: Bearer $ADMIN_TOKEN" \
 	-H "Content-Type: application/json" \
-	-d '{"connection":{"max_upload_kbps":3,"max_download_kbps":100}}' \
+	-d '{"connection":{"max_upload_kibibytes_per_second":3,"max_download_kibibytes_per_second":100}}' \
 	"$HOST/api/v0/preferences"
-_assert_status 200 "PATCH max_upload_kbps=3 -> 200"
-_assert_json_eq '.connection.max_download_kbps' 9 \
-	"a sub-4 kB/s upload cap forces max_download_kbps to 3x, echoed in the PATCH reply"
+_assert_status 200 "PATCH max_upload_kibibytes_per_second=3 -> 200"
+_assert_json_eq '.connection.max_download_kibibytes_per_second' 9 \
+	"a sub-4 kB/s upload cap forces max_download_kibibytes_per_second to 3x, echoed in the PATCH reply"
 # --- Restore what the two #1159 probes above changed. --------------
 #
 # Section 6 restores before those probes run, so the last writes of the script
@@ -652,7 +652,7 @@ _assert_json_eq '.connection.max_download_kbps' 9 \
 # This has to stay the last mutation in the file.
 _curl -X PATCH -H "Authorization: Bearer $ADMIN_TOKEN" \
 	-H "Content-Type: application/json" \
-	-d "{\"advanced\":{\"kad_source_reask_minutes\":$SAVED_KADREASK,\"source_reask_minutes\":$SAVED_SRCREASK,\"file_buffer_bytes\":$SAVED_FILEBUF,\"max_upload_queue_clients\":$SAVED_ULQUEUE,\"max_new_connections_per_5_seconds\":$SAVED_CONN5,\"kad_max_concurrent_source_searches\":$SAVED_KADSEARCH},\"connection\":{\"tcp_port\":$SAVED_TCPPORT,\"max_upload_kbps\":$SAVED_MAXUL,\"max_download_kbps\":$SAVED_MAXDL},\"online_signature\":{\"update_frequency_seconds\":$SAVED_OSFREQ}}" \
+	-d "{\"advanced\":{\"kad_source_reask_minutes\":$SAVED_KADREASK,\"source_reask_minutes\":$SAVED_SRCREASK,\"file_buffer_bytes\":$SAVED_FILEBUF,\"max_upload_queue_client_count\":$SAVED_ULQUEUE,\"max_new_connections_per_5_seconds\":$SAVED_CONN5,\"kad_max_concurrent_source_search_count\":$SAVED_KADSEARCH},\"connection\":{\"tcp_port\":$SAVED_TCPPORT,\"max_upload_kibibytes_per_second\":$SAVED_MAXUL,\"max_download_kibibytes_per_second\":$SAVED_MAXDL},\"online_signature\":{\"update_frequency_seconds\":$SAVED_OSFREQ}}" \
 	"$HOST/api/v0/preferences"
 _assert_status 200 "PATCH (restore advanced + connection + onlinesig) -> 200"
 _curl -H "Authorization: Bearer $ADMIN_TOKEN" "$HOST/api/v0/preferences"
@@ -704,6 +704,23 @@ if [ "$HAVE_GUEST" = "1" ]; then
 else
 	echo "    info: no guest pass; /geoip/update admin-gate skipped"
 fi
+
+# --- upload_slot_min_kibibytes_per_second has a floor of 1. --------
+# The core's setter clamps anything lower up to 1, so without a declared
+# minimum a 0 answered 200 and read back as 1 -- exactly the silent
+# daemon-side rewrite the schema bounds exist to turn into a 400.
+_curl -X PATCH -H "Authorization: Bearer $ADMIN_TOKEN" -H "Content-Type: application/json" \
+	-d '{"connection":{"upload_slot_min_kibibytes_per_second":0}}' "$HOST/api/v0/preferences"
+_assert_status 400 "PATCH upload_slot_min_kibibytes_per_second=0 -> 400 (below the floor)"
+_assert_json_eq '.error.code' bad_request \
+	'the below-floor slot value carries error.code=bad_request'
+
+# 1 is the floor itself, so it must still be accepted.
+_curl -X PATCH -H "Authorization: Bearer $ADMIN_TOKEN" -H "Content-Type: application/json" \
+	-d '{"connection":{"upload_slot_min_kibibytes_per_second":1}}' "$HOST/api/v0/preferences"
+_assert_status 200 "PATCH upload_slot_min_kibibytes_per_second=1 -> 200 (the floor is inclusive)"
+_assert_json_eq '.connection.upload_slot_min_kibibytes_per_second' 1 \
+	'the floor value round-trips unchanged'
 
 # --- Summary. -----------------------------------------------------
 echo

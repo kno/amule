@@ -277,3 +277,52 @@ are reachable by durable tag or by digest:
 podman run --rm amule-baseline:36e28e73    /src/build/src/amuled --version   # attribution
 podman run --rm amule-phases1-5:f989cb5    /src/build/src/amuled --version   # reference
 ```
+
+## Why a third record exists
+
+The second record was taken at `f989cb5`. HEAD has since moved through two
+upstream integrations (31 commits, then 24), and `packaging/linux/build.sh dev`
+— the only route that produces a record — could not run at all: it passed
+`WX_TARBALL_URL` and `WX_SHA256`, which upstream #1238 retired from
+`versions.env` when it moved wxWidgets to a pinned git commit. Under `set -u`
+that aborted before podman was invoked.
+
+That target is fork-only, so #1238 updated the appimage and static targets it
+could see and stranded this one. Fixed in `078045842` by fetching the pinned SHA
+the way the other two already do.
+
+Recorded here rather than replacing either earlier record. The attribution
+baseline at `36e28e73` still answers "was this failure already there"; this one
+answers "did I regress it" for work starting now.
+
+## Subject
+
+| | |
+|---|---|
+| Commit | `9e76ae434` |
+| Tree | unmodified at the time of the run |
+| Image digest | `sha256:94949affb0fce4d6306efce0437cb1ebab8016f25c372f045b8e3bc94888d8aa` |
+| Route | `packaging/linux/build.sh dev`, aarch64, `platform=linux/arm64`, `cli=podman` |
+
+## Toolchain
+
+| | |
+|---|---|
+| cmake | 3.22.1 |
+| c++ | Ubuntu 11.4.0-1ubuntu1~22.04.3 (GCC 11.4.0) |
+| wxWidgets | 3.2.12 — built from git at `WX_COMMIT`, not a release tarball |
+| libupnp | 22.0.4 |
+| libboost-dev | 1.74.0.3ubuntu7 |
+| libcrypto++-dev | 8.6.0-2ubuntu1 |
+| libgd-dev | 2.3.0-2ubuntu2.3 |
+| libmaxminddb-dev | 1.5.2-1build2 |
+
+## Result
+
+Build exit 0. **78 of 78 ctest suites passed, 0 failed.** No pre-existing
+failures at this commit, so the two the attribution baseline records as
+pre-existing are resolved and nothing has replaced them.
+
+Suites are identified by name in this project, never by index: the count moves
+as suites are added, and an index that meant one suite last week means another
+this week.

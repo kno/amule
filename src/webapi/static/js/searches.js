@@ -34,7 +34,7 @@ let tabsTimer = 0;
 let resultsTimer = 0;
 let lastAdopt = 0;
 let offs = [];
-let lastResult = null, lastProgress = null, lastClosed = null;
+let lastResult = null, lastResultRemoved = null, lastProgress = null, lastClosed = null;
 
 function newTab({ id, query = "", label = "", kind = "global", state = "running", startedAt = 0,
                  percent = 0, count = 0 }) {
@@ -94,9 +94,11 @@ function publishResultsSoon(id) {
 
 // --- reads ---------------------------------------------------------------
 
-// Authoritative re-read. Results are add-only on the stream and there is no
-// search_result_updated, so this is the ONLY way a hit's status, comments or
-// children[] ever change. amuleapi coalesces it behind a ~1 s TTL, so calling
+// Authoritative re-read: seeds a tab's results on activation and reconciles
+// against anything the stream did not push. search_result_updated now pushes a
+// held hit's status / already_downloaded / comments / rating live, but its
+// source counts and alternate names stay add-only on the stream, so this is
+// still how those refresh. amuleapi coalesces it behind a ~1 s TTL, so calling
 // it per tab activation is cheap.
 async function refresh(id) {
   const tab = tabs.get(id);
@@ -135,7 +137,7 @@ async function adopt() {
   list = list.slice().sort((a, b) => ord(a) - ord(b));
   let added = false;
   for (const s of list) {
-    const known = tabs.get(s.id);
+    const known = tabs.get(s.search_id);
     if (known) {
       if (!known.query && s.query) { known.query = s.query; known.label = known.label || s.query; }
       // Keep an unopened tab's badge current. Only while it holds no results
@@ -151,8 +153,8 @@ async function adopt() {
     // result_count is what makes an unopened tab show a real badge instead of
     // 0 after a reload; it is omitted by a daemon that does not report counts,
     // in which case the badge stays 0 until the tab is opened and fetched.
-    tabs.set(s.id, newTab({
-      id: s.id, query: s.query || "", kind: s.type || "global",
+    tabs.set(s.search_id, newTab({
+      id: s.search_id, query: s.query || "", kind: s.type || "global",
       state: s.state || "finished", startedAt: s.started_at || 0,
       count: typeof s.result_count === "number" ? s.result_count : 0,
     }));
@@ -161,7 +163,7 @@ async function adopt() {
   if (!tabs.has(activeId)) {
     const running = list.filter((s) => s.state === "running");
     const pick = (running.length ? running : list).slice(-1)[0];
-    if (pick) { setActive(pick.id); return; }
+    if (pick) { setActive(pick.search_id); return; }
     activeId = 0;
   }
   if (added) publishTabs();
@@ -178,7 +180,7 @@ function setActive(id) {
   publishTabs();
   if (!tabs.get(activeId)) return;
   publishResults(activeId); // whatever is already held, instantly
-  refresh(activeId);        // then reconcile, per the add-only rule above
+  refresh(activeId);        // then reconcile the fields the stream does not push
 }
 
 function drop(id, notify) {
@@ -209,6 +211,19 @@ function onResult(p) {
   publishResultsSoon(p.search_id);
 }
 
+// The row left the daemon's result space (folded into a parent's alternate
+// names, or dropped by the union merge). Identity-only payload, like every
+// other _removed: drop the cache entry, no re-fetch.
+function onResultRemoved(p) {
+  if (!p || p === lastResultRemoved) return;
+  lastResultRemoved = p;
+  const tab = tabs.get(p.search_id);
+  if (!tab || !tab.results.delete(p.hash)) return;
+  tab.count = tab.results.size;
+  publishTabsSoon();
+  publishResultsSoon(p.search_id);
+}
+
 function onProgress(p) {
   if (!p || p === lastProgress) return;
   lastProgress = p;
@@ -223,7 +238,7 @@ function onProgress(p) {
   if (typeof p.result_count === "number") tab.count = p.result_count;
   publishTabsSoon();
   // Terminal frame: reconcile once against REST to pick up anything the
-  // stream dropped, and to land the final status/children of every row.
+  // stream dropped, and to land the final status/alternate_names of every row.
   if (wasRunning && tab.state === "finished") refresh(tab.id);
 }
 
@@ -250,6 +265,28 @@ function startPolling() {
   }, POLL_ACTIVE_MS);
 }
 
+// Shared by browse() and browseFriend(). `path` is the resource owning the
+// shared_files sub-resource: "clients/{ecid}" or "friends/{ecid}".
+async function browseVia(path, name) {
+  const r = await api.post(path + "/shared_files");
+  const id = r.search_id;
+  const open = tabs.get(id);
+  if (open) {
+    if (name) { open.query = name; open.label = name; }
+  } else {
+    tabs.set(id, newTab({
+      id, query: name || r.query || "", label: name || r.query || "",
+      kind: r.type || "browse",
+      state: r.state || "running",
+      startedAt: r.started_at || nowSec(),
+    }));
+  }
+  setActive(id);
+  toast(t("search_toast_browse_started"), "info");
+  if (location.hash !== "#/search") location.hash = "#/search";
+  return id;
+}
+
 // --- public API ----------------------------------------------------------
 
 export const searches = {
@@ -258,9 +295,11 @@ export const searches = {
     if (started) return;
     started = true;
     lastResult = store.get("search:result");
+    lastResultRemoved = store.get("search:result_removed");
     lastProgress = store.get("search:progress");
     lastClosed = store.get("search:closed");
     offs.push(store.subscribe("search:result", onResult));
+    offs.push(store.subscribe("search:result_removed", onResultRemoved));
     offs.push(store.subscribe("search:progress", onProgress));
     offs.push(store.subscribe("search:closed", onClosed));
     startPolling();
@@ -306,7 +345,7 @@ export const searches = {
     // from what we asked for -- `kind` and `startedAt` in particular, which
     // the request only implies.
     const r = await api.post("search", body);
-    const id = r.id;
+    const id = r.search_id;
     tabs.set(id, newTab({
       id, query: r.query || body.query || "", label: label || "",
       kind: r.type || body.type || "global",
@@ -325,25 +364,11 @@ export const searches = {
   // second click lands on the tab that is already open. Overwriting it would
   // throw away its results, its badge and its per-tab ui state (selection,
   // filter, per-row category) for a browse that never restarted.
-  async browse(ecid, name) {
-    const r = await api.post("clients/" + ecid + "/shared_files");
-    const id = r.id;
-    const open = tabs.get(id);
-    if (open) {
-      if (name) { open.query = name; open.label = name; }
-    } else {
-      tabs.set(id, newTab({
-        id, query: name || r.query || "", label: name || r.query || "",
-        kind: r.kind || "browse",
-        state: r.state || "running",
-        startedAt: r.started_at || nowSec(),
-      }));
-    }
-    setActive(id);
-    toast(t("search_toast_browse_started"), "info");
-    if (location.hash !== "#/search") location.hash = "#/search";
-    return id;
-  },
+  browse(ecid, name) { return browseVia("clients/" + ecid, name); },
+
+  // The friend-addressed twin, and the only one that reaches a friend who is
+  // NOT connected: a friend record carries a stored address.
+  browseFriend(ecid, name) { return browseVia("friends/" + ecid, name); },
 
   // Related-files search: no endpoint and no opcode, just a magic keyword and
   // an ordinary LOCAL search. A server without `related_search` answers it with

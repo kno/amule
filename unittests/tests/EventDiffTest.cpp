@@ -639,6 +639,123 @@ std::size_t CountEvent(CEventBus &bus, const char *name)
 }
 } // namespace
 
+// --- search_result_removed: the row the API stopped serving ---
+//
+// Every other collection emits a _removed; the search diff walked only the
+// current results, so a row that left the result space stayed on every
+// subscriber's screen for the life of the search. On a finished search no
+// further search_progress fires either, so nothing prompted a re-read.
+TEST(EventDiff, SearchResultRemovedFiresWhenAResultLeavesTheSearch)
+{
+	CState state;
+	CEventBus bus;
+	LastSeenState prev;
+	SeedOneResult(state, bus, prev);
+	ASSERT_EQUALS(static_cast<size_t>(1), CountEvent(bus, "search_result_added"));
+
+	// The daemon stops reporting it: the union merge erases the ECID, or the
+	// fold makes it a child of another row.
+	state.MutateSearch(42, [](std::map<std::uint32_t, SearchResult> &cache) { cache.erase(7); });
+	EmitDiffsAndUpdate(bus, prev, state);
+
+	ASSERT_EQUALS(static_cast<size_t>(1), CountEvent(bus, "search_result_removed"));
+	// Counts are cumulative over the run: still the one _added from the seed,
+	// and the row was not announced as an update on its way out.
+	ASSERT_EQUALS(static_cast<size_t>(1), CountEvent(bus, "search_result_added"));
+	ASSERT_EQUALS(static_cast<size_t>(0), CountEvent(bus, "search_result_updated"));
+
+	std::string payload;
+	for (const auto &e : DrainAll(bus))
+		if (e.name == "search_result_removed")
+			payload = e.data;
+	// Identity only, scoped by the search that owned the row.
+	ASSERT_EQUALS(
+		std::string("{\"search_id\":42,\"hash\":\"8b54a3c28b54a3c28b54a3c28b54a3c2\"}"), payload);
+
+	// Idempotent: with the baseline updated, a further tick adds no second
+	// removal (the count is cumulative, so it must still read exactly one).
+	EmitDiffsAndUpdate(bus, prev, state);
+	ASSERT_EQUALS(static_cast<size_t>(1), CountEvent(bus, "search_result_removed"));
+}
+
+// A row that stays put must not be announced as removed.
+TEST(EventDiff, SearchResultRemovedSilentWhileTheResultRemains)
+{
+	CState state;
+	CEventBus bus;
+	LastSeenState prev;
+	SeedOneResult(state, bus, prev);
+
+	state.MutateSearch(
+		42, [](std::map<std::uint32_t, SearchResult> &cache) { cache[7].status = "downloaded"; });
+	EmitDiffsAndUpdate(bus, prev, state);
+
+	ASSERT_EQUALS(static_cast<size_t>(0), CountEvent(bus, "search_result_removed"));
+}
+
+// DELETE /logs/amule empties the buffer. The old signal was a shrunk size,
+// which misses the case that matters: cleared and refilled past the old count
+// between two ticks, the size only grows, so the append branch published a
+// mid-buffer slice as though it were the tail and never published what came
+// before it. The clear-generation catches both shapes.
+TEST(EventDiff, LogClearPublishesResyncRatherThanAMidBufferSlice)
+{
+	CState state;
+	CEventBus bus;
+	LastSeenState prev;
+
+	state.AppendAmuleLog({ "one\n", "two\n" });
+	EmitDiffsAndUpdate(bus, prev, state); // cold-start baseline, silent
+	ASSERT_EQUALS(static_cast<size_t>(0), CountEvent(bus, "log_appended"));
+
+	// Cleared, then refilled past the old length before the next tick: three
+	// lines where there were two, so the size alone reads as growth.
+	state.ClearAmuleLog();
+	state.AppendAmuleLog({ "A\n", "B\n", "C\n" });
+	EmitDiffsAndUpdate(bus, prev, state);
+
+	ASSERT_EQUALS(static_cast<size_t>(1), CountEvent(bus, "resync"));
+	// No log_appended: publishing "C" alone as the tail is exactly the bug.
+	ASSERT_EQUALS(static_cast<size_t>(0), CountEvent(bus, "log_appended"));
+
+	std::string payload;
+	for (const auto &e : DrainAll(bus))
+		if (e.name == "resync")
+			payload = e.data;
+	ASSERT_EQUALS(std::string("{\"reason\":\"log_cleared\"}"), payload);
+
+	// The baseline moved to the refilled buffer, so the next append is a
+	// clean tail again and no second resync fires.
+	state.AppendAmuleLog({ "D\n" });
+	EmitDiffsAndUpdate(bus, prev, state);
+	ASSERT_EQUALS(static_cast<size_t>(1), CountEvent(bus, "resync"));
+	ASSERT_EQUALS(static_cast<size_t>(1), CountEvent(bus, "log_appended"));
+	for (const auto &e : DrainAll(bus))
+		if (e.name == "log_appended")
+			payload = e.data;
+	ASSERT_TRUE(payload.find("D") != std::string::npos);
+	ASSERT_TRUE(payload.find("C") == std::string::npos);
+}
+
+// A clear that leaves the buffer smaller is the same edge, and must not be
+// mistaken for the old silent-truncation path.
+TEST(EventDiff, LogClearToASmallerBufferAlsoPublishesResync)
+{
+	CState state;
+	CEventBus bus;
+	LastSeenState prev;
+
+	state.AppendAmuleLog({ "one\n", "two\n", "three\n" });
+	EmitDiffsAndUpdate(bus, prev, state);
+
+	state.ClearAmuleLog();
+	state.AppendAmuleLog({ "X\n" });
+	EmitDiffsAndUpdate(bus, prev, state);
+
+	ASSERT_EQUALS(static_cast<size_t>(1), CountEvent(bus, "resync"));
+	ASSERT_EQUALS(static_cast<size_t>(0), CountEvent(bus, "log_appended"));
+}
+
 TEST(EventDiff, SearchResultUpdatedFiresWhenADownloadStateChanges)
 {
 	CState state;
@@ -1232,6 +1349,71 @@ TEST(EventDiff, DownloadUpdatedFiresWhenOnlyHashingProgressMoved)
 	}
 	ASSERT_TRUE(!payload.empty());
 	ASSERT_TRUE(payload.find("\"hashed_part_count\":5") != std::string::npos);
+}
+
+// The A4AF membership rides download_updated, and the predicate compares the
+// list rather than the count that summarises it. A swap moves one client out
+// and another in, so `sources_a4af` never moves -- comparing only the count
+// left the panel showing the client that had already left.
+TEST(EventDiff, DownloadUpdatedFiresWhenTheA4afSourceSetSwapsAtAConstantCount)
+{
+	CState state;
+	state.MutateDownloads([](FileMap &files) {
+		FileSnapshot f;
+		f.ecid = 15;
+		f.hash = "5555555555555555555555555555eeee";
+		f.name = "parked.iso";
+		f.size = kPartSizeBytes * 2;
+		f.is_downloading = true;
+		f.download.sources_a4af = 2;
+		f.download.a4af_sources = { 7, 9 };
+		files.emplace(f.ecid, f);
+	});
+
+	CEventBus bus;
+	LastSeenState prev;
+	EmitDiffsAndUpdate(bus, prev, state);
+	DrainAll(bus);
+
+	state.MutateDownloads(
+		[](FileMap &files) { files.find(15)->second.download.a4af_sources = { 7, 11 }; });
+	EmitDiffsAndUpdate(bus, prev, state);
+
+	std::string payload;
+	for (const auto &e : DrainAll(bus)) {
+		if (e.name == "download_updated")
+			payload = e.data;
+	}
+	ASSERT_TRUE(!payload.empty());
+	ASSERT_TRUE(payload.find("\"source_ecids\":[7,11]") != std::string::npos);
+}
+
+// R10: the key is always there. A download with no A4AF sources reports an
+// empty array, so a client can index it without first testing for the key.
+TEST(EventDiff, DownloadEventCarriesAnEmptySourceEcidsArrayWithNoA4afSources)
+{
+	CState state;
+	state.MutateDownloads([](FileMap &files) {
+		FileSnapshot f;
+		f.ecid = 16;
+		f.hash = "6666666666666666666666666666ffff";
+		f.name = "lonely.iso";
+		f.size = kPartSizeBytes;
+		f.is_downloading = true;
+		files.emplace(f.ecid, f);
+	});
+
+	CEventBus bus;
+	LastSeenState prev;
+	EmitDiffsAndUpdate(bus, prev, state);
+
+	std::string payload;
+	for (const auto &e : DrainAll(bus)) {
+		if (e.name == "download_added")
+			payload = e.data;
+	}
+	ASSERT_TRUE(!payload.empty());
+	ASSERT_TRUE(payload.find("\"source_ecids\":[]") != std::string::npos);
 }
 
 // A file leaving the map fires download_removed carrying its hash, and drops

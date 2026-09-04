@@ -127,7 +127,7 @@ if [ "$CCOUNT" -gt 0 ]; then
 	# the wire strings the walker emits. Catch silent regressions if
 	# the enum decoder gets a new US_* value without a mapping.
 	BOGUS_US=$(printf '%s' "$CURL_BODY" | jq \
-		'[.clients[].upload_state | select(. != "uploading" and . != "queued" and . != "waitcallback" and . != "connecting" and . != "pending" and . != "lowtolowip" and . != "banned" and . != "error" and . != "idle" and . != "unknown")] | length')
+		'[.clients[].upload_state | select(. != "uploading" and . != "queued" and . != "waiting_callback" and . != "connecting" and . != "pending" and . != "low_to_low_ip" and . != "banned" and . != "error" and . != "idle" and . != "unknown")] | length')
 	if [ "$BOGUS_US" = "0" ]; then
 		_pass "/clients upload_state values are all from the US_* enum mapping"
 	else
@@ -136,7 +136,7 @@ if [ "$CCOUNT" -gt 0 ]; then
 	fi
 
 	BOGUS_DS=$(printf '%s' "$CURL_BODY" | jq \
-		'[.clients[].download_state | select(. != "downloading" and . != "onqueue" and . != "connected" and . != "connecting" and . != "waitcallback" and . != "waitcallbackkad" and . != "reqhashset" and . != "noneededparts" and . != "toomanyconns" and . != "toomanyconnskad" and . != "lowtolowip" and . != "banned" and . != "error" and . != "idle" and . != "remotequeuefull" and . != "unknown")] | length')
+		'[.clients[].download_state | select(. != "downloading" and . != "queued" and . != "connected" and . != "connecting" and . != "waiting_callback" and . != "waiting_callback_kad" and . != "requesting_hashset" and . != "no_needed_parts" and . != "too_many_connections" and . != "too_many_connections_kad" and . != "low_to_low_ip" and . != "banned" and . != "error" and . != "idle" and . != "remote_queue_full" and . != "unknown")] | length')
 	if [ "$BOGUS_DS" = "0" ]; then
 		_pass "/clients download_state values are all from the DS_* enum mapping"
 	else
@@ -189,7 +189,7 @@ _assert_status 404 "GET /stats/graphs/bogus → 404 (still validated)"
 # which is the lazy-fetch behaviour this phase is about.
 _curl -X POST -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/json' \
 	-d '{"query":"amuleapi-phase10","type":"local"}' "$HOST/api/v0/search"
-SID=$(printf '%s' "$CURL_BODY" | jq -r '.id // empty')
+SID=$(printf '%s' "$CURL_BODY" | jq -r '.search_id // empty')
 [ -n "$SID" ] || _die "POST /search returned no search_id"
 
 _curl -H "Authorization: Bearer $TOKEN" "$HOST/api/v0/search/$SID/results"

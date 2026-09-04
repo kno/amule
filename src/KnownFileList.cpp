@@ -245,17 +245,32 @@ size_t CKnownFileList::GetKnownFileCount() const
 
 bool CKnownFileList::IsKnownFile(const CKnownFile *file) const
 {
-	// Pointer-value scan over the canonical map; safe to call with a
+	// Pointer-value scan over both lists; safe to call with a
 	// possibly-freed `file` pointer (no deref). Used by
 	// OnFinishedHashing / OnFinishedAICHHashing to validate the
-	// owner pointer survived hashing. m_knownFileMap is hash-keyed
-	// not pointer-keyed, so we walk it — linear in shareset size but
+	// owner pointer survived hashing. Neither container is
+	// pointer-keyed, so we walk them — linear in shareset size but
 	// invoked only on rare events (hash completion). For 100 k+
 	// sharesets this is the cost; a per-pointer index would speed
 	// it up but isn't justified for the call rate.
 	wxMutexLocker sLock(list_mut);
-	for (CKnownFileMap::const_iterator it = m_knownFileMap.begin(); it != m_knownFileMap.end(); ++it) {
-		if (it->second == file) {
+	for (const auto &entry : m_knownFileMap) {
+		if (entry.second == file) {
+			return true;
+		}
+	}
+	// The duplicate list counts as alive: this asks whether the record
+	// still exists, not whether it is canonical. PromoteToCanonical
+	// moves a perfectly live record out of the map whenever the share
+	// scan finds a better copy for its hash, and an AICH result landing
+	// after that must not be read as "owner was destroyed" -- the
+	// result would be dropped with a log line that says the opposite of
+	// what happened, and the hashset recomputed on some later run.
+	// A record that really was freed is erased from this list by
+	// PruneDuplicates under the same lock, so the freed case still
+	// answers false, and this stays a pointer comparison either way.
+	for (const CKnownFile *record : m_duplicateFileList) {
+		if (record == file) {
 			return true;
 		}
 	}
@@ -401,6 +416,90 @@ CKnownFile *CKnownFileList::FindKnownFileByID(const CMD4Hash &hash)
 	return NULL;
 }
 
+void CKnownFileList::EraseFromSizeMap(KnownFileSizeMap *sizeMap, CKnownFile *record)
+{
+	// Caller must hold list_mut.
+	//
+	// The key is recomputed from the record's CURRENT size and mtime, so
+	// a record whose either value changed while it was indexed cannot be
+	// found and the erase silently leaves the old entry behind. Every
+	// caller today either indexes a record it has not mutated or sets the
+	// new values before the first insert, so nothing hits it -- but a
+	// future caller that mutates an already-indexed record has to erase
+	// under the old key first.
+	if (!sizeMap) {
+		return;
+	}
+	const auto key =
+		std::make_pair((uint32)record->GetFileSize(), (uint32)record->GetLastChangeDatetime());
+	const auto range = sizeMap->equal_range(key);
+	for (auto hit = range.first; hit != range.second; ++hit) {
+		if (hit->second == record) {
+			sizeMap->erase(hit);
+			return;
+		}
+	}
+}
+
+void CKnownFileList::InsertIntoSizeMap(KnownFileSizeMap *sizeMap, CKnownFile *record)
+{
+	// Caller must hold list_mut.
+	if (!sizeMap) {
+		return;
+	}
+	sizeMap->insert(std::make_pair(
+		std::make_pair((uint32)record->GetFileSize(), (uint32)record->GetLastChangeDatetime()),
+		record));
+}
+
+bool CKnownFileList::PromoteToCanonical(CKnownFile *file)
+{
+	if (!file) {
+		return false;
+	}
+
+	wxMutexLocker sLock(list_mut);
+
+	const CMD4Hash &tkey = file->GetFileHash();
+	const auto it = m_knownFileMap.find(tkey);
+	if (it == m_knownFileMap.end() || it->second == file) {
+		// Already canonical, or this hash has no live record at all --
+		// a freshly hashed file becomes canonical through Append, so
+		// there is nothing to take over here.
+		return false;
+	}
+
+	CKnownFile *demoted = it->second;
+
+	// Same swap Append performs when a later known.met entry takes over
+	// a hash, minus the Kad withdrawal: `demoted` cannot be in the
+	// shared list (m_Files_map is hash-keyed and `file` holds that slot)
+	// and only CSharedFileList::AddFile publishes keywords, so it has
+	// none to remove.
+	m_duplicateFileList.push_back(demoted);
+	EraseFromSizeMap(m_knownSizeMap, demoted);
+	InsertIntoSizeMap(m_duplicateSizeMap, demoted);
+
+	// `file` moves the other way. It is on the duplicate list in the
+	// case this exists for, but not necessarily: an already-canonical
+	// record short-circuits above, so nothing else is assumed here.
+	m_duplicateFileList.remove(file);
+	EraseFromSizeMap(m_duplicateSizeMap, file);
+	InsertIntoSizeMap(m_knownSizeMap, file);
+	m_knownFileMap[tkey] = file;
+
+	// m_pinnedDuplicates keeps `file` on purpose. The pin records that
+	// this session matched the record against a real on-disk file,
+	// which stays true, and it only ever guards duplicate-list records
+	// -- so it costs nothing while `file` is canonical and protects it
+	// from the cap prune if some later Append demotes it again.
+
+	AddDebugLogLineN(logKnownFiles,
+		CFormat("Duplicate '%s' is now the canonical record for its hash, replacing '%s'") %
+			file->GetFileName().GetPrintable() % demoted->GetFileName().GetPrintable());
+	return true;
+}
+
 bool CKnownFileList::SafeAddKFile(CKnownFile *toadd, bool afterHashing)
 {
 	bool ret;
@@ -456,12 +555,7 @@ bool CKnownFileList::Append(CKnownFile *Record, bool afterHashing)
 				}
 			}
 			m_knownFileMap[tkey] = Record;
-			if (m_knownSizeMap) {
-				m_knownSizeMap->insert(
-					std::make_pair(std::make_pair((uint32)Record->GetFileSize(),
-							       (uint32)Record->GetLastChangeDatetime()),
-						Record));
-			}
+			InsertIntoSizeMap(m_knownSizeMap, Record);
 			return true;
 		} else {
 			CKnownFile *existing = it->second;
@@ -530,37 +624,16 @@ bool CKnownFileList::Append(CKnownFile *Record, bool afterHashing)
 				// (This is used when reading the known file list where the duplicates are
 				// stored in front.)
 				m_duplicateFileList.push_back(existing);
-				if (m_duplicateSizeMap) {
-					m_duplicateSizeMap->insert(std::make_pair(
-						std::make_pair((uint32)existing->GetFileSize(),
-							(uint32)existing->GetLastChangeDatetime()),
-						existing));
-				}
+				InsertIntoSizeMap(m_duplicateSizeMap, existing);
 				if (theApp->sharedfiles) {
 					// Removing the old kad keywords created with the old filename
 					theApp->sharedfiles->RemoveKeywords(existing);
 				}
-				if (m_knownSizeMap) {
-					// existing is leaving m_knownFileMap for m_duplicateFileList;
-					// drop its size-map entry so FindKnownFile doesn't return a
-					// pointer that no longer belongs to the live map.
-					const auto existingKey =
-						std::make_pair((uint32)existing->GetFileSize(),
-							(uint32)existing->GetLastChangeDatetime());
-					std::pair<KnownFileSizeMap::iterator, KnownFileSizeMap::iterator> p =
-						m_knownSizeMap->equal_range(existingKey);
-					for (KnownFileSizeMap::iterator hit = p.first; hit != p.second;
-						++hit) {
-						if (hit->second == existing) {
-							m_knownSizeMap->erase(hit);
-							break;
-						}
-					}
-					m_knownSizeMap->insert(std::make_pair(
-						std::make_pair((uint32)Record->GetFileSize(),
-							(uint32)Record->GetLastChangeDatetime()),
-						Record));
-				}
+				// existing is leaving m_knownFileMap for m_duplicateFileList;
+				// drop its size-map entry so FindKnownFile doesn't return a
+				// pointer that no longer belongs to the live map.
+				EraseFromSizeMap(m_knownSizeMap, existing);
+				InsertIntoSizeMap(m_knownSizeMap, Record);
 				// On the afterHashing path the copy-existing-tags
 				// block above pulled the prior FT_LASTSEEN into
 				// Record; refresh it so the new live entry isn't
@@ -592,17 +665,12 @@ void CKnownFileList::PrepareIndex()
 {
 	ReleaseIndex();
 	m_knownSizeMap = new KnownFileSizeMap;
-	for (CKnownFileMap::const_iterator it = m_knownFileMap.begin(); it != m_knownFileMap.end(); ++it) {
-		m_knownSizeMap->insert(std::make_pair(std::make_pair((uint32)it->second->GetFileSize(),
-							      (uint32)it->second->GetLastChangeDatetime()),
-			it->second));
+	for (const auto &entry : m_knownFileMap) {
+		InsertIntoSizeMap(m_knownSizeMap, entry.second);
 	}
 	m_duplicateSizeMap = new KnownFileSizeMap;
-	for (KnownFileList::const_iterator it = m_duplicateFileList.begin(); it != m_duplicateFileList.end();
-		++it) {
-		m_duplicateSizeMap->insert(std::make_pair(
-			std::make_pair((uint32)(*it)->GetFileSize(), (uint32)(*it)->GetLastChangeDatetime()),
-			*it));
+	for (CKnownFile *record : m_duplicateFileList) {
+		InsertIntoSizeMap(m_duplicateSizeMap, record);
 	}
 }
 
@@ -632,22 +700,6 @@ void CKnownFileList::PruneDuplicates(const std::unordered_set<CKnownFile *> &inU
 
 	auto isProtected = [&](CKnownFile *r) {
 		return inUse.count(r) > 0 || m_pinnedDuplicates.count(r) > 0;
-	};
-
-	auto eraseFromSizeMap = [&](KnownFileSizeMap *sizeMap, CKnownFile *dead) {
-		if (!sizeMap) {
-			return;
-		}
-		const auto key =
-			std::make_pair((uint32)dead->GetFileSize(), (uint32)dead->GetLastChangeDatetime());
-		std::pair<KnownFileSizeMap::iterator, KnownFileSizeMap::iterator> p =
-			sizeMap->equal_range(key);
-		for (KnownFileSizeMap::iterator hit = p.first; hit != p.second; ++hit) {
-			if (hit->second == dead) {
-				sizeMap->erase(hit);
-				return;
-			}
-		}
 	};
 
 	// Pass 1: live entries (m_knownFileMap) past TTL. A non-refreshed
@@ -681,7 +733,7 @@ void CKnownFileList::PruneDuplicates(const std::unordered_set<CKnownFile *> &inU
 		const bool hashDead = deadHashes.count(record->GetFileHash()) > 0;
 		const bool ownStale = record->GetLastSeen() < ttlCutoff;
 		if (hashDead || ownStale) {
-			eraseFromSizeMap(m_duplicateSizeMap, record);
+			EraseFromSizeMap(m_duplicateSizeMap, record);
 			KnownFileList::iterator victim = it++;
 			Notify_KnownFileBeingDestroyed(record);
 			delete record;
@@ -716,7 +768,7 @@ void CKnownFileList::PruneDuplicates(const std::unordered_set<CKnownFile *> &inU
 			continue;
 		}
 
-		eraseFromSizeMap(m_knownSizeMap, dead);
+		EraseFromSizeMap(m_knownSizeMap, dead);
 		Notify_KnownFileBeingDestroyed(dead);
 		delete dead;
 		m_knownFileMap.erase(kit);
@@ -757,7 +809,7 @@ void CKnownFileList::PruneDuplicates(const std::unordered_set<CKnownFile *> &inU
 			});
 		for (size_t i = KNOWN_DUPLICATE_HASH_CAP; i < prunable.size(); ++i) {
 			CKnownFile *dead = *prunable[i];
-			eraseFromSizeMap(m_duplicateSizeMap, dead);
+			EraseFromSizeMap(m_duplicateSizeMap, dead);
 			m_duplicateFileList.erase(prunable[i]);
 			Notify_KnownFileBeingDestroyed(dead);
 			delete dead;

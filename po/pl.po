@@ -12,8 +12,8 @@ msgid ""
 msgstr ""
 "Project-Id-Version: aMule\n"
 "Report-Msgid-Bugs-To: https://github.com/amule-org/amule/issues\n"
-"POT-Creation-Date: 2026-08-27 08:55+0000\n"
-"PO-Revision-Date: 2026-08-25 10:15+0000\n"
+"POT-Creation-Date: 2026-09-04 08:48+0200\n"
+"PO-Revision-Date: 2026-09-03 11:08+0000\n"
 "Last-Translator: Michał Trzebiatowski <hippie_1968@hotmail.com>\n"
 "Language-Team: translationproject.org/team/pl.html <translation-team-pl@lists.sourceforge.net>\n"
 "Language: pl\n"
@@ -774,6 +774,38 @@ msgid "Kad: Off"
 msgstr "Kad: Wyłączony"
 
 #: src/amuleDlg.cpp
+msgid "Core"
+msgstr ""
+
+#: src/amuleDlg.cpp src/ClientHistoryListCtrl.cpp src/ClientsListCtrl.cpp
+#: src/ServerListCtrl.cpp src/SharedFilePeersListCtrl.cpp
+#: src/SourceListCtrl.cpp src/Statistics.cpp
+msgid "Version"
+msgstr "Wersja"
+
+#: src/amuleDlg.cpp
+msgid "The core and aMuleGUI are different versions."
+msgstr ""
+
+#: src/amuleDlg.cpp
+msgid "The core and aMuleGUI are the same version."
+msgstr ""
+
+#: src/amuleDlg.cpp src/ServerListCtrl.cpp
+msgid "Address"
+msgstr "Adres"
+
+#: src/amuleDlg.cpp
+#, fuzzy
+msgid "Encryption"
+msgstr "Opis"
+
+#: src/amuleDlg.cpp
+#, fuzzy
+msgid "aMuleGUI"
+msgstr "Logi aMule"
+
+#: src/amuleDlg.cpp
 #, fuzzy, c-format
 msgid "Up: %.1f%s (%.1f) | Down: %.1f%s (%.1f)"
 msgstr "Wysł: %.1f(%.1f) | Pobr: %.1f(%.1f)"
@@ -978,6 +1010,10 @@ msgstr ""
 msgid "Connection to the remote core was lost. Trying to reconnect..."
 msgstr ""
 
+#: src/amule-remote-gui.cpp src/ClientDetailDialog.cpp
+msgid "Disabled"
+msgstr "Wyłączony"
+
 #: src/amule-remote-gui.cpp
 #, fuzzy
 msgid "Reconnected to the remote core."
@@ -1022,6 +1058,15 @@ msgstr ""
 #: src/amule-remote-gui.cpp src/ExternalConn.cpp
 msgid "Invalid link or already on list."
 msgstr "Nieprawidłowy lub znajdujący się już na liście link."
+
+#: src/amule-remote-gui.cpp
+msgid "The daemon refused the request."
+msgstr ""
+
+#: src/amule-remote-gui.cpp
+#, fuzzy, c-format
+msgid "Could not delete the category: %s"
+msgstr "Folder dla pobranych plików tymczasowych"
 
 #: src/amule-remote-gui.cpp
 #, c-format
@@ -1227,10 +1272,6 @@ msgid "Send message"
 msgstr "Wyślij wiadomość"
 
 #: src/ClientContextActions.cpp
-msgid "Swap to this file"
-msgstr "Zamień na ten plik"
-
-#: src/ClientContextActions.cpp
 #, fuzzy
 msgid ""
 "You are not allowed to set more than one friend slot.\n"
@@ -1297,10 +1338,6 @@ msgstr "Obsługiwany"
 msgid "Not supported"
 msgstr "Nieobsługiwany"
 
-#: src/ClientDetailDialog.cpp
-msgid "Disabled"
-msgstr "Wyłączony"
-
 #: src/ClientDetailDialog.cpp src/MuleTrayIcon.cpp src/ServerWnd.cpp
 #: src/TextClient.cpp
 msgid "Connected"
@@ -1324,11 +1361,6 @@ msgstr "Nazwa:"
 #: src/ClientHistoryListCtrl.cpp src/ClientsListCtrl.cpp
 msgid "Software"
 msgstr ""
-
-#: src/ClientHistoryListCtrl.cpp src/ClientsListCtrl.cpp src/ServerListCtrl.cpp
-#: src/SharedFilePeersListCtrl.cpp src/SourceListCtrl.cpp src/Statistics.cpp
-msgid "Version"
-msgstr "Wersja"
 
 #: src/ClientHistoryListCtrl.cpp src/ClientsListCtrl.cpp
 #, fuzzy
@@ -2220,6 +2252,19 @@ msgstr ""
 
 #: src/ExternalConn.cpp
 #, fuzzy
+msgid "No such category."
+msgstr "Zamknij tę sesję czata."
+
+#: src/ExternalConn.cpp
+msgid "Malformed category request."
+msgstr ""
+
+#: src/ExternalConn.cpp
+msgid "The default category cannot be deleted."
+msgstr ""
+
+#: src/ExternalConn.cpp
+#, fuzzy
 msgid "Missing chat session id"
 msgstr "Rozpoczęto nową sesję czatu"
 
@@ -2794,6 +2839,52 @@ msgid ""
 msgstr ""
 "Nie możesz ustanowić więcej niż jeden slot dla znajomego.\n"
 "Przydzielono tylko jeden slot."
+
+#: src/GenericClientListCtrl.cpp
+#, fuzzy
+msgid "This source does not have the part"
+msgstr "Ta komenda nie powinna posiadać żadnego parametru."
+
+#: src/GenericClientListCtrl.cpp
+msgid "You and this source both have the part"
+msgstr ""
+
+#: src/GenericClientListCtrl.cpp
+msgid "Being downloaded from this source now"
+msgstr ""
+
+#: src/GenericClientListCtrl.cpp
+msgid "The next part that will be asked of this source"
+msgstr ""
+
+#: src/GenericClientListCtrl.cpp
+msgid "This source has the part and you still need it"
+msgstr ""
+
+#: src/GenericClientListCtrl.cpp
+msgid "This peer already has the part"
+msgstr ""
+
+#: src/GenericClientListCtrl.cpp
+msgid "This peer does not have the part"
+msgstr ""
+
+#: src/GenericClientListCtrl.cpp
+msgid "One block per part of the file being downloaded."
+msgstr ""
+
+#: src/GenericClientListCtrl.cpp
+#, fuzzy
+msgid "One block per part of the shared file."
+msgstr "Wpisz tu port serwera."
+
+#: src/GenericClientListCtrl.cpp
+msgid "Swap to this file"
+msgstr "Zamień na ten plik"
+
+#: src/GenericClientListCtrl.cpp
+msgid "Colour legend"
+msgstr ""
 
 #: src/GenericClientListCtrl.cpp
 #, fuzzy, c-format
@@ -6972,10 +7063,6 @@ msgid "Server Name"
 msgstr "Nazwa serwera"
 
 #: src/ServerListCtrl.cpp
-msgid "Address"
-msgstr "Adres"
-
-#: src/ServerListCtrl.cpp
 msgid "Port"
 msgstr "Port"
 
@@ -7416,9 +7503,9 @@ msgstr[2] "Znaleziono %i znanych udostępnionych plików"
 msgid "User Name"
 msgstr "Nazwa uzytkownika"
 
-#: src/SharedFilePeersListCtrl.cpp src/SourceListCtrl.cpp
-msgid "Available Parts"
-msgstr "Dostępne części"
+#: src/SharedFilePeersListCtrl.cpp
+msgid "Parts on Peer"
+msgstr ""
 
 #: src/SharedFilePeersListCtrl.cpp
 #, fuzzy
@@ -7622,6 +7709,11 @@ msgstr "Udostępnione pliki (%i)"
 #, fuzzy, c-format
 msgid "Reloading shared files: %u files scanned"
 msgstr "Przeładowuje listę udostępnionych plików."
+
+#: src/SourceListCtrl.cpp
+#, fuzzy
+msgid "Part Status"
+msgstr "Status"
 
 #: src/SourceListCtrl.cpp
 #, fuzzy
@@ -9319,6 +9411,9 @@ msgstr ""
 
 #~ msgid "ERROR: Could not listen to TCP port."
 #~ msgstr "BŁĄD: nie można nasłuchiwać na porcie TCP."
+
+#~ msgid "Available Parts"
+#~ msgstr "Dostępne części"
 
 #, c-format
 #~ msgid "Found %i known shared file, %i unknown"

@@ -231,7 +231,7 @@ PREF_ETAG=$(_get_etag)
 _curl -X PATCH -H "Authorization: Bearer $ADMIN_TOKEN" \
 	-H "Content-Type: application/json" \
 	-H "If-None-Match: $PREF_ETAG" \
-	-d '{"connection":{"max_upload_kbps":0}}' \
+	-d '{"connection":{"max_upload_kibibytes_per_second":0}}' \
 	"$HOST/api/v0/preferences"
 if [ "$CURL_STATUS" = "200" ]; then
 	_pass "PATCH ignores If-None-Match (status=200, not 304)"
@@ -255,7 +255,7 @@ fi
 
 # Free the search to leave the daemon clean. The id comes from the start
 # reply -- there is no unaddressed stop to fall back on.
-SID=$(printf '%s' "$CURL_BODY" | jq -r '.id // empty')
+SID=$(printf '%s' "$CURL_BODY" | jq -r '.search_id // empty')
 if [ -n "$SID" ]; then
 	curl -s -X DELETE -H "Authorization: Bearer $ADMIN_TOKEN" \
 		"$HOST/api/v0/search/$SID" > /dev/null

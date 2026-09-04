@@ -9,8 +9,8 @@ msgid ""
 msgstr ""
 "Project-Id-Version: aMule\n"
 "Report-Msgid-Bugs-To: https://github.com/amule-org/amule/issues\n"
-"POT-Creation-Date: 2026-08-27 08:55+0000\n"
-"PO-Revision-Date: 2026-08-25 10:09+0000\n"
+"POT-Creation-Date: 2026-09-04 08:48+0200\n"
+"PO-Revision-Date: 2026-09-03 11:05+0000\n"
 "Last-Translator: Sebastiano Pistore <sebastiano.pistore.info@aol.com>\n"
 "Language-Team: https://github.com/amule-org/amule <forum@aMule.org>\n"
 "Language: hr\n"
@@ -758,6 +758,38 @@ msgid "Kad: Off"
 msgstr ""
 
 #: src/amuleDlg.cpp
+msgid "Core"
+msgstr ""
+
+#: src/amuleDlg.cpp src/ClientHistoryListCtrl.cpp src/ClientsListCtrl.cpp
+#: src/ServerListCtrl.cpp src/SharedFilePeersListCtrl.cpp
+#: src/SourceListCtrl.cpp src/Statistics.cpp
+msgid "Version"
+msgstr "Verzija"
+
+#: src/amuleDlg.cpp
+msgid "The core and aMuleGUI are different versions."
+msgstr ""
+
+#: src/amuleDlg.cpp
+msgid "The core and aMuleGUI are the same version."
+msgstr ""
+
+#: src/amuleDlg.cpp src/ServerListCtrl.cpp
+msgid "Address"
+msgstr "Adresa"
+
+#: src/amuleDlg.cpp
+#, fuzzy
+msgid "Encryption"
+msgstr "Opis"
+
+#: src/amuleDlg.cpp
+#, fuzzy
+msgid "aMuleGUI"
+msgstr "aMule Log"
+
+#: src/amuleDlg.cpp
 #, fuzzy, c-format
 msgid "Up: %.1f%s (%.1f) | Down: %.1f%s (%.1f)"
 msgstr "Gore: %.1f(%.1f) | Dole: %.1f(%.1f)"
@@ -965,6 +997,10 @@ msgstr ""
 msgid "Connection to the remote core was lost. Trying to reconnect..."
 msgstr ""
 
+#: src/amule-remote-gui.cpp src/ClientDetailDialog.cpp
+msgid "Disabled"
+msgstr "Onemogućeno"
+
 #: src/amule-remote-gui.cpp
 msgid "Reconnected to the remote core."
 msgstr ""
@@ -1008,6 +1044,15 @@ msgstr ""
 #: src/amule-remote-gui.cpp src/ExternalConn.cpp
 msgid "Invalid link or already on list."
 msgstr ""
+
+#: src/amule-remote-gui.cpp
+msgid "The daemon refused the request."
+msgstr ""
+
+#: src/amule-remote-gui.cpp
+#, fuzzy, c-format
+msgid "Could not delete the category: %s"
+msgstr "Vec pokusavate downloadovati fajl %s"
 
 #: src/amule-remote-gui.cpp
 #, c-format
@@ -1214,10 +1259,6 @@ msgid "Send message"
 msgstr "Pošalji poruku"
 
 #: src/ClientContextActions.cpp
-msgid "Swap to this file"
-msgstr ""
-
-#: src/ClientContextActions.cpp
 msgid ""
 "You are not allowed to set more than one friend slot.\n"
 " Only one slot was assigned."
@@ -1281,10 +1322,6 @@ msgstr "Podržano"
 msgid "Not supported"
 msgstr "Nije podržano"
 
-#: src/ClientDetailDialog.cpp
-msgid "Disabled"
-msgstr "Onemogućeno"
-
 #: src/ClientDetailDialog.cpp src/MuleTrayIcon.cpp src/ServerWnd.cpp
 #: src/TextClient.cpp
 msgid "Connected"
@@ -1308,11 +1345,6 @@ msgstr "Naziv:"
 #: src/ClientHistoryListCtrl.cpp src/ClientsListCtrl.cpp
 msgid "Software"
 msgstr ""
-
-#: src/ClientHistoryListCtrl.cpp src/ClientsListCtrl.cpp src/ServerListCtrl.cpp
-#: src/SharedFilePeersListCtrl.cpp src/SourceListCtrl.cpp src/Statistics.cpp
-msgid "Version"
-msgstr "Verzija"
 
 #: src/ClientHistoryListCtrl.cpp src/ClientsListCtrl.cpp
 #, fuzzy
@@ -2203,6 +2235,19 @@ msgid "Could not save the amuleapi password: %s"
 msgstr ""
 
 #: src/ExternalConn.cpp
+#, fuzzy
+msgid "No such category."
+msgstr "Odstrani kategoriju"
+
+#: src/ExternalConn.cpp
+msgid "Malformed category request."
+msgstr ""
+
+#: src/ExternalConn.cpp
+msgid "The default category cannot be deleted."
+msgstr ""
+
+#: src/ExternalConn.cpp
 msgid "Missing chat session id"
 msgstr ""
 
@@ -2746,6 +2791,50 @@ msgstr "Da li zaist zelis otkazati i obrisati ove fajlove ?\n"
 msgid ""
 "You are not allowed to set more than one friendslot.\n"
 " Only one slot was assigned."
+msgstr ""
+
+#: src/GenericClientListCtrl.cpp
+msgid "This source does not have the part"
+msgstr ""
+
+#: src/GenericClientListCtrl.cpp
+msgid "You and this source both have the part"
+msgstr ""
+
+#: src/GenericClientListCtrl.cpp
+msgid "Being downloaded from this source now"
+msgstr ""
+
+#: src/GenericClientListCtrl.cpp
+msgid "The next part that will be asked of this source"
+msgstr ""
+
+#: src/GenericClientListCtrl.cpp
+msgid "This source has the part and you still need it"
+msgstr ""
+
+#: src/GenericClientListCtrl.cpp
+msgid "This peer already has the part"
+msgstr ""
+
+#: src/GenericClientListCtrl.cpp
+msgid "This peer does not have the part"
+msgstr ""
+
+#: src/GenericClientListCtrl.cpp
+msgid "One block per part of the file being downloaded."
+msgstr ""
+
+#: src/GenericClientListCtrl.cpp
+msgid "One block per part of the shared file."
+msgstr ""
+
+#: src/GenericClientListCtrl.cpp
+msgid "Swap to this file"
+msgstr ""
+
+#: src/GenericClientListCtrl.cpp
+msgid "Colour legend"
 msgstr ""
 
 #: src/GenericClientListCtrl.cpp
@@ -6885,10 +6974,6 @@ msgid "Server Name"
 msgstr "Ime servera"
 
 #: src/ServerListCtrl.cpp
-msgid "Address"
-msgstr "Adresa"
-
-#: src/ServerListCtrl.cpp
 msgid "Port"
 msgstr "Port"
 
@@ -7334,10 +7419,9 @@ msgstr[2] ""
 msgid "User Name"
 msgstr "Ime korisnika"
 
-#: src/SharedFilePeersListCtrl.cpp src/SourceListCtrl.cpp
-#, fuzzy
-msgid "Available Parts"
-msgstr "Dostupnost :"
+#: src/SharedFilePeersListCtrl.cpp
+msgid "Parts on Peer"
+msgstr ""
 
 #: src/SharedFilePeersListCtrl.cpp
 #, fuzzy
@@ -7542,6 +7626,11 @@ msgstr "Dijeljeni fajlovi (%i)"
 #, fuzzy, c-format
 msgid "Reloading shared files: %u files scanned"
 msgstr "Pronadjeno %i poznatih dijeljenih fajlova"
+
+#: src/SourceListCtrl.cpp
+#, fuzzy
+msgid "Part Status"
+msgstr "Status"
 
 #: src/SourceListCtrl.cpp
 #, fuzzy
@@ -9178,6 +9267,10 @@ msgstr ""
 #: packaging/windows/installer_strings.c
 msgid "Removing user data at $APPDATA\\aMule..."
 msgstr ""
+
+#, fuzzy
+#~ msgid "Available Parts"
+#~ msgstr "Dostupnost :"
 
 #, fuzzy, c-format
 #~ msgid "Found %i known shared file, %i unknown"

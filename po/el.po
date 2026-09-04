@@ -9,8 +9,8 @@ msgid ""
 msgstr ""
 "Project-Id-Version: aMule\n"
 "Report-Msgid-Bugs-To: https://github.com/amule-org/amule/issues\n"
-"POT-Creation-Date: 2026-08-27 08:55+0000\n"
-"PO-Revision-Date: 2026-08-25 10:05+0000\n"
+"POT-Creation-Date: 2026-09-04 08:48+0200\n"
+"PO-Revision-Date: 2026-09-03 11:02+0000\n"
 "Last-Translator: Dimitris <dgalanak@yahoo.com>\n"
 "Language-Team: Greek\n"
 "Language: el\n"
@@ -776,6 +776,38 @@ msgid "Kad: Off"
 msgstr "Kad: Εκτός"
 
 #: src/amuleDlg.cpp
+msgid "Core"
+msgstr ""
+
+#: src/amuleDlg.cpp src/ClientHistoryListCtrl.cpp src/ClientsListCtrl.cpp
+#: src/ServerListCtrl.cpp src/SharedFilePeersListCtrl.cpp
+#: src/SourceListCtrl.cpp src/Statistics.cpp
+msgid "Version"
+msgstr "Έκδοση"
+
+#: src/amuleDlg.cpp
+msgid "The core and aMuleGUI are different versions."
+msgstr ""
+
+#: src/amuleDlg.cpp
+msgid "The core and aMuleGUI are the same version."
+msgstr ""
+
+#: src/amuleDlg.cpp src/ServerListCtrl.cpp
+msgid "Address"
+msgstr "Διεύθυνση"
+
+#: src/amuleDlg.cpp
+#, fuzzy
+msgid "Encryption"
+msgstr "Περιγραφή"
+
+#: src/amuleDlg.cpp
+#, fuzzy
+msgid "aMuleGUI"
+msgstr "Αρχείο καταγραφής aMule"
+
+#: src/amuleDlg.cpp
 #, fuzzy, c-format
 msgid "Up: %.1f%s (%.1f) | Down: %.1f%s (%.1f)"
 msgstr "Πάνω: %.1f(%.1f) | Κάτω: %.1f(%.1f)"
@@ -985,6 +1017,10 @@ msgstr ""
 msgid "Connection to the remote core was lost. Trying to reconnect..."
 msgstr ""
 
+#: src/amule-remote-gui.cpp src/ClientDetailDialog.cpp
+msgid "Disabled"
+msgstr "Απενεργοποιημένο"
+
 #: src/amule-remote-gui.cpp
 #, fuzzy
 msgid "Reconnected to the remote core."
@@ -1029,6 +1065,15 @@ msgstr ""
 #: src/amule-remote-gui.cpp src/ExternalConn.cpp
 msgid "Invalid link or already on list."
 msgstr "Άκυρος σύνδεσμο ή ήδη στην λίστα."
+
+#: src/amule-remote-gui.cpp
+msgid "The daemon refused the request."
+msgstr ""
+
+#: src/amule-remote-gui.cpp
+#, fuzzy, c-format
+msgid "Could not delete the category: %s"
+msgstr "Κατάλογος για τα προσωρινά αρχεία"
 
 #: src/amule-remote-gui.cpp
 #, c-format
@@ -1233,10 +1278,6 @@ msgid "Send message"
 msgstr "Αποστολή μηνύματος"
 
 #: src/ClientContextActions.cpp
-msgid "Swap to this file"
-msgstr "Εναλλαγή σε αυτό το αρχείο"
-
-#: src/ClientContextActions.cpp
 #, fuzzy
 msgid ""
 "You are not allowed to set more than one friend slot.\n"
@@ -1301,10 +1342,6 @@ msgstr "Υποστηρίζεται"
 msgid "Not supported"
 msgstr "Δεν υποστηρίζεται"
 
-#: src/ClientDetailDialog.cpp
-msgid "Disabled"
-msgstr "Απενεργοποιημένο"
-
 #: src/ClientDetailDialog.cpp src/MuleTrayIcon.cpp src/ServerWnd.cpp
 #: src/TextClient.cpp
 msgid "Connected"
@@ -1328,11 +1365,6 @@ msgstr "Όνομα:"
 #: src/ClientHistoryListCtrl.cpp src/ClientsListCtrl.cpp
 msgid "Software"
 msgstr ""
-
-#: src/ClientHistoryListCtrl.cpp src/ClientsListCtrl.cpp src/ServerListCtrl.cpp
-#: src/SharedFilePeersListCtrl.cpp src/SourceListCtrl.cpp src/Statistics.cpp
-msgid "Version"
-msgstr "Έκδοση"
 
 #: src/ClientHistoryListCtrl.cpp src/ClientsListCtrl.cpp
 #, fuzzy
@@ -2227,6 +2259,19 @@ msgstr ""
 
 #: src/ExternalConn.cpp
 #, fuzzy
+msgid "No such category."
+msgstr "Κλείσιμο της συνομιλίας."
+
+#: src/ExternalConn.cpp
+msgid "Malformed category request."
+msgstr ""
+
+#: src/ExternalConn.cpp
+msgid "The default category cannot be deleted."
+msgstr ""
+
+#: src/ExternalConn.cpp
+#, fuzzy
 msgid "Missing chat session id"
 msgstr "Ξεκίνησε καινούρια περίοδος συνομιλίας"
 
@@ -2800,6 +2845,52 @@ msgid ""
 msgstr ""
 "Δεν επιτρέπεται να θέσεις μόνο πανω από μία φιλική θυρίδα. \n"
 " Γι αυτό μόνο μία ανατέθηκε."
+
+#: src/GenericClientListCtrl.cpp
+#, fuzzy
+msgid "This source does not have the part"
+msgstr "Αυτή η εντολή δεν πρέπει να έχει παραμέτρους."
+
+#: src/GenericClientListCtrl.cpp
+msgid "You and this source both have the part"
+msgstr ""
+
+#: src/GenericClientListCtrl.cpp
+msgid "Being downloaded from this source now"
+msgstr ""
+
+#: src/GenericClientListCtrl.cpp
+msgid "The next part that will be asked of this source"
+msgstr ""
+
+#: src/GenericClientListCtrl.cpp
+msgid "This source has the part and you still need it"
+msgstr ""
+
+#: src/GenericClientListCtrl.cpp
+msgid "This peer already has the part"
+msgstr ""
+
+#: src/GenericClientListCtrl.cpp
+msgid "This peer does not have the part"
+msgstr ""
+
+#: src/GenericClientListCtrl.cpp
+msgid "One block per part of the file being downloaded."
+msgstr ""
+
+#: src/GenericClientListCtrl.cpp
+#, fuzzy
+msgid "One block per part of the shared file."
+msgstr "Γράψτε την θύρα του διακομιστή εδώ."
+
+#: src/GenericClientListCtrl.cpp
+msgid "Swap to this file"
+msgstr "Εναλλαγή σε αυτό το αρχείο"
+
+#: src/GenericClientListCtrl.cpp
+msgid "Colour legend"
+msgstr ""
 
 #: src/GenericClientListCtrl.cpp
 #, fuzzy, c-format
@@ -6969,10 +7060,6 @@ msgid "Server Name"
 msgstr "Όνομα διακομιστή"
 
 #: src/ServerListCtrl.cpp
-msgid "Address"
-msgstr "Διεύθυνση"
-
-#: src/ServerListCtrl.cpp
 msgid "Port"
 msgstr "Θύρα"
 
@@ -7410,10 +7497,9 @@ msgstr[1] "Βρέθηκαν %i γνωστά κοινόχρηστα αρχεία"
 msgid "User Name"
 msgstr "Όνομα χρήστη"
 
-#: src/SharedFilePeersListCtrl.cpp src/SourceListCtrl.cpp
-#, fuzzy
-msgid "Available Parts"
-msgstr "Διαθέσιμα:"
+#: src/SharedFilePeersListCtrl.cpp
+msgid "Parts on Peer"
+msgstr ""
 
 #: src/SharedFilePeersListCtrl.cpp
 #, fuzzy
@@ -7611,6 +7697,11 @@ msgstr "Κοινόχρηστα αρχεία (%i)"
 #, fuzzy, c-format
 msgid "Reloading shared files: %u files scanned"
 msgstr "Επαναφορτώνει τη λίστα κοινοχρήστων αρχείων."
+
+#: src/SourceListCtrl.cpp
+#, fuzzy
+msgid "Part Status"
+msgstr "Κατάσταση"
 
 #: src/SourceListCtrl.cpp
 #, fuzzy
@@ -9324,6 +9415,10 @@ msgstr ""
 
 #~ msgid "ERROR: Could not listen to TCP port."
 #~ msgstr "ΣΦΑΛΜΑ: Δεν μπορώ να ακούσω την θύρα TCP."
+
+#, fuzzy
+#~ msgid "Available Parts"
+#~ msgstr "Διαθέσιμα:"
 
 #, c-format
 #~ msgid "Found %i known shared file, %i unknown"

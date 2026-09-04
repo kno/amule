@@ -92,7 +92,8 @@ export function DownloadDetail({ hash, isGuest, categories = [], onPatch, onDele
       <div class="detail-body">
       ${tab === "clients" ? html`
         <${FileClients} hash=${d.hash} prefsKey="download_clients" defaultHidden=${DL_HIDDEN}
-                        defaultSort="downloaded" />
+                        defaultSort="downloaded" a4afEcids=${d.source_ecids || []}
+                        partsTotal=${d.total_part_count} files=${downloads} />
       ` : tab === "comments" ? html`
         <${DownloadComments} hash=${d.hash} comment=${d.my_comment} rating=${d.my_rating}
                              running=${!!(downloads.find((x) => x.hash === d.hash) || {}).kad_comment_lookup_running}
@@ -104,9 +105,9 @@ export function DownloadDetail({ hash, isGuest, categories = [], onPatch, onDele
       <div class="detail-sections">
         <div class="detail-progress">
           <${ProgressBar} percent=${d.progress && d.progress.percent} />
-          ${d.hashed_part_count > 0 && d.parts_total_count ? html`
-            <${PiecesBar} mode="hashing" total=${d.parts_total_count} hashed=${d.hashed_part_count} />
-            <${PiecesLegend} mode="hashing" total=${d.parts_total_count} hashed=${d.hashed_part_count} />`
+          ${d.hashed_part_count > 0 && d.total_part_count ? html`
+            <${PiecesBar} mode="hashing" total=${d.total_part_count} hashed=${d.hashed_part_count} />
+            <${PiecesLegend} mode="hashing" total=${d.total_part_count} hashed=${d.hashed_part_count} />`
           : parts.length ? html`
             <${PiecesBar} parts=${parts} />
             <${PiecesLegend} parts=${parts} />` : null}
@@ -135,7 +136,7 @@ export function DownloadDetail({ hash, isGuest, categories = [], onPatch, onDele
           media.codec ? statRow("downloads_detail_media_codec", media.codec, "downloads_detail_tip_media_codec") : null,
         ].filter(Boolean), "downloads_detail_group_media") : null}
         ${Section([
-          statRow("downloads_detail_available_parts", formatInt(d.parts_available_count) + " / " + formatInt(d.parts_total_count), "downloads_detail_tip_available_parts"),
+          statRow("downloads_detail_available_parts", formatInt(d.available_part_count) + " / " + formatInt(d.total_part_count), "downloads_detail_tip_available_parts"),
           statRow("downloads_detail_saved_ich", formatInt(d.ich_recovered_packet_count) + " " + t("downloads_detail_ich_unit"), "downloads_detail_tip_saved_ich"),
           statRow("downloads_detail_lost_corruption", formatBytes(d.lost_to_corruption_bytes), "downloads_detail_tip_lost_corruption"),
           statRow("downloads_detail_gained_compression", formatBytes(d.gained_by_compression_bytes), "downloads_detail_tip_gained_compression"),
@@ -183,11 +184,11 @@ function DetailActions({ d, isGuest, categories, onPatch, onDelete, onClear }) {
   return html`
     <div class="detail-actions">
       <button class="btn btn-sm admin-only" type="button"
-              onClick=${() => onPatch(d.hash, { status: inactive ? "resumed" : "paused" })}>
+              onClick=${() => onPatch(d.hash, { action: inactive ? "resume" : "pause" })}>
         <${Icon} name=${inactive ? "play" : "pause"} /> ${inactive ? t("downloads_resume") : t("downloads_pause")}
       </button>
       ${canStop ? html`
-        <button class="btn btn-sm admin-only" type="button" onClick=${() => onPatch(d.hash, { status: "stopped" })}>
+        <button class="btn btn-sm admin-only" type="button" onClick=${() => onPatch(d.hash, { action: "stop" })}>
           <${Icon} name="stop" /> ${t("downloads_stop")}
         </button>` : null}
       ${done ? html`

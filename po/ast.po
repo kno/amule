@@ -9,8 +9,8 @@ msgid ""
 msgstr ""
 "Project-Id-Version: aMule\n"
 "Report-Msgid-Bugs-To: https://github.com/amule-org/amule/issues\n"
-"POT-Creation-Date: 2026-08-27 08:55+0000\n"
-"PO-Revision-Date: 2026-08-25 10:02+0000\n"
+"POT-Creation-Date: 2026-09-04 08:48+0200\n"
+"PO-Revision-Date: 2026-09-03 11:01+0000\n"
 "Last-Translator: astur <malditoastur@gmail.com>\n"
 "Language-Team: Language ast <malditoastur@gmail.com>\n"
 "Language: ast\n"
@@ -771,6 +771,38 @@ msgid "Kad: Off"
 msgstr "Kad: Apagada"
 
 #: src/amuleDlg.cpp
+msgid "Core"
+msgstr ""
+
+#: src/amuleDlg.cpp src/ClientHistoryListCtrl.cpp src/ClientsListCtrl.cpp
+#: src/ServerListCtrl.cpp src/SharedFilePeersListCtrl.cpp
+#: src/SourceListCtrl.cpp src/Statistics.cpp
+msgid "Version"
+msgstr "Versión"
+
+#: src/amuleDlg.cpp
+msgid "The core and aMuleGUI are different versions."
+msgstr ""
+
+#: src/amuleDlg.cpp
+msgid "The core and aMuleGUI are the same version."
+msgstr ""
+
+#: src/amuleDlg.cpp src/ServerListCtrl.cpp
+msgid "Address"
+msgstr "Direición"
+
+#: src/amuleDlg.cpp
+#, fuzzy
+msgid "Encryption"
+msgstr "Descripción"
+
+#: src/amuleDlg.cpp
+#, fuzzy
+msgid "aMuleGUI"
+msgstr "Rexistru"
+
+#: src/amuleDlg.cpp
 #, fuzzy, c-format
 msgid "Up: %.1f%s (%.1f) | Down: %.1f%s (%.1f)"
 msgstr "Xu: %.1f(%.1f) | Desc: %.1f(%.1f)"
@@ -976,6 +1008,10 @@ msgstr ""
 msgid "Connection to the remote core was lost. Trying to reconnect..."
 msgstr ""
 
+#: src/amule-remote-gui.cpp src/ClientDetailDialog.cpp
+msgid "Disabled"
+msgstr "Deshabilitáu"
+
 #: src/amule-remote-gui.cpp
 #, fuzzy
 msgid "Reconnected to the remote core."
@@ -1020,6 +1056,15 @@ msgstr ""
 #: src/amule-remote-gui.cpp src/ExternalConn.cpp
 msgid "Invalid link or already on list."
 msgstr "Enllaz non válidu o yá ta na llista."
+
+#: src/amule-remote-gui.cpp
+msgid "The daemon refused the request."
+msgstr ""
+
+#: src/amule-remote-gui.cpp
+#, fuzzy, c-format
+msgid "Could not delete the category: %s"
+msgstr "Carpeta pa los ficheros temporales de descargues"
 
 #: src/amule-remote-gui.cpp
 #, c-format
@@ -1224,10 +1269,6 @@ msgid "Send message"
 msgstr "Unviar mensax"
 
 #: src/ClientContextActions.cpp
-msgid "Swap to this file"
-msgstr "Intercambia esti ficheru"
-
-#: src/ClientContextActions.cpp
 #, fuzzy
 msgid ""
 "You are not allowed to set more than one friend slot.\n"
@@ -1292,10 +1333,6 @@ msgstr "Sofitáu"
 msgid "Not supported"
 msgstr "Non sofitáu"
 
-#: src/ClientDetailDialog.cpp
-msgid "Disabled"
-msgstr "Deshabilitáu"
-
 #: src/ClientDetailDialog.cpp src/MuleTrayIcon.cpp src/ServerWnd.cpp
 #: src/TextClient.cpp
 msgid "Connected"
@@ -1319,11 +1356,6 @@ msgstr "Nome:"
 #: src/ClientHistoryListCtrl.cpp src/ClientsListCtrl.cpp
 msgid "Software"
 msgstr ""
-
-#: src/ClientHistoryListCtrl.cpp src/ClientsListCtrl.cpp src/ServerListCtrl.cpp
-#: src/SharedFilePeersListCtrl.cpp src/SourceListCtrl.cpp src/Statistics.cpp
-msgid "Version"
-msgstr "Versión"
 
 #: src/ClientHistoryListCtrl.cpp src/ClientsListCtrl.cpp
 #, fuzzy
@@ -2217,6 +2249,19 @@ msgstr ""
 
 #: src/ExternalConn.cpp
 #, fuzzy
+msgid "No such category."
+msgstr "Zarrar esta sesión de charra"
+
+#: src/ExternalConn.cpp
+msgid "Malformed category request."
+msgstr ""
+
+#: src/ExternalConn.cpp
+msgid "The default category cannot be deleted."
+msgstr ""
+
+#: src/ExternalConn.cpp
+#, fuzzy
 msgid "Missing chat session id"
 msgstr "Aniciada Nueva sesión de charra"
 
@@ -2791,6 +2836,52 @@ msgid ""
 msgstr ""
 "Nun se-y permite asignar más d'ún puestu reserváu.\n"
 " Namái s'asignó un puestu reserváu."
+
+#: src/GenericClientListCtrl.cpp
+#, fuzzy
+msgid "This source does not have the part"
+msgstr "Esti comandu nun tendría de tener dengún parámetru"
+
+#: src/GenericClientListCtrl.cpp
+msgid "You and this source both have the part"
+msgstr ""
+
+#: src/GenericClientListCtrl.cpp
+msgid "Being downloaded from this source now"
+msgstr ""
+
+#: src/GenericClientListCtrl.cpp
+msgid "The next part that will be asked of this source"
+msgstr ""
+
+#: src/GenericClientListCtrl.cpp
+msgid "This source has the part and you still need it"
+msgstr ""
+
+#: src/GenericClientListCtrl.cpp
+msgid "This peer already has the part"
+msgstr ""
+
+#: src/GenericClientListCtrl.cpp
+msgid "This peer does not have the part"
+msgstr ""
+
+#: src/GenericClientListCtrl.cpp
+msgid "One block per part of the file being downloaded."
+msgstr ""
+
+#: src/GenericClientListCtrl.cpp
+#, fuzzy
+msgid "One block per part of the shared file."
+msgstr "Introduz el puertu del sirvidor"
+
+#: src/GenericClientListCtrl.cpp
+msgid "Swap to this file"
+msgstr "Intercambia esti ficheru"
+
+#: src/GenericClientListCtrl.cpp
+msgid "Colour legend"
+msgstr ""
 
 #: src/GenericClientListCtrl.cpp
 #, fuzzy, c-format
@@ -6957,10 +7048,6 @@ msgid "Server Name"
 msgstr "Nome del Sirvidor"
 
 #: src/ServerListCtrl.cpp
-msgid "Address"
-msgstr "Direición"
-
-#: src/ServerListCtrl.cpp
 msgid "Port"
 msgstr "Puertu"
 
@@ -7394,10 +7481,9 @@ msgstr[1] "Alcontráronse %i ficheros compartíos"
 msgid "User Name"
 msgstr "Nome usuariu:"
 
-#: src/SharedFilePeersListCtrl.cpp src/SourceListCtrl.cpp
-#, fuzzy
-msgid "Available Parts"
-msgstr "Disponibles :"
+#: src/SharedFilePeersListCtrl.cpp
+msgid "Parts on Peer"
+msgstr ""
 
 #: src/SharedFilePeersListCtrl.cpp
 #, fuzzy
@@ -7595,6 +7681,11 @@ msgstr "Ficheros Compartíos (%i)"
 #, fuzzy, c-format
 msgid "Reloading shared files: %u files scanned"
 msgstr "Recargar llista de ficheros compartíos."
+
+#: src/SourceListCtrl.cpp
+#, fuzzy
+msgid "Part Status"
+msgstr "Estáu"
 
 #: src/SourceListCtrl.cpp
 #, fuzzy
@@ -9309,6 +9400,10 @@ msgstr ""
 
 #~ msgid "ERROR: Could not listen to TCP port."
 #~ msgstr "FALLU: Nun pue escuchase nel puertu TCP."
+
+#, fuzzy
+#~ msgid "Available Parts"
+#~ msgstr "Disponibles :"
 
 #, c-format
 #~ msgid "Found %i known shared file, %i unknown"

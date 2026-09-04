@@ -13,8 +13,8 @@ msgid ""
 msgstr ""
 "Project-Id-Version: aMule\n"
 "Report-Msgid-Bugs-To: https://github.com/amule-org/amule/issues\n"
-"POT-Creation-Date: 2026-08-27 08:55+0000\n"
-"PO-Revision-Date: 2026-08-26 20:31+0000\n"
+"POT-Creation-Date: 2026-09-04 08:48+0200\n"
+"PO-Revision-Date: 2026-09-03 11:12+0000\n"
 "Last-Translator: Mike Akiba <mike2718@gmail.com>\n"
 "Language-Team: Chinese Simplified <kde-i18n-doc@kde.org>\n"
 "Language: zh_CN\n"
@@ -776,6 +776,36 @@ msgid "Kad: Off"
 msgstr "Kad: 关闭"
 
 #: src/amuleDlg.cpp
+msgid "Core"
+msgstr "核心"
+
+#: src/amuleDlg.cpp src/ClientHistoryListCtrl.cpp src/ClientsListCtrl.cpp
+#: src/ServerListCtrl.cpp src/SharedFilePeersListCtrl.cpp
+#: src/SourceListCtrl.cpp src/Statistics.cpp
+msgid "Version"
+msgstr "版本"
+
+#: src/amuleDlg.cpp
+msgid "The core and aMuleGUI are different versions."
+msgstr "核心和 aMule 图形用户界面是不同的版本。"
+
+#: src/amuleDlg.cpp
+msgid "The core and aMuleGUI are the same version."
+msgstr "核心和 aMule 图形用户界面是同一版本。"
+
+#: src/amuleDlg.cpp src/ServerListCtrl.cpp
+msgid "Address"
+msgstr "地址"
+
+#: src/amuleDlg.cpp
+msgid "Encryption"
+msgstr "加密"
+
+#: src/amuleDlg.cpp
+msgid "aMuleGUI"
+msgstr "aMule 图形用户界面"
+
+#: src/amuleDlg.cpp
 #, c-format
 msgid "Up: %.1f%s (%.1f) | Down: %.1f%s (%.1f)"
 msgstr "上传: %.1f%s（%.1f） | 下载: %.1f%s（%.1f）"
@@ -983,6 +1013,10 @@ msgstr ""
 msgid "Connection to the remote core was lost. Trying to reconnect..."
 msgstr "到远程核心的连接丢失。正尝试重新连接…"
 
+#: src/amule-remote-gui.cpp src/ClientDetailDialog.cpp
+msgid "Disabled"
+msgstr "已禁用"
+
 #: src/amule-remote-gui.cpp
 msgid "Reconnected to the remote core."
 msgstr "已重新连接到远程核心。"
@@ -1024,6 +1058,15 @@ msgstr "核心拒绝了这些共享的文件夹：%s"
 #: src/amule-remote-gui.cpp src/ExternalConn.cpp
 msgid "Invalid link or already on list."
 msgstr "非法链接或已经存在列表中。"
+
+#: src/amule-remote-gui.cpp
+msgid "The daemon refused the request."
+msgstr "守护进程拒绝了请求。"
+
+#: src/amule-remote-gui.cpp
+#, c-format
+msgid "Could not delete the category: %s"
+msgstr "无法删除分类：%s"
 
 #: src/amule-remote-gui.cpp
 #, c-format
@@ -1227,10 +1270,6 @@ msgid "Send message"
 msgstr "发送消息"
 
 #: src/ClientContextActions.cpp
-msgid "Swap to this file"
-msgstr "转移到这个文件"
-
-#: src/ClientContextActions.cpp
 msgid ""
 "You are not allowed to set more than one friend slot.\n"
 " Only one slot was assigned."
@@ -1294,10 +1333,6 @@ msgstr "已支持"
 msgid "Not supported"
 msgstr "不支持"
 
-#: src/ClientDetailDialog.cpp
-msgid "Disabled"
-msgstr "已禁用"
-
 #: src/ClientDetailDialog.cpp src/MuleTrayIcon.cpp src/ServerWnd.cpp
 #: src/TextClient.cpp
 msgid "Connected"
@@ -1320,11 +1355,6 @@ msgstr "名称"
 #: src/ClientHistoryListCtrl.cpp src/ClientsListCtrl.cpp
 msgid "Software"
 msgstr "软件"
-
-#: src/ClientHistoryListCtrl.cpp src/ClientsListCtrl.cpp src/ServerListCtrl.cpp
-#: src/SharedFilePeersListCtrl.cpp src/SourceListCtrl.cpp src/Statistics.cpp
-msgid "Version"
-msgstr "版本"
 
 #: src/ClientHistoryListCtrl.cpp src/ClientsListCtrl.cpp
 msgid "IP Address"
@@ -2198,6 +2228,18 @@ msgid "Could not save the amuleapi password: %s"
 msgstr "无法保存 amuleapi 密码：%s"
 
 #: src/ExternalConn.cpp
+msgid "No such category."
+msgstr "没有这样的分类。"
+
+#: src/ExternalConn.cpp
+msgid "Malformed category request."
+msgstr "畸形的分类请求。"
+
+#: src/ExternalConn.cpp
+msgid "The default category cannot be deleted."
+msgstr "无法删除默认的分类。"
+
+#: src/ExternalConn.cpp
 msgid "Missing chat session id"
 msgstr "没有聊天会话 id"
 
@@ -2778,6 +2820,50 @@ msgid ""
 msgstr ""
 "不允许设置超过一个好友通道。\n"
 " 只能指定一个通道。"
+
+#: src/GenericClientListCtrl.cpp
+msgid "This source does not have the part"
+msgstr "这个源没有该部分"
+
+#: src/GenericClientListCtrl.cpp
+msgid "You and this source both have the part"
+msgstr "你和这个源都有该部分"
+
+#: src/GenericClientListCtrl.cpp
+msgid "Being downloaded from this source now"
+msgstr "正从这个源下载"
+
+#: src/GenericClientListCtrl.cpp
+msgid "The next part that will be asked of this source"
+msgstr "下一个要从这个源请求的部分"
+
+#: src/GenericClientListCtrl.cpp
+msgid "This source has the part and you still need it"
+msgstr "这个源有该部分，你仍需要它"
+
+#: src/GenericClientListCtrl.cpp
+msgid "This peer already has the part"
+msgstr "这个对等方已经有该部分"
+
+#: src/GenericClientListCtrl.cpp
+msgid "This peer does not have the part"
+msgstr "这个对等方没有该部分"
+
+#: src/GenericClientListCtrl.cpp
+msgid "One block per part of the file being downloaded."
+msgstr "正被下载的文件每部分对应一个区块。"
+
+#: src/GenericClientListCtrl.cpp
+msgid "One block per part of the shared file."
+msgstr "共享文件每个部分对应一个区块。"
+
+#: src/GenericClientListCtrl.cpp
+msgid "Swap to this file"
+msgstr "转移到这个文件"
+
+#: src/GenericClientListCtrl.cpp
+msgid "Colour legend"
+msgstr "颜色图例"
 
 #: src/GenericClientListCtrl.cpp
 #, c-format
@@ -6864,10 +6950,6 @@ msgid "Server Name"
 msgstr "服务器名称"
 
 #: src/ServerListCtrl.cpp
-msgid "Address"
-msgstr "地址"
-
-#: src/ServerListCtrl.cpp
 msgid "Port"
 msgstr "端口"
 
@@ -7291,9 +7373,9 @@ msgstr[1] "发现了 %u 个新的共享文件"
 msgid "User Name"
 msgstr "用户名"
 
-#: src/SharedFilePeersListCtrl.cpp src/SourceListCtrl.cpp
-msgid "Available Parts"
-msgstr "可用分块"
+#: src/SharedFilePeersListCtrl.cpp
+msgid "Parts on Peer"
+msgstr "对等方拥有的部分"
 
 #: src/SharedFilePeersListCtrl.cpp
 msgid "Upload Status"
@@ -7486,6 +7568,10 @@ msgstr "共享文件 (%i)"
 #, c-format
 msgid "Reloading shared files: %u files scanned"
 msgstr "正重新加载共享文件：扫描了 %u 个文件"
+
+#: src/SourceListCtrl.cpp
+msgid "Part Status"
+msgstr "Part 状态"
 
 #: src/SourceListCtrl.cpp
 msgid "Remote File Name"
@@ -9199,6 +9285,9 @@ msgstr "正在删除 $APPDATA\\aMule 中的用户数据..."
 
 #~ msgid "ERROR: Could not listen to TCP port."
 #~ msgstr "错误: 无法监听 TCP 端口。"
+
+#~ msgid "Available Parts"
+#~ msgstr "可用分块"
 
 #, c-format
 #~ msgid "Found %i known shared file, %i unknown"

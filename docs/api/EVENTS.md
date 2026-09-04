@@ -39,7 +39,8 @@ const EVENT_TYPES = [
   "server_added",   "server_updated",   "server_removed",
   "friend_added",   "friend_updated",   "friend_removed",
   "status_changed", "log_appended",
-  "search_result_added", "search_result_updated", "search_progress", "search_closed",
+  "search_result_added", "search_result_updated", "search_result_removed",
+  "search_progress", "search_closed",
   "comments_updated",
 ];
 const es = new EventSource("/api/v0/events", { withCredentials: true });
@@ -249,6 +250,7 @@ data: {"reason":"gap","since_id":<old cursor>,"newest_id":<new cursor>}
 - `"gap"` — events were evicted from the ring before the subscriber read them.
 - `"restart"` — the subscriber's id was past the bus's newest, only possible after a daemon restart.
 - `"idle"` — the daemon stopped diffing because nothing had been subscribed for several ticks, so no collection change is represented on the bus for that period. A cursor from before it cannot be trusted however in-range it looks — and it may well still be in range, because the chat publisher keeps ids moving regardless.
+- `"log_cleared"` — [`DELETE /logs/amule`](REFERENCE.md#delete-apiv0logsamule) emptied the log buffer. The lines a `log_appended` subscriber was tracking no longer exist, and the buffer may already have refilled, so the tail cursor is meaningless: re-read [`GET /logs/amule`](REFERENCE.md#get-apiv0logsamule). Any client can clear the log, so this reaches subscribers that did not issue the DELETE.
 
 On any of them, the client's correct response is:
 
@@ -262,13 +264,13 @@ On any of them, the client's correct response is:
 
 ## Event catalog
 
-Every event the bus publishes. The `_added` and `_updated` payloads are BYTE-FOR-BYTE identical to the matching REST resource's list-item shape — clients receiving a `*_updated` event get the full new state and never need to re-GET. `_removed` carries only the identity field — `hash` for files (`download_removed`, `shared_removed`) and `ecid` for every ECID-keyed collection (`client_removed`, `friend_removed`, `server_removed`) — so the client can drop the cache entry without needing the old object. Three events don't fit the collection-delta model: `status_changed` ships a full status envelope (replace, not merge), `log_appended` is an append operation (`{lines}` — push the lines onto the amule log buffer, don't replace), and `search_closed` retires a whole result space rather than one item (`{search_id}` — drop the view, not a row). Branch on the event type in your dispatcher accordingly.
+Every event the bus publishes. The `_added` and `_updated` payloads are BYTE-FOR-BYTE identical to the matching REST resource's list-item shape — clients receiving a `*_updated` event get the full new state and never need to re-GET. `_removed` carries only the identity field — `hash` for files (`download_removed`, `shared_removed`) and `ecid` for every ECID-keyed collection (`client_removed`, `friend_removed`, `server_removed`) — so the client can drop the cache entry without needing the old object. `search_result_removed` follows the same rule with the `search_id` that scopes it: `{search_id, hash}`. Three events don't fit the collection-delta model: `status_changed` ships a full status envelope (replace, not merge), `log_appended` is an append operation (`{lines}` — push the lines onto the amule log buffer, don't replace), and `search_closed` retires a whole result space rather than one item (`{search_id}` — drop the view, not a row). Branch on the event type in your dispatcher accordingly.
 
 ### `downloads` channel
 
 #### `download_added` / `download_updated`
 
-Identical to the REST [`/api/v0/downloads`](REFERENCE.md#get-apiv0downloads) list-item shape. `_updated` fires on any field-level change including `completed_bytes`, `transferred_bytes`, `speed_bytes_per_second`, the source counters, `kad_comment_lookup_running` and `hashed_part_count` — clients see live progress (and the Kad-notes lookup start → finish edge, and a running hash) without polling.
+Identical to the REST [`/api/v0/downloads`](REFERENCE.md#get-apiv0downloads) list-item shape. `_updated` fires on any field-level change including `completed_bytes`, `transferred_bytes`, `speed_bytes_per_second`, the source counters, `kad_comment_lookup_running`, `hashed_part_count` and `source_ecids` — clients see live progress (and the Kad-notes lookup start → finish edge, and a running hash) without polling.
 
 ```json
 {
@@ -287,9 +289,12 @@ Identical to the REST [`/api/v0/downloads`](REFERENCE.md#get-apiv0downloads) lis
   "progress": { "percent": 29.85 },
   "kad_comment_lookup_running": false,
   "hashed_part_count":  0,
-  "parts_total_count":  411
+  "total_part_count":  411,
+  "source_ecids":  [ 1234, 5678 ]
 }
 ```
+
+`source_ecids` is the A4AF membership: the ECIDs of the clients parked on this file while pulling another. It is compared as a list, not through the `sources.a4af` count beside it, so a swap that moves one client out and another in still fires `download_updated`. Join it against the `clients` channel to shade the A4AF rows of a per-file client list without polling [`GET /downloads/{hash}/clients`](REFERENCE.md#get-apiv0downloadshashclients--get-apiv0sharedhashclients) — A4AF is a client-to-*file* relation, so it is the one such row attribute the client object cannot carry.
 
 A `POST /downloads/{hash}/comments` flips `kad_comment_lookup_running` to `true`, producing a `download_updated`; when the Kad lookup finishes (typically ~45 s, or sooner) it flips back to `false`, producing another. Retrieved notes are then read via `GET /downloads/{hash}/comments`.
 
@@ -424,7 +429,9 @@ Identical to the REST [`/api/v0/friends`](REFERENCE.md#get-apiv0friends) list-it
 }
 ```
 
-`friend_updated` fires on any observable change, including a friend coming online or going offline — that transition is `client_ecid` moving between a live client's ECID and `0`, which is what drives the connected indicator in the desktop client.
+`ip` and `port` are `null` for a friend with no address, exactly as the [`GET /friends`](REFERENCE.md#get-apiv0friends) row emits them - the payloads are key-for-key identical, so a subscriber hydrating from REST never sees a value flip `null` to `""` on the first tick that touches the row.
+
+`friend_updated` fires on any observable change, including a friend coming online or going offline — that transition is `client_ecid` moving between a live client's ECID and `null`, which is what drives the connected indicator in the desktop client.
 
 One `PATCH /api/v0/friends/{ecid}` can produce **two** `friend_updated` events. Only one friend may hold the friend slot, so granting it to one clears it on whoever held it before, and both records change.
 
@@ -444,7 +451,7 @@ One event per message, **inbound and outbound alike**. An outbound one is how a 
 
 ```json
 {
-  "client_address": "203.0.113.42:4662",
+  "address": "203.0.113.42:4662",
   "ip":          "203.0.113.42",
   "port":        4662,
   "name":        "alice",
@@ -454,17 +461,17 @@ One event per message, **inbound and outbound alike**. An outbound one is how a 
 }
 ```
 
-`message` is identical to a `messages[]` entry on [`GET /api/v0/chats/{client_address}/messages`](REFERENCE.md#get-apiv0chatsclient_addressmessages), and `name` uses the same `"IP: <ip> Port: <port>"` fallback the REST list does.
+`message` is identical to a `messages[]` entry on [`GET /api/v0/chats/{address}/messages`](REFERENCE.md#get-apiv0chatsaddressmessages), and `name` uses the same `"IP: <ip> Port: <port>"` fallback the REST list does.
 
-There is no separate "conversation started" event: a conversation that did not exist yet is implied by the first message carrying its `client_address`.
+There is no separate "conversation started" event: a conversation that did not exist yet is implied by the first message carrying its `address`.
 
 #### `chat_session_closed`
 
 ```json
-{ "client_address": "203.0.113.42:4662" }
+{ "address": "203.0.113.42:4662" }
 ```
 
-Closing is global — see [`DELETE /api/v0/chats/{client_address}`](REFERENCE.md#delete-apiv0chatsclient_address). This fires whichever client closed it, including the desktop GUI, so a viewer should drop the conversation rather than assume it still exists.
+Closing is global — see [`DELETE /api/v0/chats/{address}`](REFERENCE.md#delete-apiv0chatsaddress). This fires whichever client closed it, including the desktop GUI, so a viewer should drop the conversation rather than assume it still exists.
 
 ### `clients` channel
 
@@ -548,11 +555,11 @@ Rate impact is small: the overhead rates move about as often as the speeds alrea
     "network":    { "user_count": 5400000, "file_count": 1400000000, "node_count": 2400 }
   },
   "speeds": {
-    "download_bytes_per_second": 4500000, "upload_bytes_per_second": 50000,
+    "download_speed_bytes_per_second": 4500000, "upload_speed_bytes_per_second": 50000,
     "download_overhead_bytes_per_second": 8700, "upload_overhead_bytes_per_second": 1100
   },
   "disk":   { "temp_free_bytes": 48318382080, "incoming_free_bytes": 48318382080 },
-  "queue":  { "upload_clients_waiting": 12, "download_sources_total": 1843 }
+  "queue":  { "waiting_upload_client_count": 12, "download_source_count": 1843 }
 }
 ```
 
@@ -570,7 +577,7 @@ Emitted when the amuled log buffer appends new lines.
 { "lines": ["2026-06-19 11:00:00: line one", "2026-06-19 11:00:01: line two"] }
 ```
 
-Only the amuled log has a live channel; the server_info buffer has no SSE feed and is fetched by polling [`GET /logs/serverinfo`](REFERENCE.md#get-apiv0logsserverinfo). Multiple lines may be batched into a single event when the buffer landed several lines between refresher ticks. The [Bootstrap example](#bootstrap-snapshot--stream) doesn't pull `/logs/amule` — fetch it in step 2 if your UI shows historical log lines, otherwise treat `log_appended` as a live-only feed.
+Only the amuled log has a live channel; the server_info buffer has no SSE feed and is fetched by polling [`GET /logs/serverinfo`](REFERENCE.md#get-apiv0logsserverinfo). Multiple lines may be batched into a single event when the buffer landed several lines between refresher ticks. The feed is append-only with one exception: [`DELETE /logs/amule`](REFERENCE.md#delete-apiv0logsamule) empties the buffer, and rather than a log event that would leave the cursor pointing into a buffer that no longer exists, every subscriber gets a [`resync`](#resync-frame) with `reason: "log_cleared"` and re-reads. Any client can clear the log, so this can arrive without your having asked for it. The [Bootstrap example](#bootstrap-snapshot--stream) doesn't pull `/logs/amule` — fetch it in step 2 if your UI shows historical log lines, otherwise treat `log_appended` as a live-only feed.
 
 ### `search` channel
 
@@ -580,9 +587,9 @@ Driven by the refresher state machine that owns the `POST /search` → completio
 
 `_added` fires per new result that appears in the results map between refresher ticks. `_updated` fires when a result you already hold changes in one of the fields below. Both carry the identical payload, so a subscriber can handle them with one function keyed by `(search_id, hash)`; they are separate names so that a consumer written against the add-only channel keeps its existing behaviour instead of silently acquiring upsert semantics.
 
-**What `_updated` covers, and what it deliberately does not.** It fires on `status`, `already_downloaded`, `comments[]`, `kad_comment_lookup_running` and `rating` (which aggregates from the comments). Those are the fields that can change *after* a search finishes, which is the window where nothing else tells you: `search_progress` has stopped, so a hit you download from a finished search would otherwise read `already_have: false` forever, and a Kad notes lookup that lands afterwards would be invisible until someone re-read the endpoint.
+**What `_updated` covers, and what it deliberately does not.** It fires on `status`, `already_downloaded`, `comments[]`, `kad_comment_lookup_running` and `rating` (which aggregates from the comments). Those are the fields that can change *after* a search finishes, which is the window where nothing else tells you: `search_progress` has stopped, so a hit you download from a finished search would otherwise read `already_downloaded: false` forever, and a Kad notes lookup that lands afterwards would be invisible until someone re-read the endpoint.
 
-It does **not** fire on `sources` or `alternate_names[]`. Those churn on essentially every tick of a running search, and [`search_progress`](#search_progress) already fires on every advance there and is the cue to re-read [`GET /search/{id}/results`](REFERENCE.md#get-apiv0searchidresults). Pushing them per result would duplicate an existing signal on the noisiest fields on the surface. The identity fields (`hash`, `name`, `size`, `type`, `directory`, `media`) never change for a given result, so there is nothing to push.
+It does **not** fire on `sources` or `alternate_names[]`. Those churn on essentially every tick of a running search, and [`search_progress`](#search_progress) already fires on every advance there and is the cue to re-read [`GET /search/{id}/results`](REFERENCE.md#get-apiv0searchidresults). Pushing them per result would duplicate an existing signal on the noisiest fields on the surface. The identity fields (`hash`, `name`, `size_bytes`, `file_type`, `directory`, `media`) never change for a given result, so there is nothing to push.
 
 ```json
 {
@@ -594,13 +601,25 @@ It does **not** fire on `sources` or `alternate_names[]`. Those churn on essenti
   "already_downloaded": false,
   "rating": 0,
   "status": "new",
-  "type": "videos",
+  "file_type": "video",
   "media": { "duration_seconds": 5400, "bitrate_kilobits_per_second": 1500, "codec": "h264", "artist": "", "album": "", "title": "" },
   "alternate_names": []
 }
 ```
 
-`search_id` routes the result to the search that produced it — amuleapi runs several searches at once (see [REFERENCE.md](REFERENCE.md#post-apiv0search)), so demux on it. Key results by `(search_id, hash)`. Aside from the leading `search_id`, the payload is byte-for-byte identical to a `/search/{id}/results` array entry — the two are emitted by the same writer, so the promise holds by construction. That includes `status`, `type`, `directory` (the folder inside a browsed client's share, `""` on ordinary hits), `kad_comment_lookup_running`, `comments[]` and the `alternate_names[]` grouping array — see [REFERENCE.md](REFERENCE.md#get-apiv0searchidresults); `sources` is the nested `{total, complete}` object, `media` — the audio/video metadata object — is present for locally-known/probed hits and `null` otherwise (the one place the unknown-value rule reaches an object rather than a scalar, so test `media === null` before reaching into it), and `alternate_names` holds the same-hash/different-name alternatives (empty for a single-name hit), same as the REST endpoint. Only parent results fire these events — children are folded into their parent's `alternate_names[]`, never emitted on their own. A change to a child therefore surfaces as a `search_result_updated` for its parent. Each `search_id` is an independent result space — a new `POST /search` starts a fresh one without disturbing the others.
+`search_id` routes the result to the search that produced it — amuleapi runs several searches at once (see [REFERENCE.md](REFERENCE.md#post-apiv0search)), so demux on it. Key results by `(search_id, hash)`. Aside from the leading `search_id`, the payload is byte-for-byte identical to a `/search/{id}/results` array entry — the two are emitted by the same writer, so the promise holds by construction. That includes `status`, `file_type`, `directory` (the folder inside a browsed client's share, `""` on ordinary hits), `kad_comment_lookup_running`, `comments[]` and the `alternate_names[]` grouping array — see [REFERENCE.md](REFERENCE.md#get-apiv0searchidresults); `sources` is the nested `{total, complete}` object, `media` — the audio/video metadata object — is present for locally-known/probed hits and `null` otherwise (the one place the unknown-value rule reaches an object rather than a scalar, so test `media === null` before reaching into it), and `alternate_names` holds the same-hash/different-name alternatives (empty for a single-name hit), same as the REST endpoint. Only parent results fire these events — children are folded into their parent's `alternate_names[]`, never emitted on their own. A change to a child therefore surfaces as a `search_result_updated` for its parent. Each `search_id` is an independent result space — a new `POST /search` starts a fresh one without disturbing the others.
+
+#### `search_result_removed`
+
+```json
+{ "search_id": 42, "hash": "0a1b..." }
+```
+
+A result the daemon no longer serves for this search. Identity-only, like every other `_removed`: drop the row keyed by `(search_id, hash)`; there is nothing to merge and no re-read needed.
+
+Two things produce one. The incremental union merge erases a result the daemon stopped reporting, and the folding pass drops a row that has since become a child of another result, surfacing instead inside that parent's `alternate_names[]` — so a removal is sometimes a regrouping rather than a disappearance, and the parent's `search_result_updated` carries the new grouping.
+
+This matters most on a **finished** search, which publishes no further [`search_progress`](#search_progress): without this event nothing would signal that a row the API has stopped serving is still on screen.
 
 #### `search_progress`
 
@@ -617,7 +636,7 @@ Emitted whenever a search's completion advances and once more on its completion;
 - `search_id` — which search this frame is about.
 - `state` — `"running"` while the search is in flight, `"finished"` on the terminal frame.
 - `percent` — `0..100`, daemon-computed for every search kind. For **global** it is the real server-queue progress. For **Kad**, which has no measurable progress, it is a cosmetic time-ramp derived from the fixed 45 s keyword-search lifetime (capped at 99 until the daemon authoritatively reports completion, then 100); see [REFERENCE.md](REFERENCE.md#get-apiv0searchidresults). Treat the Kad value as a liveliness indicator, not an accurate completion estimate.
-- `kind` — the originally-requested search type (`"local"` | `"global"` | `"kad"` | `"browse"`).
+- `type` — the originally-requested search type (`"local"` | `"global"` | `"kad"` | `"browse"`).
 - `result_count` — the current results-map size; subscribers can reconcile against any `search_result_added` / `search_result_updated` they may have missed via `GET /search/{id}/results`.
 
 A Kad search hitting its result cap (`SEARCHKEYWORD_TOTAL`, 300) before the 45 s deadline finishes early — the lifecycle flips to `finished` and `percent` jumps straight to 100 ahead of the ramp.

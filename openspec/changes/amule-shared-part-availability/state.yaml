@@ -1,0 +1,19 @@
+change: amule-shared-part-availability
+order: null   # not part of the eMuleAI network-parity chain (openspec/changes/README.md); standalone change
+artifact_store: openspec
+chain_strategy: stacked-to-main
+target_repo: github.com/kno/amule
+upstream_repo: github.com/amule-org/amule
+depends_on: []
+blocks: []
+new_dependencies: []
+optional: false
+phases:
+  explore: done
+  propose: done
+  spec: done
+  design: done
+  tasks: done
+  apply: pending
+  verify: pending
+  archive: pending
