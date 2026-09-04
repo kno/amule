@@ -93,12 +93,7 @@ enum ERelayDisposition
 	//! The request names its own sender as the target: a loop.
 	RELAY_DISCARD_TARGET_IS_REQUESTER,
 	//! We hold no address for the named target.
-	RELAY_DISCARD_UNKNOWN_TARGET,
-	//! The message already carries CONNECT_OPT_NATT_RELAYED. It is a forward
-	//! addressed to this client, not a request to relay, and forwarding a
-	//! forward is a loop between two willing relays that only the rate limit
-	//! would stop -- and only after both had spent their budgets.
-	RELAY_DISCARD_ALREADY_RELAYED
+	RELAY_DISCARD_UNKNOWN_TARGET
 };
 
 /**
@@ -106,11 +101,59 @@ enum ERelayDisposition
  *
  * A limit that allocates a bucket per source address is itself an amplifier: a
  * single attacker delegated an IPv6 /64 has more source addresses than this
- * process has bytes. Past this cap the limiter denies rather than growing,
- * which is the safe direction -- a full table means a flood is in progress, and
- * the cost of denying a genuine request during one is a retry.
+ * process has bytes. Past this cap the limiter never grows.
+ *
+ * It does not simply deny past it, though, and the reason is that this relay
+ * never replies: a source address costs an attacker nothing to forge, so 1024
+ * spoofed sources renewed once per window -- about seventeen packets a second
+ * -- hold the table full indefinitely, and every peer without a bucket is
+ * denied for as long as that runs. That is an outage rather than the retry an
+ * earlier version of this comment claimed, and one bucket table serves both
+ * directions of this opcode, so the service given away to strangers was
+ * starving the capability this client needs for itself.
+ *
+ * So the cap bounds the class it was written for. A requester this client
+ * already holds an identity for is admitted even when the table is full, taking
+ * the slot of whichever bucket has been open longest; an unknown one is denied.
+ * Flooding is then no longer a matter of picking addresses: to deny anybody the
+ * attacker must be in this client's own client list at the source it sends
+ * from, which spoofing does not achieve.
+ *
+ * What that costs, because every eviction policy is itself an attack surface:
+ * an attacker in the client list can evict an honest peer's bucket and so RESET
+ * that peer's window, handing it up to one extra window of budget. It cannot do
+ * that to itself -- its own bucket is found before the table is consulted for
+ * room, so a throttled peer stays throttled -- and it cannot use eviction to
+ * emit anything, because a relay still needs a hint that matches the observed
+ * source and a target out of our own client list. The gain is bounded by
+ * kRendezvousMaxAttempts per honest identity per window; the alternative,
+ * denying every peer we know during any flood, costs the whole feature.
  */
 constexpr size_t kRendezvousRelayBucketCap = 1024;
+
+/**
+ * Which of the two things this client is doing with an OP_RENDEZVOUS, for the
+ * purpose of the budget.
+ *
+ * They are not the same transaction and must not share one. Relaying is a
+ * service given away to strangers that this client gets nothing out of; acting
+ * on a forward is a capability this client is the BENEFICIARY of. A single
+ * budget lets the giveaway throttle the thing we need -- our own buddy asking
+ * us to relay five times in a window left nothing for the forward it sent us in
+ * the other direction. That is a category error, and no bucket count fixes a
+ * category error.
+ *
+ * The role is chosen inside RelayRendezvousRequest() and
+ * AcceptRelayedRendezvous() rather than by whoever calls them, so there is no
+ * wiring for a caller to get wrong.
+ */
+enum ERendezvousRole
+{
+	//! Relaying on someone else's behalf. The giveaway.
+	RENDEZVOUS_ROLE_RELAY_SERVICE,
+	//! Acting on a forward addressed to us. The capability.
+	RENDEZVOUS_ROLE_ACTING_ON_FORWARD
+};
 
 /**
  * Per-requester relay budget: kRendezvousMaxAttempts relays per
@@ -141,9 +184,15 @@ public:
 	 *
 	 * @param requester the address the request arrived from.
 	 * @param nowMs a millisecond tick count.
+	 * @param requesterIsKnown whether this client already holds an identity for
+	 *        that host -- a user hash on the relay path, a buddy relation on
+	 *        the acting one. Answered from our own state, never from the
+	 *        datagram. It buys a slot in a full table and nothing else: the
+	 *        budget itself is the same five per window either way.
 	 * @return true when the request is within budget.
 	 */
-	bool Admit(const CNetworkAddress &requester, uint64_t nowMs)
+	bool Admit(
+		const CNetworkAddress &requester, uint64_t nowMs, bool requesterIsKnown, ERendezvousRole role)
 	{
 		const CNetworkAddress scope = PeerIdentity::RateLimitScope(requester);
 		if (scope.IsAbsent()) {
@@ -152,8 +201,11 @@ public:
 			return false;
 		}
 
-		const auto existing = m_buckets.find(scope);
-		if (existing != m_buckets.end()) {
+		BucketTable &buckets =
+			role == RENDEZVOUS_ROLE_RELAY_SERVICE ? m_relayService : m_actingOnForward;
+
+		const auto existing = buckets.find(scope);
+		if (existing != buckets.end()) {
 			SBucket &bucket = existing->second;
 			if (nowMs >= bucket.windowStartMs &&
 				nowMs - bucket.windowStartMs >= kRendezvousBackoffMs) {
@@ -171,9 +223,20 @@ public:
 			return true;
 		}
 
-		if (m_buckets.size() >= kRendezvousRelayBucketCap) {
-			PruneExpired(nowMs);
-			if (m_buckets.size() >= kRendezvousRelayBucketCap) {
+		if (buckets.size() >= kRendezvousRelayBucketCap) {
+			PruneExpired(buckets, nowMs);
+		}
+		if (buckets.size() >= kRendezvousRelayBucketCap) {
+			if (!requesterIsKnown) {
+				// The flooder's class, and the cap is doing what it was
+				// written for: memory does not grow, and the request is
+				// denied rather than served.
+				return false;
+			}
+			// A peer we already hold takes the slot of whichever bucket has
+			// been open longest -- the one closest to expiring anyway. The
+			// table does not grow, so the memory bound is unchanged.
+			if (!EvictOldest(buckets)) {
 				return false;
 			}
 		}
@@ -181,12 +244,15 @@ public:
 		SBucket bucket;
 		bucket.windowStartMs = nowMs;
 		bucket.count = 1;
-		m_buckets[scope] = bucket;
+		buckets[scope] = bucket;
 		return true;
 	}
 
-	//! How many buckets are held. Exposed so the memory bound is assertable.
-	size_t BucketCount() const { return m_buckets.size(); }
+	//! How many buckets are held across both roles. Exposed so the memory bound
+	//! is assertable. Each table is capped separately, so the bound is twice
+	//! kRendezvousRelayBucketCap -- and the acting table holds one entry in
+	//! practice, because only a buddy reaches it.
+	size_t BucketCount() const { return m_relayService.size() + m_actingOnForward.size(); }
 
 private:
 	struct SBucket
@@ -195,22 +261,53 @@ private:
 		uint32_t count = 0;
 	};
 
+	typedef std::map<CNetworkAddress, SBucket> BucketTable;
+
+	/**
+	 * Drop the bucket whose window opened longest ago, to make room for one
+	 * this limiter owes a slot to.
+	 *
+	 * Linear, and it runs only when the table is full and a known peer
+	 * arrives -- the same branch PruneExpired() already scans in.
+	 *
+	 * @return false only for an empty table, which the caller cannot reach.
+	 */
+	static bool EvictOldest(BucketTable &buckets)
+	{
+		auto oldest = buckets.begin();
+		if (oldest == buckets.end()) {
+			return false;
+		}
+		for (auto it = buckets.begin(); it != buckets.end(); ++it) {
+			if (it->second.windowStartMs < oldest->second.windowStartMs) {
+				oldest = it;
+			}
+		}
+		buckets.erase(oldest);
+		return true;
+	}
+
 	//! Drop every bucket whose window has passed. Called only when the table is
 	//! full, so the ordinary path costs one map lookup.
-	void PruneExpired(uint64_t nowMs)
+	static void PruneExpired(BucketTable &buckets, uint64_t nowMs)
 	{
-		for (auto it = m_buckets.begin(); it != m_buckets.end();) {
+		for (auto it = buckets.begin(); it != buckets.end();) {
 			const bool expired = nowMs >= it->second.windowStartMs &&
 					     nowMs - it->second.windowStartMs >= kRendezvousBackoffMs;
 			if (expired) {
-				it = m_buckets.erase(it);
+				it = buckets.erase(it);
 			} else {
 				++it;
 			}
 		}
 	}
 
-	std::map<CNetworkAddress, SBucket> m_buckets;
+	//! One table per role, so the giveaway cannot spend the capability's budget.
+	//! Both are capped, because AcceptRelayedRendezvous() is a header function
+	//! and a future caller could answer senderIsOurBuddy true for more than the
+	//! one peer this client's socket ever does.
+	BucketTable m_relayService;
+	BucketTable m_actingOnForward;
 };
 
 //! The outcome of one relay request.
@@ -228,8 +325,9 @@ struct SRelayDecision
 /**
  * Validate and, if it survives, relay one OP_RENDEZVOUS request.
  *
- * @param frame points at the OP_RENDEZVOUS opcode byte, i.e. past the 0xB2 and
- *        0x00 framing bytes.
+ * @param frame points at the OP_RENDEZVOUS body, i.e. past the 0xC5 protocol
+ *        byte and the opcode byte. The body carries no opcode of its own; see
+ *        the envelope comment in NatRendezvousProtocol.h.
  * @param frameLength bytes available from there.
  * @param source the address the datagram arrived from, at full width. Not a
  *        32-bit narrowing: a rendezvous can arrive over either family and
@@ -281,7 +379,7 @@ inline SRelayDecision RelayRendezvousRequest(const uint8_t *frame,
 	// Charged before the message is parsed, so garbage is not free. Five
 	// malformed requests spend the sender's own budget and its sixth request,
 	// valid or not, is throttled.
-	if (!limiter.Admit(source, nowMs)) {
+	if (!limiter.Admit(source, nowMs, requesterHash != nullptr, RENDEZVOUS_ROLE_RELAY_SERVICE)) {
 		decision.disposition = RELAY_DISCARD_RATE_LIMITED;
 		return decision;
 	}
@@ -296,15 +394,6 @@ inline SRelayDecision RelayRendezvousRequest(const uint8_t *frame,
 	SNattRendezvousRequest request;
 	if (!ParseRendezvousRequest(frame, frameLength, request)) {
 		decision.disposition = RELAY_DISCARD_MALFORMED;
-		return decision;
-	}
-
-	if (request.isRelayed) {
-		// A forward, not a request to relay. The direction is read off the
-		// wire rather than inferred from local state precisely so that this
-		// branch exists: a crafted request cannot reach the acting path, and
-		// a forward cannot reach this one.
-		decision.disposition = RELAY_DISCARD_ALREADY_RELAYED;
 		return decision;
 	}
 
@@ -323,7 +412,15 @@ inline SRelayDecision RelayRendezvousRequest(const uint8_t *frame,
 		return decision;
 	}
 
-	// THE check. Compared on the address and not on its spelling, so a
+	// THE check, and it is now doing two jobs. It is the reflection guard: a
+	// request may only name the host it arrived from, so this relay cannot be
+	// aimed at a third party. And it is what keeps a FORWARD off this path --
+	// a forward carries the endpoint of the peer it is about, which is not the
+	// relay that sent it, so it fails here and is not forwarded on. Two willing
+	// relays therefore cannot loop a message between them, which is what the
+	// deleted CONNECT_OPT_NATT_RELAYED bit used to prevent by asking the sender.
+	//
+	// Compared on the address and not on its spelling, so a
 	// dual-stack peer naming ::ffff:a.b.c.d for an IPv4 datagram is accepted --
 	// that is the same host -- while any other address is not.
 	//
@@ -362,11 +459,21 @@ inline SRelayDecision RelayRendezvousRequest(const uint8_t *frame,
 
 	// The forwarded message names the requester by the identity we hold for it,
 	// and carries the endpoint we observed -- not the one that was claimed.
-	// Marked relayed, so the target acts on it instead of relaying it on, and
-	// so this same function refuses it if it ever comes back here.
+	// The file hash travels on exactly as it arrived, and it is the ONE field
+	// here that comes from the datagram. That is not a hole in the rule above:
+	// the rule guards the identity and the endpoint, because those are what a
+	// forged value would aim traffic with. A file hash names no host and is
+	// never dialled -- it is the subject line of the rendezvous -- and this
+	// relay has no other source for it. Its client list knows who the requester
+	// is, not what it wanted. A request that named no file is forwarded naming
+	// none, rather than naming a zero hash that is not the file in question.
 	uint8_t forwarded[NATT_RENDEZVOUS_MAX_LENGTH];
-	const size_t length =
-		EncodeRelayedRendezvous(requesterHash, source, sourcePort, forwarded, sizeof(forwarded));
+	const size_t length = EncodeRelayedRendezvous(requesterHash,
+		request.hasFileHash ? request.fileHash : nullptr,
+		source,
+		sourcePort,
+		forwarded,
+		sizeof(forwarded));
 	if (length == 0) {
 		// The observed endpoint could not be encoded -- an address family this
 		// hint format does not carry. Nothing is sent; a rendezvous with no
@@ -384,6 +491,80 @@ inline SRelayDecision RelayRendezvousRequest(const uint8_t *frame,
 	return decision;
 }
 
+//! Which path an arriving OP_RENDEZVOUS belongs on. The two directions share an
+//! opcode and a body, so this is decided about the sender, never read out of
+//! the message.
+enum ENattRendezvousDirection
+{
+	//! A relay forwarded it: our buddy telling us where a third peer is. The
+	//! acting path -- AcceptRelayedRendezvous().
+	NATT_RENDEZVOUS_ACT_ON_FORWARD,
+	//! Everything else, including a malformed body: the sender is asking this
+	//! client to relay for it -- RelayRendezvousRequest().
+	NATT_RENDEZVOUS_RELAY_FOR_SENDER
+};
+
+/**
+ * Which of the two things an arriving OP_RENDEZVOUS is.
+ *
+ * A relay request (A to R) and a relayed rendezvous (R to B) carry the same
+ * opcode and the same fields and mean opposite things, so something has to
+ * choose. This tree used to spell the difference with an option bit the sender
+ * set, which was wrong twice over: 0x40 is eMuleAI's QUIC capability bit and
+ * never ours to take (see ENattConnectOptions), and a bit the sender sets is a
+ * claim -- the acting path punches toward an address out of the datagram, so "I
+ * was forwarded by a relay" is the first thing a crafted request would say.
+ *
+ * So the direction comes from one fact this client holds and one it observed,
+ * and from nothing the sender wrote. It lives here, as a function over its
+ * inputs, rather than inline in the socket class: the socket cannot be linked
+ * into the test suite, and a decision that routes a datagram between "send
+ * toward an address in our client list" and "punch at an address in the
+ * message" is exactly the kind that must not be the one part of this change
+ * nobody can drive. See NatRendezvousRelayTest.
+ *
+ * @param frame the OP_RENDEZVOUS body, past the 0xC5 and the opcode byte.
+ * @param frameLength bytes available from there.
+ * @param source the address the datagram arrived from.
+ * @param senderIsOurBuddy whether this client holds that sender as its buddy.
+ *        The guard, and the only one: a stranger reaches the relay path
+ *        whatever it writes, and the relay path sends only toward addresses out
+ *        of our own client list. Read the caveat on AcceptRelayedRendezvous()
+ *        for how much that fact is worth over UDP.
+ * @return the path this datagram belongs on. Everything that is not positively
+ *         a forward from our buddy about a third host is a relay request --
+ *         including a malformed body, which goes to RelayRendezvousRequest() so
+ *         that it is charged against its sender's budget rather than being
+ *         free.
+ */
+inline ENattRendezvousDirection ClassifyRendezvousDirection(
+	const uint8_t *frame, size_t frameLength, const CNetworkAddress &source, bool senderIsOurBuddy)
+{
+	if (!senderIsOurBuddy) {
+		return NATT_RENDEZVOUS_RELAY_FOR_SENDER;
+	}
+
+	// Peeked without charging the limiter: whichever path is chosen charges
+	// once for this datagram, and a second charge would halve a legitimate
+	// buddy's budget.
+	SNattRendezvousRequest peeked;
+	if (!ParseRendezvousRequest(frame, frameLength, peeked) || !peeked.hasEndpointHint) {
+		return NATT_RENDEZVOUS_RELAY_FOR_SENDER;
+	}
+
+	// Our buddy naming ITSELF is our buddy asking us to relay for it, which is
+	// the other honest use it has for this opcode. Compared unmapped, so a
+	// dual-stack buddy spelling its own IPv4 address as ::ffff:a.b.c.d is still
+	// naming itself. This separates two honest uses and carries no weight of
+	// its own -- a sender picks the endpoint it names freely, and is stopped by
+	// senderIsOurBuddy before reaching here.
+	if (peeked.hintAddress.Unmapped() == source.Unmapped()) {
+		return NATT_RENDEZVOUS_RELAY_FOR_SENDER;
+	}
+
+	return NATT_RENDEZVOUS_ACT_ON_FORWARD;
+}
+
 /**
  * What this client may do with a rendezvous a relay forwarded to it.
  *
@@ -393,20 +574,75 @@ inline SRelayDecision RelayRendezvousRequest(const uint8_t *frame,
  *
  * Four guards stand in front of the punch:
  *
- *  1. **The relayed bit.** A plain relay request -- the shape an attacker sends
- *     to make this client aim traffic somewhere -- cannot reach this path at
- *     all, whatever endpoint it names.
- *  2. **A relay we already know.** Signalling is acted on only from a peer
- *     already in this client's client list. A stranger cannot make it punch.
- *  3. **The same per-peer budget**, out of the same bucket a requester spends
- *     from, so a peer cannot get a second allowance by switching roles.
+ *  1. **The sender is our buddy.** Answered by the caller from its own client
+ *     list, and this is the guard the whole path rests on. It replaced a bit in
+ *     the options byte that said "a relay forwarded me": a flag a sender sets
+ *     is a claim, and the one thing an attacker crafting this message would set
+ *     first. A buddy relation is a fact this client already holds, established
+ *     over Kad long before any datagram arrives, and nothing in the packet can
+ *     assert it. eMuleAI gates the same step the same way -- their forwarded
+ *     rendezvous is accepted only from a serving or served buddy
+ *     (srchybrid/ListenSocket.cpp) -- so this is convergence and not a local
+ *     invention.
+ *  2. **The endpoint is not the sender's own.** A message from our buddy naming
+ *     the buddy itself is that buddy asking US to relay, not telling us where
+ *     someone else is; it belongs on the relay path. See
+ *     RELAYED_REJECT_ENDPOINT_IS_THE_RELAY. This is a disambiguation between
+ *     two honest uses, not a security guard -- an attacker chooses the endpoint
+ *     freely, and is stopped by guard 1 before reaching here.
+ *  3. **A per-peer budget**, on the same terms a requester is held to but out
+ *     of its own table -- see ERendezvousRole. A peer therefore does get an
+ *     allowance in each role, which is deliberate and is what the roles cost:
+ *     the alternative had the service we give away to strangers throttling the
+ *     capability we are the beneficiary of, and one budget for two unrelated
+ *     transactions is the worse of the two errors. Each role is still bounded
+ *     at kRendezvousMaxAttempts per kRendezvousBackoffMs.
  *  4. **A usable endpoint that is not our own.**
+ *  5. **An endpoint on the public internet.** The one gate that does not
+ *     compare the named address against something this client holds, and so
+ *     the only one that still works when this client knows nothing about
+ *     itself. See RELAYED_REJECT_ENDPOINT_NOT_ROUTABLE.
  *
- * The residual exposure is that a KNOWN relay can cause this client to send a
+ * Guard 4 is weaker than it reads, and the weakness is worth stating rather
+ * than leaving for a reader to find: it is skipped whenever `ownEndpoint` is
+ * absent, and behind NAT -- the deployment this whole path exists for --
+ * CamuleApp::GetPublicIP() frequently has nothing to give. Guard 5 covers the
+ * half of it that matters there. A forward naming this client's loopback or its
+ * address on the LAN is refused as unroutable whether or not we know who we
+ * are; what is left uncovered is our own PUBLIC address while we do not know
+ * it, and a punch aimed at that is one bounded burst at ourselves through our
+ * own NAT -- no amplification, no third party, and nothing guard 4 could catch
+ * without an address it does not have. Inventing one, by trusting a peer's word
+ * for our address, would put the value an attacker chooses on both sides of the
+ * comparison.
+ *
+ * The residual exposure is that OUR BUDDY can cause this client to send a
  * bounded burst -- three packets per attempt, five attempts, 120 seconds, all
- * enforced by CHolePunchSchedule -- toward an address of that relay's choosing.
- * That is inherent to hole punching and is the same trust the design places in
- * R for signalling. It is not unbounded and it is not free.
+ * enforced by CHolePunchSchedule -- toward a globally routable address of its
+ * choosing. That is inherent to hole punching and is the same trust the design
+ * already places in a buddy, which relays this client's callbacks. It is not
+ * unbounded, it is not free, and it is a trust one named peer holds rather than
+ * every host in the client list.
+ *
+ * "Our buddy" has to be read exactly, though, because guard 1 is only as strong
+ * as the answer the caller gives it. That answer is the datagram's source
+ * address and port looked up in our client list -- see
+ * CClientUDPSocket::ProcessNattControlFrame() -- and nothing else. This opcode
+ * carries no nonce, no verify key and no signature: verify keys are read out of
+ * the Kad obfuscation header alone, under `if (kad)` in
+ * CEncryptedDatagramSocket::DecryptReceivedClient(); the ed2k obfuscation on
+ * this route derives its key from OUR OWN user hash, which every peer that ever
+ * handshook with us holds; and an unobfuscated 0xC5 datagram is passed through
+ * untouched anyway. So the sender's identity here is source attribution over
+ * unauthenticated UDP, and whoever learns or guesses our buddy's endpoint can
+ * forge it.
+ *
+ * That makes guard 1 a real narrowing -- from every host on the internet to
+ * hosts that know one address and port -- and not an authentication. What
+ * carries the weight behind it is that everything reachable through it stays
+ * bounded: guards 3 and 5, and CHolePunchSchedule. Closing it properly needs a
+ * value the far side cannot predict, which is a change to what this opcode
+ * carries and not something a check on this side can substitute for.
  */
 enum ERelayedAcceptance
 {
@@ -414,13 +650,13 @@ enum ERelayedAcceptance
 	RELAYED_ACCEPT,
 	//! Not a well-formed OP_RENDEZVOUS message.
 	RELAYED_REJECT_MALFORMED,
-	//! CONNECT_OPT_NATT_RELAYED is clear, so this is a request to relay and
-	//! not a forward. The crafted-packet case.
-	RELAYED_REJECT_NOT_RELAYED,
 	//! No usable address for the relay itself.
 	RELAYED_REJECT_UNUSABLE_RELAY,
-	//! We hold no identity for the host that forwarded this.
-	RELAYED_REJECT_UNKNOWN_RELAY,
+	//! The datagram did not arrive from the endpoint we hold our buddy at. The
+	//! crafted-packet case, and the only guard that stands between a stranger
+	//! and a punch -- which is why the comment above says plainly that it
+	//! narrows the field rather than authenticating anyone.
+	RELAYED_REJECT_RELAY_IS_NOT_OUR_BUDDY,
 	//! The relay has spent its budget for this window.
 	RELAYED_REJECT_RATE_LIMITED,
 	//! The traversal asked for is not the one this build can serve.
@@ -429,7 +665,16 @@ enum ERelayedAcceptance
 	RELAYED_REJECT_NO_ENDPOINT,
 	//! The endpoint is this client's own address: a small self-amplifier that
 	//! could accomplish nothing else.
-	RELAYED_REJECT_ENDPOINT_IS_OURSELVES
+	RELAYED_REJECT_ENDPOINT_IS_OURSELVES,
+	//! The endpoint is not an address on the public internet: loopback, a
+	//! private or link-local block, CGNAT, documentation space, multicast or
+	//! broadcast. Our buddy naming one of those is asking this client to aim a
+	//! burst at its own loopback or at a host inside its operator's LAN.
+	RELAYED_REJECT_ENDPOINT_NOT_ROUTABLE,
+	//! The endpoint is the sender's own address, so this is our buddy asking us
+	//! to relay rather than telling us where a third peer is. Not a refusal of
+	//! the message: the caller hands it to RelayRendezvousRequest() instead.
+	RELAYED_REJECT_ENDPOINT_IS_THE_RELAY
 };
 
 //! The outcome of one relayed rendezvous.
@@ -449,19 +694,29 @@ struct SRelayedRendezvousDecision
 /**
  * Validate one relayed OP_RENDEZVOUS.
  *
- * @param frame points at the OP_RENDEZVOUS opcode byte.
+ * @param frame points at the OP_RENDEZVOUS body, past the 0xC5 protocol byte
+ *        and the opcode byte.
  * @param frameLength bytes available from there.
  * @param relay the address the forward arrived from, at full width.
- * @param relayIsKnown whether this client holds an identity for that host. The
- *        caller's own client list answers this; there is no way to assert it
- *        from inside the datagram.
+ * @param senderIsOurBuddy whether that host is this client's buddy. Answered by
+ *        the caller from its own client list, keyed on the address and port the
+ *        datagram arrived from -- so the buddy RELATION is ours, but the match
+ *        of it to THIS sender is source attribution and is forgeable by anyone
+ *        who knows that endpoint; see the comment above. It replaced a "this
+ *        was forwarded" bit in the options byte, which an attacker sets as
+ *        easily as a relay does -- and which collided with eMuleAI's QUIC
+ *        capability bit besides; see ENattConnectOptions. Still the stronger of
+ *        the two: a bit costs an attacker nothing, an endpoint costs it a
+ *        guess.
  * @param ownEndpoint this client's own believed external address, so a forward
  *        naming us can be refused. An absent address disables that one check
  *        rather than failing the whole message -- a client that does not know
  *        its own external address is the ordinary case behind NAT, and the
  *        other three guards do not depend on it.
  * @param nowMs a millisecond tick count.
- * @param limiter the same per-peer budget the relay path charges.
+ * @param limiter the per-peer budget. The same object the relay path charges,
+ *        but a different table inside it: see ERendezvousRole for why the two
+ *        directions must not share one.
  *
  * Emits nothing itself. The punch is CHolePunchSchedule's, which is what keeps
  * the bounds in one place instead of two.
@@ -469,7 +724,7 @@ struct SRelayedRendezvousDecision
 inline SRelayedRendezvousDecision AcceptRelayedRendezvous(const uint8_t *frame,
 	size_t frameLength,
 	const CNetworkAddress &relay,
-	bool relayIsKnown,
+	bool senderIsOurBuddy,
 	const CNetworkAddress &ownEndpoint,
 	uint64_t nowMs,
 	CRendezvousRelayLimiter &limiter)
@@ -483,7 +738,7 @@ inline SRelayedRendezvousDecision AcceptRelayedRendezvous(const uint8_t *frame,
 
 	// Charged before the message is parsed, on the same reasoning as the relay
 	// path: garbage from a peer spends that peer's own budget.
-	if (!limiter.Admit(relay, nowMs)) {
+	if (!limiter.Admit(relay, nowMs, senderIsOurBuddy, RENDEZVOUS_ROLE_ACTING_ON_FORWARD)) {
 		decision.acceptance = RELAYED_REJECT_RATE_LIMITED;
 		return decision;
 	}
@@ -494,13 +749,8 @@ inline SRelayedRendezvousDecision AcceptRelayedRendezvous(const uint8_t *frame,
 		return decision;
 	}
 
-	if (!request.isRelayed) {
-		decision.acceptance = RELAYED_REJECT_NOT_RELAYED;
-		return decision;
-	}
-
-	if (!relayIsKnown) {
-		decision.acceptance = RELAYED_REJECT_UNKNOWN_RELAY;
+	if (!senderIsOurBuddy) {
+		decision.acceptance = RELAYED_REJECT_RELAY_IS_NOT_OUR_BUDDY;
 		return decision;
 	}
 
@@ -515,12 +765,61 @@ inline SRelayedRendezvousDecision AcceptRelayedRendezvous(const uint8_t *frame,
 		return decision;
 	}
 
+	// Our buddy naming ITSELF is our buddy asking us to relay for it, which is
+	// the other thing a buddy legitimately sends on this opcode. Reported
+	// rather than accepted, so the caller routes it to RelayRendezvousRequest()
+	// -- where naming the source is not merely allowed but required. Acting on
+	// it here would punch at the one peer we are already in contact with and
+	// silently drop the relay the buddy actually asked for.
+	//
+	// Address only, on the same reasoning as the reflection check on the relay
+	// path: a peer behind a port-rewriting NAT reports a port that is not the
+	// one observed, and the port does not change which host is meant.
+	if (request.hintAddress.Unmapped() == relay.Unmapped()) {
+		decision.acceptance = RELAYED_REJECT_ENDPOINT_IS_THE_RELAY;
+		return decision;
+	}
+
 	// Compared on the address alone. The port a NAT presents for our own
 	// mapping is not something this client reliably knows, and an endpoint on
 	// our own address is not worth punching at whichever port it names.
 	if (!ownEndpoint.IsAbsent() && !ownEndpoint.IsUnspecified() &&
 		request.hintAddress.Unmapped() == ownEndpoint.Unmapped()) {
 		decision.acceptance = RELAYED_REJECT_ENDPOINT_IS_OURSELVES;
+		return decision;
+	}
+
+	// The last gate, and the one that does not need to know anything about
+	// this client to be right. Everything above compares the named endpoint
+	// with an address we hold; this asks whether the address is one a packet
+	// has any business reaching at all. Our buddy naming 127.0.0.1 has us punch
+	// at our own loopback services; naming 10.0.0.5 or 192.168.1.1 has us punch
+	// inside our operator's LAN, a network the buddy cannot reach itself, which
+	// is exactly why it would ask us to. Multicast and broadcast turn the
+	// bounded burst into a fan-out on top of that.
+	//
+	// Last rather than first on purpose. The two comparisons above name a
+	// specific host -- the relay, or us -- and those answers stay true for a
+	// peer on a private network, where an aMule pair on one LAN is an ordinary
+	// deployment. Reporting "not routable" for a forward that is really our
+	// buddy asking us to relay would send the caller down the wrong path with
+	// the right refusal.
+	//
+	// CNetworkAddress::IsGloballyRoutableIPv4() is the predicate, unchanged and
+	// unduplicated: UtpEncryptionPolicy.h already asks it the mirror-image
+	// question about our own address. A second list of blocks maintained here
+	// would be a second thing to keep correct. It answers false for every IPv6
+	// address, which costs nothing here because the endpoint tail this hint
+	// arrives in carries four octets and cannot spell one.
+	//
+	// Complementary to the ourselves-check above, not a replacement for it, and
+	// neither may be deleted as covered by the other: routability rejects our
+	// loopback and our LAN address, which is what the ourselves-check misses
+	// when GetPublicIP() has nothing to give, while the ourselves-check rejects
+	// our own PUBLIC address when we do know it -- and that one is globally
+	// routable, so this test says nothing about it.
+	if (!request.hintAddress.IsGloballyRoutableIPv4()) {
+		decision.acceptance = RELAYED_REJECT_ENDPOINT_NOT_ROUTABLE;
 		return decision;
 	}
 

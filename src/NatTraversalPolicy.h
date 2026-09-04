@@ -227,11 +227,44 @@ enum ENattFrameTypeReason
 	NATT_FRAME_UTP_CAPABILITY_TIMED_OUT
 };
 
-//! Which OP_UDPRESERVEDPROT2 frame type carries the exchange right now.
+//! The transport a NAT-T exchange concluded on.
+//!
+//! Separate from the frame-type byte because they answer different questions
+//! for different callers: this one is "what did we negotiate", which a caller
+//! can log, gate on, or store, and the byte is "where do these particular bytes
+//! go". Making a caller compare a decision against 0x01 to learn the first is
+//! how a frame-type constant ends up standing in for a transport in code that
+//! has nothing to do with framing.
+enum ENattTransport : uint8_t
+{
+	NATT_TRANSPORT_UTP,
+	NATT_TRANSPORT_QUIC
+};
+
+/**
+ * Which OP_UDPRESERVEDPROT2 frame type carries the exchange's TRANSPORT DATA
+ * right now, and which transport that is.
+ *
+ * Transport data, and not the control messages. That distinction did not exist
+ * when this was written -- rendezvous and hole punches rode 0xB2 with a frame
+ * type too, so one byte answered both questions and the name was the whole
+ * truth. It is not any more: control messages ride 0xC5 with their opcode as
+ * the datagram's second byte (NATT_CONTROL_PROTOCOL, NatRendezvousProtocol.h),
+ * which is a constant with no inputs and nothing to negotiate.
+ *
+ * So the two questions the name used to conflate are now separated by shape.
+ * The one that depends on what the peer advertised and on the clock is this
+ * function; the one that depends on nothing is a constant. Neither can be
+ * mistaken for the other at a call site, which is the point.
+ */
 struct SNattFrameTypeDecision
 {
-	//! OP_NATT_FRAME_QUIC (0x01) or OP_NATT_FRAME_UTP (0x00).
+	//! OP_NATT_FRAME_QUIC (0x01) or OP_NATT_FRAME_UTP (0x00). The frame type
+	//! for transport data on 0xB2; never the envelope of a control message.
 	uint8_t frameType = OP_NATT_FRAME_UTP;
+	//! The same conclusion, said as a transport. Always consistent with
+	//! frameType -- they are one decision reported twice, not two.
+	ENattTransport transport = NATT_TRANSPORT_UTP;
 	//! True only while the QUIC frame type is still being given its chance,
 	//! i.e. inside the window with no capability frame yet. The caller should
 	//! re-ask after the wait rather than treating silence as a failure. A
@@ -355,6 +388,7 @@ inline SNattFrameTypeDecision SelectNattFrameType(const SNattFrameTypeInputs &in
 
 	if (inputs.quicCapabilityFrameSeen) {
 		decision.frameType = OP_NATT_FRAME_QUIC;
+		decision.transport = NATT_TRANSPORT_QUIC;
 		decision.waitingForQuic = false;
 		decision.reason = NATT_FRAME_QUIC_CONFIRMED;
 		return decision;
@@ -362,6 +396,7 @@ inline SNattFrameTypeDecision SelectNattFrameType(const SNattFrameTypeInputs &in
 
 	if (inputs.msSinceRendezvousStarted < kNattFrameTypeFallbackWaitMs) {
 		decision.frameType = OP_NATT_FRAME_QUIC;
+		decision.transport = NATT_TRANSPORT_QUIC;
 		decision.waitingForQuic = true;
 		decision.reason = NATT_FRAME_QUIC_AWAITING_CAPABILITY;
 		return decision;
@@ -369,6 +404,19 @@ inline SNattFrameTypeDecision SelectNattFrameType(const SNattFrameTypeInputs &in
 
 	decision.reason = NATT_FRAME_UTP_CAPABILITY_TIMED_OUT;
 	return decision;
+}
+
+/**
+ * Which transport the exchange concluded on: the "what did we negotiate" half.
+ *
+ * Delegates rather than deciding again, because two functions answering the
+ * same question from the same inputs is two functions that can disagree -- and
+ * the disagreement would be a transport chosen on one path and a frame type
+ * chosen on another, which is a stall with nothing logged on either side.
+ */
+inline ENattTransport SelectNattTransport(const SNattFrameTypeInputs &inputs)
+{
+	return SelectNattFrameType(inputs).transport;
 }
 
 //! One endpoint worth punching toward.
@@ -463,5 +511,94 @@ private:
 	SNattEndpointCandidate m_candidates[kNattMaxCandidates];
 	size_t m_count = 0;
 };
+
+//! Where a punch destination came from, which is the whole answer of
+//! ChooseNattPunchDestination(): the three clauses of the precedence rule, one
+//! value each.
+enum ENattDestinationSource
+{
+	//! Nothing may be dialled. The default, so a caller that reads the address
+	//! without reading this field finds an absent one rather than a zero.
+	NATT_DESTINATION_NONE,
+	//! The address a datagram from that peer actually arrived from.
+	NATT_DESTINATION_OBSERVED,
+	//! The address the sender claimed, usable only under clause two below.
+	NATT_DESTINATION_CLAIMED_HINT
+};
+
+//! The one endpoint a punch may be sent to, and which of the two sources it
+//! came from. Absent and zero unless `source` is not NATT_DESTINATION_NONE.
+struct SNattDestinationChoice
+{
+	ENattDestinationSource source = NATT_DESTINATION_NONE;
+	CNetworkAddress address;
+	uint16_t port = 0;
+};
+
+/**
+ * Whether a punch goes to what this client observed or to what a sender
+ * claimed.
+ *
+ * Prefer the observed source; fall back to the claimed hint only when it is
+ * public; use the hint as a lookup key everywhere else.
+ *
+ * Three clauses, and the second is the one worth emphasising because it is
+ * independent of routability rather than a refinement of it:
+ *
+ *  1. **A usable observed source wins, always.** The source address of a
+ *     datagram cannot be forged without controlling the path to us, while an
+ *     address written inside a message costs its author nothing. Usable here
+ *     means present, not the unspecified address, and with a port -- and
+ *     deliberately NOT "globally routable": a peer on the same LAN whose
+ *     packet reached us is reachable by definition, the packet being the
+ *     proof, and IsGloballyRoutableIPv4() answers false for every IPv6
+ *     address, so reusing it here would quietly prefer a claimed IPv4 endpoint
+ *     over an IPv6 peer that had just spoken to us.
+ *  2. **Only with nothing observed may the claimed endpoint be dialled**, and
+ *     only if it is on the public internet. This is a rule about whom to
+ *     believe, not about what is dialable: an implementation can enforce
+ *     routability perfectly and still fail here, by taking a public but
+ *     attacker-chosen address while holding a usable observed one. That is why
+ *     the clause is a precedence and not another predicate.
+ *  3. **Otherwise neither is used.** The claimed address remains what it
+ *     already is everywhere else in this tree -- a key to look a peer up by,
+ *     never a destination.
+ *
+ * CNetworkAddress::IsGloballyRoutableIPv4() is the routability predicate,
+ * unchanged and unduplicated: NatRendezvousRelay.h and UtpEncryptionPolicy.h
+ * already ask it, and a second list of blocks maintained here would be a second
+ * thing to keep correct.
+ *
+ * @param observed where a datagram from that peer was seen coming from, absent
+ *        when none has been.
+ * @param observedPort its port. Zero counts as no observation: half a mapping
+ *        is not one, and treating it as one would have clause 1 swallow clause
+ *        2 and punch at nothing.
+ * @param claimedHint the endpoint the sender named.
+ * @param hintPort its port.
+ */
+inline SNattDestinationChoice ChooseNattPunchDestination(const CNetworkAddress &observed,
+	uint16_t observedPort,
+	const CNetworkAddress &claimedHint,
+	uint16_t hintPort)
+{
+	SNattDestinationChoice choice;
+
+	if (observedPort != 0 && observed.IsPresent() && !observed.IsUnspecified()) {
+		choice.source = NATT_DESTINATION_OBSERVED;
+		choice.address = observed;
+		choice.port = observedPort;
+		return choice;
+	}
+
+	if (hintPort != 0 && claimedHint.IsGloballyRoutableIPv4()) {
+		choice.source = NATT_DESTINATION_CLAIMED_HINT;
+		choice.address = claimedHint;
+		choice.port = hintPort;
+		return choice;
+	}
+
+	return choice;
+}
 
 #endif // NATTRAVERSALPOLICY_H

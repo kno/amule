@@ -191,6 +191,27 @@ public:
 	 *        the addresses already known and can never displace one -- and when
 	 *        the set is full it is the relayed endpoint that is dropped.
 	 * @return whether a punch was started.
+	 *
+	 * ## Which endpoint the forward is allowed to contribute
+	 *
+	 * The relayed endpoint is a claim: the relay wrote it, and the guards in
+	 * AcceptRelayedRendezvous() narrow who may make that claim without making
+	 * it true. So it is put through ChooseNattPunchDestination() against what
+	 * this client OBSERVED for the same peer -- the mapping a punch was seen
+	 * arriving from, recorded by OnHolePunchReceived() -- and the observed one
+	 * wins whenever there is one.
+	 *
+	 * That is a preference rule and not a second routability check. A forward
+	 * naming a perfectly routable address passes every check in the relay path
+	 * and is still refused here while a seen mapping exists, because the source
+	 * address of a datagram cannot be forged without controlling the path and
+	 * an address inside a message costs its author nothing. Without it, our
+	 * buddy could aim this client's burst at any public address of its choosing
+	 * for a peer whose real mapping we already had proof of.
+	 *
+	 * This is the manager's own decision rather than the caller's: the observed
+	 * endpoint lives here, so asking the question anywhere else would mean
+	 * handing that state out and trusting each caller to ask.
 	 */
 	bool OnRelayedRendezvous(
 		const SRelayedRendezvousDecision &decision, const CNattCandidateSet &known, uint64_t nowMs)
@@ -199,8 +220,35 @@ public:
 			return false;
 		}
 
+		// Left absent and zero when no punch has been seen for this pair --
+		// ObservedEndpoint() does not touch its outputs then -- which is what
+		// the precedence rule reads as "nothing observed".
+		CNetworkAddress observed;
+		uint16_t observedPort = 0;
+		ObservedEndpoint(decision.peerHash, observed, observedPort);
+
 		CNattCandidateSet candidates = known;
-		candidates.AddHint(decision.punchEndpoint, decision.punchPort);
+		const SNattDestinationChoice destination = ChooseNattPunchDestination(
+			observed, observedPort, decision.punchEndpoint, decision.punchPort);
+		switch (destination.source) {
+		case NATT_DESTINATION_OBSERVED:
+			// Known rather than hinted, because that is what it is: an address
+			// a packet from this peer came from. It still cannot displace
+			// anything already in the set -- nothing can.
+			candidates.AddKnown(destination.address, destination.port);
+			break;
+
+		case NATT_DESTINATION_CLAIMED_HINT:
+			candidates.AddHint(destination.address, destination.port);
+			break;
+
+		case NATT_DESTINATION_NONE:
+			// Neither source gave a destination. Whatever this client already
+			// knew is still punched toward; with an empty `known` set
+			// BeginRendezvous() starts nothing, which is the intended answer.
+			break;
+		}
+
 		return BeginRendezvous(decision.peerHash, candidates, nowMs);
 	}
 

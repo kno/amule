@@ -438,10 +438,12 @@ void CClientUDPSocket::ProcessEd2kDatagram(uint8_t *decryptedBuffer,
 				break;
 
 			case OP_UDPRESERVEDPROT2:
-				// eMuleAI NAT traversal. Not an eD2k opcode: the byte
-				// after the protocol byte is a frame type. Dispatched
-				// here rather than through ProcessPacket() above, whose
-				// second argument is an opcode.
+				// eMuleAI transport frames: uTP and QUIC. Not an eD2k
+				// opcode -- the byte after the protocol byte is a frame
+				// type -- so dispatched here rather than through
+				// ProcessPacket() above, whose second argument is an
+				// opcode. The NAT-T control messages are not here; they
+				// are ordinary 0xC5 opcodes and go through ProcessPacket().
 				//
 				// This branch reaches no packet accounting at all, which
 				// is what keeps a dropped frame from feeding a ban:
@@ -508,15 +510,26 @@ void CClientUDPSocket::ProcessReservedProt2Frame(
 	// cannot serve rather than malformed traffic.
 	switch (classified.type) {
 	case OP_NATT_FRAME_UTP:
-		// The rendezvous and hole-punch control messages. Reached only after
-		// the uTP context declined the datagram in OnPacketReceived(), so
-		// libutp has already had its chance at these bytes; a payload that is
-		// neither a libutp header nor one of the three control opcodes is
-		// dropped inside ProcessNattControlFrame().
+		// uTP transport data, and nothing else any more. This frame type
+		// carried the control messages too while they were framed the way only
+		// aMule framed them; they are eMule-protocol messages now and arrive
+		// through ProcessPacket(), so what reaches here is a datagram libutp
+		// already declined in OnPacketReceived().
 		//
-		// classified.payload is past the frame type byte, so the control
-		// opcode is its first byte.
-		ProcessNattControlFrame(classified.payload, classified.payloadLength, peer, port);
+		// The old reader for the 0xB2/0x00 control format is gone rather than
+		// kept alongside the new one. Keeping it would mean two accepted
+		// encodings of a message that decides where this client sends packets,
+		// which is two parsers to hold in agreement forever, and it would leave
+		// the older one reachable as an inbound surface. It costs nothing to
+		// drop: no other client ever emitted it, and no exchange in the field
+		// could have completed in it, because an eMuleAI peer's rendezvous
+		// arrives on 0xC5 and this build never listened there.
+		if (m_unknownFrameLog.ShouldLog(::GetTickCount64())) {
+			AddDebugLogLineN(logClientUDP,
+				CFormat("Dropping uTP NAT-T frame from %s:%u that libutp did not claim (%u "
+					"further occurrences suppressed)") %
+					peerText % port % m_unknownFrameLog.TakeSuppressedCount());
+		}
 		break;
 
 	case OP_NATT_FRAME_QUIC:
@@ -558,10 +571,10 @@ void CClientUDPSocket::ProcessReservedProt2Frame(
 }
 
 void CClientUDPSocket::SendNattControlMessage(
-	const uint8_t *payload, size_t length, const CNetworkAddress &to, uint16_t port)
+	uint8_t opcode, const uint8_t *body, size_t length, const CNetworkAddress &to, uint16_t port)
 {
 	uint32_t ip = 0;
-	if (payload == NULL || length == 0 || port == 0 || !to.ToIPv4NetworkOrder(ip)) {
+	if (body == nullptr || length == 0 || port == 0 || !to.ToIPv4NetworkOrder(ip)) {
 		// The same IPv4 narrowing SendUtpDatagram() has, and the same reason:
 		// this socket's send path takes a 32-bit address. A native IPv6 peer
 		// is not punched at rather than being punched at 0.0.0.0 -- see the
@@ -569,13 +582,19 @@ void CClientUDPSocket::SendNattControlMessage(
 		return;
 	}
 
-	CPacket *packet = new CPacket(OP_NATT_FRAME_UTP, length, OP_UDPRESERVEDPROT2);
-	packet->CopyToDataBuffer(0, payload, length);
+	// The eMule protocol byte with the control opcode after it, which is where
+	// eMuleAI v1.6 reads these. The bytes still leave from the ed2k UDP port,
+	// so the mapping a punch opens is still the one a uTP or QUIC connection
+	// will use -- only the envelope moved.
+	CPacket *packet = new CPacket(opcode, length, NATT_CONTROL_PROTOCOL);
+	packet->CopyToDataBuffer(0, body, length);
 	theStats::AddUpOverheadOther(packet->GetPacketSize());
 
-	// Never obfuscated, and here that is no longer "the same as a uTP
-	// datagram": SendUtpDatagram() above obfuscates opportunistically now, and
-	// this path deliberately does not follow it.
+	// Never obfuscated, and the envelope change does not touch that. Whether a
+	// datagram is obfuscated is a per-send argument, not a property of the
+	// protocol byte -- eMuleAI sends its own NAT-T control messages under 0xC5
+	// unobfuscated too -- so moving off 0xB2 must not move these onto the
+	// obfuscation path that SendUtpDatagram() above now takes.
 	//
 	// A punch is sent to open a NAT mapping with a peer this end has usually
 	// not identified yet -- that is the situation the punch exists to get out
@@ -590,6 +609,7 @@ void CClientUDPSocket::SendNattControlMessage(
 }
 
 bool CClientUDPSocket::SendRendezvousRequest(const uint8_t *peerHash,
+	const uint8_t *fileHash,
 	const CNetworkAddress &relay,
 	uint16_t relayPort,
 	const CNetworkAddress &ownEndpoint,
@@ -597,16 +617,19 @@ bool CClientUDPSocket::SendRendezvousRequest(const uint8_t *peerHash,
 {
 	uint8_t request[NATT_RENDEZVOUS_MAX_LENGTH];
 	const size_t length =
-		EncodeRendezvousRequest(peerHash, ownEndpoint, ownPort, request, sizeof(request));
-	if (length == 0) {
+		EncodeRendezvousRequest(peerHash, fileHash, ownEndpoint, ownPort, request, sizeof(request));
+	if (length == 0 || !ownEndpoint.IsPresent()) {
 		// No usable endpoint of our own to name. Not sent rather than sent
-		// blank: the relay validates the hint against the source and would
-		// discard it anyway, and a request with the hint bit set and nothing
-		// behind it is what makes the far parser read past the datagram.
+		// blank: the relay validates the endpoint against the source and would
+		// discard a request without one anyway.
+		//
+		// The endpoint is checked separately from the encode result because
+		// under this format an endpoint-free body is a perfectly legal message
+		// that simply encodes shorter -- there is no "returned zero" to notice.
 		return false;
 	}
 
-	SendNattControlMessage(request, length, relay, relayPort);
+	SendNattControlMessage(OP_RENDEZVOUS, request, length, relay, relayPort);
 	return true;
 }
 
@@ -630,41 +653,57 @@ void CClientUDPSocket::ServiceNatRendezvous(uint64_t nowMs)
 			// The peer hash is the manager's key, not part of the packet: a
 			// punch names its SENDER, because that is the end whose identity
 			// the receiver cannot otherwise recover.
-			SendNattControlMessage(
-				punch, NATT_HOLEPUNCH_LENGTH, request.destination, request.port);
+			SendNattControlMessage(OP_HOLEPUNCH,
+				punch,
+				NATT_HOLEPUNCH_LENGTH,
+				request.destination,
+				request.port);
 		});
 }
 
 void CClientUDPSocket::ProcessNattControlFrame(
-	const uint8_t *frame, size_t frameLength, const CNetworkAddress &peer, uint16 port)
+	uint8_t opcode, const uint8_t *body, size_t bodyLength, const CNetworkAddress &peer, uint16 port)
 {
 	const wxString peerText = wxString(peer.ToString());
 	const uint64_t nowMs = ::GetTickCount64();
 
-	switch (ClassifyNattControlMessage(frame, frameLength)) {
+	switch (ClassifyNattControlMessage(opcode)) {
 	case NATT_CONTROL_RENDEZVOUS: {
-		// Which direction this is comes off the wire, never from local state.
-		// A relay request and a relayed rendezvous carry the same opcode and
-		// mean opposite things, and inferring the direction would leave the
-		// acting path reachable by a crafted request -- which is precisely the
-		// reflection the relay validation exists to prevent.
-		SNattRendezvousRequest peeked;
-		const bool parsed = ParseRendezvousRequest(frame, frameLength, peeked);
+		// Which direction this is, and why nothing in the datagram decides it.
+		//
+		// A relay request (A to R) and a relayed rendezvous (R to B) carry the
+		// same opcode and the same fields and mean opposite things. The rule
+		// that tells them apart is ClassifyRendezvousDirection(), in
+		// NatRendezvousRelay.h along with its reasoning, and it is there rather
+		// than here so that a test can drive it: this class cannot be linked
+		// into the suite, and a branch that chooses between sending toward an
+		// address out of our own client list and punching at one out of the
+		// message is the last that should go unexercised.
+		//
+		// What this function contributes is the one input that needs theApp --
+		// whether the host the datagram arrived from is our buddy.
+		//
+		// eMuleAI reaches the same place by a different road: it accepts a
+		// forwarded rendezvous only from a serving or served buddy
+		// (srchybrid/ListenSocket.cpp), having carried it over the buddy's TCP
+		// connection rather than as a datagram. The gate is the same fact about
+		// the sender; only where it is checked differs.
+		const CUpDownClient *sender = theApp->clientlist->FindClientByUDPEndpoint(peer, port);
+		// By the datagram's source port, which is the only port we hold for
+		// this sender: a buddy is known here as a UDP peer, not as something we
+		// could dial back on its ed2k TCP port. It is also all this answer
+		// rests on -- see the caveat on AcceptRelayedRendezvous().
+		const bool senderIsOurBuddy = sender != nullptr && sender == theApp->clientlist->GetBuddy();
 
-		if (parsed && peeked.isRelayed) {
-			// A relay forwarded a rendezvous to us. Acted on only from a
-			// peer already in the client list, and only within the same
+		if (ClassifyRendezvousDirection(body, bodyLength, peer, senderIsOurBuddy) ==
+			NATT_RENDEZVOUS_ACT_ON_FORWARD) {
+			// Our buddy forwarded a rendezvous to us. Acted on within the same
 			// per-peer budget a requester spends from.
-			// By the datagram's source port, which is the only port we hold
-			// for this sender: the relay is known here as a UDP peer, not as
-			// something we could dial back on its ed2k TCP port.
-			const bool relayIsKnown =
-				theApp->clientlist->FindClientByUDPEndpoint(peer, port) != NULL;
 			const CNetworkAddress ownEndpoint =
 				CNetworkAddress::FromIPv4NetworkOrderOrAbsent(theApp->GetPublicIP(false));
 
 			const SRelayedRendezvousDecision decision = AcceptRelayedRendezvous(
-				frame, frameLength, peer, relayIsKnown, ownEndpoint, nowMs, m_relayLimiter);
+				body, bodyLength, peer, senderIsOurBuddy, ownEndpoint, nowMs, m_relayLimiter);
 			if (!decision.punch) {
 				AddDebugLogLineN(logClientUDP,
 					CFormat("Dropping relayed rendezvous from %s:%u: reason %d") %
@@ -677,6 +716,12 @@ void CClientUDPSocket::ProcessNattControlFrame(
 			// displace one. CNattCandidateSet has no method that removes
 			// anything, which is what makes that structural rather than
 			// remembered.
+			//
+			// Whether the relayed endpoint becomes a candidate at all is the
+			// manager's decision, not this one: it holds what a punch from
+			// that peer was observed arriving from, and an observed source
+			// beats a claimed one. See CNatRendezvousManager::
+			// OnRelayedRendezvous().
 			CNattCandidateSet known;
 			const CMD4Hash targetHash(decision.peerHash);
 			const CClientList::SourceList matches =
@@ -691,30 +736,36 @@ void CClientUDPSocket::ProcessNattControlFrame(
 			}
 
 			if (m_natRendezvous.OnRelayedRendezvous(decision, known, nowMs)) {
+				// The relayed endpoint is named as what the forward CLAIMED,
+				// not as where the punch went: it is dropped in favour of an
+				// observed mapping when there is one, and a line reading
+				// "punching toward" an address this client refused to punch at
+				// would be the kind of log that hides the rule it is reporting.
 				AddDebugLogLineN(logClientUDP,
-					CFormat("Punching toward %s:%u for a rendezvous relayed by "
+					CFormat("Started a rendezvous for a forward relayed by %s:%u naming "
 						"%s:%u") %
+						peerText % port %
 						wxString(decision.punchEndpoint.ToString()) %
-						decision.punchPort % peerText % port);
+						decision.punchPort);
 			}
 			return;
 		}
 
-		// Otherwise it is a request to relay -- including a malformed one,
+		// Otherwise it is a request to relay. That includes a malformed one,
 		// which reaches RelayRendezvousRequest() so that it is charged against
-		// its sender's budget rather than being free.
+		// its sender's budget rather than being free; and it includes one from
+		// our own buddy naming itself, which is that buddy asking us to relay.
 		//
 		// The requester's identity comes from our own client list, never from
 		// the datagram: it is the value the forwarded message carries, so a
 		// datagram that could set it would make this relay vouch for anyone.
-		const CUpDownClient *requester = theApp->clientlist->FindClientByUDPEndpoint(peer, port);
-		const uint8_t *requesterHash = requester != NULL && requester->HasValidHash()
-						       ? requester->GetUserHash().GetHash()
-						       : NULL;
+		const uint8_t *requesterHash = sender != nullptr && sender->HasValidHash()
+						       ? sender->GetUserHash().GetHash()
+						       : nullptr;
 
 		const SRelayDecision decision = RelayRendezvousRequest(
-			frame,
-			frameLength,
+			body,
+			bodyLength,
 			peer,
 			port,
 			requesterHash,
@@ -748,7 +799,8 @@ void CClientUDPSocket::ProcessNattControlFrame(
 				uint16_t destinationPort,
 				const uint8_t *payload,
 				size_t payloadLength) {
-				SendNattControlMessage(payload, payloadLength, destination, destinationPort);
+				SendNattControlMessage(
+					OP_RENDEZVOUS, payload, payloadLength, destination, destinationPort);
 			});
 
 		if (!decision.emitted) {
@@ -763,9 +815,29 @@ void CClientUDPSocket::ProcessNattControlFrame(
 
 	case NATT_CONTROL_HOLEPUNCH: {
 		SNattHolePunch punchMessage;
-		if (!ParseHolePunch(frame, frameLength, punchMessage)) {
+		if (!ParseHolePunch(body, bodyLength, punchMessage)) {
 			AddDebugLogLineN(logClientUDP,
 				CFormat("Dropping malformed hole punch from %s:%u") % peerText % port);
+			return;
+		}
+
+		if (!punchMessage.hasSenderHash) {
+			// A well-formed punch that names nobody, which is what eMuleAI
+			// v1.6 sends: its punches carry an empty body and its receiver
+			// pairs them by the address they arrived from.
+			//
+			// CNatRendezvousManager is keyed by identity, deliberately -- the
+			// address is exactly what the NAT under test rewrites -- so there
+			// is nothing here to look the punch up by, and it is dropped with
+			// that said rather than being paired against a guess. Pairing by
+			// observed endpoint instead is a change to how a punch is matched,
+			// not to how it is framed, and it belongs to whoever decides that
+			// question rather than to this dispatch.
+			AddDebugLogLineN(logClientUDP,
+				CFormat("Hole punch from %s:%u carries no sender identity: nothing to pair "
+					"it "
+					"with in this build") %
+					peerText % port);
 			return;
 		}
 
@@ -796,14 +868,11 @@ void CClientUDPSocket::ProcessNattControlFrame(
 		return;
 
 	case NATT_CONTROL_NOT_A_CONTROL_MESSAGE:
-		// Neither a libutp header (the context already declined it) nor one of
-		// the three control opcodes. Dropped without guessing at a length.
-		if (m_unknownFrameLog.ShouldLog(nowMs)) {
-			AddDebugLogLineN(logClientUDP,
-				CFormat("Dropping uTP NAT-T frame from %s:%u that is neither uTP nor a "
-					"control message (%u further occurrences suppressed)") %
-					peerText % port % m_unknownFrameLog.TakeSuppressedCount());
-		}
+		// Unreachable: ProcessPacket() classifies the opcode and only calls
+		// this function for the three it recognises, so an ed2k opcode reaches
+		// its own handler rather than being swallowed here. Kept so that a
+		// fourth opcode added to the enum without a case above fails loudly.
+		wxFAIL;
 		return;
 	}
 }
@@ -822,6 +891,26 @@ void CClientUDPSocket::ProcessPacket(
 	const bool hasIPv4 = host.ToIPv4NetworkOrder(hostIPv4);
 
 	switch (opcode) {
+	case OP_RENDEZVOUS:
+	case OP_HOLEPUNCH:
+	case OP_NATT_ENDPOINT_HINT:
+		// eMuleAI NAT traversal. These are eMule-protocol messages with an
+		// ordinary opcode, which is what lets an eMuleAI v1.6 client and this
+		// one reach each other at all -- the 0xB2 framing this tree used before
+		// was aMule's alone.
+		//
+		// `packet` is already past the protocol and opcode bytes, and these
+		// three bodies carry no opcode of their own, so it points at the body.
+		// The overhead accounting stays with the handler's own branches rather
+		// than being charged here, so that a message dropped for a reason is
+		// still counted the same way as one acted on.
+		// `size` is int16, which is a typedef for uint16_t in this tree (see
+		// Types.h) -- so it is already unsigned and there is no negative case
+		// to guard. A ternary here would read as a bounds check that is not
+		// one, which is worse than no check at all.
+		ProcessNattControlFrame(opcode, packet, (size_t)size, host, port);
+		break;
+
 	case OP_REASKCALLBACKUDP: {
 		AddDebugLogLineN(logClientUDP, "Client UDP socket; OP_REASKCALLBACKUDP");
 		theStats::AddDownOverheadOther(size);

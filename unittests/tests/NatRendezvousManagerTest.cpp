@@ -336,9 +336,13 @@ TEST(NatRendezvousManager, RelayedEndpointIsOneCandidateAfterTheKnownOnes)
 	uint8_t peer[NATT_PEER_HASH_LENGTH];
 	FillHash(peer, 0x30);
 
+	// A globally routable endpoint, not one of the RFC 5737 documentation
+	// blocks the peer addresses here use: AcceptRelayedRendezvous() refuses any
+	// punch target that is not somewhere a packet has business going, and those
+	// blocks are not.
 	uint8_t frame[NATT_RENDEZVOUS_MAX_LENGTH];
 	const size_t length = EncodeRelayedRendezvous(
-		peer, CNetworkAddress::FromString("198.51.100.7"), 4662, frame, sizeof(frame));
+		peer, NULL, CNetworkAddress::FromString("81.2.69.142"), 4662, frame, sizeof(frame));
 
 	CRendezvousRelayLimiter limiter;
 	const SRelayedRendezvousDecision accepted = AcceptRelayedRendezvous(frame,
@@ -361,7 +365,7 @@ TEST(NatRendezvousManager, RelayedEndpointIsOneCandidateAfterTheKnownOnes)
 	// preferred the relayed endpoint would stop reaching peers it used to
 	// reach, and the endpoint would look like the fix rather than the cause.
 	ASSERT_TRUE(puncher.m_sent[0].destination == CNetworkAddress::FromString("203.0.113.99"));
-	ASSERT_TRUE(puncher.m_sent[1].destination == CNetworkAddress::FromString("198.51.100.7"));
+	ASSERT_TRUE(puncher.m_sent[1].destination == CNetworkAddress::FromString("81.2.69.142"));
 }
 
 // A relayed rendezvous that was NOT accepted starts nothing. The guards live in
@@ -370,22 +374,25 @@ TEST(NatRendezvousManager, RelayedEndpointIsOneCandidateAfterTheKnownOnes)
 // one place.
 TEST(NatRendezvousManager, RejectedRelayedRendezvousStartsNothing)
 {
-	// A plain relay request: the crafted-packet shape.
+	// The crafted-packet shape: a well-formed forward naming an unrelated
+	// victim, sent by someone who is not this client's buddy. Indistinguishable
+	// from a genuine forward, and rejected on who sent it rather than on
+	// anything it says.
 	uint8_t targetHash[NATT_PEER_HASH_LENGTH];
 	FillHash(targetHash, 0x30);
 	uint8_t frame[NATT_RENDEZVOUS_MAX_LENGTH];
-	const size_t length = EncodeRendezvousRequest(
-		targetHash, CNetworkAddress::FromString("198.51.100.200"), 4662, frame, sizeof(frame));
+	const size_t length = EncodeRelayedRendezvous(
+		targetHash, NULL, CNetworkAddress::FromString("198.51.100.200"), 4662, frame, sizeof(frame));
 
 	CRendezvousRelayLimiter limiter;
 	const SRelayedRendezvousDecision rejected = AcceptRelayedRendezvous(frame,
 		length,
 		CNetworkAddress::FromString("203.0.113.5"),
-		true,
+		false,
 		CNetworkAddress::FromString("192.0.2.1"),
 		1000,
 		limiter);
-	ASSERT_EQUALS((int)RELAYED_REJECT_NOT_RELAYED, (int)rejected.acceptance);
+	ASSERT_EQUALS((int)RELAYED_REJECT_RELAY_IS_NOT_OUR_BUDDY, (int)rejected.acceptance);
 
 	CNatRendezvousManager manager;
 	ASSERT_FALSE(manager.OnRelayedRendezvous(rejected, CNattCandidateSet(), 1000));
@@ -433,4 +440,104 @@ TEST(NatRendezvousManager, TickingTwiceForOneTickDoesNotSendTwice)
 	manager.Tick(1000, puncher);
 
 	ASSERT_EQUALS(once, puncher.m_sent.size());
+}
+
+// THE precedence rule, and the case that carries its proof: a peer whose real
+// mapping this client has already SEEN, and a relayed forward naming a
+// different address that is perfectly routable.
+//
+// A routability check answers "could a packet reach this at all" and this
+// forward passes it -- 81.2.69.142 is as globally routable as any address on
+// the internet. The question the rule answers is a different one: should this
+// client believe what a sender claims over what it observed? The answer is no
+// whenever there is something observed, because the source address of a
+// datagram cannot be forged without controlling the path, while an address
+// inside a message costs its author nothing.
+//
+// So the punch goes to the mapping the punch arrived from and to NOTHING the
+// forward named. A manager that added the named endpoint as an extra candidate
+// would aim a burst at an address our buddy chose while holding one it had
+// proof of, which is exactly the residual the relay path's guards do not cover.
+TEST(NatRendezvousManager, ObservedMappingBeatsARoutableEndpointAForwardNamed)
+{
+	uint8_t peer[NATT_PEER_HASH_LENGTH];
+	FillHash(peer, 0x30);
+
+	CNatRendezvousManager manager;
+	ASSERT_TRUE(manager.BeginRendezvous(peer, OneCandidate("203.0.113.99", kPeerPort), 1000));
+
+	// The peer's NAT let a punch through, from a mapping neither side predicted.
+	ASSERT_TRUE(
+		manager.OnHolePunchReceived(peer, CNetworkAddress::FromString("198.51.100.7"), 51413, 1100));
+
+	uint8_t frame[NATT_RENDEZVOUS_MAX_LENGTH];
+	const size_t length = EncodeRelayedRendezvous(
+		peer, NULL, CNetworkAddress::FromString("81.2.69.142"), 4662, frame, sizeof(frame));
+
+	CRendezvousRelayLimiter limiter;
+	const SRelayedRendezvousDecision accepted = AcceptRelayedRendezvous(frame,
+		length,
+		CNetworkAddress::FromString("203.0.113.5"),
+		true,
+		CNetworkAddress::FromString("192.0.2.1"),
+		1100,
+		limiter);
+	ASSERT_EQUALS((int)RELAYED_ACCEPT, (int)accepted.acceptance);
+
+	ASSERT_TRUE(manager.OnRelayedRendezvous(accepted, OneCandidate("203.0.113.99", kPeerPort), 1100));
+
+	CRecordingPuncher puncher;
+	manager.Tick(1100, puncher);
+
+	// The address the forward named is not punched at. Asserted as an absence
+	// over the whole recorded list rather than by index, so a manager that
+	// merely reordered the candidates still fails here.
+	for (const CRecordingPuncher::SSent &sent : puncher.m_sent) {
+		ASSERT_FALSE(sent.destination == CNetworkAddress::FromString("81.2.69.142"));
+	}
+
+	// And the observed mapping IS punched at, port included: preferring the
+	// observed address means using it, not merely refusing the other one.
+	bool punchedTheObservedMapping = false;
+	for (const CRecordingPuncher::SSent &sent : puncher.m_sent) {
+		if (sent.destination == CNetworkAddress::FromString("198.51.100.7") && sent.port == 51413) {
+			punchedTheObservedMapping = true;
+		}
+	}
+	ASSERT_TRUE(punchedTheObservedMapping);
+}
+
+// The third clause, asserted at the manager rather than only where the relay
+// path already enforces it. AcceptRelayedRendezvous() refuses an unroutable
+// endpoint, so this decision is built by hand: the point is that the manager
+// does not dial a private address even when handed one that says punch.
+//
+// Two layers for one rule is deliberate here and not duplication for its own
+// sake. The relay path's check is about a message; this one is about the
+// destination the manager is on the verge of using, and it is the last place
+// before a packet leaves. A caller that assembles a decision some other way --
+// the QUIC rendezvous path, a later opcode -- gets the rule for free.
+TEST(NatRendezvousManager, AnUnroutableNamedEndpointIsNotPunchedWithNothingObserved)
+{
+	uint8_t peer[NATT_PEER_HASH_LENGTH];
+	FillHash(peer, 0x40);
+
+	SRelayedRendezvousDecision forged;
+	forged.acceptance = RELAYED_ACCEPT;
+	forged.punch = true;
+	forged.punchEndpoint = CNetworkAddress::FromString("192.168.1.5");
+	forged.punchPort = 4662;
+	for (size_t i = 0; i < NATT_PEER_HASH_LENGTH; ++i) {
+		forged.peerHash[i] = peer[i];
+	}
+
+	CNatRendezvousManager manager;
+	// Nothing known and nothing observed, so the named endpoint is the only
+	// candidate there could be -- and it is not one, so no rendezvous starts.
+	ASSERT_FALSE(manager.OnRelayedRendezvous(forged, CNattCandidateSet(), 1000));
+	ASSERT_EQUALS(0u, manager.TrackedCount());
+
+	CRecordingPuncher puncher;
+	manager.Tick(1000, puncher);
+	ASSERT_EQUALS(0u, puncher.m_sent.size());
 }
