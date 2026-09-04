@@ -220,6 +220,7 @@ run_phase() {
 PHASES=(
 	01-version-and-errors.sh
 	02-auth.sh
+	02b-auth-lockout-isolation.sh
 	03-read-status.sh
 	04-read-downloads-shared.sh
 	05-read-servers-kad-categories-prefs.sh
@@ -259,6 +260,7 @@ PHASES=(
 	39-shared-media-refresh.sh
 	40-http-conformance.sh
 	41-shared-content.sh
+	42-path-and-body-contracts.sh
 )
 
 # Override list from the command line if given.

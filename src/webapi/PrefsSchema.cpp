@@ -123,7 +123,11 @@ const char *const kIp2CountrySources[] = { "dbip", "maxmind", "custom", nullptr 
 
 const PrefField kSchema[] = {
 	// [general]
-	PREF_BOOL("general", "version_check_enabled", EC_TAG_GENERAL_CHECK_NEW_VERSION, PrefEnc::Presence, false, PrefAccess::ReadWrite, version_check_enabled),
+	// Value, not Presence: the core emits EC_TAG_GENERAL_CHECK_NEW_VERSION
+	// unconditionally as a value tag, so presence-decoding it pinned the
+	// answer to true and a read-modify-write of any other preference
+	// silently re-enabled version checking.
+	PREF_BOOL("general", "version_check_enabled", EC_TAG_GENERAL_CHECK_NEW_VERSION, PrefEnc::Value, false, PrefAccess::ReadWrite, version_check_enabled),
 	PREF_STR("general", "daemon_host_name", EC_TAG_USER_HOST, PrefAccess::ReadOnly, daemon_host_name),
 	PREF_STR("general", "nickname", EC_TAG_USER_NICK, PrefAccess::ReadWrite, nickname),
 	PREF_MD4("general", "user_hash", EC_TAG_USER_HASH, PrefAccess::ReadOnly, user_hash),
@@ -151,7 +155,9 @@ const PrefField kSchema[] = {
 	// 200 that left the daemon listening on 4662.
 	PREF_U16_DOMAIN("connection", "tcp_port", EC_TAG_CONN_TCP_PORT, 1u, 65532u, PrefAccess::ReadWrite, tcp_port),
 	PREF_U16("connection", "udp_port", EC_TAG_CONN_UDP_PORT, 65535u, PrefAccess::ReadWrite, udp_port),
-	PREF_U32("connection", "upload_slot_min_kibibytes_per_second", EC_TAG_CONN_SLOT_ALLOCATION, 65535u, PrefAccess::ReadWrite, upload_slot_min_kibibytes_per_second),
+	// Floor of 1: SetSlotAllocation clamps anything lower up to 1, so
+	// without the bound a 0 answered 200 and read back as 1.
+	PREF_U32_DOMAIN("connection", "upload_slot_min_kibibytes_per_second", EC_TAG_CONN_SLOT_ALLOCATION, 1u, 65535u, 0u, PrefAccess::ReadWrite, upload_slot_min_kibibytes_per_second),
 	PREF_BOOL_INGROUP("connection", "upnp_supported", EC_TAG_GENERAL_UPNP_AVAILABLE, PrefEnc::Value, PrefAccess::ReadOnly, upnp_supported, EC_TAG_PREFS_GENERAL),
 	PREF_BOOL("connection", "upnp_enabled", EC_TAG_CONN_UPNP_ENABLED, PrefEnc::Value, false, PrefAccess::ReadWrite, upnp_enabled),
 	PREF_U16("connection", "upnp_control_point_port", EC_TAG_CONN_UPNP_TCP_PORT, 65535u, PrefAccess::ReadWrite, upnp_control_point_port),
@@ -204,9 +210,9 @@ const PrefField kSchema[] = {
 	// [security]
 	PREF_BOOL("security", "ipfilter_auto_update", EC_TAG_IPFILTER_AUTO_UPDATE, PrefEnc::Presence, false, PrefAccess::ReadWrite, security.ipfilter_auto_update),
 	PREF_U32("security", "ipfilter_min_access_level", EC_TAG_IPFILTER_LEVEL, 255u, PrefAccess::ReadWrite, security.ipfilter_min_access_level),
-	PREF_BOOL("security", "ipfilter_clients", EC_TAG_IPFILTER_CLIENTS, PrefEnc::Presence, false, PrefAccess::ReadWrite, security.ipfilter_clients),
+	PREF_BOOL("security", "ipfilter_clients_enabled", EC_TAG_IPFILTER_CLIENTS, PrefEnc::Presence, false, PrefAccess::ReadWrite, security.ipfilter_clients_enabled),
 	PREF_BOOL("security", "ipfilter_include_lan_ips", EC_TAG_IPFILTER_FILTER_LAN, PrefEnc::Presence, false, PrefAccess::ReadWrite, security.ipfilter_include_lan_ips),
-	PREF_BOOL("security", "ipfilter_servers", EC_TAG_IPFILTER_SERVERS, PrefEnc::Presence, false, PrefAccess::ReadWrite, security.ipfilter_servers),
+	PREF_BOOL("security", "ipfilter_servers_enabled", EC_TAG_IPFILTER_SERVERS, PrefEnc::Presence, false, PrefAccess::ReadWrite, security.ipfilter_servers_enabled),
 	PREF_STR("security", "ipfilter_update_url", EC_TAG_IPFILTER_UPDATE_URL, PrefAccess::ReadWrite, security.ipfilter_update_url),
 	PREF_BOOL("security", "protocol_obfuscation_enabled", EC_TAG_SECURITY_OBFUSCATION_SUPPORTED, PrefEnc::Presence, false, PrefAccess::ReadWrite, security.protocol_obfuscation_enabled),
 	PREF_BOOL("security", "obfuscation_requested", EC_TAG_SECURITY_OBFUSCATION_REQUESTED, PrefEnc::Presence, false, PrefAccess::ReadWrite, security.obfuscation_requested),
@@ -267,12 +273,12 @@ const PrefField kSchema[] = {
 	PREF_U32_DOMAIN("advanced", "file_buffer_bytes", EC_TAG_CORETW_FILEBUFFER, 0u, 3825000u, 15000u, PrefAccess::ReadWrite, advanced.file_buffer_bytes),
 	// LoadAllItems() clamps this to 5..50 on the next start, so anything else
 	// was a value GET reported until the daemon was restarted.
-	PREF_U32_DOMAIN("advanced", "kad_max_concurrent_source_searches", EC_TAG_CORETW_KAD_MAX_SEARCHES, 5u, 50u, 0u, PrefAccess::ReadWrite, advanced.kad_max_concurrent_source_searches),
+	PREF_U32_DOMAIN("advanced", "kad_max_concurrent_source_search_count", EC_TAG_CORETW_KAD_MAX_SEARCHES, 5u, 50u, 0u, PrefAccess::ReadWrite, advanced.kad_max_concurrent_source_search_count),
 	PREF_U32_SCALED_DOMAIN("advanced", "kad_source_reask_minutes", EC_TAG_CORETW_KAD_REASK_MS, 30u, 60u, PrefAccess::ReadWrite, advanced.kad_source_reask_minutes, 60000u),
 	// s_MaxConperFive is a uint16; 70000 wrapped to 4464.
 	PREF_U32_DOMAIN("advanced", "max_new_connections_per_5_seconds", EC_TAG_CORETW_MAX_CONN_PER_FIVE, 0u, 65535u, 0u, PrefAccess::ReadWrite, advanced.max_new_connections_per_5_seconds),
 	// s_iQueueSize is a uint8 holding val/100: 255 hundreds, nothing between.
-	PREF_U32_DOMAIN("advanced", "max_upload_queue_clients", EC_TAG_CORETW_UL_QUEUE, 0u, 25500u, 100u, PrefAccess::ReadWrite, advanced.max_upload_queue_clients),
+	PREF_U32_DOMAIN("advanced", "max_upload_queue_client_count", EC_TAG_CORETW_UL_QUEUE, 0u, 25500u, 100u, PrefAccess::ReadWrite, advanced.max_upload_queue_client_count),
 	PREF_U32_SCALED("advanced", "server_keepalive_timeout_minutes", EC_TAG_CORETW_SRV_KEEPALIVE_TIMEOUT, 71582u, PrefAccess::ReadWrite, advanced.server_keepalive_timeout_minutes, 60000u),
 	// The 15-minute floor is load-bearing: the UDP reask goes out at
 	// getter - 20s, and below ~10 min peers auto-ban for reask spam.

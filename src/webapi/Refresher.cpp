@@ -598,7 +598,7 @@ void MergePartFileTag(const CEC_PartFile_Tag *pf, FileSnapshot &f, bool is_new)
 	{
 		std::uint16_t v = 0;
 		if (pf->AssignIfExist(EC_TAG_PARTFILE_AVAILABLE_PARTS, v))
-			f.download.parts_available_count = v;
+			f.download.available_part_count = v;
 		if (pf->AssignIfExist(EC_TAG_PARTFILE_HASHED_PART_COUNT, v))
 			f.download.hashed_part_count = v;
 	}
@@ -2863,8 +2863,10 @@ void ParseGeneralPrefs(const CECTag *gen, PreferencesSnapshot &out)
 	if (const CECTag *t = gen->GetTagByName(EC_TAG_USER_HOST)) {
 		out.daemon_host_name = std::string(t->GetStringData().utf8_str());
 	}
-	if (gen->GetTagByName(EC_TAG_GENERAL_CHECK_NEW_VERSION)) {
-		out.version_check_enabled = true;
+	// Read the value, not the tag's presence: the core always sends this one,
+	// so presence-testing it could only ever answer true.
+	if (const CECTag *t = gen->GetTagByName(EC_TAG_GENERAL_CHECK_NEW_VERSION)) {
+		out.version_check_enabled = (t->GetInt() != 0);
 	}
 	// Capability: 3.1+ daemons always send this bool (true when built with
 	// ENABLE_VERSION_CHECK, false when compiled out). Absent means a pre-3.1

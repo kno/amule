@@ -215,7 +215,7 @@ function ServersPanel({ isGuest }) {
       sortVal: (s) => s.hard_file_limit || 0,
       cell: (s) => s.hard_file_limit ? formatInt(s.hard_file_limit) : "—" },
     { key: "version", label: t("networks_server_version"), width: "90px", sortable: true,
-      sortVal: (s) => s.version || "", cell: (s) => s.version || "" },
+      sortVal: (s) => s.software_version || "", cell: (s) => s.software_version || "" },
     // Consecutive failed connection attempts — a counter, not a flag.
     { key: "failed", label: t("networks_server_failed"), num: true, width: "80px", sortable: true,
       sortVal: (s) => s.failed_count || 0, cell: (s) => formatInt(s.failed_count || 0) },
@@ -394,8 +394,18 @@ function AmuleLogPanel() {
       if (!boxRef.current) return;
       for (const line of (v.lines || [])) append(boxRef.current, line);
     });
+    // resync means the tail cursor is worthless -- DELETE /logs/amule emptied
+    // the buffer, from this client or another one -- so re-read rather than
+    // keep appending to what is on screen.
+    let lastResync = store.get("resync");
+    const unsubResync = store.subscribe("resync", (v) => {
+      if (v === lastResync) return;
+      lastResync = v;
+      if (boxRef.current) setText(boxRef.current, "");
+      load();
+    });
     load();
-    return () => unsub();
+    return () => { unsub(); unsubResync(); };
   }, []);
 
   return logBox(clear, save, boxRef);

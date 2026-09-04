@@ -127,7 +127,7 @@ std::string ToJsonDownloadEvent(const FileSnapshot &f)
 	  << ",\"progress\":{\"percent\":" << JsonDoubleToString(f.download.percent) << "}"
 	  << ",\"kad_comment_lookup_running\":" << (f.download.kad_comment_searching ? "true" : "false")
 	  << ",\"hashed_part_count\":" << f.download.hashed_part_count
-	  << ",\"parts_total_count\":" << webapi::PartCountForSize(f.size) << ",\"source_ecids\":[";
+	  << ",\"total_part_count\":" << webapi::PartCountForSize(f.size) << ",\"source_ecids\":[";
 	bool first_a4af = true;
 	for (const std::uint32_t ecid : f.download.a4af_sources) {
 		if (!first_a4af)
@@ -381,12 +381,18 @@ std::string ToJsonStatusEvent(const StatusSnapshot &s, const KadSnapshot &k, boo
 	o << "{"
 	  << "\"ec_connected\":" << (ec_connected ? "true" : "false") << ",\"ed2k\":{"
 	  << "\"state\":\"" << EscJson(s.ed2k_state) << "\""
-	  << ",\"high_id\":" << (s.ed2k_high_id ? "true" : "false") << ",\"user_id\":" << s.ed2k_user_id
-	  << ",\"public_ip\":\"" << EscJson(s.ed2k_public_ip) << "\""
+	  << ",\"high_id\":" << (s.ed2k_high_id ? "true" : "false") << ",\"user_id\":"
+	  << s.ed2k_user_id
+	  // null, not "", for the addresses: the REST row this event promises key
+	  // parity with nulls them, and server_port nulls with its address.
+	  << ",\"public_ip\":"
+	  << (s.ed2k_public_ip.empty() ? std::string("null") : "\"" + EscJson(s.ed2k_public_ip) + "\"")
 	  << ",\"connected_since_at\":" << s.ed2k_connected_since << ",\"server_name\":\""
 	  << EscJson(s.server_name) << "\""
-	  << ",\"server_ip\":\"" << EscJson(s.server_ip) << "\""
-	  << ",\"server_port\":" << s.server_port << ",\"network\":{"
+	  << ",\"server_ip\":"
+	  << (s.server_ip.empty() ? std::string("null") : "\"" + EscJson(s.server_ip) + "\"")
+	  << ",\"server_port\":"
+	  << (s.server_ip.empty() ? std::string("null") : std::to_string(s.server_port)) << ",\"network\":{"
 	  << "\"user_count\":" << JsonNumOrNull(s.has_ed2k_network, s.ed2k_users)
 	  << ",\"file_count\":" << JsonNumOrNull(s.has_ed2k_network, s.ed2k_files) << "}}"
 	  << ",\"kad\":{"
@@ -398,8 +404,8 @@ std::string ToJsonStatusEvent(const StatusSnapshot &s, const KadSnapshot &k, boo
 	  << ",\"node_count\":" << JsonNumOrNull(k.has_network, k.nodes) << "}"
 	  << "}"
 	  << ",\"speeds\":{"
-	  << "\"download_bytes_per_second\":" << s.download_bytes_per_second
-	  << ",\"upload_bytes_per_second\":" << s.upload_bytes_per_second
+	  << "\"download_speed_bytes_per_second\":" << s.download_bytes_per_second
+	  << ",\"upload_speed_bytes_per_second\":" << s.upload_bytes_per_second
 	  << ",\"download_overhead_bytes_per_second\":" << s.download_overhead_bytes_per_second
 	  << ",\"upload_overhead_bytes_per_second\":" << s.upload_overhead_bytes_per_second << "}"
 	  << ",\"disk\":{"
@@ -713,7 +719,7 @@ void EnforceSinglePublisher()
 } // namespace
 
 // One chat message as the `message` object both the SSE payload and
-// GET /chats/{client_address}/messages expose. Written here in the same string-building
+// GET /chats/{address}/messages expose. Written here in the same string-building
 // style as the other event payloads in this file; the REST side renders the
 // identical shape through CJsonWriter.
 std::string ChatMessageJson(const ChatMessageSnapshot &msg)
@@ -733,7 +739,7 @@ void PublishChatEvents(CEventBus &bus,
 	for (const ChatSessionSnapshot &session : new_messages) {
 		const std::string peer = session.PeerKey();
 		for (const ChatMessageSnapshot &msg : session.messages) {
-			std::string payload = "{\"client_address\":\"" + EscJson(peer) + "\",\"ip\":\"" +
+			std::string payload = "{\"address\":\"" + EscJson(peer) + "\",\"ip\":\"" +
 					      EscJson(session.ip) +
 					      "\",\"port\":" + std::to_string(session.port) + ",\"name\":\"" +
 					      EscJson(session.DisplayName()) +
@@ -751,7 +757,7 @@ void PublishChatEvents(CEventBus &bus,
 	}
 	for (std::uint64_t gui_id : closed) {
 		const std::string peer = ChatPeerKeyFromGuiId(gui_id);
-		batch.emplace_back("chat_session_closed", "{\"client_address\":\"" + EscJson(peer) + "\"}");
+		batch.emplace_back("chat_session_closed", "{\"address\":\"" + EscJson(peer) + "\"}");
 	}
 	bus.PublishBatch(batch);
 }
@@ -954,10 +960,10 @@ void EmitDiffsAndUpdate(CEventBus &bus, LastSeenState &prev, const CState &state
 
 	// /status: one event when anything in the dashboard envelope
 	// changes (StatusSnapshot fields OR Kad network rollup OR
-	// ec_connected). Cold-start gates on `status_initialised` so we
-	// don't blast a status_changed on the very first tick (SSE
-	// subscribers already see the current state via REST; the
-	// *change* events are what they're here for).
+	// ec_connected). Cold start is its own branch, gated on
+	// `status_initialised`: it publishes exactly one status_changed and
+	// seeds the baseline, so the comparison below never runs against an
+	// empty prev and mistakes every field for a change.
 	if (!prev.status_initialised) {
 		bus.Publish("status_changed", ToJsonStatusEvent(new_status, new_kad, new_ec));
 		prev.status_initialised = true;
@@ -1034,6 +1040,23 @@ void EmitDiffsAndUpdate(CEventBus &bus, LastSeenState &prev, const CState &state
 			}
 
 			auto &pstate = prev.searches[sid];
+			// Results do leave an attached search: the union merge erases an
+			// ECID the daemon stopped reporting, and RebuildFoldedResults drops
+			// a row that has since been folded into a parent's
+			// alternate_names[]. Emitted before the additions below, the order
+			// DiffMap uses, and identity-only like every other _removed.
+			//
+			// Without this the row stays on every subscriber's screen for the
+			// life of the search: a finished one publishes no further
+			// search_progress, so nothing even hints that a re-read is due.
+			for (const auto &kv : pstate.results) {
+				if (search_now.find(kv.first) != search_now.end())
+					continue;
+				std::ostringstream removed;
+				removed << "{\"search_id\":" << sid << ",\"hash\":\""
+					<< EscJson(kv.second.hash) << "\"}";
+				bus.Publish("search_result_removed", removed.str());
+			}
 			// New and mutated result entries for this search.
 			for (const auto &kv : search_now) {
 				const auto pit = pstate.results.find(kv.first);
@@ -1123,25 +1146,39 @@ void EmitDiffsAndUpdate(CEventBus &bus, LastSeenState &prev, const CState &state
 	// the tail is new. First tick records the baseline silently — clients GET
 	// /api/v0/logs/amule for the history; this channel is the live tail only.
 	//
-	// A size that shrank means `DELETE /logs/amule` cleared the buffer, and the
-	// only thing this does about it is re-point the counter. Lines appended
-	// between that DELETE and this tick are NOT published, and if the counter
-	// was below the new size the append branch publishes a mid-buffer slice as
-	// though it were a tail. Only the client that issued the DELETE knows to
-	// refetch; other subscribers are not told. Pre-existing, and fixable by
-	// publishing `resync` on the reset edge -- which needs the bus-published
-	// resync to bypass the `?channels=` filter, so it is not this change.
+	// `DELETE /logs/amule` empties the buffer, and the clear-generation is what
+	// says so. A shrunk size was the old signal and it misses the case that
+	// matters: cleared and refilled past the old count between two ticks, the
+	// size only grows, so the append branch would publish a mid-buffer slice
+	// as though it were the tail and never publish what came before it.
+	//
+	// On that edge subscribers get `resync`, not a log event: lines are gone
+	// that this channel promised to deliver, so the honest signal is "your
+	// copy is stale, re-read", which is exactly what resync means. It bypasses
+	// `?channels=`, so a log-only subscriber is told too -- and the HTTP
+	// thread could not have published it from the DELETE handler anyway, the
+	// bus having a single-publisher invariant that only this tick satisfies.
 	//
 	// Size and tail in one read: the history is uncapped, so asking AmuleLog()
 	// for a `.size()` that is unchanged on almost every tick copies all of it
 	// -- and splitting the two would let that DELETE land in between, pairing
-	// a pre-truncation size with an empty tail.
+	// a pre-truncation size with an empty tail. The generation rides along for
+	// the same reason.
 	std::size_t log_size = 0;
-	const auto tail = state.AmuleLogFrom(prev.amule_log_count, log_size);
+	std::uint64_t log_generation = 0;
+	const auto tail = state.AmuleLogFrom(prev.amule_log_count, log_size, &log_generation);
 	if (!prev.amule_log_initialised) {
 		prev.amule_log_count = log_size;
+		prev.amule_log_generation = log_generation;
 		prev.amule_log_initialised = true;
+	} else if (log_generation != prev.amule_log_generation) {
+		bus.Publish("resync", "{\"reason\":\"log_cleared\"}");
+		prev.amule_log_count = log_size;
+		prev.amule_log_generation = log_generation;
 	} else if (log_size < prev.amule_log_count) {
+		// No generation bump, so this is not a clear: the buffer is capped
+		// elsewhere or the daemon replaced it wholesale. Re-point and stay
+		// quiet, as before.
 		prev.amule_log_count = log_size;
 	} else if (!tail.empty()) {
 		std::ostringstream payload;

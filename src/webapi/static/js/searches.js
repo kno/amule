@@ -34,7 +34,7 @@ let tabsTimer = 0;
 let resultsTimer = 0;
 let lastAdopt = 0;
 let offs = [];
-let lastResult = null, lastProgress = null, lastClosed = null;
+let lastResult = null, lastResultRemoved = null, lastProgress = null, lastClosed = null;
 
 function newTab({ id, query = "", label = "", kind = "global", state = "running", startedAt = 0,
                  percent = 0, count = 0 }) {
@@ -211,6 +211,19 @@ function onResult(p) {
   publishResultsSoon(p.search_id);
 }
 
+// The row left the daemon's result space (folded into a parent's alternate
+// names, or dropped by the union merge). Identity-only payload, like every
+// other _removed: drop the cache entry, no re-fetch.
+function onResultRemoved(p) {
+  if (!p || p === lastResultRemoved) return;
+  lastResultRemoved = p;
+  const tab = tabs.get(p.search_id);
+  if (!tab || !tab.results.delete(p.hash)) return;
+  tab.count = tab.results.size;
+  publishTabsSoon();
+  publishResultsSoon(p.search_id);
+}
+
 function onProgress(p) {
   if (!p || p === lastProgress) return;
   lastProgress = p;
@@ -252,6 +265,28 @@ function startPolling() {
   }, POLL_ACTIVE_MS);
 }
 
+// Shared by browse() and browseFriend(). `path` is the resource owning the
+// shared_files sub-resource: "clients/{ecid}" or "friends/{ecid}".
+async function browseVia(path, name) {
+  const r = await api.post(path + "/shared_files");
+  const id = r.search_id;
+  const open = tabs.get(id);
+  if (open) {
+    if (name) { open.query = name; open.label = name; }
+  } else {
+    tabs.set(id, newTab({
+      id, query: name || r.query || "", label: name || r.query || "",
+      kind: r.type || "browse",
+      state: r.state || "running",
+      startedAt: r.started_at || nowSec(),
+    }));
+  }
+  setActive(id);
+  toast(t("search_toast_browse_started"), "info");
+  if (location.hash !== "#/search") location.hash = "#/search";
+  return id;
+}
+
 // --- public API ----------------------------------------------------------
 
 export const searches = {
@@ -260,9 +295,11 @@ export const searches = {
     if (started) return;
     started = true;
     lastResult = store.get("search:result");
+    lastResultRemoved = store.get("search:result_removed");
     lastProgress = store.get("search:progress");
     lastClosed = store.get("search:closed");
     offs.push(store.subscribe("search:result", onResult));
+    offs.push(store.subscribe("search:result_removed", onResultRemoved));
     offs.push(store.subscribe("search:progress", onProgress));
     offs.push(store.subscribe("search:closed", onClosed));
     startPolling();
@@ -327,25 +364,11 @@ export const searches = {
   // second click lands on the tab that is already open. Overwriting it would
   // throw away its results, its badge and its per-tab ui state (selection,
   // filter, per-row category) for a browse that never restarted.
-  async browse(ecid, name) {
-    const r = await api.post("clients/" + ecid + "/shared_files");
-    const id = r.search_id;
-    const open = tabs.get(id);
-    if (open) {
-      if (name) { open.query = name; open.label = name; }
-    } else {
-      tabs.set(id, newTab({
-        id, query: name || r.query || "", label: name || r.query || "",
-        kind: r.type || "browse",
-        state: r.state || "running",
-        startedAt: r.started_at || nowSec(),
-      }));
-    }
-    setActive(id);
-    toast(t("search_toast_browse_started"), "info");
-    if (location.hash !== "#/search") location.hash = "#/search";
-    return id;
-  },
+  browse(ecid, name) { return browseVia("clients/" + ecid, name); },
+
+  // The friend-addressed twin, and the only one that reaches a friend who is
+  // NOT connected: a friend record carries a stored address.
+  browseFriend(ecid, name) { return browseVia("friends/" + ecid, name); },
 
   // Related-files search: no endpoint and no opcode, just a magic keyword and
   // an ordinary LOCAL search. A server without `related_search` answers it with

@@ -279,20 +279,23 @@ rm -f "$SSE_A" "$SSE_B"
 # network. Even on a fully-disconnected daemon `local` returns
 # immediately with 0 results, which still triggers the finished frame.
 # (search_progress supersedes the old standalone search_finished event.)
-SSE_PID=$(_sse_start 15)
+# 25 s, not 15: the terminal frame arrives when the SERVER declares the search
+# done, which on a LowID link is routinely slower than the old 8 s poll allowed
+# -- the check failed intermittently for that reason alone, which is the kind
+# of flake that teaches people to ignore a red run.
+SSE_PID=$(_sse_start 25)
 sleep 1
 SEARCH_QUERY=ubuntu
 SSE_SEARCH=$(curl -s -X POST -H "Authorization: Bearer $ADMIN_TOKEN" \
 	-H "Content-Type: application/json" \
 	-d "{\"query\":\"$SEARCH_QUERY\",\"type\":\"local\"}" \
 	"$HOST/api/v0/search")
-SSE_SID=$(printf '%s' "$SSE_SEARCH" | jq -r '.id // empty')
+SSE_SID=$(printf '%s' "$SSE_SEARCH" | jq -r '.search_id // empty')
 SEARCH_FINISHED=""
-for _ in 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20 \
-         21 22 23 24 25 26 27 28 29 30 31 32 33 34 35 36 37 38 39 40; do
+for _ in $(seq 1 110); do
 	# The terminal frame is a search_progress event whose data has
 	# state=="finished". Several running frames may precede it; pick the
-	# finished one.
+	# finished one. 110 x 0.2 s = 22 s, inside the stream's 25 s.
 	if grep -q "^event: search_progress$" "$SSE_OUT"; then
 		SEARCH_FINISHED=$(grep -A2 "^event: search_progress$" "$SSE_OUT" \
 			| grep "^data: " | sed 's/^data: //' \
@@ -304,7 +307,7 @@ done
 wait $SSE_PID 2>/dev/null
 
 if [ -n "$SEARCH_FINISHED" ]; then
-	_pass "search_progress finished frame fired within 8 s of POST /search type=local"
+	_pass "search_progress finished frame fired within 22 s of POST /search type=local"
 	JSON="$SEARCH_FINISHED"
 	if echo "$JSON" | jq -e '.state == "finished"' >/dev/null 2>&1; then
 		_pass "search_progress .data.state == 'finished'"
@@ -350,7 +353,7 @@ if [ -n "$SEARCH_FINISHED" ]; then
 	fi
 else
 	_fail "search_progress finished frame missing" \
-		"no finished search_progress within 8 s of POST /search; stream sample: $(head -40 "$SSE_OUT")"
+		"no finished search_progress within 22 s of POST /search; stream sample: $(head -40 "$SSE_OUT")"
 fi
 
 # --- 6.1 search_closed fires when a search is freed. ---------------
@@ -383,21 +386,67 @@ else
 	echo "    info: no search_id from POST /search — skipping search_closed"
 fi
 
-# --- comments_updated shape (issue #434). Conditional: the event only
-# fires when a download's comment list changes (a Kad note arriving, or a
-# source reporting a comment), which the smoke daemon can't force. If one
-# was captured, validate its shape; otherwise skip — the live-network path
-# is validated manually.
-CU=$(grep -A1 "^event: comments_updated$" "$SSE_OUT" | grep "^data: " | head -1 | sed 's/^data: //')
-if [ -n "$CU" ]; then
-	if echo "$CU" | jq -e '(.hash|type=="string") and (.total|type=="number") and (.comments|type=="array")' >/dev/null 2>&1; then
-		_pass "comments_updated payload shape valid"
+# --- comments_updated shape (issue #434). ---------------------------
+# This used to wait passively for a peer comment or a Kad note to arrive,
+# which a smoke daemon cannot force, so the shape assertion below never ran
+# once -- a check that looks like coverage and is not. It is provoked now:
+# EqualComments compares `kad_comment_searching` as well as the comment list,
+# and POST /downloads/{hash}/comments starts that lookup, so the false->true
+# edge fires the event on the next refresher tick.
+#
+# Still conditional, but on something specific and reported: a daemon with Kad
+# down answers 400 amuled_rejected and there is no lookup to start.
+# Section 4 deleted the ISO to prove download_removed, so re-add it: the
+# lookup is addressed by download hash and 404s without one.
+curl -s -X POST -H "Authorization: Bearer $ADMIN_TOKEN" \
+	-H "Content-Type: application/json" \
+	-d "{\"links\":[\"$TEST_LINK\"]}" \
+	"$HOST/api/v0/downloads" > /dev/null
+sleep 3
+SSE_PID=$(_sse_start 8)
+sleep 1
+KAD_NOTES_STATUS=$(curl -s -o /dev/null -w '%{http_code}' \
+	-X POST -H "Authorization: Bearer $ADMIN_TOKEN" \
+	"$HOST/api/v0/downloads/$TEST_HASH/comments")
+if [ "$KAD_NOTES_STATUS" = "202" ]; then
+	CU=""
+	for _ in 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20; do
+		CU=$(grep -A1 "^event: comments_updated$" "$SSE_OUT" \
+			| grep "^data: " | sed 's/^data: //' | head -1)
+		[ -n "$CU" ] && break
+		sleep 0.25
+	done
+	wait $SSE_PID 2>/dev/null
+	if [ -z "$CU" ]; then
+		# Not a failure: `kad_comment_searching` is only observable if the
+		# lookup is still running when the refresher next samples it, and a
+		# firewalled or note-less lookup can start and finish inside one
+		# tick. What this rules out is the old silent case -- the trigger
+		# was accepted, so the path was exercised even when the edge was not
+		# visible.
+		echo "    info: Kad-notes lookup accepted but finished within a tick - no observable comments_updated"
+	elif echo "$CU" | jq -e '(.hash|type=="string") and (.total|type=="number") and (.comments|type=="array")' >/dev/null 2>&1; then
+		_pass "comments_updated fired on the Kad-notes lookup, payload shape valid"
 	else
 		_fail "comments_updated payload shape" "unexpected: $CU"
 	fi
+	# The key is `total`, as GET /downloads/{hash}/comments spells it. An
+	# earlier revision of this file asserted `.count`, which the payload has
+	# never carried; it passed only because the branch never executed.
+	if [ -n "$CU" ]; then
+		if echo "$CU" | jq -e 'has("count") | not' >/dev/null 2>&1; then
+			_pass "comments_updated carries no stray count key"
+		else
+			_fail "comments_updated count key" "expected only total, got: $CU"
+		fi
+	fi
 else
-	_pass "comments_updated not emitted this run (no comment change; shape verified live)"
+	wait $SSE_PID 2>/dev/null
+	echo "    info: Kad-notes lookup unavailable (POST returned $KAD_NOTES_STATUS) - comments_updated not provoked"
 fi
+# Leave the queue as this section found it.
+curl -s -X DELETE -H "Authorization: Bearer $ADMIN_TOKEN" \
+	"$HOST/api/v0/downloads/$TEST_HASH" > /dev/null 2>&1 || true
 
 # --- status_changed carries the same keys as GET /status. ----------
 # EVENTS.md promises the payload is "identical to the REST /status
@@ -635,7 +684,7 @@ fi
 # curl directly, same as every section above.
 SSE_SEARCH_SID=$(curl -s -X POST -H "Authorization: Bearer $ADMIN_TOKEN" \
 	-H "Content-Type: application/json" \
-	-d '{"query":"ubuntu"}' "$HOST/api/v0/search" | jq -r '.id // empty')
+	-d '{"query":"ubuntu"}' "$HOST/api/v0/search" | jq -r '.search_id // empty')
 UPD_HASH=""
 UPD_NAME=""
 UPD_SIZE=""

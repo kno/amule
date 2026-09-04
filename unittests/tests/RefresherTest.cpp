@@ -864,7 +864,7 @@ TEST(Refresher, DownloadDetailTagsDecodeIntoSnapshot)
 	ASSERT_EQUALS(static_cast<std::uint32_t>(1700000000), d.download.last_seen_complete_at);
 	ASSERT_EQUALS(static_cast<std::uint32_t>(1700000123), d.download.last_received_at);
 	ASSERT_EQUALS(static_cast<std::uint32_t>(3600), d.download.active_seconds);
-	ASSERT_EQUALS(static_cast<std::uint16_t>(12), d.download.parts_available_count);
+	ASSERT_EQUALS(static_cast<std::uint16_t>(12), d.download.available_part_count);
 	ASSERT_EQUALS(static_cast<std::uint16_t>(3), d.download.hashed_part_count);
 	ASSERT_EQUALS(static_cast<std::uint64_t>(9728000), d.download.lost_to_corruption_bytes);
 	ASSERT_EQUALS(static_cast<std::uint64_t>(4096), d.download.gained_by_compression_bytes);
@@ -2358,6 +2358,37 @@ TEST(Refresher, PreferencesExtendedCategoriesDecode)
 // proxy type as a wire int and both remote-control subsystems in one flat
 // category. What changed is the API shape the snapshot feeds, so this pins
 // the two translations that now happen at the webapi boundary.
+// The core emits EC_TAG_GENERAL_CHECK_NEW_VERSION unconditionally, as a value
+// tag rather than a conditional empty one. Decoding it by presence therefore
+// pinned the answer to true, and a read-modify-write of any other preference
+// re-enabled version checking behind the user's back. Both `false` cases below
+// read `true` under that decode.
+TEST(Refresher, VersionCheckEnabledDecodesTheValueNotThePresence)
+{
+	{
+		CECPacket resp(EC_OP_SET_PREFERENCES);
+		CECEmptyTag gen(EC_TAG_PREFS_GENERAL);
+		gen.AddTag(CECTag(EC_TAG_GENERAL_CHECK_NEW_VERSION, false));
+		resp.AddTag(gen);
+
+		PreferencesSnapshot p;
+		std::vector<CategorySnapshot> cats;
+		ParsePreferencesFromPacket(&resp, p, cats);
+		ASSERT_TRUE(!p.version_check_enabled);
+	}
+	{
+		CECPacket resp(EC_OP_SET_PREFERENCES);
+		CECEmptyTag gen(EC_TAG_PREFS_GENERAL);
+		gen.AddTag(CECTag(EC_TAG_GENERAL_CHECK_NEW_VERSION, true));
+		resp.AddTag(gen);
+
+		PreferencesSnapshot p;
+		std::vector<CategorySnapshot> cats;
+		ParsePreferencesFromPacket(&resp, p, cats);
+		ASSERT_TRUE(p.version_check_enabled);
+	}
+}
+
 TEST(Refresher, PreferencesEnumAndNestedRemoteControlsDecode)
 {
 	CECPacket resp(EC_OP_SET_PREFERENCES);

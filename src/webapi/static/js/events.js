@@ -169,9 +169,9 @@ function openSse() {
     try { store.set("log:appended", JSON.parse(ev.data)); } catch (_) {}
   });
 
-  // Search has its own channel but doesn't fit the added/updated/removed
-  // resource model (no _removed; each search is a fresh result space), so
-  // it's surfaced via store keys the search view consumes directly.
+  // Search has its own channel and only partly fits the collection model --
+  // each search is a fresh result space -- so it's surfaced via store keys the
+  // search view consumes directly rather than the generic resource plumbing.
   // search_result_added is byte-for-byte a /search/{id}/results[] entry (keyed
   // by hash, nested sources {total, complete}); search_progress carries
   // {state, percent, results, kind} and its terminal frame (state:
@@ -188,6 +188,11 @@ function openSse() {
   };
   es.addEventListener("search_result_added", onSearchResult);
   es.addEventListener("search_result_updated", onSearchResult);
+  // Identity-only ({search_id, hash}), so it gets its own key: routing it
+  // through onSearchResult would upsert a row with no fields.
+  es.addEventListener("search_result_removed", (ev) => {
+    try { store.set("search:result_removed", JSON.parse(ev.data)); } catch (_) {}
+  });
   es.addEventListener("search_progress", (ev) => {
     try { store.set("search:progress", JSON.parse(ev.data)); } catch (_) {}
   });
@@ -207,9 +212,22 @@ function openSse() {
     try { store.set("comments:updated", JSON.parse(ev.data)); } catch (_) {}
   });
 
+  // Chat rides store keys like search, not the added/updated/removed model.
+  // chat_message is one frame per message, inbound AND outbound (an outbound one
+  // relays a send from another client); chats.js demuxes by `peer`.
+  es.addEventListener("chat_message", (ev) => {
+    try { store.set("chat:message", JSON.parse(ev.data)); } catch (_) {}
+  });
+  es.addEventListener("chat_session_closed", (ev) => {
+    try { store.set("chat:closed", JSON.parse(ev.data)); } catch (_) {}
+  });
+
   es.addEventListener("resync", () => {
     if (statusActive) refreshStatus();
     for (const k of active) seed(k);
+    // chats.js and the log panel aren't `active` resources, so the re-seed
+    // above misses them: one counter both can watch.
+    store.set("resync", (store.get("resync") || 0) + 1);
   });
 
   for (const spec of resources.values()) attachResourceListeners(spec);
