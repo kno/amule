@@ -9,7 +9,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: aMule\n"
 "Report-Msgid-Bugs-To: https://github.com/amule-org/amule/issues\n"
-"POT-Creation-Date: 2026-09-04 08:48+0200\n"
+"POT-Creation-Date: 2026-09-02 12:15+0200\n"
 "PO-Revision-Date: 2026-09-03 11:10+0000\n"
 "Last-Translator: raffe <raffe@localhost.se>\n"
 "Language-Team: Swedish <tp-sv@listor.tp-sv.se>\n"
@@ -407,14 +407,6 @@ msgid "You requested to run amuleapi on startup, but the amuleapi binary cannot 
 msgstr "Du vill köra webbservern vid uppstart, men binärfilen amuleweb kan inte köras. Vänligen installera paketet med aMule webservern eller compilera aMule med --enable-webserver och kör make install"
 
 #: src/amule.cpp
-msgid "Could not bind an IPv6 socket. IPv6 appears to be unavailable on this host; IPv4 operation is unaffected."
-msgstr ""
-
-#: src/amule.cpp
-msgid "Could not bind an IPv4 socket."
-msgstr ""
-
-#: src/amule.cpp
 #, c-format
 msgid "External connection: could not bind to '%s', listening on 127.0.0.1 only."
 msgstr ""
@@ -443,11 +435,6 @@ msgstr ""
 "Detta innebär att du kommer att bli LOWID.\n"
 "\n"
 "Kontrollera ditt nätverk för att se att porten är öppen för ut och in-trafik."
-
-#: src/amule.cpp
-#, c-format
-msgid "Client UDP socket (extended eMule) listening on %s port %u (IPv6)."
-msgstr ""
 
 #: src/amule.cpp
 msgid "Failed to create OnlineSig File"
@@ -2897,7 +2884,7 @@ msgstr "På kö: %u"
 msgid "Uploading"
 msgstr "Skickar"
 
-#: src/GenericClientListCtrl.cpp src/PeerCapabilities.h
+#: src/GenericClientListCtrl.cpp
 msgid "None"
 msgstr "Ingen"
 
@@ -3025,13 +3012,6 @@ msgstr "Kunde inte hämta %s från %s"
 #: src/IPFilter.cpp
 msgid "Loading IP filters 'ipfilter.dat' and 'ipfilter_static.dat'."
 msgstr "Laddar IP filter 'ipfilter.dat' och 'ipfilter_static.dat'."
-
-#: src/IPFilter.cpp
-#, fuzzy, c-format
-msgid "Loaded %u IPv6 prefix rule."
-msgid_plural "Loaded %u IPv6 prefix rules."
-msgstr[0] "Laddade %u IP-range från '%s'."
-msgstr[1] "Laddade %u IP-ranges från '%s'."
 
 #: src/IPFilter.cpp
 #, c-format
@@ -3321,19 +3301,12 @@ msgid "Asio thread %d started"
 msgstr "Asio tråd %d startad"
 
 #: src/ListenSocket.cpp
-#, c-format
-msgid "ListenSocket: listening on %s (IPv6, also accepting IPv4 peers in mapped form)."
-msgstr ""
+msgid "ListenSocket: Ok."
+msgstr "ListenSocket: Ok."
 
 #: src/ListenSocket.cpp
-#, c-format
-msgid "ListenSocket: listening on %s (%s)."
-msgstr ""
-
-#: src/ListenSocket.cpp
-#, c-format
-msgid "Inbound IPv6 connection from %s on %s."
-msgstr ""
+msgid "ERROR: Could not listen to TCP port."
+msgstr "FEL: Det gick inte att lyssna på TCP-port."
 
 #: src/Logger.cpp
 msgid "ERROR: "
@@ -4177,10 +4150,6 @@ msgstr "Fördunkling:"
 #: src/muuli_wdr.cpp
 msgid "Kad:"
 msgstr "Kad:"
-
-#: src/muuli_wdr.cpp
-msgid "Vendor capabilities:"
-msgstr ""
 
 #: src/muuli_wdr.cpp
 msgid "Transfers to client"
@@ -7250,16 +7219,6 @@ msgid "Connected since:"
 msgstr "Ansluten"
 
 #: src/ServerWnd.cpp
-#, fuzzy
-msgid "IPv4 reachability:"
-msgstr "Tillgänglighet"
-
-#: src/ServerWnd.cpp
-#, fuzzy
-msgid "IPv6 reachability:"
-msgstr "Tillgänglighet"
-
-#: src/ServerWnd.cpp
 msgid "Kademlia Status:"
 msgstr "Kademlia-status:"
 
@@ -9339,12 +9298,6 @@ msgstr ""
 #: packaging/windows/installer_strings.c
 msgid "Removing user data at $APPDATA\\aMule..."
 msgstr ""
-
-#~ msgid "ListenSocket: Ok."
-#~ msgstr "ListenSocket: Ok."
-
-#~ msgid "ERROR: Could not listen to TCP port."
-#~ msgstr "FEL: Det gick inte att lyssna på TCP-port."
 
 #~ msgid "Available Parts"
 #~ msgstr "Tillgängliga delar"

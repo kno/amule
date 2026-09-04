@@ -755,43 +755,6 @@ if (amule_HAVE_LIBCURL)
 	endforeach()
 endif()
 
-# uTP rides the client UDP socket, so it belongs to the two targets that have a
-# core. amulegui has none (CLIENT_GUI), which is why it is not in this loop.
-# AMULE_UTP_TRANSPORT is what every uTP call site is guarded by: without it the
-# transport shim still compiles, the adapter that calls utp_* does not, and no
-# uTP capability can be advertised to peers (AdvertisableModMiscOptions() is
-# zero). With it, the capability is still only advertised when the transport can
-# actually serve a connection -- see CUtpContext::CanServeConnections().
-if (ENABLE_UTP)
-	foreach (_tgt IN ITEMS amuled amule)
-		if (TARGET ${_tgt})
-			target_link_libraries (${_tgt} PRIVATE Utp::Utp)
-			target_compile_definitions (${_tgt} PRIVATE AMULE_UTP_TRANSPORT=1)
-		endif()
-	endforeach()
-endif()
-
-# QUIC rides the same client UDP socket as uTP, so it belongs to the same two
-# targets and is absent from amulegui for the same reason: amulegui has no core.
-# AMULE_QUIC_TRANSPORT is what every ngtcp2 call site is guarded by, and there
-# is exactly one -- QuicLibraryAdapter.cpp, which is the only translation unit
-# in the tree that includes ngtcp2's or GnuTLS's headers. Everything above it
-# (QuicNattProtocol.h, QuicContext.h, the frame-type policy in
-# NatTraversalPolicy.h) is ordinary C++ that compiles and is unit tested with
-# neither library present, which is what makes -DENABLE_QUIC=NO a build with no
-# QUIC rather than a build that does not compile.
-#
-# As with uTP, compiled in is not the same as able to serve: the capability bit
-# follows CQuicContext::CanServeConnections() at runtime, not this definition.
-if (ENABLE_QUIC)
-	foreach (_tgt IN ITEMS amuled amule)
-		if (TARGET ${_tgt})
-			target_link_libraries (${_tgt} PRIVATE Quic::Ngtcp2)
-			target_compile_definitions (${_tgt} PRIVATE AMULE_QUIC_TRANSPORT=1)
-		endif()
-	endforeach()
-endif()
-
 if (NEED_LIB_MULEAPPCOMMON)
 	add_library (muleappcommon STATIC
 		${UPNP_SOURCES}
@@ -899,7 +862,6 @@ if (NEED_LIB_MULEAPPCORE)
 		# another machine), and muleappcore is exactly the amule+amuled
 		# pair. Keeping it out of amulegui also keeps Crypto++ out of it.
 		AmuleApiCredentials.cpp
-		kademlia/kademlia/AICHHashList.cpp
 		kademlia/kademlia/Entry.cpp
 		kademlia/kademlia/Indexed.cpp
 		kademlia/kademlia/SearchManager.cpp
@@ -1049,19 +1011,6 @@ endif()
 IF (NEED_LIB_MULESOCKET)
 	add_library (mulesocket STATIC
 		LibSocket.cpp
-		# The two text operations of CNetworkAddress (parse and format) are the
-		# only ones that still compile Boost.Asio, so the type is no longer
-		# header-only and every target touching an address has to link this TU.
-		#
-		# It lives here rather than in muleappcommon for two reasons, both about
-		# where asio already is. mulesocket is the last static library on every
-		# executable's link line, so a one-pass linker resolves these symbols
-		# for muleappcommon and mulecommon too -- putting them in muleappcommon
-		# instead breaks amulegui, which is scanned before mulesocket. And
-		# mulesocket already links ${Boost_LIBRARIES}, which on mingw-w64 is
-		# ws2_32;mswsock -- exactly what asio's winsock_init needs, and what
-		# targets that merely include NetworkAddress.h must no longer require.
-		NetworkAddress.cpp
 	)
 
 	target_compile_definitions (mulesocket

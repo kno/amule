@@ -44,13 +44,9 @@ there client on the eMule forum..
 #include <protocol/kad/Client2Client/UDP.h>
 #include <protocol/kad/Constants.h>
 #include <protocol/kad2/Client2Client/UDP.h>
-#include <protocol/kad2/Constants.h> // Needed for KADEMLIA_VERSION9_50a
 #include <tags/FileTags.h>
 
 #include "Defines.h"
-#include "AICHHashList.h"
-#include "../net/FastKad.h"
-#include "../net/SafeKad.h"
 #include "UDPFirewallTester.h"
 #include "../routing/RoutingZone.h"
 #include "../routing/Contact.h"
@@ -60,27 +56,17 @@ there client on the eMule forum..
 #include "../../SharedFileList.h"
 #include "../../DownloadQueue.h"
 #include "../../PartFile.h"
-#include "../../SHAHashSet.h" // Needed for CAICHHash on Kad keyword storage
 #include "../../SearchList.h"
 #include "../../MemFile.h"
 #include "../../ClientList.h"
 #include "../../updownclient.h"
-#include "../../PeerCapabilities.h" // Needed for DecodeIPv6HexTag
 #include "../../Logger.h"
 #include "../../Preferences.h"
-#include "../../GetTickCount.h" // Needed for GetTickCount64
 #include "../../GuiEvents.h"
 
 ////////////////////////////////////////
 using namespace Kademlia;
 ////////////////////////////////////////
-
-// CKadAICHHashList is written against a plain 20-byte array so that the codec
-// pinning TAG_KADAICHHASHPUB / TAG_KADAICHHASHRESULT stays testable without
-// SHAHashSet.cpp behind it. This is where the two definitions of "AICH root
-// hash size" meet, so this is where they are held together.
-static_assert(
-	Kademlia::KAD_AICH_HASH_SIZE == HASHSIZE, "Kad AICH hash size must match the AICH root hash size");
 
 CSearch::CSearch()
 {
@@ -94,7 +80,6 @@ CSearch::CSearch()
 	m_totalLoad = 0;
 	m_totalLoadResponses = 0;
 	m_lastResponse = m_created;
-	m_lastResponseTick = ::GetTickCount64();
 	m_searchTermsData = NULL;
 	m_searchTermsDataSize = 0;
 	m_nodeSpecialSearchRequester = NULL;
@@ -292,35 +277,12 @@ void CSearch::PrepareToStop() noexcept
 
 void CSearch::JumpStart()
 {
-	// How long to wait on an outstanding request before treating the search
-	// as stalled.  Derived from the response times we have actually observed
-	// (CFastKad) rather than fixed at 3 seconds: on a fast link the old
-	// constant wasted seconds on nodes that were never going to answer, and
-	// on a congested one it abandoned nodes that answered just too late.
-	//
-	// Background store operations keep the old fixed 3 seconds.  They are not
-	// latency-sensitive -- nobody is waiting on a publish -- and holding them
-	// to a tight adaptive deadline would only add republish traffic.
-	const uint32_t maxPending = (m_type == STOREFILE || m_type == STOREKEYWORD || m_type == STORENOTES)
-					    ? SEC2MS(3)
-					    : fastKad.GetEstMaxResponseTime();
-
-	const uint64_t nowTick = ::GetTickCount64();
-
-	// Stop waiting on requests that have passed the ceiling, and remember
-	// those addresses as problematic so the next search does not queue behind
-	// the same dead nodes.
-	for (PendingRequestMap::iterator it = m_pendingRequests.begin(); it != m_pendingRequests.end();) {
-		if (nowTick - it->second.m_sentTick < maxPending) {
-			++it;
-			continue;
-		}
-		safeKad.TrackProblematicNode(it->second.m_ip, it->second.m_port, time(NULL));
-		m_pendingRequests.erase(it++);
-	}
-
-	// If we had a response within the derived ceiling, no need to jumpstart.
-	if (m_lastResponseTick + maxPending > nowTick) {
+	// If we had a response within the last 3 seconds, no need to jumpstart the search.
+	// Cast m_lastResponse to time_t before adding so the addition happens in
+	// time_t, not in uint32_t -- the latter would wrap near the 2106 32-bit
+	// time boundary and reorder the comparison silently.  Eighty years out,
+	// but cheap to write correctly.
+	if ((time_t)m_lastResponse + SEC(3) > time(NULL)) {
 		return;
 	}
 
@@ -397,7 +359,6 @@ void CSearch::ProcessResponse(uint32_t fromIP, uint16_t fromPort, ContactList *r
 	}
 
 	m_lastResponse = time(NULL);
-	m_lastResponseTick = ::GetTickCount64();
 
 	// Find contact that is responding.
 	CUInt128 fromDistance(0u);
@@ -408,39 +369,6 @@ void CSearch::ProcessResponse(uint32_t fromIP, uint16_t fromPort, ContactList *r
 			fromDistance = it->first;
 			fromContact = tmpContact;
 			break;
-		}
-	}
-
-	if (fromContact != NULL) {
-		// A useful answer: feed its round-trip time to the shared
-		// estimator so the next timeout reflects the network we are
-		// actually on.
-		PendingRequestMap::iterator pending = m_pendingRequests.find(fromContact->GetClientID());
-		if (pending != m_pendingRequests.end()) {
-			const uint64_t nowTick = ::GetTickCount64();
-			fastKad.AddResponseTime(
-				fromIP, (uint32_t)(nowTick - pending->second.m_sentTick), nowTick);
-			m_pendingRequests.erase(pending);
-		}
-
-		// The contact may have gone bad since we sent the request. This
-		// is the point at which we know the node stands behind this
-		// identity, so it is the right place to check it -- and
-		// onlyOneNodePerIP is off here because the contact is already in
-		// our routing table and a second port on the address is the
-		// routing table's problem, not this answer's.
-		if (safeKad.IsBadNode(fromIP,
-			    fromPort,
-			    fromContact->GetClientID(),
-			    fromContact->GetVersion(),
-			    true,
-			    false,
-			    time(NULL))) {
-			AddDebugLogLineN(logKadSearch,
-				"Ignoring search response from a node judged bad by the Kad identity "
-				"protections: " +
-					KadIPPortToString(fromIP, fromPort));
-			return;
 		}
 	}
 
@@ -854,24 +782,6 @@ void CSearch::StorePacket()
 			taglist.push_back(
 				new CTagInt8(TAG_ENCRYPTION, CPrefs::GetMyConnectOptions(true, true)));
 
-			// Our IPv6 address, for peers that can use it -- the same "ip6"
-			// tag this file already reads from other publishers. Emitted only
-			// once an inbound IPv6 connection has verified the address, for the
-			// same reason as the handshake's CT_MOD_IP_V6: an unverified
-			// address sends peers somewhere that never answers.
-			//
-			// This does not widen Kad. Kad's own transport, routing table and
-			// wire format stay IPv4 -- this is source information about an ed2k
-			// endpoint, carried by a Kad publish that itself travels over IPv4,
-			// which is exactly how TAG_SERVERIP and TAG_SOURCEPORT already
-			// travel. Written with the 128-bit hex encoder because that is what
-			// the reference implementation reads it back with.
-			uint8_t ipv6Bytes[16];
-			if (theApp->GetReachability().MayAdvertiseIPv6() &&
-				theApp->GetVerifiedIPv6Address().ToIPv6Bytes(ipv6Bytes)) {
-				taglist.push_back(new CTagString(TAG_IPV6, CMD4Hash(ipv6Bytes).Encode()));
-			}
-
 			// Send packet
 			CKademlia::GetUDPListener()->SendPublishSourcePacket(*from, m_target, id, taglist);
 			m_totalRequestAnswers++;
@@ -915,7 +825,7 @@ void CSearch::StorePacket()
 					count--;
 					packetCount++;
 					packetdata.WriteUInt128(id);
-					PreparePacketForTags(&packetdata, pFile, from->GetVersion());
+					PreparePacketForTags(&packetdata, pFile);
 				}
 				++itListFileID;
 			}
@@ -1115,7 +1025,7 @@ void CSearch::StorePacket()
 	}
 }
 
-void CSearch::ProcessResult(const CUInt128 &answer, TagPtrList *info, uint32_t fromIP, uint16_t fromPort)
+void CSearch::ProcessResult(const CUInt128 &answer, TagPtrList *info)
 {
 	wxString type = "Unknown";
 	switch (m_type) {
@@ -1125,7 +1035,7 @@ void CSearch::ProcessResult(const CUInt128 &answer, TagPtrList *info, uint32_t f
 		break;
 	case KEYWORD:
 		type = "Keyword";
-		ProcessResultKeyword(answer, info, fromIP, fromPort);
+		ProcessResultKeyword(answer, info);
 		break;
 	case NOTES:
 		type = "Notes";
@@ -1173,28 +1083,6 @@ void CSearch::ProcessResultFile(const CUInt128 &answer, TagPtrList *info)
 			buddy.SetValueBE(hash.GetHash());
 		} else if (!tag->GetName().Cmp(TAG_ENCRYPTION)) {
 			byCryptOptions = (uint8)tag->GetInt();
-		} else if (!tag->GetName().Cmp(TAG_IPV6) || !tag->GetName().Cmp(TAG_SERVINGBUDDYIPV6)) {
-			// eMuleAI publishes IPv6 sources alongside the IPv4 ones as
-			// 32 hex characters. aMule has no IPv6 stack yet, so the
-			// address is validated and dropped: a malformed tag is worth
-			// a log line, and a well-formed one must not be mistaken for
-			// a reachable source. Routing to it is the dual-stack change.
-			uint8_t address[16];
-			bool decoded = false;
-			if (tag->IsStr()) {
-				const wxScopedCharBuffer text = tag->GetStr().utf8_str();
-				decoded = DecodeIPv6HexTag(text.data(), text.length(), address);
-			}
-			if (decoded) {
-				AddDebugLogLineN(logKadSearch,
-					CFormat("Ignoring IPv6 source tag '%s' in search result: no "
-						"IPv6 transport in this build") %
-						tag->GetName());
-			} else {
-				AddDebugLogLineN(logKadSearch,
-					CFormat("Invalid IPv6 source tag '%s' in search result") %
-						tag->GetName());
-			}
 		}
 	}
 
@@ -1296,28 +1184,8 @@ void CSearch::ProcessResultNotes(const CUInt128 &answer, TagPtrList *info)
 	}
 }
 
-void CSearch::ProcessResultKeyword(
-	const CUInt128 &answer, TagPtrList *info, uint32_t fromIP, uint16_t fromPort)
+void CSearch::ProcessResultKeyword(const CUInt128 &answer, TagPtrList *info)
 {
-	// Find the contact that answered, so that version-gated result tags can
-	// be checked against the version it advertised.  A tag a peer cannot
-	// possibly have generated is a tag it is relaying on someone else's
-	// behalf, and the whole point of the publisher-side filtering is that we
-	// do not take those at face value.
-	uint8_t fromKadVersion = 0;
-	for (ContactMap::const_iterator it = m_tried.begin(); it != m_tried.end(); ++it) {
-		const CContact *tmpContact = it->second;
-		if ((tmpContact->GetIPAddress() == fromIP) && (tmpContact->GetUDPPort() == fromPort)) {
-			fromKadVersion = tmpContact->GetVersion();
-			break;
-		}
-	}
-	if (fromKadVersion == 0) {
-		AddDebugLogLineN(logKadSearch,
-			"Unable to find the answering contact in ProcessResultKeyword - " +
-				KadIPPortToString(fromIP, fromPort));
-	}
-
 	// Process a keyword that we received.
 	// Set of data we can use for a keyword result.
 	wxString name;
@@ -1332,7 +1200,6 @@ void CSearch::ProcessResultKeyword(
 	uint32_t bitrate = 0;
 	uint32_t availability = 0;
 	uint32_t publishInfo = 0;
-	std::vector<CKadAICHHashList::SResultHash> aichHashes;
 	// Flag that is set if we want this keyword
 	bool bFileName = false;
 	bool bFileSize = false;
@@ -1387,26 +1254,6 @@ void CSearch::ProcessResultKeyword(
 					"trustvalue") %
 					differentNames % publishersKnown % ((double)trustValue / 100.0));
 #endif
-		} else if (tag->GetName() == TAG_KADAICHHASHRESULT) {
-			// AICH hashes on keyword storage arrived with Kad protocol
-			// version 0x09.  A sender below that cannot have produced
-			// this tag itself, so it is filtered rather than trusted.
-			if (CKadAICHHashList::PeerSupportsAICHKeywordStorage(fromKadVersion) &&
-				tag->IsBsob()) {
-				if (!CKadAICHHashList::DecodeResultTag(
-					    tag->GetBsob(), tag->GetBsobSize(), aichHashes)) {
-					AddDebugLogLineN(logKadSearch,
-						"ProcessResultKeyword: corrupt or invalid "
-						"TAG_KADAICHHASHRESULT received from " +
-							KadIPPortToString(fromIP, fromPort));
-				}
-			} else {
-				AddDebugLogLineN(logKadSearch,
-					CFormat("ProcessResultKeyword: received special publish tag "
-						"(TAG_KADAICHHASHRESULT) from a node (version %u, %s) "
-						"which is not aware of it, filtering") %
-						fromKadVersion % KadIPPortToString(fromIP, fromPort));
-			}
 		}
 	}
 
@@ -1448,16 +1295,6 @@ void CSearch::ProcessResultKeyword(
 	}
 	if (availability) {
 		taglist.push_back(new CTagVarInt(TAG_SOURCES, availability));
-	}
-	// Carry the AICH root hash the most publishers agreed on into the search
-	// result, under the same tag name (FT_AICH_HASH) that an ed2k result and
-	// the part-file metadata use.  Competing hashes for one file id mean at
-	// least one publisher is lying, so only the majority hash is kept.
-	const CKadAICHHashList::SResultHash *bestAICHHash = CKadAICHHashList::GetMostPopular(aichHashes);
-	if (bestAICHHash != NULL) {
-		CAICHHash hash;
-		memcpy(hash.GetRawHash(), bestAICHHash->m_hash.data(), CAICHHash::GetHashSize());
-		taglist.push_back(new CTagString(TAG_AICHHASH, hash.GetString()));
 	}
 
 	m_answers++;
@@ -1569,14 +1406,6 @@ void CSearch::SendFindValue(CContact *contact, bool reaskMore)
 				break;
 			}
 #endif
-			// Start the clock on this request. The answer's round-trip
-			// time feeds the shared response-time estimator, and
-			// JumpStart uses the same record to notice a request that
-			// has gone past the estimated ceiling.
-			sPendingRequest pending = {
-				::GetTickCount64(), contact->GetIPAddress(), contact->GetUDPPort()
-			};
-			m_pendingRequests[contact->GetClientID()] = pending;
 		} else {
 			wxFAIL;
 		}
@@ -1653,7 +1482,7 @@ bool CSearch::RequestMoreResults()
 }
 
 // TODO: Redundant metadata checks
-void CSearch::PreparePacketForTags(CMemFile *bio, CKnownFile *file, uint8_t targetKadVersion)
+void CSearch::PreparePacketForTags(CMemFile *bio, CKnownFile *file)
 {
 	// We're going to publish a keyword, set up the tag list
 	TagPtrList taglist;
@@ -1664,18 +1493,6 @@ void CSearch::PreparePacketForTags(CMemFile *bio, CKnownFile *file, uint8_t targ
 			taglist.push_back(new CTagString(TAG_FILENAME, file->GetFileName().GetPrintable()));
 			taglist.push_back(new CTagVarInt(TAG_FILESIZE, file->GetFileSize()));
 			taglist.push_back(new CTagVarInt(TAG_SOURCES, file->m_nCompleteSourcesCount));
-
-			// AICH root hash, added to keyword storage by Kad protocol
-			// version 0x09.  A node at 0x08 has no handling for this tag,
-			// so it is omitted for it: the entry it stores simply carries
-			// no AICH hash, and it stays usable for search and routing.
-			if (CKadAICHHashList::PeerSupportsAICHKeywordStorage(targetKadVersion) &&
-				file->HasProperAICHHashSet()) {
-				const CAICHHash &aichHash = file->GetAICHHashset()->GetMasterHash();
-				taglist.push_back(new CTagBsob(TAG_KADAICHHASHPUB,
-					aichHash.GetRawHash(),
-					(uint8_t)CAICHHash::GetHashSize()));
-			}
 
 			// eD2K file type (Audio, Video, ...)
 			// NOTE: Archives and CD-Images are published with file type "Pro"

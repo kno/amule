@@ -307,15 +307,15 @@ void CKademliaUDPListener::ProcessPacket(const uint8_t *data,
 		break;
 	case KADEMLIA_SEARCH_RES:
 		DebugRecv(KadSearchRes, ip, port);
-		ProcessSearchResponse(packetData, lenPacket, ip, port);
+		ProcessSearchResponse(packetData, lenPacket);
 		break;
 	case KADEMLIA_SEARCH_NOTES_RES:
 		DebugRecv(KadSearchNotesRes, ip, port);
-		ProcessSearchNotesResponse(packetData, lenPacket, ip, port);
+		ProcessSearchNotesResponse(packetData, lenPacket, ip);
 		break;
 	case KADEMLIA2_SEARCH_RES:
 		DebugRecv(Kad2SearchRes, ip, port);
-		Process2SearchResponse(packetData, lenPacket, ip, port, senderKey);
+		Process2SearchResponse(packetData, lenPacket, senderKey);
 		break;
 	case KADEMLIA2_PUBLISH_NOTES_REQ:
 		DebugRecv(Kad2PublishNotesReq, ip, port);
@@ -856,11 +856,7 @@ void CKademliaUDPListener::ProcessKademlia2Response(const uint8_t *packetData,
 		uint32_t hostIP = wxUINT32_SWAP_ALWAYS(contactIP);
 		if (version > 1) { // Kad1 nodes are no longer accepted and ignored
 			if (::IsGoodIPPort(hostIP, contactPort)) {
-				// contactIP is in Kad host order; hostIP is its ed2k-order
-				// form. Naming the order in the conversion beats relying on
-				// which of the two locals a reader picks.
-				if (!theApp->ipfilter->IsFiltered(
-					    CNetworkAddress::FromIPv4HostOrder(contactIP)) &&
+				if (!theApp->ipfilter->IsFiltered(hostIP) &&
 					!(contactPort == 53 &&
 						version <= 5) /*No DNS Port without encryption*/) {
 					if (isFirewallUDPCheckSearch) {
@@ -1137,7 +1133,7 @@ void CKademliaUDPListener::Process2SearchSourceRequest(const uint8_t *packetData
 	CKademlia::GetIndexed()->SendValidSourceResult(target, ip, port, startPosition, fileSize, senderKey);
 }
 
-void CKademliaUDPListener::ProcessSearchResponse(CMemFile &bio, uint32_t fromIP, uint16_t fromPort)
+void CKademliaUDPListener::ProcessSearchResponse(CMemFile &bio)
 {
 	// What search does this relate to
 	CUInt128 target = bio.ReadUInt128();
@@ -1156,37 +1152,33 @@ void CKademliaUDPListener::ProcessSearchResponse(CMemFile &bio, uint32_t fromIP,
 		// care has to be taken for any string conversion!
 		CScopedContainer<TagPtrList> tags;
 		bio.ReadTagPtrList(tags.get(), true /*bOptACP*/);
-		CSearchManager::ProcessResult(target, answer, tags.get(), fromIP, fromPort);
+		CSearchManager::ProcessResult(target, answer, tags.get());
 		count--;
 	}
 }
 
 // KADEMLIA_SEARCH_RES
 // Used in Kad1.0 only
-void CKademliaUDPListener::ProcessSearchResponse(
-	const uint8_t *packetData, uint32_t lenPacket, uint32_t fromIP, uint16_t fromPort)
+void CKademliaUDPListener::ProcessSearchResponse(const uint8_t *packetData, uint32_t lenPacket)
 {
 	// Verify packet is expected size
 	CHECK_PACKET_MIN_SIZE(37);
 
 	CMemFile bio(packetData, lenPacket);
-	ProcessSearchResponse(bio, fromIP, fromPort);
+	ProcessSearchResponse(bio);
 }
 
 // KADEMLIA2_SEARCH_RES
 // Used in Kad2.0 only
-void CKademliaUDPListener::Process2SearchResponse(const uint8_t *packetData,
-	uint32_t lenPacket,
-	uint32_t ip,
-	uint16_t port,
-	const CKadUDPKey &WXUNUSED(senderKey))
+void CKademliaUDPListener::Process2SearchResponse(
+	const uint8_t *packetData, uint32_t lenPacket, const CKadUDPKey &WXUNUSED(senderKey))
 {
 	CMemFile bio(packetData, lenPacket);
 
 	// Who sent this packet.
 	bio.ReadUInt128();
 
-	ProcessSearchResponse(bio, ip, port);
+	ProcessSearchResponse(bio);
 }
 
 // KADEMLIA2_PUBLISH_KEY_REQ
@@ -1254,45 +1246,6 @@ void CKademliaUDPListener::Process2PublishKeyRequest(const uint8_t *packetData,
 								   CFormat("  Size=%u") % entry->m_uSize;)
 						}
 						delete tag; // tag is no longer stored, but membervar is used
-					} else if (!tag->GetName().Cmp(TAG_KADAICHHASHPUB)) {
-						// AICH root hash of the published file (Kad
-						// protocol version 0x09).  Kept as a member
-						// rather than a tag: MergeIPsAndFilenames()
-						// attaches it to this publisher and maintains
-						// the popularity counts of the stored entry.
-						if (tag->IsBsob() &&
-							tag->GetBsobSize() == KAD_AICH_HASH_SIZE) {
-							if (entry->GetAICHHashCount() == 0) {
-								CKadAICHHash hash;
-								memcpy(hash.data(),
-									tag->GetBsob(),
-									hash.size());
-								entry->SetPublishedAICHHash(hash);
-							} else {
-								AddDebugLogLineN(logClientKadUDP,
-									"Multiple TAG_KADAICHHASHPUB tags "
-									"received for a single file "
-									"from " +
-										KadIPToString(ip));
-							}
-						} else {
-							AddDebugLogLineN(logClientKadUDP,
-								"Bad TAG_KADAICHHASHPUB received from " +
-									KadIPToString(ip));
-						}
-						delete tag; // tag is no longer stored, but membervar is used
-					} else if (!tag->GetName().Cmp(TAG_KADAICHHASHRESULT) ||
-						   !tag->GetName().Cmp(TAG_PUBLISHINFO)) {
-						// Tags we generate ourselves when answering a
-						// search.  A publisher has no business sending
-						// them: storing them would let it dictate the
-						// trust value and AICH publisher counts we then
-						// relay to searchers as our own assessment.
-						AddDebugLogLineN(logClientKadUDP,
-							"Received result-only tag on publishing, "
-							"filtered, source " +
-								KadIPToString(ip));
-						delete tag;
 					} else {
 						// TODO: Filter tags
 						entry->AddTag(tag);
@@ -1519,7 +1472,7 @@ void CKademliaUDPListener::Process2SearchNotesRequest(const uint8_t *packetData,
 // KADEMLIA_SEARCH_NOTES_RES
 // Used only by Kad1.0
 void CKademliaUDPListener::ProcessSearchNotesResponse(
-	const uint8_t *packetData, uint32_t lenPacket, uint32_t ip, uint16_t port)
+	const uint8_t *packetData, uint32_t lenPacket, uint32_t ip)
 {
 	// Verify packet is expected size
 	CHECK_PACKET_MIN_SIZE(37);
@@ -1527,7 +1480,7 @@ void CKademliaUDPListener::ProcessSearchNotesResponse(
 
 	// What search does this relate to
 	CMemFile bio(packetData, lenPacket);
-	ProcessSearchResponse(bio, ip, port);
+	ProcessSearchResponse(bio);
 }
 
 // KADEMLIA2_PUBLISH_NOTES_REQ

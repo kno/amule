@@ -10,7 +10,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: aMule\n"
 "Report-Msgid-Bugs-To: https://github.com/amule-org/amule/issues\n"
-"POT-Creation-Date: 2026-09-04 08:48+0200\n"
+"POT-Creation-Date: 2026-09-02 12:15+0200\n"
 "PO-Revision-Date: 2026-09-03 11:10+0000\n"
 "Last-Translator: Fation <dj_barthezz@linuxmail.org lushnja_corps@hotmail.Language-Team:\n"
 "Language: sq\n"
@@ -407,14 +407,6 @@ msgid "You requested to run amuleapi on startup, but the amuleapi binary cannot 
 msgstr ""
 
 #: src/amule.cpp
-msgid "Could not bind an IPv6 socket. IPv6 appears to be unavailable on this host; IPv4 operation is unaffected."
-msgstr ""
-
-#: src/amule.cpp
-msgid "Could not bind an IPv4 socket."
-msgstr ""
-
-#: src/amule.cpp
 #, c-format
 msgid "External connection: could not bind to '%s', listening on 127.0.0.1 only."
 msgstr ""
@@ -443,11 +435,6 @@ msgstr ""
 "Kjo do te thote qe ju do te keni ID te ulet.\n"
 "\n"
 "KOntrolloni rrjetin tuaj per tu siguruar qe porta eshte hapur per hyrje dhe dalje."
-
-#: src/amule.cpp
-#, c-format
-msgid "Client UDP socket (extended eMule) listening on %s port %u (IPv6)."
-msgstr ""
 
 #: src/amule.cpp
 msgid "Failed to create OnlineSig File"
@@ -2909,7 +2896,7 @@ msgstr "Ne radhe"
 msgid "Uploading"
 msgstr "Ngarkim"
 
-#: src/GenericClientListCtrl.cpp src/PeerCapabilities.h
+#: src/GenericClientListCtrl.cpp
 #, fuzzy
 msgid "None"
 msgstr "Asnjeri"
@@ -3039,13 +3026,6 @@ msgstr "Deshtoi te shkarkoje listen e serverave nga %s"
 #, fuzzy
 msgid "Loading IP filters 'ipfilter.dat' and 'ipfilter_static.dat'."
 msgstr "Duke ngarkuar filtrat e IP nga 'ipfilter.dat' dhe 'ipfilter_static.dat'."
-
-#: src/IPFilter.cpp
-#, fuzzy, c-format
-msgid "Loaded %u IPv6 prefix rule."
-msgid_plural "Loaded %u IPv6 prefix rules."
-msgstr[0] "U ngarkua %u intervali i adreses se IP nga '%s'."
-msgstr[1] "U ngarkuan %u intervale te adresave IP nga '%s'."
 
 #: src/IPFilter.cpp
 #, c-format
@@ -3337,18 +3317,11 @@ msgid "Asio thread %d started"
 msgstr "Rifreskimi Automatik filloi"
 
 #: src/ListenSocket.cpp
-#, c-format
-msgid "ListenSocket: listening on %s (IPv6, also accepting IPv4 peers in mapped form)."
+msgid "ListenSocket: Ok."
 msgstr ""
 
 #: src/ListenSocket.cpp
-#, c-format
-msgid "ListenSocket: listening on %s (%s)."
-msgstr ""
-
-#: src/ListenSocket.cpp
-#, c-format
-msgid "Inbound IPv6 connection from %s on %s."
+msgid "ERROR: Could not listen to TCP port."
 msgstr ""
 
 #: src/Logger.cpp
@@ -4190,10 +4163,6 @@ msgstr ""
 
 #: src/muuli_wdr.cpp
 msgid "Kad:"
-msgstr ""
-
-#: src/muuli_wdr.cpp
-msgid "Vendor capabilities:"
 msgstr ""
 
 #: src/muuli_wdr.cpp
@@ -7274,16 +7243,6 @@ msgstr "Gjendja e lidhjes"
 #, fuzzy
 msgid "Connected since:"
 msgstr "I lidhur"
-
-#: src/ServerWnd.cpp
-#, fuzzy
-msgid "IPv4 reachability:"
-msgstr "Te disponueshem"
-
-#: src/ServerWnd.cpp
-#, fuzzy
-msgid "IPv6 reachability:"
-msgstr "Te disponueshem"
 
 #: src/ServerWnd.cpp
 msgid "Kademlia Status:"

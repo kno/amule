@@ -10,7 +10,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: aMule\n"
 "Report-Msgid-Bugs-To: https://github.com/amule-org/amule/issues\n"
-"POT-Creation-Date: 2026-09-04 08:48+0200\n"
+"POT-Creation-Date: 2026-09-02 12:15+0200\n"
 "PO-Revision-Date: 2026-09-03 11:07+0000\n"
 "Last-Translator: Dovydas Sankauskas <laisve@gmail.com>\n"
 "Language-Team: Lithuanian <komp_lt@konf.lt>\n"
@@ -411,14 +411,6 @@ msgid "You requested to run amuleapi on startup, but the amuleapi binary cannot 
 msgstr "Nurodėte paleidus programą paleisti žiniatinklio serverį, bet amuleweb programos nepavyko paleisti. Įdiekite aMule žiniatinklio programos paketą arba sukompiliuokite aMule su --enable-webserver parinktimi ir paleiskite „make install“."
 
 #: src/amule.cpp
-msgid "Could not bind an IPv6 socket. IPv6 appears to be unavailable on this host; IPv4 operation is unaffected."
-msgstr ""
-
-#: src/amule.cpp
-msgid "Could not bind an IPv4 socket."
-msgstr ""
-
-#: src/amule.cpp
 #, c-format
 msgid "External connection: could not bind to '%s', listening on 127.0.0.1 only."
 msgstr ""
@@ -448,11 +440,6 @@ msgstr ""
 "\n"
 "\n"
 "Patikrinkite sistemines tinklo parinktis ir įsitikinkite, kad nurodytas prievadas atviras tiek išsiuntimui, tiek priėmimui."
-
-#: src/amule.cpp
-#, c-format
-msgid "Client UDP socket (extended eMule) listening on %s port %u (IPv6)."
-msgstr ""
 
 #: src/amule.cpp
 msgid "Failed to create OnlineSig File"
@@ -2924,7 +2911,7 @@ msgstr "Eilėje"
 msgid "Uploading"
 msgstr "Išsiuntimas"
 
-#: src/GenericClientListCtrl.cpp src/PeerCapabilities.h
+#: src/GenericClientListCtrl.cpp
 #, fuzzy
 msgid "None"
 msgstr "Niekas"
@@ -3054,14 +3041,6 @@ msgstr "Nepavyko iš %s atsiųsti serverių sąrašo"
 #, fuzzy
 msgid "Loading IP filters 'ipfilter.dat' and 'ipfilter_static.dat'."
 msgstr "Įkeliami IP filtrai ipfilter.dat ir ipfilter_static.dat."
-
-#: src/IPFilter.cpp
-#, fuzzy, c-format
-msgid "Loaded %u IPv6 prefix rule."
-msgid_plural "Loaded %u IPv6 prefix rules."
-msgstr[0] "Įkeltas %u IP diapazonas iš „%s“."
-msgstr[1] "Įkelti %u IP diapazonai iš „%s“."
-msgstr[2] "Įkelta %u IP diapazonų iš „%s“."
 
 #: src/IPFilter.cpp
 #, c-format
@@ -3358,19 +3337,12 @@ msgid "Asio thread %d started"
 msgstr "Automatinis atnaujinimas paleistas"
 
 #: src/ListenSocket.cpp
-#, c-format
-msgid "ListenSocket: listening on %s (IPv6, also accepting IPv4 peers in mapped form)."
+msgid "ListenSocket: Ok."
 msgstr ""
 
 #: src/ListenSocket.cpp
-#, c-format
-msgid "ListenSocket: listening on %s (%s)."
-msgstr ""
-
-#: src/ListenSocket.cpp
-#, c-format
-msgid "Inbound IPv6 connection from %s on %s."
-msgstr ""
+msgid "ERROR: Could not listen to TCP port."
+msgstr "KLAIDA: nepavyko klausytis TCP prievado."
 
 #: src/Logger.cpp
 msgid "ERROR: "
@@ -4217,10 +4189,6 @@ msgstr "Slėpimas:"
 #: src/muuli_wdr.cpp
 msgid "Kad:"
 msgstr "Kad:"
-
-#: src/muuli_wdr.cpp
-msgid "Vendor capabilities:"
-msgstr ""
 
 #: src/muuli_wdr.cpp
 msgid "Transfers to client"
@@ -7318,16 +7286,6 @@ msgid "Connected since:"
 msgstr "Prisijungta"
 
 #: src/ServerWnd.cpp
-#, fuzzy
-msgid "IPv4 reachability:"
-msgstr "Skaičius"
-
-#: src/ServerWnd.cpp
-#, fuzzy
-msgid "IPv6 reachability:"
-msgstr "Skaičius"
-
-#: src/ServerWnd.cpp
 msgid "Kademlia Status:"
 msgstr "Kademlia būsena:"
 
@@ -9446,9 +9404,6 @@ msgstr ""
 #: packaging/windows/installer_strings.c
 msgid "Removing user data at $APPDATA\\aMule..."
 msgstr ""
-
-#~ msgid "ERROR: Could not listen to TCP port."
-#~ msgstr "KLAIDA: nepavyko klausytis TCP prievado."
 
 #, fuzzy
 #~ msgid "Available Parts"

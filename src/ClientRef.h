@@ -152,7 +152,6 @@ public:
 	const wxString &GetSoftVerStr() const;
 	int GetSourceFrom() const; // ESourceFrom
 	wxString GetSecureIdentTextStatus() const;
-	wxString GetModCapabilitiesText() const;
 	uint64 GetTransferredDown() const;
 	uint64 GetTransferredUp() const;
 	uint16 GetUDPPort() const;

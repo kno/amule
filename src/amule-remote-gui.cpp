@@ -1882,14 +1882,6 @@ void CServerConnectRem::HandlePacket(const CECPacket *packet)
 	theApp->m_clientID = tag->GetClientId();
 	tag->GetKadID(theApp->m_kadID);
 
-	// A daemon that predates EC_TAG_LOCAL_REACHABILITY sends no such tag. That
-	// is a third state, not "nothing is listening", so the mirror is only
-	// replaced when the tag is actually there.
-	uint8 reachability = 0;
-	if (tag->GetLocalReachability(reachability)) {
-		theApp->m_reachability = DualStack::CLocalReachability::FromECWord(reachability);
-	}
-
 	if (tag->IsConnectedED2K()) {
 		const CECTag *srvtag = tag->GetTagByName(EC_TAG_SERVER);
 		if (srvtag) {
@@ -2828,7 +2820,6 @@ CUpDownClient::CUpDownClient(const CEC_UpDownClient_Tag *tag)
 	m_lastDownloadingPart = 0xffff;
 	m_nextRequestedPart = 0xffff;
 	m_obfuscationStatus = 0;
-	m_modCapabilities.Reset();
 	m_nOldRemoteQueueRank = 0;
 	m_nRemoteQueueRank = 0;
 	m_reqfile = NULL;
@@ -2999,14 +2990,6 @@ void CUpDownClientListRem::ProcessItemUpdate(const CEC_UpDownClient_Tag *tag, CC
 
 	tag->GetCurrentIdentState(&client->m_identState);
 	tag->ObfuscationStatus(client->m_obfuscationStatus);
-	{
-		// Additive tag: an older daemon sends nothing and the mirror keeps
-		// whatever it had, which for a fresh client is the empty word.
-		uint32 modCapabilities = 0;
-		if (tag->ModCapabilities(modCapabilities)) {
-			client->m_modCapabilities.SetFromWire(modCapabilities);
-		}
-	}
 	tag->HasExtendedProtocol(&client->m_bEmuleProtocol);
 
 	tag->WaitingPosition(&client->m_waitingPosition);

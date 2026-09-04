@@ -9,7 +9,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: aMule\n"
 "Report-Msgid-Bugs-To: https://github.com/amule-org/amule/issues\n"
-"POT-Creation-Date: 2026-09-04 08:48+0200\n"
+"POT-Creation-Date: 2026-09-02 12:15+0200\n"
 "PO-Revision-Date: 2026-09-03 11:06+0000\n"
 "Last-Translator: \n"
 "Language-Team: Japanese\n"
@@ -406,14 +406,6 @@ msgid "You requested to run amuleapi on startup, but the amuleapi binary cannot 
 msgstr ""
 
 #: src/amule.cpp
-msgid "Could not bind an IPv6 socket. IPv6 appears to be unavailable on this host; IPv4 operation is unaffected."
-msgstr ""
-
-#: src/amule.cpp
-msgid "Could not bind an IPv4 socket."
-msgstr ""
-
-#: src/amule.cpp
 #, c-format
 msgid "External connection: could not bind to '%s', listening on 127.0.0.1 only."
 msgstr ""
@@ -442,11 +434,6 @@ msgstr ""
 "したがって、あなたにはLOWIDが与えられます\n"
 "\n"
 "ネットワークを調べ、ポートが入出力に対して開いているか確認してください。"
-
-#: src/amule.cpp
-#, c-format
-msgid "Client UDP socket (extended eMule) listening on %s port %u (IPv6)."
-msgstr ""
 
 #: src/amule.cpp
 msgid "Failed to create OnlineSig File"
@@ -2901,7 +2888,7 @@ msgstr "キューに入っています"
 msgid "Uploading"
 msgstr "アップロード"
 
-#: src/GenericClientListCtrl.cpp src/PeerCapabilities.h
+#: src/GenericClientListCtrl.cpp
 #, fuzzy
 msgid "None"
 msgstr "誰も許可しない"
@@ -3031,12 +3018,6 @@ msgstr "サーバリストを%sからダウンロードするのに失敗しま�
 #, fuzzy
 msgid "Loading IP filters 'ipfilter.dat' and 'ipfilter_static.dat'."
 msgstr "IPフィルタ'ipfilter.dat'と'ipfilterstatic.dat'をロード中です。"
-
-#: src/IPFilter.cpp
-#, fuzzy, c-format
-msgid "Loaded %u IPv6 prefix rule."
-msgid_plural "Loaded %u IPv6 prefix rules."
-msgstr[0] "%u個のIPレンジを'%s'からロードしました。"
 
 #: src/IPFilter.cpp
 #, c-format
@@ -3323,18 +3304,11 @@ msgid "Asio thread %d started"
 msgstr "同期化スレドを始めました。"
 
 #: src/ListenSocket.cpp
-#, c-format
-msgid "ListenSocket: listening on %s (IPv6, also accepting IPv4 peers in mapped form)."
+msgid "ListenSocket: Ok."
 msgstr ""
 
 #: src/ListenSocket.cpp
-#, c-format
-msgid "ListenSocket: listening on %s (%s)."
-msgstr ""
-
-#: src/ListenSocket.cpp
-#, c-format
-msgid "Inbound IPv6 connection from %s on %s."
+msgid "ERROR: Could not listen to TCP port."
 msgstr ""
 
 #: src/Logger.cpp
@@ -4173,10 +4147,6 @@ msgstr "難読化:"
 #: src/muuli_wdr.cpp
 msgid "Kad:"
 msgstr "Kad:"
-
-#: src/muuli_wdr.cpp
-msgid "Vendor capabilities:"
-msgstr ""
 
 #: src/muuli_wdr.cpp
 msgid "Transfers to client"
@@ -7240,16 +7210,6 @@ msgstr "接続状況："
 #, fuzzy
 msgid "Connected since:"
 msgstr "接続"
-
-#: src/ServerWnd.cpp
-#, fuzzy
-msgid "IPv4 reachability:"
-msgstr "入手可能範囲"
-
-#: src/ServerWnd.cpp
-#, fuzzy
-msgid "IPv6 reachability:"
-msgstr "入手可能範囲"
 
 #: src/ServerWnd.cpp
 msgid "Kademlia Status:"

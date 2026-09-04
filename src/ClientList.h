@@ -28,12 +28,8 @@
 
 #include "DeadSourceList.h" // Needed for CDeadSourceList
 #include "ClientRef.h"
-#include "NetworkAddress.h" // Needed for CNetworkAddress
-#include "PeerIdentity.h"   // Needed for PeerIdentity::IndexKey
 
 #include <deque>
-#include <list>
-#include <map>
 #include <set>
 
 class CUpDownClient;
@@ -99,16 +95,10 @@ public:
 	 * @param newIP The new IP address of the client.
 	 *
 	 * This function is to be called before the client actually changes its
-	 * IP-address, and will update the old entry with the new value. An absent
-	 * address adds no entry.
-	 *
-	 * The absence test used to be @c if (newIP), i.e. a client at @c 0.0.0.0 was
-	 * indistinguishable from one whose address is unknown. It is now an explicit
-	 * IsAbsent() check, and callers holding a 32-bit ed2k field resolve the
-	 * overload at the boundary with
-	 * CNetworkAddress::FromIPv4NetworkOrderOrAbsent().
+	 * IP-address, and will update the old entry with the new value. There
+	 * will only be added an entry if the new IP isn't zero.
 	 */
-	void UpdateClientIP(CUpDownClient *client, const CNetworkAddress &newIP);
+	void UpdateClientIP(CUpDownClient *client, uint32 newIP);
 
 	/**
 	 * Updates the recorded ID of the specified client.
@@ -159,45 +149,21 @@ public:
 	bool AttachToAlreadyKnown(CUpDownClient **client, CClientTCPSocket *sender);
 
 	/**
-	 * Finds a client with the specified address and port.
+	 * Finds a client with the specified ip and port.
 	 *
-	 * @param address The address of the client to find. An absent one finds
-	 *                nothing: no client is recorded under absence.
+	 * @param clientip The IP of the client to find.
 	 * @param port The port used by the client.
 	 */
-	CUpDownClient *FindClientByIP(const CNetworkAddress &address, uint16 port);
-
-	/**
-	 * Finds a client with the specified address.
-	 *
-	 * Returns the first client found if there are several with same address.
-	 */
-	CUpDownClient *FindClientByIP(const CNetworkAddress &address);
-
-	/**
-	 * The 32-bit forms, for the callers that hold a GUI id or an ed2k packet
-	 * field rather than an address. Zero means "unknown" here, as it does in
-	 * those fields, and finds nothing.
-	 */
 	CUpDownClient *FindClientByIP(uint32 clientip, uint16 port);
-	CUpDownClient *FindClientByIP(uint32 clientip);
 
 	/**
-	 * Finds a client with the specified address and *UDP* port.
+	 * Finds a client with the specified ip.
 	 *
-	 * The port dimension is in the name because it is the whole difference
-	 * from FindClientByIP(): that one compares the ed2k TCP port, and a
-	 * caller holding a datagram's source port has the other number. Two
-	 * lookups with the same signature meaning different ports is how the
-	 * rendezvous handlers came to identify no peer at all.
+	 * @param clientip The IP of the client to find.
 	 *
-	 * @param address The address the datagram arrived from. An absent one
-	 *                finds nothing: no client is recorded under absence.
-	 * @param udpPort The datagram's source port. Zero is unknown rather
-	 *                than a port and matches nobody -- see
-	 *                PeerIdentity::MatchesUdpSourcePort().
+	 * Returns the first client found if there are several with same ip.
 	 */
-	CUpDownClient *FindClientByUDPEndpoint(const CNetworkAddress &address, uint16 udpPort);
+	CUpDownClient *FindClientByIP(uint32 clientip);
 
 	/**
 	 * Finds a client with the specified ECID.
@@ -207,10 +173,8 @@ public:
 	 */
 	CUpDownClient *FindClientByECID(uint32 ecid) const;
 
-	//! The list-type used to store client addresses and ban time information.
-	//! Keyed on the address so an IPv6 peer can be banned at all -- and so that
-	//! an absent address, which has no key, cannot be banned by accident.
-	typedef std::map<CNetworkAddress, uint64> ClientMap;
+	//! The list-type used to store clients IPs and ban time information
+	typedef std::map<uint32, uint64> ClientMap;
 
 	/**
 	 * Adds a client to the list of tracked clients.
@@ -226,37 +190,34 @@ public:
 	/**
 	 * Checks if a client has changed its user-hash.
 	 *
-	 * @param address The address of the client. An absent one has no tracked
-	 *                entry, so nothing contradicts the new hash.
+	 * @param dwIP The IP of the client.
 	 * @param nPort The port of the client.
 	 * @param pNewHash The userhash associated with the client.
 	 *
 	 */
-	bool ComparePriorUserhash(const CNetworkAddress &address, uint16 nPort, void *pNewHash);
+	bool ComparePriorUserhash(uint32 dwIP, uint16 nPort, void *pNewHash);
 
 	/**
 	 * Bans an IP address for 2 hours.
 	 *
-	 * @param address The address from which all clients will be banned. An
-	 *                absent address bans nothing.
+	 * @param dwIP The IP from which all clients will be banned.
 	 */
-	void AddBannedClient(const CNetworkAddress &address);
+	void AddBannedClient(uint32 dwIP);
 
 	/**
 	 * Checks if a client has been banned.
 	 *
-	 * @param address The address to check.
-	 * @return True if the address is banned, false otherwise. An absent address
-	 *         is never banned -- there is nothing to have banned.
+	 * @param dwIP The IP to check.
+	 * @return True if the IP is banned, false otherwise.
 	 */
-	bool IsBannedClient(const CNetworkAddress &address);
+	bool IsBannedClient(uint32 dwIP);
 
 	/**
 	 * Unbans an IP address, if it has been banned.
 	 *
-	 * @param address The address to unban. An absent address unbans nothing.
+	 * @param dwIP The IP address to unban.
 	 */
-	void RemoveBannedClient(const CNetworkAddress &address);
+	void RemoveBannedClient(uint32 dwIP);
 
 	/**
 	 * Main loop.
@@ -294,49 +255,16 @@ public:
 	 *
 	 * @param ip The IP-address to search for.
 	 *
-	 * This function will return a list of clients with the specified address.
-	 * An absent address yields no results, as does an address that was never
-	 * recorded -- UpdateClientIP() refuses to record an absent one.
+	 * This function will return a list of clients with the specified IP,
+	 * provided that the IP is a non-zero value. A value of zero will not
+	 * result in any results.
 	 */
-	SourceList GetClientsByIP(const CNetworkAddress &address);
+	SourceList GetClientsByIP(unsigned long ip);
 
-	/**
-	 * Returns every client sharing a peer's rate-limit scope.
-	 *
-	 * The same address for an IPv4 peer, so an IPv4 result is identical to
-	 * GetClientsByIP(). For an IPv6 peer it is every client in the same /64:
-	 * counting per /128 would let one subscriber take an unbounded number of
-	 * slots, one per address, which is the IPv6 shape of the limit this
-	 * answers. See PeerIdentity::RateLimitScope().
-	 *
-	 * @param address The peer to scope. Absent yields nothing.
-	 */
-	SourceList GetClientsInRateLimitScope(const CNetworkAddress &address);
-
-	/**
-	 * The type of the list used to store ed2k IDs. Still 32-bit, because an
-	 * ed2k ID is a 32-bit protocol field and not an address: a peer with no
-	 * ed2k ID is stored under 0 here on purpose, which is why this map and the
-	 * address index cannot share a key type.
-	 */
+	//! The type of the lists used to store IPs and IDs.
 	typedef std::multimap<uint32, CClientRef> IDMap;
-	//! The pairs of the ID list.
+	//! The pairs of the IP/ID list.
 	typedef std::pair<uint32, CClientRef> IDMapPair;
-
-	/**
-	 * The type of the address index.
-	 *
-	 * Keyed on CNetworkAddress, whose ordering is total with no two distinct
-	 * addresses comparing equal, and whose absent state is a key nothing is
-	 * ever inserted under. That is what a 32-bit key could not offer: zero was
-	 * both 0.0.0.0 and "unknown", and a native IPv6 peer had no key at all.
-	 *
-	 * Keys go in through PeerIdentity::IndexKey(), so the mapped and native
-	 * spellings of one IPv4 address are one entry rather than two identities.
-	 */
-	typedef std::multimap<CNetworkAddress, CClientRef> AddressMap;
-	//! The pairs of the address index.
-	typedef std::pair<CNetworkAddress, CClientRef> AddressMapPair;
 
 	/**
 	 * Returns a list of all clients.
@@ -398,14 +326,8 @@ public:
 	{
 		m_currentDirectCallbacks.remove(CCLIENTREF(toRemove, ""));
 	}
-	/**
-	 * The callback-request throttle. Counted against the peer's rate-limit
-	 * scope, not its exact address: see PeerIdentity::RateLimitScope(), which
-	 * aggregates IPv6 at /64 because a per-/128 budget under IPv6 throttles
-	 * nothing at all.
-	 */
-	void AddTrackCallbackRequests(const CNetworkAddress &address);
-	bool AllowCallbackRequest(const CNetworkAddress &address) const;
+	void AddTrackCallbackRequests(uint32_t ip);
+	bool AllowCallbackRequest(uint32_t ip) const;
 
 protected:
 	/*
@@ -433,9 +355,9 @@ private:
 	 * This function is used to determine if the given IP address
 	 * is already known.
 	 *
-	 * @param address The address to check. An absent address is never known.
+	 * @param ip The IP address to check.
 	 */
-	bool IsIPAlreadyKnown(const CNetworkAddress &address);
+	bool IsIPAlreadyKnown(uint32_t ip);
 
 	/**
 	 * Helperfunction which removes the client from the IP-list.
@@ -458,8 +380,8 @@ private:
 	//! The map of clients with valid hashes
 	HashMap m_hashList;
 
-	//! The map of clients with a known address
-	AddressMap m_ipList;
+	//! The map of clients with valid IPs
+	IDMap m_ipList;
 
 	//! The full lists of clients
 	IDMap m_clientList;
@@ -469,9 +391,8 @@ private:
 	//! This variable is used to keep track of the last time the banned-list was pruned.
 	uint64 m_dwLastBannCleanUp;
 
-	//! This is the map of tracked clients, keyed on address for the same reason
-	//! the address index is: a tracked IPv6 peer had no key before.
-	std::map<CNetworkAddress, CDeletedClient *> m_trackedClientsList;
+	//! This is the map of tracked clients.
+	std::map<uint32, CDeletedClient *> m_trackedClientsList;
 	//! This keeps track of the last time the tracked-list was pruned.
 	uint64 m_dwLastTrackedCleanUp;
 
@@ -486,8 +407,6 @@ private:
 	CClientRef m_pBuddy;
 	uint8 m_nBuddyStatus;
 
-	//! Kad's firewall-check window. Kad addresses are 32-bit behind a
-	//! documented conversion boundary, so this one stays as it was.
 	typedef struct
 	{
 		uint32 ip;
@@ -496,18 +415,9 @@ private:
 	typedef std::list<IpAndTicks> IpAndTicksList;
 	IpAndTicksList m_firewallCheckRequests;
 
-	//! The ed2k direct-callback window. Holds a rate-limit scope, which is an
-	//! address for IPv4 and a /64 prefix for IPv6.
-	typedef struct
-	{
-		CNetworkAddress scope;
-		uint64 inserted;
-	} ScopeAndTicks;
-	typedef std::list<ScopeAndTicks> ScopeAndTicksList;
-
 	typedef CClientRefList DirectCallbackList;
 	DirectCallbackList m_currentDirectCallbacks;
-	ScopeAndTicksList m_directCallbackRequests;
+	IpAndTicksList m_directCallbackRequests;
 };
 
 #endif

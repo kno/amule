@@ -4,10 +4,8 @@ if (BUILD_MONOLITHIC OR BUILD_DAEMON)
 		kademlia/kademlia/Prefs.cpp
 		kademlia/kademlia/Search.cpp
 		kademlia/kademlia/UDPFirewallTester.cpp
-		kademlia/net/FastKad.cpp
 		kademlia/net/KademliaUDPListener.cpp
 		kademlia/net/PacketTracking.cpp
-		kademlia/net/SafeKad.cpp
 		kademlia/routing/Contact.cpp
 		kademlia/routing/RoutingZone.cpp
 		amule.cpp
@@ -54,40 +52,6 @@ if (BUILD_MONOLITHIC OR BUILD_DAEMON)
 		MediaProbeThread.cpp
 		FreeSpaceThread.cpp
 		ThreadTasks.cpp
-		# The only translation unit that includes libutp's headers, and it
-		# includes none of aMule's Types.h -- see UtpLibraryAdapter.h for why
-		# the two cannot coexist. Compiled in every core build; without
-		# AMULE_UTP_TRANSPORT its methods are inert and it pulls in no libutp.
-		UtpLibraryAdapter.cpp
-		# Where an inbound uTP connection becomes a CClientTCPSocket. Needs
-		# theApp, so it cannot live in UtpLibraryAdapter.cpp; libutp-free, so
-		# it compiles in a build with ENABLE_UTP off, where nothing ever
-		# constructs a context for it to serve.
-		UtpInboundAcceptor.cpp
-		# The only translation unit that includes ngtcp2's or GnuTLS's
-		# headers. Compiled in every core build; without AMULE_QUIC_TRANSPORT
-		# its methods are inert and it pulls in neither library, which is what
-		# makes -DENABLE_QUIC=NO -- the default, and the only configuration
-		# macOS gets -- a build with no QUIC rather than a build that does not
-		# compile.
-		QuicLibraryAdapter.cpp
-		# Where a validated inbound QUIC connection becomes a
-		# CClientTCPSocket. Needs theApp, so it cannot live in
-		# QuicLibraryAdapter.cpp; ngtcp2-free, so it compiles in a build with
-		# ENABLE_QUIC off, where nothing ever validates a connection for it to
-		# serve. Exactly the split UtpInboundAcceptor.cpp keeps, for exactly the
-		# same reason.
-		QuicInboundAcceptor.cpp
-		# Derives this client's own stable QUIC NAT-T identity value. A
-		# translation unit rather than a header because it needs a hash
-		# function, and QuicProofValue.h has to stay includable in a build with
-		# no crypto dependency reachable -- the value type itself is header-only
-		# there. Compiled in every core build: the derivation is ordinary
-		# cryptopp and has no ngtcp2 in it, so a -DENABLE_QUIC=NO build still
-		# still compiles -- the tag it feeds is then never emitted, because
-		# CUpDownClient::SendHelloTypePacket() gates it on the advertised QUIC
-		# capability bit, which such a build never sets.
-		QuicProofValue.cpp
 	)
 endif()
 

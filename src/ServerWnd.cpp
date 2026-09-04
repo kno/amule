@@ -41,8 +41,7 @@
 #include "amuleDlg.h" // Needed for CamuleDlg
 #include "amule.h"    // Needed for theApp
 #include "Logger.h"
-#include "IPFilter.h"         // Needed for CIPFilter::IsReady
-#include "IPv6Reachability.h" // Needed for DualStack::ReachabilityLabel
+#include "IPFilter.h" // Needed for CIPFilter::IsReady
 #include "kademlia/utils/UInt128.h"
 
 #include "ClientList.h"
@@ -250,8 +249,6 @@ void CServerWnd::UpdateED2KInfo()
 {
 	wxListCtrl *ED2KInfoList = CastChild(ID_ED2KINFO, wxListCtrl);
 
-	int next_row = 1;
-
 	ED2KInfoList->DeleteAllItems();
 	InfoInsertRow(ED2KInfoList, 0, _("eD2k Status:"));
 
@@ -282,35 +279,11 @@ void CServerWnd::UpdateED2KInfo()
 		if (theApp->GetED2KConnectedSince().IsValid()) {
 			InfoInsertRow(ED2KInfoList, 4, _("Connected since:"));
 			InfoSetValue(ED2KInfoList, 4, FormatLocalDateTime(theApp->GetED2KConnectedSince()));
-			next_row = 5;
-		} else {
-			next_row = 4;
 		}
 	} else {
 		// No data
 		InfoSetValue(ED2KInfoList, 0, _("Not Connected"));
-		next_row = 1;
 	}
-
-	// Reachability per address family, shown whether or not there is a server
-	// connection: it is a property of this client's own listening sockets, and
-	// the case worth seeing is precisely the one where nothing is connected.
-	//
-	// "Listening" and "Verified" are different facts and are deliberately not
-	// collapsed: a bound socket behind a firewall that drops every inbound
-	// packet reads as Listening forever, and that is the state a user needs to
-	// see to know their port forwarding is not working. Rendered through
-	// DualStack::ReachabilityLabel() on both builds -- the local one reads the
-	// core's own object, amulegui reads the mirror EC filled in.
-	const DualStack::CLocalReachability &reachability = theApp->GetReachability();
-	InfoInsertRow(ED2KInfoList, next_row, _("IPv4 reachability:"));
-	InfoSetValue(ED2KInfoList,
-		next_row++,
-		wxString(DualStack::ReachabilityLabel(reachability.State(DualStack::EFamily::IPv4))));
-	InfoInsertRow(ED2KInfoList, next_row, _("IPv6 reachability:"));
-	InfoSetValue(ED2KInfoList,
-		next_row++,
-		wxString(DualStack::ReachabilityLabel(reachability.State(DualStack::EFamily::IPv6))));
 
 	FitInfoListColumns(ED2KInfoList);
 }

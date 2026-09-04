@@ -36,13 +36,6 @@
 #if defined(__clang__)
 #pragma clang diagnostic push
 #pragma clang diagnostic ignored "-Wdeprecated-copy-with-user-provided-dtor"
-// Asio's executor machinery (boost/asio/execution/*.hpp, reached through the
-// socket headers below) also redeclares constexpr static data members out of
-// line, which C++17 made redundant and deprecated. Clang diagnoses it and the
-// -Werror=deprecated gate promotes it, so this include set fails on macOS
-// without this line. Added alongside the dtor suppression rather than as a
-// blanket -Wno-deprecated so aMule's own deprecations still fail the build.
-#pragma clang diagnostic ignored "-Wdeprecated-redundant-constexpr-static-def"
 #endif
 #include <boost/asio/io_context.hpp>
 #include <boost/asio/ip/tcp.hpp>

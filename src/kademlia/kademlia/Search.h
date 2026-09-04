@@ -88,9 +88,7 @@ public:
 	void SetFileName(const wxString &fileName) noexcept { m_fileName = fileName; }
 
 	void AddFileID(const CUInt128 &id) { m_fileIDs.push_back(id); }
-	// `targetKadVersion` is the advertised Kad version of the node we are
-	// about to publish to; tags introduced after its version are omitted.
-	void PreparePacketForTags(CMemFile *packet, CKnownFile *file, uint8_t targetKadVersion);
+	void PreparePacketForTags(CMemFile *packet, CKnownFile *file);
 	bool Stopping() const noexcept { return m_stopping; }
 
 	uint32_t GetNodeLoad() const noexcept
@@ -168,10 +166,9 @@ public:
 private:
 	void Go();
 	void ProcessResponse(uint32 fromIP, uint16 fromPort, ContactList *results);
-	void ProcessResult(const CUInt128 &answer, TagPtrList *info, uint32_t fromIP, uint16_t fromPort);
+	void ProcessResult(const CUInt128 &answer, TagPtrList *info);
 	void ProcessResultFile(const CUInt128 &answer, TagPtrList *info);
-	void ProcessResultKeyword(
-		const CUInt128 &answer, TagPtrList *info, uint32_t fromIP, uint16_t fromPort);
+	void ProcessResultKeyword(const CUInt128 &answer, TagPtrList *info);
 	void ProcessResultNotes(const CUInt128 &answer, TagPtrList *info);
 	void JumpStart();
 	void SendFindValue(CContact *contact, bool reaskMore = false);
@@ -201,26 +198,6 @@ private:
 	CKadClientSearcher *m_nodeSpecialSearchRequester; // used to callback result for NODESPECIAL searches
 
 	typedef std::map<CUInt128, bool> RespondedMap;
-
-	// A request we have sent and not yet had an answer to, keyed by the
-	// contact's ClientID.  Two things need it: CFastKad wants the round-trip
-	// time of every answer, and JumpStart wants to know which contacts have
-	// gone past the estimated ceiling so it can stop waiting on them.  The
-	// address is carried along because by the time a request times out the
-	// contact may already have been dropped from m_tried.
-	struct sPendingRequest
-	{
-		uint64_t m_sentTick;
-		uint32_t m_ip;
-		uint16_t m_port;
-	};
-	typedef std::map<CUInt128, sPendingRequest> PendingRequestMap;
-
-	PendingRequestMap m_pendingRequests;
-	// Millisecond-resolution twin of m_lastResponse.  The stall check in
-	// JumpStart compares against a derived ceiling that is expressed in
-	// milliseconds, and second granularity would quantise it to uselessness.
-	uint64_t m_lastResponseTick;
 
 	ContactMap m_possible;
 	ContactMap m_tried;

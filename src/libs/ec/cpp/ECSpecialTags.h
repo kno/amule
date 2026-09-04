@@ -342,15 +342,6 @@ public:
 	{
 		return AssignIfExist(EC_TAG_KAD_CONNECTED_SINCE, target);
 	}
-
-	// The daemon's own per-family reachability, packed two bits per family by
-	// DualStack::CLocalReachability::ToECWord(). Absent from an older daemon,
-	// which is why the caller gets told whether it was there rather than being
-	// handed a zero word that also means "nothing is listening".
-	bool GetLocalReachability(uint8 &target) const
-	{
-		return AssignIfExist(EC_TAG_LOCAL_REACHABILITY, target);
-	}
 };
 
 class CEC_SharedFile_Tag : public CECTag
@@ -630,10 +621,6 @@ public:
 	bool ObfuscationStatus(uint8 &target) const
 	{
 		return AssignIfExist(EC_TAG_CLIENT_OBFUSCATION_STATUS, target);
-	}
-	bool ModCapabilities(uint32 &target) const
-	{
-		return AssignIfExist(EC_TAG_CLIENT_MOD_CAPABILITIES, target);
 	}
 	bool HasExtendedProtocol(bool *target = 0) const
 	{

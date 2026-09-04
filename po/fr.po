@@ -15,7 +15,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: aMule\n"
 "Report-Msgid-Bugs-To: https://github.com/amule-org/amule/issues\n"
-"POT-Creation-Date: 2026-09-04 08:48+0200\n"
+"POT-Creation-Date: 2026-09-02 12:15+0200\n"
 "PO-Revision-Date: 2026-09-03 11:04+0000\n"
 "Last-Translator: Dylan Aïssi <bob.dybian@gmail.com>\n"
 "Language-Team: Français\n"
@@ -412,15 +412,6 @@ msgid "You requested to run amuleapi on startup, but the amuleapi binary cannot 
 msgstr "Vous avez demandé à exécuter amuleapi au démarrage, mais le binaire amuleapi ne peut être exécuté. Veuillez installer le paquet contenant le serveur API RESTd'aMule, ou compilez aMule depuis le code source avec -DBUILD_AMULEAPI=YES et installez-le."
 
 #: src/amule.cpp
-msgid "Could not bind an IPv6 socket. IPv6 appears to be unavailable on this host; IPv4 operation is unaffected."
-msgstr ""
-
-#: src/amule.cpp
-#, fuzzy
-msgid "Could not bind an IPv4 socket."
-msgstr "Impossible de résoudre %s en une adresse IPv4."
-
-#: src/amule.cpp
 #, c-format
 msgid "External connection: could not bind to '%s', listening on 127.0.0.1 only."
 msgstr "Connexion externe : impossible de s’attacher à « %s » ; écoute limitée à 127.0.0.1."
@@ -449,11 +440,6 @@ msgstr ""
 "Ceci signifie que vous serez LowID.\n"
 "\n"
 "Vérifiez votre réseau pour être sûr que le port est ouvert en sortie et en entrée."
-
-#: src/amule.cpp
-#, c-format
-msgid "Client UDP socket (extended eMule) listening on %s port %u (IPv6)."
-msgstr ""
 
 #: src/amule.cpp
 msgid "Failed to create OnlineSig File"
@@ -2890,7 +2876,7 @@ msgstr "En attente : %u"
 msgid "Uploading"
 msgstr "Émission en cours"
 
-#: src/GenericClientListCtrl.cpp src/PeerCapabilities.h
+#: src/GenericClientListCtrl.cpp
 msgid "None"
 msgstr "Aucun"
 
@@ -3018,13 +3004,6 @@ msgstr "Échec du téléchargement %s de %s"
 #: src/IPFilter.cpp
 msgid "Loading IP filters 'ipfilter.dat' and 'ipfilter_static.dat'."
 msgstr "Chargements des filtres IP 'ipfilter.dat' et 'ipfilter_static.dat'."
-
-#: src/IPFilter.cpp
-#, fuzzy, c-format
-msgid "Loaded %u IPv6 prefix rule."
-msgid_plural "Loaded %u IPv6 prefix rules."
-msgstr[0] "%u plage d'IP chargé depuis '%s'."
-msgstr[1] "%u plages d'IP chargés depuis '%s'."
 
 #: src/IPFilter.cpp
 #, c-format
@@ -3311,19 +3290,12 @@ msgid "Asio thread %d started"
 msgstr "Processus ASIO %d démarré"
 
 #: src/ListenSocket.cpp
-#, c-format
-msgid "ListenSocket: listening on %s (IPv6, also accepting IPv4 peers in mapped form)."
-msgstr ""
+msgid "ListenSocket: Ok."
+msgstr "ListenSocket : OK."
 
 #: src/ListenSocket.cpp
-#, c-format
-msgid "ListenSocket: listening on %s (%s)."
-msgstr ""
-
-#: src/ListenSocket.cpp
-#, c-format
-msgid "Inbound IPv6 connection from %s on %s."
-msgstr ""
+msgid "ERROR: Could not listen to TCP port."
+msgstr "ERREUR : Le port TCP n'a pas pu être mis en écoute."
 
 #: src/Logger.cpp
 msgid "ERROR: "
@@ -4149,10 +4121,6 @@ msgstr "Brouillage :"
 #: src/muuli_wdr.cpp
 msgid "Kad:"
 msgstr "Kad :"
-
-#: src/muuli_wdr.cpp
-msgid "Vendor capabilities:"
-msgstr ""
 
 #: src/muuli_wdr.cpp
 msgid "Transfers to client"
@@ -7180,16 +7148,6 @@ msgid "Connected since:"
 msgstr "Connecté depuis :"
 
 #: src/ServerWnd.cpp
-#, fuzzy
-msgid "IPv4 reachability:"
-msgstr "Disponibilité"
-
-#: src/ServerWnd.cpp
-#, fuzzy
-msgid "IPv6 reachability:"
-msgstr "Disponibilité"
-
-#: src/ServerWnd.cpp
 msgid "Kademlia Status:"
 msgstr "Statut de Kademlia :"
 
@@ -9285,12 +9243,6 @@ msgstr "aMule semble être en cours d'exécution. Veuillez le fermer et relancer
 #: packaging/windows/installer_strings.c
 msgid "Removing user data at $APPDATA\\aMule..."
 msgstr "Suppression des données d'utilisateur sur $APPDATA\\aMule…"
-
-#~ msgid "ListenSocket: Ok."
-#~ msgstr "ListenSocket : OK."
-
-#~ msgid "ERROR: Could not listen to TCP port."
-#~ msgstr "ERREUR : Le port TCP n'a pas pu être mis en écoute."
 
 #~ msgid "Available Parts"
 #~ msgstr "Parties Disponibles"

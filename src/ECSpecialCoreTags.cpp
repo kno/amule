@@ -198,11 +198,6 @@ CEC_ConnState_Tag::CEC_ConnState_Tag(EC_DETAIL_LEVEL detail_level)
 
 	AddTag(CECTag(EC_TAG_CLIENT_ID, theApp->GetID()));
 
-	// Our own reachability per family, from the same object the handshake
-	// gating and the local GUI read, so a remote GUI cannot show "verified
-	// IPv6" for a daemon that is only listening. See src/IPv6Reachability.h.
-	AddTag(CECTag(EC_TAG_LOCAL_REACHABILITY, theApp->GetReachability().ToECWord()));
-
 	if (Kademlia::CKademlia::IsRunning()) {
 		AddTag(CECTag(EC_TAG_KAD_ID, Kademlia::CKademlia::GetKadID()));
 	}
@@ -483,9 +478,6 @@ CEC_UpDownClient_Tag::CEC_UpDownClient_Tag(
 	AddDiffTag(this, EC_TAG_CLIENT_OBFUSCATION_STATUS, client->GetObfuscationStatus(), valuemap);
 	AddDiffTag(this, EC_TAG_CLIENT_KAD_PORT, client->GetKadPort(), valuemap);
 	AddDiffTag(this, EC_TAG_CLIENT_FRIEND_SLOT, client->GetFriendSlot(), valuemap);
-	// Already masked to the five defined bits by CPeerCapabilities, so the
-	// remote GUI never has to know which bits are reserved.
-	AddDiffTag(this, EC_TAG_CLIENT_MOD_CAPABILITIES, client->GetModCapabilities().ToWire(), valuemap);
 
 	if (detail_level == EC_DETAIL_UPDATE) {
 		return;

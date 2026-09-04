@@ -57,13 +57,6 @@
 #if defined(__clang__)
 #pragma clang diagnostic push
 #pragma clang diagnostic ignored "-Wdeprecated-copy-with-user-provided-dtor"
-// Asio's executor machinery (boost/asio/execution/*.hpp, reached through the
-// socket headers below) also redeclares constexpr static data members out of
-// line, which C++17 made redundant and deprecated. Clang diagnoses it and the
-// -Werror=deprecated gate promotes it, so this include set fails on macOS
-// without this line. Added alongside the dtor suppression rather than as a
-// blanket -Wno-deprecated so aMule's own deprecations still fail the build.
-#pragma clang diagnostic ignored "-Wdeprecated-redundant-constexpr-static-def"
 #endif
 #include <boost/asio.hpp>
 #include <boost/asio/steady_timer.hpp>
@@ -83,13 +76,9 @@
 #endif
 
 #include "LibSocket.h"
-#include "QuicSocketTransport.h"     // Needed for CQuicSocketTransport (QUIC substitution)
-#include "UtpSocketTransport.h"      // Needed for CUtpSocketTransport (uTP substitution)
-#include "AddressFamilyPolicyAsio.h" // Needed for the family decisions this file used to hardcode
-#include "NetworkAddressAsio.h"      // Needed for ToAsioAddress/FromAsioAddress
-#include <wx/thread.h>               // wxMutex
-#include <wx/intl.h>                 // _()
-#include <common/Format.h>           // Needed for CFormat
+#include <wx/thread.h>     // wxMutex
+#include <wx/intl.h>       // _()
+#include <common/Format.h> // Needed for CFormat
 #include "Logger.h"
 #include "GuiEvents.h"
 #include "amuleIPV4Address.h"
@@ -452,12 +441,6 @@ public:
 		*(ip::tcp::endpoint *)this = ep;
 		return *this;
 	}
-
-	// Bind-time IPV6_V6ONLY for a socket bound to this endpoint. See
-	// amuleIPV4Address::SetV6Only() for why the flag travels with the address.
-	// Not touched by the endpoint assignments above: assigning an asio endpoint
-	// replaces the address, not the caller's decision about the socket.
-	bool m_v6Only = false;
 };
 
 // See the comment above CAsioUDPSocketImpl for the rationale on enable_shared_from_this:
@@ -553,25 +536,9 @@ public:
 		if (!s_bindToInterface.IsEmpty()) {
 			error_code openEc;
 			if (!m_socket->is_open()) {
-				// The family comes from the target address, not from a
-				// hardcoded v4(): see AddressFamilyPolicy.h. An address
-				// whose family the configuration does not permit yields no
-				// protocol, and then no socket is opened -- opening a v4
-				// socket for it would be how a truncated address turns into
-				// a connection to the wrong host.
-				const std::optional<ip::tcp> protocol =
-					AddressFamilyPolicy::TcpProtocolForTarget(
-						FromAsioAddress(adr.GetEndpoint().address()));
-				if (protocol) {
-					m_socket->open(*protocol, openEc);
-				} else {
-					AddDebugLogLineC(logAsio,
-						CFormat("Connect: no permitted address family for "
-							"%s, not binding to interface") %
-							adr.IPAddress());
-				}
+				m_socket->open(ip::tcp::v4(), openEc);
 			}
-			if (!openEc && m_socket->is_open()) {
+			if (!openEc) {
 				SetBoundInterface(m_socket->native_handle(), s_bindToInterface, false);
 			}
 		}
@@ -823,22 +790,10 @@ public:
 	{
 		error_code ec;
 		if (!m_socket->is_open()) {
-			// Socket is usually still closed when this is called. The family
-			// is the local address's own, via AddressFamilyPolicy.h, rather
-			// than a hardcoded v4().
-			const std::optional<ip::tcp> protocol = AddressFamilyPolicy::TcpProtocolForTarget(
-				FromAsioAddress(local.GetEndpoint().address()));
-			if (protocol) {
-				m_socket->open(*protocol, ec);
-				if (ec) {
-					AddDebugLogLineC(
-						logAsio, CFormat("Can't open socket : %s") % ec.message());
-				}
-			} else {
-				AddDebugLogLineC(logAsio,
-					CFormat("Can't open socket : no permitted address family for %s") %
-						local.IPAddress());
-				return;
+			// Socket is usually still closed when this is called
+			m_socket->open(boost::asio::ip::tcp::v4(), ec);
+			if (ec) {
+				AddDebugLogLineC(logAsio, CFormat("Can't open socket : %s") % ec.message());
 			}
 		}
 		//
@@ -893,26 +848,6 @@ public:
 
 	const wxChar *GetIP() const { return m_IP; }
 	uint16 GetPort() const { return m_port; }
-
-	const CNetworkAddress &GetPeerAddress() const { return m_peerAddress; }
-
-	/**
-	 * The local end of the connection.
-	 *
-	 * For an accepted socket this is the address the peer actually reached us
-	 * on -- which for IPv6 is the only trustworthy source of "our IPv6
-	 * address": the listener is bound to the wildcard, and the machine may have
-	 * several addresses of which only some are routable from outside.
-	 */
-	CNetworkAddress GetLocalAddress() const
-	{
-		error_code ec;
-		const ip::tcp::endpoint local = m_socket->local_endpoint(ec);
-		if (ec) {
-			return CNetworkAddress::Absent();
-		}
-		return FromAsioAddress(local.address());
-	}
 
 	ip::tcp::socket &GetAsioSocket() { return *m_socket; }
 
@@ -1304,22 +1239,7 @@ private:
 	{
 		m_IPstring = adr.IPAddress();
 		m_IP = m_IPstring.c_str();
-		// Kept alongside the 32-bit form rather than replacing it: the ed2k
-		// core still keys clients on m_IPint, but an IPv6 peer has no such
-		// value. The peer's actual address has to survive the trip for the
-		// accept path to be able to tell "no address" from "no 32-bit form".
-		m_peerAddress = adr.GetAddress();
-		// Narrowed from the address, not reparsed from the string. A
-		// wildcard-bound ed2k listener accepts IPv4 peers in IPv4-mapped form
-		// ("::ffff:a.b.c.d"); StringIPtoUint32() cannot parse that and answers
-		// zero, the same zero it uses for "no 32-bit form". Such a peer is an
-		// IPv4 peer and does have a 32-bit value, and the m_IPint consumers
-		// need it -- notably the server-callback throttler bypass in
-		// CClientTCPSocket::IsDownloadThrottled(), whose "m_remoteip != 0"
-		// guard would otherwise never fire, delaying the HighID probe past the
-		// server's verification timer and costing us a LowID. A real IPv6 peer
-		// still narrows to zero, which is its honest answer.
-		m_IPint = m_peerAddress.ToIPv4NetworkOrderOrZero();
+		m_IPint = StringIPtoUint32(m_IPstring);
 	}
 
 	// Atomic so OnWrapperGone() (called from the wrapper's dtor on any
@@ -1328,11 +1248,10 @@ private:
 	std::atomic<CLibSocket *> m_libSocket;
 	ip::tcp::socket *m_socket;
 	// remote IP
-	wxString m_IPstring;           // as String (use nowhere because of threading!)
-	const wxChar *m_IP;            // as char*  (use in debug logs)
-	uint32 m_IPint;                // as int (zero for an IPv6 peer -- see SetIp)
-	CNetworkAddress m_peerAddress; // family and all
-	uint16 m_port;                 // remote port
+	wxString m_IPstring; // as String (use nowhere because of threading!)
+	const wxChar *m_IP;  // as char*  (use in debug logs)
+	uint32 m_IPint;      // as int
+	uint16 m_port;       // remote port
 	bool m_OK;
 	int m_ErrorCode;
 	bool m_blocksRead;
@@ -1363,43 +1282,6 @@ private:
 };
 
 /**
- * How a substituted transport reaches the socket above it.
- *
- * The same four CoreNotify_LibSocket* events the asio reactor posts, so
- * CClientTCPSocket cannot tell a uTP or QUIC connection from a TCP one:
- * OnConnect() still sends the hello, OnReceive() still reads packets, OnSend()
- * still drains the send queue, OnLost() still tears the connection down.
- *
- * Deferred rather than direct, deliberately, and the reason is the same for both
- * transports. libutp's callbacks fire from inside utp_process_udp() (on the ed2k
- * UDP receive path) and utp_check_timeouts() (on the core timer); ngtcp2's fire
- * from inside ngtcp2_conn_read_pkt() on that same receive path. A direct call
- * would re-enter the client code from inside the library -- and the client code
- * closes sockets, which would destroy the very object the library is standing
- * on.
- *
- * One notifier for both transports because both post exactly these four events.
- * A second class saying the same thing would be a second place for the mapping
- * to drift.
- */
-class CStreamTransportNotifier : public IStreamTransportEvents
-{
-public:
-	explicit CStreamTransportNotifier(CLibSocket *wrapper)
-	: m_wrapper(wrapper)
-	{
-	}
-
-	void OnStreamTransportConnected() override { CoreNotify_LibSocketConnect(m_wrapper, 0); }
-	void OnStreamTransportReadable() override { CoreNotify_LibSocketReceive(m_wrapper, 0); }
-	void OnStreamTransportWritable() override { CoreNotify_LibSocketSend(m_wrapper, 0); }
-	void OnStreamTransportLost() override { CoreNotify_LibSocketLost(m_wrapper); }
-
-private:
-	CLibSocket *m_wrapper;
-};
-
-/**
  * Library socket wrapper
  */
 
@@ -1422,71 +1304,20 @@ CLibSocket::~CLibSocket()
 	if (m_aSocket) {
 		m_aSocket->OnWrapperGone();
 	}
-
-	// Before the notifier it points at goes away with this object. Each
-	// transport's destructor severs its own link to its library first -- the uTP
-	// one clears the utp_socket's user data and closes it, the QUIC one detaches
-	// itself from the connection -- so neither library can call back into a
-	// wrapper that no longer exists.
-	m_streamTransport.reset();
-	m_utpTransport = nullptr;
-	m_utpNotifier.reset();
-}
-
-void CLibSocket::AttachUtpTransport(std::unique_ptr<CUtpSocketTransport> transport)
-{
-	// The raw pointer is taken before ownership moves, and both are assigned
-	// here and nowhere else: HasUtpTransport() answering yes for a transport
-	// m_streamTransport no longer holds would be a use-after-free with a
-	// plausible-looking call site.
-	CUtpSocketTransport *utp = transport.get();
-	m_streamTransport = std::move(transport);
-	m_utpTransport = utp;
-	if (m_streamTransport) {
-		m_utpNotifier.reset(new CStreamTransportNotifier(this));
-		utp->SetEventSink(m_utpNotifier.get());
-	}
-}
-
-void CLibSocket::AttachQuicTransport(std::unique_ptr<CQuicSocketTransport> transport)
-{
-	// m_utpTransport stays NULL: this is a QUIC connection, and the one caller
-	// of HasUtpTransport() is asking whether a uTP dial is already in flight.
-	CQuicSocketTransport *quic = transport.get();
-	m_streamTransport = std::move(transport);
-	if (m_streamTransport) {
-		m_utpNotifier.reset(new CStreamTransportNotifier(this));
-		quic->SetEventSink(m_utpNotifier.get());
-	}
 }
 
 bool CLibSocket::Connect(const amuleIPV4Address &adr, bool wait)
 {
-	if (m_streamTransport) {
-		// Nothing to start, for either transport and for different reasons: a
-		// uTP dial already went out when the transport was created
-		// (utp_connect() is synchronous in the sense that it puts the SYN on
-		// the wire), and a QUIC transport only ever exists for a connection
-		// that is already established and authenticated. False mirrors the asio
-		// path's answer for a connect that has not completed yet.
-		return false;
-	}
 	return m_aSocket->Connect(adr, wait);
 }
 
 bool CLibSocket::IsConnected() const
 {
-	if (m_streamTransport) {
-		return m_streamTransport->IsConnected();
-	}
 	return m_aSocket->IsConnected();
 }
 
 bool CLibSocket::IsOk() const
 {
-	if (m_streamTransport) {
-		return m_streamTransport->IsOk();
-	}
 	return m_aSocket->IsOk();
 }
 
@@ -1507,44 +1338,16 @@ void CLibSocket::SetConnectTimeout(int ms)
 
 wxString CLibSocket::GetPeer()
 {
-	if (m_streamTransport) {
-		return wxString(m_streamTransport->GetPeerAddress().ToString());
-	}
 	return m_aSocket->GetPeer();
 }
 
 uint32 CLibSocket::GetPeerInt()
 {
-	if (m_streamTransport) {
-		// Network order, matching the asio path: CClientTCPSocket stores this
-		// straight into m_remoteip.
-		return m_streamTransport->GetPeerAddress().ToIPv4NetworkOrderOrZero();
-	}
 	return m_aSocket->GetPeerInt();
-}
-
-const CNetworkAddress &CLibSocket::GetPeerAddress() const
-{
-	if (m_streamTransport) {
-		return m_streamTransport->GetPeerAddress();
-	}
-	return m_aSocket->GetPeerAddress();
-}
-
-CNetworkAddress CLibSocket::GetLocalAddress() const
-{
-	return m_aSocket->GetLocalAddress();
 }
 
 void CLibSocket::Destroy()
 {
-	if (m_streamTransport) {
-		// Close the substituted connection, then hand over to the asio impl,
-		// which is what actually posts CoreNotify_LibSocketDestroy and deletes
-		// this wrapper. Its socket was never opened, and Destroy() does not need
-		// it to have been.
-		m_streamTransport->Close();
-	}
 	m_aSocket->Destroy();
 }
 
@@ -1569,34 +1372,21 @@ void CLibSocket::Notify(bool notify)
 
 uint32 CLibSocket::Read(void *buffer, uint32 nbytes)
 {
-	if (m_streamTransport) {
-		return m_streamTransport->Read(buffer, nbytes);
-	}
 	return m_aSocket->Read((char *)buffer, nbytes);
 }
 
 uint32 CLibSocket::Write(const void *buffer, uint32 nbytes)
 {
-	if (m_streamTransport) {
-		return m_streamTransport->Write(buffer, nbytes);
-	}
 	return m_aSocket->Write(buffer, nbytes);
 }
 
 void CLibSocket::Close()
 {
-	if (m_streamTransport) {
-		m_streamTransport->Close();
-		return;
-	}
 	m_aSocket->Close();
 }
 
 int CLibSocket::LastError() const
 {
-	if (m_streamTransport) {
-		return m_streamTransport->LastError();
-	}
 	return m_aSocket->LastError();
 }
 
@@ -1609,28 +1399,16 @@ void CLibSocket::SetLocal(const amuleIPV4Address &local)
 
 bool CLibSocket::BlocksRead() const
 {
-	if (m_streamTransport) {
-		return m_streamTransport->BlocksRead();
-	}
 	return m_aSocket->BlocksRead();
 }
 
 bool CLibSocket::BlocksWrite() const
 {
-	if (m_streamTransport) {
-		return m_streamTransport->BlocksWrite();
-	}
 	return m_aSocket->BlocksWrite();
 }
 
 void CLibSocket::EventProcessed()
 {
-	if (m_streamTransport) {
-		// The asio path uses this to release its one-event-at-a-time latch on
-		// the background read. Neither substituted transport has such a latch:
-		// both deliver on their library's own callback and buffer what arrived.
-		return;
-	}
 	m_aSocket->EventProcessed();
 }
 
@@ -1704,30 +1482,6 @@ public:
 				m_bindInterfaceOverride ? m_bindInterface : s_bindToInterface,
 				false);
 			set_option(ip::tcp::acceptor::reuse_address(true));
-			// IPV6_V6ONLY, for IPv6 acceptors only. Off means this one
-			// socket also accepts IPv4 peers, which arrive in mapped
-			// form; on means it serves IPv6 exclusively and a separate
-			// IPv4 acceptor takes the other family. Both arrangements
-			// are used -- see DualStackListeners.h -- and the platform
-			// default is not the same everywhere, so it is always set
-			// explicitly rather than inherited.
-			if (m_address.GetEndpoint().address().is_v6()) {
-				error_code v6Ec;
-				set_option(ip::v6_only(m_address.IsV6Only()), v6Ec);
-				if (v6Ec) {
-					AddDebugLogLineN(logAsio,
-						CFormat("CAsioSocketServerImpl could not set IPV6_V6ONLY=%d "
-							"on %s: %s") %
-							(m_address.IsV6Only() ? 1 : 0) %
-							m_address.IPAddress() % v6Ec.message());
-					// A platform that will not let the option be set cannot
-					// be trusted to have the arrangement the caller asked
-					// for. Failing here is what makes the caller fall back
-					// to one socket per family instead of silently running
-					// with a socket that serves the wrong set.
-					throw system_error(v6Ec);
-				}
-			}
 			bind(m_address.GetEndpoint());
 			listen();
 			StartAccept();
@@ -2187,13 +1941,6 @@ private:
 			// without binding".
 			m_socket = new ip::udp::socket(s_io_service);
 			m_socket->open(endpoint.protocol());
-			// Same explicit IPV6_V6ONLY decision as the TCP acceptor: with
-			// one UDP socket per family on the same port, an unrestricted
-			// IPv6 socket would also claim mapped IPv4 datagrams and the two
-			// bindings would contend for them.
-			if (endpoint.address().is_v6()) {
-				m_socket->set_option(ip::v6_only(m_address.IsV6Only()));
-			}
 			// SO_REUSEADDR so a post-suspend rebind (DestroySocket +
 			// CreateSocket in CMuleUDPSocket::OnReceive when a read
 			// callback returns an error) doesn't hit EADDRINUSE while
@@ -2423,83 +2170,52 @@ bool amuleIPV4Address::Hostname(const wxString &name)
 	}
 	// This is usually just an IP.
 	std::string sname(unicode2char(name));
-	// Parsed family-agnostically and then checked against the configured
-	// families, instead of parsing as v4 only. The outcome is the same for
-	// every input while the configuration is IPv4-only -- a v6 literal was
-	// rejected by make_address_v4() before and is rejected by the policy check
-	// now -- but the family is no longer welded into the parse.
-	const CNetworkAddress parsed = CNetworkAddress::FromString(sname);
-	if (parsed.IsPresent() && AddressFamilyPolicy::Permits(parsed)) {
-		m_endpoint->address(ToAsioAddress(parsed));
+	error_code ec;
+	ip::address_v4 adr = ip::make_address_v4(sname, ec);
+	if (!ec) {
+		m_endpoint->address(adr);
 		return true;
 	}
-	if (parsed.IsPresent()) {
-		AddDebugLogLineN(
-			logAsio, CFormat("Hostname(\"%s\") rejected: address family not permitted") % name);
-	} else {
-		AddDebugLogLineN(logAsio, CFormat("Hostname(\"%s\") failed, not an IP address") % name);
-	}
+	AddDebugLogLineN(
+		logAsio, CFormat("Hostname(\"%s\") failed, not an IP address %s") % name % ec.message());
 
 	// Try to resolve (sync). Normally not required. Unless you type in your hostname as "local IP
 	// address" or something.
 	//
-	// The family the query is restricted to has to be asked for explicitly:
+	// We only want IPv4 addresses. This has to be asked for explicitly:
 	// the resolve(host, service) overload passes a default-constructed
 	// flag set (0, so not even AI_ADDRCONFIG) and leaves the family
 	// unrestricted, so getaddrinfo answers with AAAA records too — on
 	// any host, whether or not it has IPv6 connectivity. Their order is
 	// up to the platform resolver, and IPv6 routinely comes first (on
 	// Windows, even for "localhost"), so taking the first result handed
-	// back would store an address of a family the rest of aMule cannot
-	// use: IPAddress() then fails StringIPtoUint32(), and connecting a v4
-	// socket to it fails outright. Which family that is comes from
-	// AddressFamilyPolicy, which is IPv4-only today, so this asks for
-	// AF_INET exactly as the previous hardcoded v4() did.
+	// back would store an IPv6 address in what the rest of aMule treats
+	// as a v4-only endpoint: IPAddress() then fails StringIPtoUint32(),
+	// and connecting a v4 socket to it fails outright.
 	error_code ec2;
 	ip::tcp::resolver res(s_io_service);
-	const std::optional<ip::tcp> resolverProtocol = AddressFamilyPolicy::TcpResolverProtocol();
-	ip::tcp::resolver::results_type endpoint_iterator =
-		resolverProtocol ? res.resolve(*resolverProtocol, sname, "", ec2)
-				 : res.resolve(sname, "", ec2);
+	ip::tcp::resolver::results_type endpoint_iterator = res.resolve(ip::tcp::v4(), sname, "", ec2);
 	if (ec2) {
 		AddDebugLogLineN(
 			logAsio, CFormat("Hostname(\"%s\") resolve failed: %s") % name % ec2.message());
 		return false;
 	}
-	// Belt and braces: the restricted query above should only ever yield
-	// entries of the permitted family, but scan for one rather than trusting
-	// begin() the way the unrestricted query did.
-	//
-	// Under a dual-stack configuration the query is unrestricted, so both
-	// families come back and their order is the platform resolver's choice --
-	// IPv6 routinely first, on Windows even for "localhost". IPv4 is preferred
-	// here in that case, and deliberately: every caller of this overload binds
-	// or dials a single address from a name the user typed (the bind address, a
-	// server hostname), and answering with an IPv6 address for a name that has
-	// both would silently move that traffic onto the other family. The
-	// dual-stack listeners ask for the family they want explicitly instead of
-	// going through a name.
-	for (int pass = 0; pass < 2; ++pass) {
-		for (const auto &entry : endpoint_iterator) {
-			const CNetworkAddress resolved = FromAsioAddress(entry.endpoint().address());
-			if (!AddressFamilyPolicy::Permits(resolved)) {
-				continue;
-			}
-			const bool isV4 = resolved.IsIPv4() || resolved.IsIPv4Mapped();
-			if (pass == 0 && !isV4) {
-				continue;
-			}
-			m_endpoint->address(ToAsioAddress(resolved));
+	// Belt and braces: the AF_INET query above should only ever yield v4
+	// entries, but the endpoint is v4-only by contract, so scan for one
+	// rather than trusting begin() the way the unrestricted query did.
+	for (const auto &entry : endpoint_iterator) {
+		if (entry.endpoint().address().is_v4()) {
+			m_endpoint->address(entry.endpoint().address());
 			AddDebugLogLineN(
 				logAsio, CFormat("Hostname(\"%s\") resolved to %s") % name % IPAddress());
 			return true;
 		}
 	}
-	// A name with no record in a permitted family lands here. Failing is the
-	// honest answer — the caller reports it instead of dialling an address the
-	// socket layer cannot use.
-	AddDebugLogLineN(
-		logAsio, CFormat("Hostname(\"%s\") resolve failed: no address in a permitted family") % name);
+	// A name that only has AAAA records lands here. aMule is IPv4-only
+	// end to end (amuleIPV4Address, the uint32 IPs, the EC listener), so
+	// failing is the honest answer — the caller reports it instead of
+	// dialling an address the socket layer cannot use.
+	AddDebugLogLineN(logAsio, CFormat("Hostname(\"%s\") resolve failed: no IPv4 address found") % name);
 	return false;
 }
 
@@ -2532,35 +2248,9 @@ wxString amuleIPV4Address::IPAddress() const
 // wx does the same.
 bool amuleIPV4Address::AnyAddress()
 {
-	m_endpoint->address(AddressFamilyPolicy::AnyAddress());
+	m_endpoint->address(ip::address_v4::any());
 	AddDebugLogLineN(logAsio, CFormat("AnyAddress: set to %s") % IPAddress());
 	return true;
-}
-
-bool amuleIPV4Address::SetAddress(const CNetworkAddress &address)
-{
-	if (address.IsAbsent()) {
-		return false;
-	}
-	m_endpoint->address(ToAsioAddress(address));
-	return true;
-}
-
-CNetworkAddress amuleIPV4Address::GetAddress() const
-{
-	// Present even for a wildcard: a listener legitimately binds one, and the
-	// family of that wildcard is exactly what the caller is asking about.
-	return FromAsioAddress(m_endpoint->address());
-}
-
-void amuleIPV4Address::SetV6Only(bool v6Only)
-{
-	m_endpoint->m_v6Only = v6Only;
-}
-
-bool amuleIPV4Address::IsV6Only() const
-{
-	return m_endpoint->m_v6Only;
 }
 
 const CamuleIPV4Endpoint &amuleIPV4Address::GetEndpoint() const

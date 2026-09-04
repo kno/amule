@@ -29,7 +29,6 @@
 #include "MD4Hash.h"         // Needed for CMD4Hash
 #include "ObservableQueue.h" // Needed for CObservableQueue
 #include "GetTickCount.h"    // Needed for GetTickCount64
-#include "NetworkAddress.h"  // Needed for CNetworkAddress
 
 #include <atomic> // Needed for std::atomic (m_listGeneration)
 #include <deque>
@@ -204,12 +203,11 @@ public:
 	/**
 	 * Finds the queued client by IP and UDP-port, by looking at file-sources.
 	 *
-	 * @param address The address of the client, in either family. An absent one
-	 *                matches nothing.
+	 * @param dwIP The IP-address of the client.
 	 * @param nUDPPort The UDP-port of the client.
 	 * @return The matching client or NULL if none was found.
 	 */
-	CUpDownClient *GetDownloadClientByIP_UDP(const CNetworkAddress &address, uint16 nUDPPort) const;
+	CUpDownClient *GetDownloadClientByIP_UDP(uint32 dwIP, uint16 nUDPPort) const;
 
 	/**
 	 * Queues the specified file for source-requestion from the connected server.

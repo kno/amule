@@ -75,10 +75,6 @@
 #include "FriendList.h"      // Needed for CFriendList
 #include "Statistics.h"      // Needed for theStats
 #include "ClientUDPSocket.h"
-#include "UtpDialPolicy.h"      // Needed for DecideUtpDial
-#include "UtpSocketTransport.h" // Needed for CUtpSocketTransport / DialUtp
-
-#include <memory>
 #include "Logger.h"
 #include "DataToText.h" // Needed for GetSoftName()
 #include "GuiEvents.h"  // Needed for Notify_
@@ -132,14 +128,13 @@ CUpDownClient::CUpDownClient(uint16 in_port,
 	// If highID and Kad source, incoming IP needs swap for the IP
 
 	if (!HasLowID()) {
-		// An ed2k source carries the address in ed2k order; a Kad source
-		// carries the same address in Kad's host order. Both conversions name
-		// the order they expect, so the swap that used to sit here as a bare
-		// wxUINT32_SWAP_ALWAYS is now in the function name -- and either way a
-		// zero field means "no address", not 0.0.0.0.
-		m_connectAddress = ed2kID ? CNetworkAddress::FromIPv4NetworkOrderOrAbsent(in_userid)
-					  : CNetworkAddress::FromIPv4HostOrderOrAbsent(in_userid);
-		m_fullUserAddress = m_connectAddress;
+		if (ed2kID) {
+			m_nConnectIP = in_userid;
+		} else {
+			m_nConnectIP = wxUINT32_SWAP_ALWAYS(in_userid);
+		}
+		// Will be on right endianness now
+		m_FullUserIP = m_nConnectIP;
 	}
 
 	m_dwServerIP = in_serverip;
@@ -148,7 +143,8 @@ CUpDownClient::CUpDownClient(uint16 in_port,
 	ReGetClientSoft();
 
 	if (checkfriend) {
-		if ((m_Friend = theApp->friendlist->FindFriend(CMD4Hash(), GetIP(), m_nUserPort)) != NULL) {
+		if ((m_Friend = theApp->friendlist->FindFriend(CMD4Hash(), m_dwUserIP, m_nUserPort)) !=
+			NULL) {
 			m_Friend->LinkClient(
 				CCLIENTREF(this, "CUpDownClient::CUpDownClient m_Friend->LinkClient"));
 		} else {
@@ -249,8 +245,8 @@ void CUpDownClient::Init()
 	m_fExtMultiPacket = 0;
 	m_fIsSpammer = 0;
 
-	m_userAddress = CNetworkAddress::Absent();
-	m_connectAddress = CNetworkAddress::Absent();
+	m_dwUserIP = 0;
+	m_nConnectIP = 0;
 	m_dwServerIP = 0;
 
 	m_fNeedOurPublicIP = false;
@@ -271,13 +267,9 @@ void CUpDownClient::Init()
 	m_nSourceFrom = SF_NONE;
 
 	if (m_socket) {
-		// The peer's address as the socket knows it, family intact. Taking the
-		// 32-bit form here is what left an inbound IPv6 peer with no address
-		// at all: it is accepted, filtered and greeted, and then indexed under
-		// nothing.
-		SetAddress(m_socket->GetPeerAddress());
+		SetIP(m_socket->GetPeerInt());
 	} else {
-		SetAddress(CNetworkAddress::Absent());
+		SetIP(0);
 	}
 
 	/* Statistics */
@@ -358,9 +350,6 @@ void CUpDownClient::ClearHelloProperties()
 	m_fOsInfoSupport = 0;
 	SecIdentSupRec = 0;
 	m_byKadVersion = 0;
-	m_modCapabilities.Reset();
-	m_utpTransport.Reset();
-	m_bUtpTcpAttempted = false;
 	m_fRequestsCryptLayer = 0;
 	m_fSupportsCryptLayer = 0;
 	m_fRequiresCryptLayer = 0;
@@ -655,100 +644,6 @@ bool CUpDownClient::ProcessHelloTypePacket(const CMemFile &data)
 			m_fSharedDirectories = 1;
 			dwEmuleTags |= 4;
 			break;
-
-		// eMuleAI vendor capability tags. Recorded, never acted on: what
-		// aMule buys here is that an eMuleAI peer stops looking like a
-		// client sending malformed handshakes. The bit meanings are wire
-		// format and live in src/PeerCapabilities.h.
-		case CT_MOD_MISCOPTIONS:
-			//  1 Extended source exchange
-			//  1 Legacy uTP NAT traversal
-			//  1 IPv6
-			//  1 Serving-buddy pull
-			//  1 QUIC NAT traversal
-			// 27 Reserved -- masked off by SetFromWire, so nothing can be
-			//    inferred from a peer that sets them.
-			if (temptag.IsInt()) {
-				m_modCapabilities.SetFromWire((uint32)temptag.GetInt());
-				AddDebugLogLineN(logClient,
-					CFormat("Peer advertises vendor capabilities 0x%02X (%s)") %
-						m_modCapabilities.ToWire() %
-						m_modCapabilities.GetDisplayText());
-			}
-			break;
-
-		case CT_MOD_IP_V6:
-			// 16 bytes, big-endian, straight into the internal address type:
-			// this is the address the outbound fallback will dial, so it is
-			// stored as an address rather than as sixteen loose bytes.
-			//
-			// Only kept when the peer also claimed IPv6 support. An address
-			// without the capability bit is a peer telling us where it is not
-			// listening, and dialling it wastes a connect attempt on a family
-			// it never said it had.
-			if (temptag.IsHash()) {
-				m_modIPv6 = CNetworkAddress::FromIPv6Bytes(temptag.GetHash().GetHash());
-				AddDebugLogLineN(logClient,
-					CFormat("Peer advertises IPv6 address %s") % m_modIPv6.ToString());
-			}
-			break;
-
-		case CT_MOD_SVR_IP_V6:
-			if (temptag.IsHash()) {
-				m_modServerIPv6 = CNetworkAddress::FromIPv6Bytes(temptag.GetHash().GetHash());
-			}
-			break;
-
-		case CT_MOD_QUIC_IDENT:
-			// The peer's stable 16-byte QUIC NAT-T identity value, and the
-			// only source of the second field of the QUIC peer proof.
-			//
-			// That it is learned *here* -- from an ed2k hello that arrived over
-			// TCP -- is the whole security argument of the QUIC path: the peer
-			// must reproduce these bytes inside the proof it sends over UDP,
-			// and a third party hijacking the punched UDP mapping has seen only
-			// the UDP half. See src/QuicProofValue.h.
-			//
-			// The length is not checked here and does not need to be. A
-			// TAGTYPE_HASH16 tag is exactly 16 bytes by construction of the tag
-			// reader; a payload of any other length arrives as some other tag
-			// type, IsHash() is false, and nothing is stored. Failing closed on
-			// a malformed tag is required rather than merely tidy -- a stored
-			// partial value would become an expectation compared against
-			// uninitialised bytes -- so SetFromWire() re-checks the length
-			// itself and refuses without disturbing anything already learned.
-			//
-			// Recorded whatever the peer's capability word says. Gating the
-			// *store* on the QUIC bit would mean a peer that advertised the tag
-			// before the bit could never authenticate, and the value costs
-			// nothing to keep; what the bit gates is whether QUIC is attempted
-			// at all (SelectNattFrameType(), NatTraversalPolicy.h).
-			if (temptag.IsHash()) {
-				if (m_modQuicProofValue.SetFromWire(
-					    temptag.GetHash().GetHash(), QUIC_NATT_PROOF_VALUE_LENGTH)) {
-					// Deliberately not logged as bytes. The value is not a
-					// secret -- it is a fingerprint of a public key -- but a
-					// stable per-install identifier in a debug log is a
-					// correlatable identifier in a debug log, and nothing about
-					// diagnosing this path needs the bytes.
-					AddDebugLogLineN(logClient,
-						wxT("Peer advertises a QUIC NAT-T identity value"));
-				}
-			}
-			break;
-
-		default:
-			// An unrecognised tag is not a broken handshake. The switch
-			// has always fallen through silently for tags aMule does not
-			// know; the only thing added here is visibility for the
-			// vendor range, because a new CT_MOD_* tag arriving in the
-			// wild is worth knowing about and is otherwise invisible.
-			if (temptag.GetNameID() >= 0xA0 && temptag.GetNameID() <= 0xAF) {
-				AddDebugLogLineN(logClient,
-					CFormat("Ignoring unknown vendor tag 0x%02X in hello from %s") %
-						temptag.GetNameID() % GetFullIP());
-			}
-			break;
 		}
 	}
 
@@ -772,7 +667,7 @@ bool CUpDownClient::ProcessHelloTypePacket(const CMemFile &data)
 	}
 
 	if (m_socket) {
-		SetAddress(m_socket->GetPeerAddress());
+		SetIP(m_socket->GetPeerInt());
 	} else {
 		throw wxString("Huh, socket failure. Avoided crash this time.");
 	}
@@ -789,22 +684,15 @@ bool CUpDownClient::ProcessHelloTypePacket(const CMemFile &data)
 	//(b)Some older clients will not send a ID, these client are HighID users that are not connected to a
 	// server. (c)Kad users with a *.*.*.0 IPs will look like a lowID user they are actually a highID
 	// user.. They can be detected easily because they will send a ID that is the same as their IP..
-	if (!HasLowID() || m_nUserIDHybrid == 0 || m_nUserIDHybrid == GetIP()) {
-		// The hybrid ID is the address in Kad's host order, so the conversion
-		// that names that order is the one to use. It fails for a native IPv6
-		// peer, which has no ed2k ID to derive -- and the ID is then left at
-		// whatever the peer sent rather than being set to a fabricated value.
-		uint32 hostOrder = 0;
-		if (m_userAddress.ToIPv4HostOrder(hostOrder)) {
-			SetUserIDHybrid(hostOrder);
-		}
+	if (!HasLowID() || m_nUserIDHybrid == 0 || m_nUserIDHybrid == m_dwUserIP) {
+		SetUserIDHybrid(wxUINT32_SWAP_ALWAYS(m_dwUserIP));
 	}
 
 	// get client credits
 	CClientCredits *pFoundCredits = theApp->clientcredits->GetCredit(m_UserHash);
 	if (credits == NULL) {
 		credits = pFoundCredits;
-		if (!theApp->clientlist->ComparePriorUserhash(m_userAddress, m_nUserPort, pFoundCredits)) {
+		if (!theApp->clientlist->ComparePriorUserhash(m_dwUserIP, m_nUserPort, pFoundCredits)) {
 			AddDebugLogLineN(logClient,
 				CFormat("Client: %s (%s) Banreason: Userhash changed (Found in "
 					"TrackedClientsList)") %
@@ -819,7 +707,7 @@ bool CUpDownClient::ProcessHelloTypePacket(const CMemFile &data)
 		Ban();
 	}
 
-	if ((m_Friend = theApp->friendlist->FindFriend(m_UserHash, GetIP(), m_nUserPort)) != NULL) {
+	if ((m_Friend = theApp->friendlist->FindFriend(m_UserHash, m_dwUserIP, m_nUserPort)) != NULL) {
 		m_Friend->LinkClient(
 			CCLIENTREF(this, "CUpDownClient::ProcessHelloTypePacket m_Friend->LinkClient"));
 	} else {
@@ -841,7 +729,7 @@ bool CUpDownClient::ProcessHelloTypePacket(const CMemFile &data)
 	// visits.
 	if (credits != nullptr) {
 		credits->UpdateMeta(m_Username,
-			GetIP(),
+			m_dwUserIP,
 			m_nUserPort,
 			m_nKadPort,
 			m_nClientVersion,
@@ -865,71 +753,7 @@ bool CUpDownClient::ProcessHelloTypePacket(const CMemFile &data)
 		Kademlia::CKademlia::Bootstrap(wxUINT32_SWAP_ALWAYS(GetIP()), GetKadPort());
 	}
 
-	// The hello is what taught us this peer's QUIC identity value, so this is
-	// where that knowledge becomes an expectation an inbound QUIC connection can
-	// be checked against. Registered here rather than lazily when a connection
-	// arrives, because by then it is too late: the expectation has to exist
-	// before its connection does.
-	RegisterQuicExpectation(m_userAddress, GetUDPPort());
-
 	return bIsMule;
-}
-
-/**
- * Record what a QUIC connection from this peer at @a endpoint must prove.
- *
- * Both halves of the expectation come from the peer's ed2k hello, over TCP: the
- * user hash from its fixed header and the identity value from its
- * CT_MOD_QUIC_IDENT tag. Nothing here reads a QUIC connection, and that is the
- * safety property the whole QUIC authentication path rests on -- an expectation
- * derived from the thing it validates would be a validator that passes
- * everything while looking like authentication.
- *
- * Silently does nothing, and must, whenever any input is missing:
- *
- *   - no QUIC context, or a build with no ngtcp2 at all;
- *   - the peer never advertised MOD_MISCOPT_NAT_TRAVERSAL_QUIC, so it will not
- *     be speaking QUIC and an expectation for it would be state kept for
- *     nothing;
- *   - the peer sent no CT_MOD_QUIC_IDENT tag, which is the case that matters:
- *     with no value learned there is nothing to expect, FindExpectation() keeps
- *     returning NULL, and the connection is refused. Failing closed on absence
- *     is required rather than tolerated, and it costs only the faster path --
- *     the peer falls back to uTP;
- *   - no valid user hash, or a zero port. Zero is "unknown" rather than a port
- *     (PeerIdentity::MatchesUdpSourcePort()), and an expectation under it would
- *     be found by any datagram whose source port could not be read.
- *
- * @param endpoint the address the QUIC datagrams will arrive from.
- * @param port     the UDP port they will arrive from. This is deliberately the
- *        peer's UDP port and not its TCP one: they are different numbers and a
- *        registration under the wrong one would match nothing at all, silently
- *        -- which looks exactly like a peer that is offline.
- */
-void CUpDownClient::RegisterQuicExpectation(const CNetworkAddress &endpoint, uint16_t port)
-{
-	if (theApp == NULL || theApp->clientudp == NULL) {
-		return;
-	}
-	if (!m_modCapabilities.SupportsNatTraversalQuic()) {
-		return;
-	}
-	if (!m_modQuicProofValue.IsPresent() || !HasValidHash()) {
-		return;
-	}
-
-	CQuicContext *context = theApp->clientudp->GetQuicContext();
-	if (context == NULL || !context->IsAvailable()) {
-		return;
-	}
-
-	if (context->RegisterExpectation(
-		    endpoint, port, GetUserHash().GetHash(), m_modQuicProofValue.Bytes())) {
-		AddDebugLogLineN(logClient,
-			CFormat("An inbound QUIC connection from %s:%u will be required to prove this "
-				"peer's advertised identity") %
-				wxString(endpoint.ToString()) % (unsigned)port);
-	}
 }
 
 bool CUpDownClient::SendHelloPacket()
@@ -937,7 +761,7 @@ bool CUpDownClient::SendHelloPacket()
 	wxCHECK(m_socket != NULL, true);
 
 	// if IP is filtered, don't greet him but disconnect...
-	if (theApp->ipfilter->IsFiltered(m_socket->GetPeerAddress())) {
+	if (theApp->ipfilter->IsFiltered(m_socket->GetPeerInt())) {
 		if (Disconnected("IPFilter")) {
 			Safe_Delete();
 			return false;
@@ -1230,50 +1054,6 @@ void CUpDownClient::SendHelloAnswer()
 	SendPacket(packet, true);
 }
 
-/**
- * This client's own QUIC NAT-T identity value, or NULL when it has none.
- *
- * Derived once from the secure-identification public key and then cached, which
- * is both an optimisation and a correctness property: the value must be the same
- * in every hello this process sends, and the same again after a restart, or a
- * peer that learned it from one handshake would refuse the connection that
- * followed. Caching also makes the "no key yet" case reachable more than once --
- * cryptkey.dat is loaded during startup, so an early hello can legitimately find
- * no key and a later one find it.
- *
- * NULL means no key, which is a real state rather than a failure: secure
- * identification may be off or its key not yet loaded. A client with no value
- * advertises no tag, no peer can form an expectation for it, and every inbound
- * QUIC connection to it is refused -- costing the faster path and nothing else,
- * because the peer falls back to uTP automatically and silently.
- *
- * @return QUIC_NATT_PROOF_VALUE_LENGTH bytes, or NULL.
- */
-static const uint8_t *LocalQuicProofValue()
-{
-	static uint8_t value[QUIC_NATT_PROOF_VALUE_LENGTH] = { 0 };
-	static bool derived = false;
-
-	if (derived) {
-		return value;
-	}
-
-	if (theApp == NULL || theApp->clientcredits == NULL) {
-		return NULL;
-	}
-
-	// The public half only. See DeriveLocalQuicProofValue() in
-	// src/QuicProofValue.cpp for what is hashed and why publishing a
-	// fingerprint of an already-public key discloses nothing.
-	if (!DeriveLocalQuicProofValue(
-		    theApp->clientcredits->GetPublicKey(), theApp->clientcredits->GetPubKeyLen(), value)) {
-		return NULL;
-	}
-
-	derived = true;
-	return value;
-}
-
 void CUpDownClient::SendHelloTypePacket(CMemFile *data)
 {
 	data->WriteHash(thePrefs::GetUserHash());
@@ -1286,120 +1066,6 @@ void CUpDownClient::SendHelloTypePacket(CMemFile *data)
 		tagcount += 2;
 	}
 	tagcount++; // eMule misc flags 2 (kad version)
-
-	// eMuleAI vendor capabilities (CT_MOD_MISCOPTIONS), emitted only when this
-	// client actually has something to claim. An absent tag and an all-zero
-	// word mean the same thing to eMuleAI, so a client with nothing to claim
-	// spends no bytes on it.
-	//
-	// Two independent gates compose into the one word, and both ask the same
-	// question -- can this end actually serve the thing it is about to claim?
-	// -- rather than whether it was compiled in or bound:
-	//
-	//   - bit 1, uTP NAT traversal: whether this end can *serve* a uTP
-	//     connection. An -DENABLE_UTP=YES build has a utp_context and still
-	//     drops every inbound uTP connection until the accept path is wired
-	//     (task 3.1), and a peer that read the bit would spend its connection
-	//     attempts on a client that discards them with nothing logged on
-	//     either side. Compiled and initialised is the equivalent of a bound
-	//     socket.
-	//   - bit 2, IPv6: whether inbound IPv6 connectivity has actually been
-	//     verified. A socket bound behind a firewall that drops every inbound
-	//     packet would have aMule advertising an address that never answers --
-	//     the same failure mode. See src/IPv6Reachability.h.
-	//
-	// The two are OR'd, not chosen between: a build that can serve uTP and has
-	// verified IPv6 advertises both, one that can do neither advertises zero.
-	//
-	// This makes the word a runtime value, where it used to be a compile-time
-	// constant guarded by a static_assert that a non-zero word implies the tag
-	// below is emitted and this count incremented. That assert cannot survive
-	// as an assert, so the guarantee is structural instead: the word is decided
-	// once, here, into a const, and bModMiscOptionsTagCounted is the single
-	// bool that both the count and the emission read. The count goes on the
-	// wire before the tags, so a disagreement between the two desynchronises
-	// the reader -- there must be no second expression able to disagree.
-	const uint32 uAdvertisedModMiscOptions =
-		AdvertisedModMiscOptions(
-			theApp->clientudp != NULL && theApp->clientudp->CanServeUtpConnections(),
-			theApp->clientudp != NULL && theApp->clientudp->CanServeQuicConnections()) |
-		theApp->GetReachability().AdvertisedModMiscOptions();
-	const bool bModMiscOptionsTagCounted = uAdvertisedModMiscOptions != 0;
-
-	// CT_MOD_IP_V6 is a second tag, gated on the IPv6 bit being in the word
-	// above and on there being an address to put in it. The bytes are produced
-	// here, once, and the tag below writes exactly what was counted: deciding
-	// twice is how a tagcount and its tags drift apart.
-	uint8 localIPv6Bytes[16] = { 0 };
-	const bool emitModIPv6 = ((uAdvertisedModMiscOptions & MOD_MISCOPT_IPV6) != 0) &&
-				 theApp->GetVerifiedIPv6Address().ToIPv6Bytes(localIPv6Bytes);
-
-	// The compile-time half of the old assert, which does survive: whatever
-	// this build can advertise stays inside the bits PeerCapabilities.h
-	// defines, so a bit can never reach a peer without a name.
-	static_assert((AdvertisableModMiscOptions() & ~MOD_MISCOPT_KNOWN_MASK) == 0,
-		"every advertisable CT_MOD_MISCOPTIONS bit must be one of the five defined in "
-		"PeerCapabilities.h");
-	// And the runtime half: the word never exceeds what this build could claim.
-	wxASSERT((uAdvertisedModMiscOptions & ~AdvertisableModMiscOptions()) == 0);
-
-	// CT_MOD_QUIC_IDENT is a third vendor tag, on three gates, and this end is
-	// deliberately stricter than the reference implementation about all of them.
-	//
-	// **eMuleAI v1.6.0 gates it on nothing.** Measured against the running
-	// client on 2026-08-26: an OP_HELLO carrying no CT_MOD_MISCOPTIONS tag at
-	// all still drew a byte-identical OP_HELLOANSWER carrying tag 0xBF, and the
-	// 16 bytes were the same across three separate sessions. The earlier reading
-	// -- that it waits for the peer to advertise capabilities -- was an artefact
-	// of only ever having probed it with a capability word present.
-	//
-	// So the gates below are aMule's choice rather than eMuleAI's, and each
-	// costs nothing in interoperability because eMuleAI advertises all five
-	// capability bits itself:
-	//
-	//   - the peer must have advertised CT_MOD_MISCOPTIONS. This value is a
-	//     stable per-install identifier, so sending it unconditionally would
-	//     hand every peer aMule ever greets a token that correlates this
-	//     installation across addresses and sessions. It is not a secret -- it
-	//     is a fingerprint of an already-public key -- but "not secret" and
-	//     "broadcast to strangers" are different things, and only a peer in the
-	//     eMuleAI family can do anything with it. `IsEmpty()` is the right test
-	//     for "advertised": eMuleAI omits its own word when it is zero, exactly
-	//     as aMule does above, so an absent tag and an all-zero word are one
-	//     state on both sides.
-	//   - this end must be advertising the QUIC bit, on the same pattern
-	//     CT_MOD_IP_V6 follows against MOD_MISCOPT_IPV6: the tag rides the
-	//     capability it belongs to. A build with no ngtcp2 can neither answer a
-	//     QUIC connection nor make one, so the sixteen bytes would buy that peer
-	//     nothing, and a tag emitted without the capability would be an
-	//     invitation to a handshake this end cannot complete -- the one failure
-	//     mode this whole change is arranged to avoid.
-	//   - there must be a value at all: no secure-identification key means no
-	//     identity value, no tag, and no peer able to authenticate a QUIC
-	//     connection from this client. That fails closed -- see
-	//     LocalQuicProofValue().
-	//
-	// The asymmetry is safe in the direction that matters. A peer needs our
-	// value only to authenticate a connection *we* dial, and we dial QUIC only
-	// when we have the capability we are gating on.
-	//
-	// Decided once, into a const, for the same reason as the word above: the
-	// tagcount goes on the wire before the tags, so a second expression able to
-	// disagree with this one would desynchronise the reader.
-	const uint8_t *localQuicProofValue = LocalQuicProofValue();
-	const bool emitModQuicIdent = !m_modCapabilities.IsEmpty() &&
-				      (uAdvertisedModMiscOptions & MOD_MISCOPT_NAT_TRAVERSAL_QUIC) != 0 &&
-				      localQuicProofValue != NULL;
-
-	if (bModMiscOptionsTagCounted) {
-		tagcount++;
-	}
-	if (emitModIPv6) {
-		tagcount++;
-	}
-	if (emitModQuicIdent) {
-		tagcount++;
-	}
 
 #ifdef __GIT__
 	// Kry - This is the tagcount!!! Be sure to update it!!
@@ -1516,51 +1182,6 @@ void CUpDownClient::SendHelloTypePacket(CMemFile *data)
 	CTagVarInt tagMisCompatOptions(CT_EMULECOMPAT_OPTIONS, (nOSInfoSupport << 1 * 0), 32);
 
 	tagMisCompatOptions.WriteTagToFile(data);
-
-	// eMuleAI vendor capabilities (CT_MOD_MISCOPTIONS) and this client's IPv6
-	// address (CT_MOD_IP_V6).
-	//
-	// Zero unless this client can really serve a peer the thing it would be
-	// claiming, in which case nothing is written at all: eMuleAI treats an
-	// absent tag and an all-zero word identically, and advertising a
-	// capability aMule does not have is strictly worse than advertising none
-	// -- the peer opens a handshake that cannot complete and neither side logs
-	// a reason. Both live bits are gated on that: uTP on being able to serve a
-	// connection, IPv6 on *verified* inbound connectivity rather than a bound
-	// socket. See AdvertisedModMiscOptions() in src/PeerCapabilities.h and
-	// DualStack::CLocalReachability in src/IPv6Reachability.h. The three
-	// remaining vendor bits stay off; each turns on in the change that ships
-	// its transport.
-	//
-	// The emission is governed by the same bool that incremented `tagcount`
-	// above, not by a second test of the word, because the count is already on
-	// the wire by the time we get here. The assert is what is left of the
-	// static_assert that used to guarantee this when the word was a
-	// compile-time constant: it trips if the two ever stop agreeing.
-	wxASSERT((uAdvertisedModMiscOptions != 0) == bModMiscOptionsTagCounted);
-	if (bModMiscOptionsTagCounted) {
-		CTagVarInt tagModMiscOptions(CT_MOD_MISCOPTIONS, uAdvertisedModMiscOptions, 32);
-		tagModMiscOptions.WriteTagToFile(data);
-	}
-	if (emitModIPv6) {
-		// Sixteen bytes, big-endian, in the tag type eMuleAI reads them from.
-		CTagHash tagModIPv6(CT_MOD_IP_V6, CMD4Hash(localIPv6Bytes));
-		tagModIPv6.WriteTagToFile(data);
-	}
-	if (emitModQuicIdent) {
-		// This client's stable QUIC NAT-T identity value, in the 16-byte
-		// hash-typed tag eMuleAI sends it in. CMD4Hash is the tag type's
-		// carrier here and nothing MD4 is implied -- the bytes are a truncated
-		// SHA-256 digest (src/QuicProofValue.cpp) and the tag reader treats a
-		// TAGTYPE_HASH16 payload as sixteen opaque bytes.
-		//
-		// The peer stores this and will require the same sixteen bytes inside
-		// the proof of any QUIC connection we dial to it, which is the whole
-		// mechanism: the value travelled over TCP, so an attacker on the punched
-		// UDP mapping cannot supply it.
-		CTagHash tagModQuicIdent(CT_MOD_QUIC_IDENT, CMD4Hash(localQuicProofValue));
-		tagModQuicIdent.WriteTagToFile(data);
-	}
 
 #ifdef __GIT__
 	wxString mod_name(MOD_VERSION_LONG);
@@ -1748,32 +1369,11 @@ bool CUpDownClient::Disconnected(const wxString &DEBUG_ONLY(strReason), bool bFr
 		break;
 	};
 
-	// A uTP transport failure is a fact about the path -- a middlebox dropping
-	// UDP, a NAT that did not hold -- and never a fact about the peer, so it
-	// must not put the peer on the dead-source list. Read as a refusal, every
-	// peer behind one UDP-blocking middlebox gets marked dead, and the only
-	// symptom is a download with fewer sources than it should have; nothing
-	// logs, because from here it looks like an ordinary failed connection.
-	//
-	// The ordinary route for a failed uTP attempt does not come through here
-	// at all: Connect() falls back to TCP and clears the transport state, so a
-	// TCP failure afterwards is judged on its own merits and does mark the
-	// peer. This guard covers a uTP attempt that fails while the socket is
-	// already up, where the failure reaches Disconnected() directly.
-	const bool bMayBlameThePeer = !m_utpTransport.HasTransportFailed();
-	if (!bMayBlameThePeer) {
-		AddDebugLogLineN(logClient,
-			CFormat("uTP transport failure for %s: not marking the peer dead") %
-				GetClientFullInfo());
-	}
-
 	switch (m_nUploadState) {
 	case US_CONNECTING:
 	case US_WAITCALLBACK:
 	case US_ERROR:
-		if (bMayBlameThePeer) {
-			theApp->clientlist->AddDeadSource(this);
-		}
+		theApp->clientlist->AddDeadSource(this);
 		bDelete = true;
 	};
 
@@ -1782,9 +1382,7 @@ bool CUpDownClient::Disconnected(const wxString &DEBUG_ONLY(strReason), bool bFr
 	case DS_WAITCALLBACK:
 	case DS_ERROR:
 	case DS_BANNED:
-		if (bMayBlameThePeer) {
-			theApp->clientlist->AddDeadSource(this);
-		}
+		theApp->clientlist->AddDeadSource(this);
 		bDelete = true;
 	};
 
@@ -1869,31 +1467,20 @@ EContactResult CUpDownClient::CheckContactPreconditions()
 		return EContactResult::Declined;
 	}
 
-	// The address the peer will actually be dialled at, which for a HighID peer
-	// with no recorded address is the one its ed2k ID encodes. The narrow test
-	// this replaces was `uClientIP == 0`, which waved a native IPv6 peer past
-	// both checks below because such a peer has no 32-bit form: absence and
-	// "no IPv4" were the same zero. They are now distinct.
-	CNetworkAddress clientAddress = m_userAddress;
-	if (clientAddress.IsAbsent() && !HasLowID()) {
-		// The hybrid ID holds the address in Kad's host order.
-		clientAddress = CNetworkAddress::FromIPv4HostOrderOrAbsent(m_nUserIDHybrid);
+	uint32 uClientIP = GetIP();
+	if (uClientIP == 0 && !HasLowID()) {
+		uClientIP = wxUINT32_SWAP_ALWAYS(m_nUserIDHybrid);
 	}
-	if (clientAddress.IsAbsent()) {
-		// A peer this build knows an IPv6 address for but no IPv4 one is dialled
-		// at that address, so it is filtered and ban-checked at it.
-		clientAddress = m_connectAddress;
-	}
-	if (clientAddress.IsAbsent()) {
+	if (!uClientIP) {
 		return EContactResult::Contacting;
 	}
-
 	// Although we filter all received IPs (server sources, source exchange) and all incoming
 	// connection attempts, we do have to filter outgoing connection attempts here too, because we
 	// may have updated the ip filter list
-	if (theApp->ipfilter->IsFiltered(clientAddress)) {
+	if (theApp->ipfilter->IsFiltered(uClientIP)) {
 		AddDebugLogLineN(logIPFilter,
-			CFormat("Filtered ip %s on TryToConnect\n") % wxString(clientAddress.ToString()));
+			CFormat("Filtered ip %u (%s) on TryToConnect\n") % uClientIP %
+				Uint32toStringIP(uClientIP));
 		if (Disconnected("IPFilter")) {
 			Safe_Delete();
 			return EContactResult::ClientDeleted;
@@ -1902,9 +1489,9 @@ EContactResult CUpDownClient::CheckContactPreconditions()
 	}
 
 	// for safety: check again whether that IP is banned
-	if (theApp->clientlist->IsBannedClient(clientAddress)) {
-		AddDebugLogLineN(logClient,
-			"Refused to connect to banned client " + wxString(clientAddress.ToString()));
+	if (theApp->clientlist->IsBannedClient(uClientIP)) {
+		AddDebugLogLineN(
+			logClient, "Refused to connect to banned client " + Uint32toStringIP(uClientIP));
 		if (Disconnected("Banned IP")) {
 			Safe_Delete();
 			return EContactResult::ClientDeleted;
@@ -2144,206 +1731,23 @@ EContactResult CUpDownClient::TryToContact(bool bIgnoreMaxCon)
 	return EContactResult::Contacting;
 }
 
-// Try to reach this peer over uTP instead of TCP.
-//
-// @return true when a uTP connection attempt is under way, so the caller must
-//         not dial TCP. False means TCP, and if a transport failure was
-//         recorded on the way out, the caller is running the fallback the spec
-//         delta requires rather than an ordinary TCP connection.
-//
-// Only "this end cannot use uTP for this peer" answers are recorded as transport
-// failures. That is deliberate: libutp missing from the build, a context that
-// could not be created, an address family this transport does not carry yet --
-// every one of those is a property of our side of the path, so blaming the peer
-// for any of them would cost a source for no reason.
-bool CUpDownClient::ConnectOverUtp()
-{
-	if (!m_socket) {
-		return false;
-	}
-
-	if (m_socket->HasUtpTransport()) {
-		// A uTP attempt is already in flight on this socket. Reporting it as
-		// still in flight rather than dialling a second one: two utp_sockets to
-		// the same peer would both complete and the second hello would be
-		// answered on a connection nothing above the socket knows about.
-		return true;
-	}
-
-	// The address about to be dialled -- the same one the TCP branch below
-	// uses, so uTP and TCP cannot disagree about which peer this is.
-	const CNetworkAddress candidate = m_familyAttempts.Current();
-	CNetworkAddress target = candidate.IsPresent()
-					 ? candidate
-					 : CNetworkAddress::FromIPv4NetworkOrderOrAbsent(GetConnectIP());
-	uint16_t targetPort = GetUserPort();
-
-	CUtpContext *context = theApp->clientudp != NULL ? theApp->clientudp->GetUtpContext() : NULL;
-
-	// A hole punch that landed is worth more than any address either side
-	// advertised: the mapping that delivered a packet is the mapping that is
-	// open, and behind a port-rewriting NAT it is frequently not the port the
-	// peer believes it has. So if a rendezvous for this peer saw a punch
-	// arrive, the uTP connection goes over that mapping -- which is what
-	// "establish the connection over the punched hole" means concretely, and
-	// it works because uTP shares the ed2k UDP port and therefore shares the
-	// hole. Only the uTP dial is redirected; the TCP fallback below keeps the
-	// advertised address, because a punched UDP mapping says nothing about TCP.
-	if (HasValidHash() && theApp->clientudp != NULL) {
-		CNetworkAddress punched;
-		uint16_t punchedPort = 0;
-		if (theApp->clientudp->GetNatRendezvousManager()->ObservedEndpoint(
-			    GetUserHash().GetHash(), punched, punchedPort)) {
-			AddDebugLogLineN(logClient,
-				CFormat("Dialling %s over the punched mapping %s:%u instead of "
-					"%s:%u") %
-					GetClientFullInfo() % wxString(punched.ToString()) % punchedPort %
-					wxString(target.ToString()) % targetPort);
-			target = punched;
-			targetPort = punchedPort;
-
-			// A second expectation, under the punched mapping. The one
-			// registered from the hello is keyed on the UDP port the peer
-			// believes it has, and behind a port-rewriting NAT that is
-			// frequently not the port its packets arrive from -- which is the
-			// whole reason this branch exists for the dial. An inbound QUIC
-			// connection over the punched hole would then find no expectation
-			// and be refused, silently, for a reason neither side can see. Both
-			// are kept rather than one replaced: which mapping the peer uses is
-			// its choice, not ours.
-			RegisterQuicExpectation(punched, punchedPort);
-		}
-	}
-
-	// One decision, one place, and unit tested -- see UtpDialPolicy.h. The case
-	// that matters is the ordinary ed2k peer, which must come out of here with
-	// both flags clear so its connection is byte-for-byte the pre-uTP one.
-	const SUtpDialDecision decision = DecideUtpDial(m_modCapabilities.SupportsNatTraversal(),
-		context != NULL && context->IsAvailable(),
-		m_socket->GetUseProxy(),
-		target);
-
-	if (decision.recordTransportFailure) {
-		// Every reason *this end* cannot use uTP for a peer that asked for it.
-		// Reported as a transport failure rather than returning a plain false,
-		// because a plain false would take the peer down the pre-uTP path where
-		// a failure is the peer's fault -- and cost a source for a decision
-		// that was ours.
-		OnUtpTransportFailure();
-		return false;
-	}
-
-	if (!decision.attemptUtp) {
-		return false;
-	}
-
-	// The dial. utp_connect() puts the SYN on the wire inside DialUtp(), so
-	// from here the attempt is in flight and reports itself back through the
-	// socket's OnConnect / OnLost -- which is exactly what the TCP dial does.
-	std::unique_ptr<CUtpSocketTransport> transport(DialUtp(*context, target, targetPort));
-	if (!transport) {
-		// libutp refused to create or connect the socket. Ours, not the
-		// peer's.
-		AddDebugLogLineN(logClient,
-			CFormat("uTP dial to %s could not be started; falling back to TCP") %
-				GetClientFullInfo());
-		OnUtpTransportFailure();
-		return false;
-	}
-
-	m_socket->AttachUtpTransport(std::move(transport));
-	AddDebugLogLineN(
-		logClient, CFormat("Dialling %s:%u over uTP") % wxString(target.ToString()) % targetPort);
-	return true;
-}
-
 bool CUpDownClient::Connect()
-{
-	// A fresh sequence: rebuild what this peer says it is reachable on. The
-	// IPv6 address counts only when the peer also set the IPv6 capability bit
-	// -- an address without the bit is a peer telling us where it is not
-	// listening, and dialling it spends a connect attempt on a family it never
-	// claimed. Tag order within a hello is the peer's business, so the bit is
-	// tested here rather than while parsing.
-	// The connect address is now family-agnostic, so an IPv6 peer that reached
-	// us directly is dialled at the address it arrived from -- it does not have
-	// to also have advertised CT_MOD_IP_V6 to be reachable.
-	const bool connectIsIPv6 = m_connectAddress.IsIPv6() && !m_connectAddress.IsIPv4Mapped();
-	const CNetworkAddress advertisedIPv6 =
-		m_modCapabilities.SupportsIPv6() ? m_modIPv6 : CNetworkAddress::Absent();
-	m_familyAttempts.Reset(connectIsIPv6 ? CNetworkAddress::Absent() : m_connectAddress,
-		connectIsIPv6 ? m_connectAddress : advertisedIPv6);
-	return ConnectToCurrentCandidate();
-}
-
-bool CUpDownClient::ConnectToCurrentCandidate()
 {
 	m_hasbeenobfuscatinglately = false;
 
 	if (!m_socket->IsOk()) {
-		// Before the transport is chosen, not after: obfuscation lives in
-		// CEncryptedStreamSocket, which sits above the socket wrapper and
-		// therefore applies to a uTP connection on exactly the same terms as to
-		// a TCP one. Setting it here rather than in the TCP branch is what makes
-		// that true; the TCP path sees the identical pair of calls in the
-		// identical order, because ConnectOverUtp() is a no-op for a peer that
-		// did not advertise uTP.
+		// Enable or disable crypting based on our and the remote clients preference
 		if (HasValidHash() && SupportsCryptLayer() && thePrefs::IsClientCryptLayerSupported() &&
 			(RequestsCryptLayer() || thePrefs::IsClientCryptLayerRequested())) {
 			m_socket->SetConnectionEncryption(true, GetUserHash().GetHash(), false);
 		} else {
 			m_socket->SetConnectionEncryption(false, NULL, false);
 		}
-
-		if (ConnectOverUtp()) {
-			// A uTP attempt is in flight; it reports back through
-			// OnUtpConnected() or OnUtpTransportFailure().
-			return true;
-		}
-
-		const SUtpAttemptDisposition utp = GetUtpDisposition();
-		if (m_utpTransport.HasTransportFailed() && !utp.tryTcp) {
-			// uTP failed and TCP was already dialled on this pass, so
-			// there is nothing left to try right now. The peer keeps its
-			// place in the source list regardless: a peer behind a
-			// UDP-blocking middlebox is a candidate again next time. True
-			// rather than false -- false means "the client was deleted" to
-			// TryToConnect(), which is the opposite of keeping the source.
-			wxASSERT(!utp.markPeerDead && !utp.dropFromSourceList);
-			AddDebugLogLineN(logClient,
-				CFormat("uTP unavailable for %s and TCP already tried; keeping "
-					"the source") %
-					GetClientFullInfo());
-			return true;
-		}
-
-		if (m_utpTransport.HasTransportFailed()) {
-			AddDebugLogLineN(logClient,
-				CFormat("uTP transport failure for %s; falling back to TCP") %
-					GetClientFullInfo());
-		}
-
-		// The uTP attempt ends here. Clearing it is what keeps a TCP failure
-		// after a uTP one from being shielded by the uTP failure that
-		// preceded it: from this point the peer is on TCP and is judged on
-		// TCP's terms, exactly as it was before uTP existed.
-		m_bUtpTcpAttempted = true;
-		m_utpTransport.Reset();
-
 		amuleIPV4Address tmp;
-		// The candidate carries its own family, so the socket layer opens the
-		// right kind of socket for it -- see AddressFamilyPolicy.h. Falling
-		// back to the 32-bit path when there is no candidate keeps the
-		// behaviour of a peer with only an IPv4 address exactly as it was.
-		const CNetworkAddress target = m_familyAttempts.Current();
-		if (target.IsPresent()) {
-			tmp.SetAddress(target);
-		} else {
-			tmp.Hostname(GetConnectIP());
-		}
+		tmp.Hostname(GetConnectIP());
 		tmp.Service(GetUserPort());
-		AddDebugLogLineN(
-			logClient, CFormat("Trying to connect to %s:%u") % tmp.IPAddress() % GetUserPort());
+		AddDebugLogLineN(logClient,
+			"Trying to connect to " + Uint32_16toStringIP_Port(GetConnectIP(), GetUserPort()));
 		m_socket->Connect(tmp, false);
 		// We should send hello packets AFTER connecting!
 		// so I moved it to OnConnect
@@ -2351,26 +1755,6 @@ bool CUpDownClient::ConnectToCurrentCandidate()
 	} else {
 		return false;
 	}
-}
-
-bool CUpDownClient::RetryNextAddressFamily()
-{
-	if (!m_familyAttempts.RecordFailureAndAdvance()) {
-		// Every advertised family has failed. The caller falls through to its
-		// existing dead-peer handling, which is now reached only here.
-		return false;
-	}
-	if (!m_socket) {
-		return false;
-	}
-	// The failed socket cannot be reused: asio's connect left it open in the
-	// other family. A fresh one is created exactly as TryToConnect() does it.
-	m_socket->Safe_Delete();
-	m_socket = new CClientTCPSocket(this, thePrefs::GetProxyData());
-	AddDebugLogLineN(logClient,
-		CFormat("Connect failed, falling back to the peer's other address family: %s") %
-			wxString(m_familyAttempts.Current().ToString()));
-	return ConnectToCurrentCandidate();
 }
 
 // Put the browse's ask on the wire, if this browse is still waiting for it.
@@ -2418,21 +1802,6 @@ void CUpDownClient::ConnectionEstablished()
 	   definition */
 
 	m_hasbeenobfuscatinglately = (m_socket && m_socket->IsConnected() && m_socket->IsObfusicating());
-
-	// A connection came up, so the family sequence starts clean next time: a
-	// transient failure on one family is not a permanent verdict on it.
-	m_familyAttempts.RecordSuccess();
-
-	// And any hole punch for this peer is over. Cancelled here rather than
-	// where the punch is sent, because this is the one place that knows the
-	// connection exists -- and it is cancelled however the connection came up,
-	// including on the callback or buddy path, since the requirement is that no
-	// further hole-punch packets are sent for the pair and not that the punch
-	// is what succeeded. A no-op for the ordinary peer, which has no entry.
-	if (HasValidHash() && theApp->clientudp != NULL) {
-		theApp->clientudp->GetNatRendezvousManager()->OnConnectionEstablished(
-			GetUserHash().GetHash());
-	}
 
 #ifdef __DEBUG__
 	if (!connection_reason.IsEmpty()) {
@@ -3322,20 +2691,13 @@ void CUpDownClient::SetUserIDHybrid(uint32 nUserID)
 
 void CUpDownClient::SetIP(uint32 val)
 {
-	// val is an ed2k-order field in which zero means "address unknown"; the
-	// boundary conversion resolves that overload once, here.
-	SetAddress(CNetworkAddress::FromIPv4NetworkOrderOrAbsent(val));
-}
+	theApp->clientlist->UpdateClientIP(this, val);
 
-void CUpDownClient::SetAddress(const CNetworkAddress &address)
-{
-	// The index is updated before the field, because UpdateClientIP() finds the
-	// existing entry by reading the current one.
-	theApp->clientlist->UpdateClientIP(this, address);
+	m_dwUserIP = val;
 
-	m_userAddress = address;
-	m_connectAddress = address;
-	m_fullUserAddress = address;
+	m_nConnectIP = val;
+
+	m_FullUserIP = val;
 }
 
 void CUpDownClient::SetUserHash(const CMD4Hash &userhash)

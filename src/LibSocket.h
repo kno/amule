@@ -26,14 +26,9 @@
 #ifndef __LIBSOCKET_H__
 #define __LIBSOCKET_H__
 
-#include "NetworkAddress.h" // Needed for CNetworkAddress
 #include "Types.h"
 #include <memory> // shared_ptr for CAsioUDPSocketImpl ownership
 class amuleIPV4Address;
-class CUtpSocketTransport;
-class CQuicSocketTransport;
-class CStreamTransportNotifier;
-class IStreamTransport;
 
 // Socket flags (unused in ASIO implementation, just provide the names)
 enum
@@ -132,14 +127,6 @@ public:
 	// Get peer address (better API than wx)
 	wxString GetPeer();
 	uint32 GetPeerInt();
-	// The peer's address with its family intact. GetPeerInt() answers zero for
-	// an IPv6 peer -- the same zero it answers for 0.0.0.0 -- so a caller that
-	// has to tell those apart, such as the ed2k accept path, reads this.
-	const CNetworkAddress &GetPeerAddress() const;
-	// The local end of the connection. For an accepted socket this is the
-	// address the peer reached us on, which is where a wildcard-bound listener
-	// learns which of the machine's own addresses is reachable from outside.
-	CNetworkAddress GetLocalAddress() const;
 
 	// Turn on TCP keepalive with per-socket timings so a half-open
 	// connection (peer gone, FIN/RST lost or never sent) gets torn
@@ -158,65 +145,6 @@ public:
 	// delayed-ACK timer — see CECMuleSocket::ApplyEcSocketOptions. No-op
 	// if the underlying socket is not open.
 	void EnableTcpNoDelay();
-
-	//
-	// Transport substitution: uTP and QUIC
-	//
-	// aMule has no socket-layer abstraction -- that is the whole reason the
-	// uTP change needed a shim (see openspec/changes/amule-utp-transport). This
-	// wrapper is the seam: everything above it (CProxySocket,
-	// CEncryptedStreamSocket, CEMSocket, CClientTCPSocket) consumes
-	// Read/Write/IsConnected/IsOk/BlocksRead/BlocksWrite and the peer
-	// accessors, and never touches the asio socket directly. So a wrapper that
-	// wears a substituted transport routes exactly those calls through it and
-	// the entire stack above is unchanged, obfuscation included.
-	//
-	// The absence of a transport is the only thing an ordinary TCP connection
-	// can observe: every intercepting method is `if (m_streamTransport) {...}`
-	// followed by the call it always made. In a build with neither -DENABLE_UTP
-	// nor -DENABLE_QUIC nothing ever attaches one, so that branch is never
-	// taken.
-	//
-	// There is one pointer for both transports rather than one each, and that is
-	// not a saving but a correctness measure: the alternative is fifteen pairs
-	// of routing branches whose two halves must never drift, in the one file
-	// where a drift shows up as a connection that reads bytes and never writes
-	// them. The two are mutually exclusive by construction -- a connection is
-	// dialled or accepted over exactly one transport -- so one pointer is also
-	// the honest shape. See IStreamTransport in src/StreamTransport.h.
-
-	/**
-	 * Substitute uTP for TCP on this wrapper. Takes ownership.
-	 *
-	 * Must be called before any connect: the asio socket is then never opened,
-	 * and the peer accessors answer from the transport instead of from a
-	 * connection that does not exist.
-	 */
-	void AttachUtpTransport(std::unique_ptr<CUtpSocketTransport> transport);
-
-	/**
-	 * Substitute an authenticated QUIC connection for TCP. Takes ownership.
-	 *
-	 * Only ever reached from CQuicInboundAcceptor, i.e. after the peer proof
-	 * validated -- so the first byte this wrapper reads is the first byte of the
-	 * ed2k hello, and CEncryptedStreamSocket above it sees exactly what it sees
-	 * on a TCP connection.
-	 */
-	void AttachQuicTransport(std::unique_ptr<CQuicSocketTransport> transport);
-
-	//! Whether a transport is substituted for TCP at all, of either kind.
-	bool HasStreamTransport() const { return m_streamTransport != nullptr; }
-
-	/**
-	 * Whether the substituted transport is specifically uTP.
-	 *
-	 * Distinct from HasStreamTransport() because the one caller
-	 * (CUpDownClient::ConnectOverUtp) is asking "is a uTP dial already in
-	 * flight on this socket", and answering yes for a QUIC connection would
-	 * suppress a uTP dial that should have happened.
-	 */
-	bool HasUtpTransport() const { return m_utpTransport != nullptr; }
-	CUtpSocketTransport *GetUtpTransport() const { return m_utpTransport; }
 
 	// Handlers
 	virtual void OnConnect(int) {}
@@ -240,23 +168,6 @@ private:
 	// any in-flight async callback still holds a shared_from_this() ref.
 	// Required to fix the wake-from-sleep use-after-free crash (issue #384).
 	std::shared_ptr<class CAsioSocketImpl> m_aSocket;
-
-	// NULL for every TCP connection, which is every connection unless this
-	// build has libutp or ngtcp2 and the peer used it. Held by unique_ptr on an
-	// incomplete type, so ~CLibSocket() and the two Attach*Transport() methods
-	// are out-of-line in LibSocketAsio.cpp, where the transports are complete.
-	std::unique_ptr<IStreamTransport> m_streamTransport;
-	// The same object as m_streamTransport when the transport is uTP, and NULL
-	// otherwise. Non-owning, and it exists only so HasUtpTransport() and
-	// GetUtpTransport() can answer "which kind" without a dynamic_cast at a
-	// call site. Set and cleared together with m_streamTransport, in the one
-	// place each is assigned.
-	CUtpSocketTransport *m_utpTransport = nullptr;
-	// Turns the transport's events back into the CoreNotify_LibSocket* events
-	// the asio reactor posts, so the socket above sees no difference. Defined
-	// in LibSocketAsio.cpp, next to those notifications.
-	std::unique_ptr<CStreamTransportNotifier> m_utpNotifier;
-
 	void LastCount();   // No. We don't have this. We return it directly with Read() and Write()
 	bool Error() const; // Only use LastError
 };

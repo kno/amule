@@ -66,14 +66,9 @@ bool CUpDownClient::Compare(const CUpDownClient *tocomp, bool bIgnoreUserhash) c
 		return GetUserHash() == tocomp->GetUserHash();
 	}
 
-	// The address comparisons below were left at `GetIP() != 0` by
-	// amule-address-widening, because the field was 32-bit and the test could
-	// not be made unambiguous on its own. It is now an explicit presence check
-	// on the address, which is also what lets two IPv6 peers be told apart:
-	// through the 32-bit accessor both would read as zero and never match.
 	if (HasLowID()) {
 		// User is firewalled.. Must do two checks..
-		if (GetAddress().IsPresent() && GetAddress() == tocomp->GetAddress()) {
+		if (GetIP() != 0 && GetIP() == tocomp->GetIP()) {
 			// The IP of both match
 			if (GetUserPort() != 0 && GetUserPort() == tocomp->GetUserPort()) {
 				// IP-UserPort matches
@@ -99,9 +94,9 @@ bool CUpDownClient::Compare(const CUpDownClient *tocomp, bool bIgnoreUserhash) c
 	// User is not firewalled.
 	if (GetUserPort() != 0) {
 		// User has a Port, lets check the rest.
-		if (GetAddress().IsPresent() && tocomp->GetAddress().IsPresent()) {
+		if (GetIP() != 0 && tocomp->GetIP() != 0) {
 			// Both clients have a verified IP..
-			if (GetAddress() == tocomp->GetAddress() && GetUserPort() == tocomp->GetUserPort()) {
+			if (GetIP() == tocomp->GetIP() && GetUserPort() == tocomp->GetUserPort()) {
 				// IP and UserPort match..
 				return true;
 			}
@@ -117,9 +112,9 @@ bool CUpDownClient::Compare(const CUpDownClient *tocomp, bool bIgnoreUserhash) c
 
 	if (GetKadPort() != 0) {
 		// User has a Kad Port.
-		if (GetAddress().IsPresent() && tocomp->GetAddress().IsPresent()) {
+		if (GetIP() != 0 && tocomp->GetIP() != 0) {
 			// Both clients have a verified IP.
-			if (GetAddress() == tocomp->GetAddress() && GetKadPort() == tocomp->GetKadPort()) {
+			if (GetIP() == tocomp->GetIP() && GetKadPort() == tocomp->GetKadPort()) {
 				// IP and KadPort Match..
 				return true;
 			}
@@ -1404,25 +1399,13 @@ void CUpDownClient::UDPReaskForDownload()
 		CPacket *response = new CPacket(data, OP_EMULEPROT, OP_REASKFILEPING);
 		AddDebugLogLineN(logClientUDP, "Client UDP socket: send OP_REASKFILEPING");
 		theStats::AddUpOverheadFileRequest(response->GetPacketSize());
-		// The socket for the peer's family. The two ed2k UDP sockets share a
-		// port and the IPv6 one is IPV6_V6ONLY, so sending an IPv6 reask out of
-		// the IPv4 socket would fail -- which is how a queue position on an
-		// IPv6 seeder would quietly expire.
-		CClientUDPSocket *udp = theApp->GetClientUDPSocketFor(GetConnectAddress());
-		if (udp == NULL) {
-			AddDebugLogLineN(logClientUDP,
-				CFormat("No ed2k UDP socket for %s: skipping OP_REASKFILEPING") %
-					wxString(GetConnectAddress().ToString()));
-			delete response;
-		} else {
-			udp->SendPacket(response,
-				GetConnectAddress(),
-				GetUDPPort(),
-				ShouldReceiveCryptUDPPackets(),
-				GetUserHash().GetHash(),
-				false,
-				0);
-		}
+		theApp->clientudp->SendPacket(response,
+			GetConnectIP(),
+			GetUDPPort(),
+			ShouldReceiveCryptUDPPackets(),
+			GetUserHash().GetHash(),
+			false,
+			0);
 	} else if (HasLowID() && GetBuddyIP() && GetBuddyPort() && HasValidBuddyID()) {
 
 		m_bUDPPending = true;

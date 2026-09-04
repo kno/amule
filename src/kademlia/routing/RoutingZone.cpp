@@ -59,7 +59,6 @@ there client on the eMule forum..
 #include "../kademlia/SearchManager.h"
 #include "../kademlia/UDPFirewallTester.h"
 #include "../net/KademliaUDPListener.h"
-#include "../net/SafeKad.h"
 #include "../utils/KadUDPKey.h"
 #include "../../amule.h"
 #include "../../CFile.h"
@@ -198,10 +197,8 @@ void CRoutingZone::ReadFile(const wxString &specialNodesdat)
 					// IP appears valid
 					if (contactVersion > 1) {
 						if (IsGoodIPPort(wxUINT32_SWAP_ALWAYS(ip), udpPort)) {
-							// ip is in Kad host order; the conversion names
-							// the byte order the bare swap only implied.
 							if (!theApp->ipfilter->IsFiltered(
-								    CNetworkAddress::FromIPv4HostOrder(ip)) &&
+								    wxUINT32_SWAP_ALWAYS(ip)) &&
 								!(
 									udpPort == 53 && contactVersion <= 5 /*No DNS Port without encryption*/)) {
 								// This was not a dead contact, inc counter if
@@ -276,8 +273,7 @@ void CRoutingZone::ReadBootstrapNodesDat(CFileDataIO &file)
 			uint8_t contactVersion = file.ReadUInt8();
 
 			if (::IsGoodIPPort(wxUINT32_SWAP_ALWAYS(ip), udpPort)) {
-				// ip is in Kad host order.
-				if (!theApp->ipfilter->IsFiltered(CNetworkAddress::FromIPv4HostOrder(ip)) &&
+				if (!theApp->ipfilter->IsFiltered(wxUINT32_SWAP_ALWAYS(ip)) &&
 					!(udpPort == 53 && contactVersion <= 5) &&
 					(contactVersion > 1)) // only kad2 nodes
 				{
@@ -468,8 +464,7 @@ bool CRoutingZone::Add(const CUInt128 &id,
 	bool fromHello)
 {
 	if (IsGoodIPPort(wxUINT32_SWAP_ALWAYS(ip), port)) {
-		// ip is in Kad host order.
-		if (!theApp->ipfilter->IsFiltered(CNetworkAddress::FromIPv4HostOrder(ip)) &&
+		if (!theApp->ipfilter->IsFiltered(wxUINT32_SWAP_ALWAYS(ip)) &&
 			!(port == 53 && version <= 5) /*No DNS Port without encryption*/) {
 			return AddUnfiltered(
 				id, ip, port, tport, version, key, ipVerified, update, fromHello);
@@ -490,23 +485,6 @@ bool CRoutingZone::AddUnfiltered(const CUInt128 &id,
 	bool fromHello)
 {
 	if (id != me) {
-		// Kad identity protections. This is the routing table's front door,
-		// so it is where an address that rotates Kad IDs faster than once
-		// an hour, or one banned for having done so, has to be turned away.
-		//
-		// onlyOneNodePerIP is deliberately off: CRoutingBin already caps
-		// the routing table at MAX_CONTACTS_IP (1) Kad ID per address plus
-		// MAX_CONTACTS_SUBNET (10) per /24, and duplicating that here would
-		// add a second, weaker copy of a rule the bin already enforces
-		// better. CSafeKad's own per-IP rule exists for callers outside the
-		// routing table.
-		if (safeKad.IsBadNode(ip, port, id, version, ipVerified, false, time(NULL))) {
-			AddDebugLogLineN(logKadRouting,
-				"Ignored kad contact (IP=" + KadIPPortToString(ip, port) +
-					") - rejected by the Kad identity protections");
-			return false;
-		}
-
 		CContact *contact = new CContact(id, ip, port, tport, version, key, ipVerified);
 		if (fromHello) {
 			contact->SetReceivedHelloPacket();
@@ -1059,11 +1037,6 @@ bool CRoutingZone::VerifyContact(const CUInt128 &id, uint32_t ip)
 		} else {
 			contact->SetIPVerified(true);
 		}
-		// The three-way handshake has just proved that this address stands
-		// behind this Kad ID. Recording it verified is what makes a later
-		// unverified claim of a different ID for the same address
-		// rejectable rather than merely rate-limited.
-		safeKad.TrackNode(ip, contact->GetUDPPort(), id, true, time(NULL));
 		return true;
 	}
 }

@@ -9,7 +9,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: aMule\n"
 "Report-Msgid-Bugs-To: https://github.com/amule-org/amule/issues\n"
-"POT-Creation-Date: 2026-09-04 08:48+0200\n"
+"POT-Creation-Date: 2026-09-02 12:15+0200\n"
 "PO-Revision-Date: 2026-09-03 11:01+0000\n"
 "Last-Translator: astur <malditoastur@gmail.com>\n"
 "Language-Team: Language ast <malditoastur@gmail.com>\n"
@@ -408,14 +408,6 @@ msgid "You requested to run amuleapi on startup, but the amuleapi binary cannot 
 msgstr "Solicitaste executar el sirvidor web al aniciu pero nun pudo correse'l binariu d'amuleweb. Por favor instala'l paquete que contenga'l sirvidor web d'aMule o compila aMule usando --enable-webserver y executa make install"
 
 #: src/amule.cpp
-msgid "Could not bind an IPv6 socket. IPv6 appears to be unavailable on this host; IPv4 operation is unaffected."
-msgstr ""
-
-#: src/amule.cpp
-msgid "Could not bind an IPv4 socket."
-msgstr ""
-
-#: src/amule.cpp
 #, c-format
 msgid "External connection: could not bind to '%s', listening on 127.0.0.1 only."
 msgstr ""
@@ -444,11 +436,6 @@ msgstr ""
 "Esto significa que tendrás IDBaxa.\n"
 "\n"
 "Comprueba la to rede y asegúrate de que'l puertu ta abiertu pa entrada y salida."
-
-#: src/amule.cpp
-#, c-format
-msgid "Client UDP socket (extended eMule) listening on %s port %u (IPv6)."
-msgstr ""
 
 #: src/amule.cpp
 msgid "Failed to create OnlineSig File"
@@ -2907,7 +2894,7 @@ msgstr "Na cola"
 msgid "Uploading"
 msgstr "Xuba"
 
-#: src/GenericClientListCtrl.cpp src/PeerCapabilities.h
+#: src/GenericClientListCtrl.cpp
 #, fuzzy
 msgid "None"
 msgstr "Dengún"
@@ -3037,13 +3024,6 @@ msgstr "Fallu al descargar GeoIP.dat dende %s"
 #, fuzzy
 msgid "Loading IP filters 'ipfilter.dat' and 'ipfilter_static.dat'."
 msgstr "Cargando fieltros IP 'ipfilter.dat' y 'ipfilter_static.dat'"
-
-#: src/IPFilter.cpp
-#, fuzzy, c-format
-msgid "Loaded %u IPv6 prefix rule."
-msgid_plural "Loaded %u IPv6 prefix rules."
-msgstr[0] "Cargáu %u rangu IP dende '%s'."
-msgstr[1] "Cargáu %u rangos IP dende '%s'."
 
 #: src/IPFilter.cpp
 #, c-format
@@ -3333,19 +3313,12 @@ msgid "Asio thread %d started"
 msgstr "Descarga HTTP filu entamáu"
 
 #: src/ListenSocket.cpp
-#, c-format
-msgid "ListenSocket: listening on %s (IPv6, also accepting IPv4 peers in mapped form)."
-msgstr ""
+msgid "ListenSocket: Ok."
+msgstr "Socket d'escucha: Ok"
 
 #: src/ListenSocket.cpp
-#, c-format
-msgid "ListenSocket: listening on %s (%s)."
-msgstr ""
-
-#: src/ListenSocket.cpp
-#, c-format
-msgid "Inbound IPv6 connection from %s on %s."
-msgstr ""
+msgid "ERROR: Could not listen to TCP port."
+msgstr "FALLU: Nun pue escuchase nel puertu TCP."
 
 #: src/Logger.cpp
 msgid "ERROR: "
@@ -4190,10 +4163,6 @@ msgstr "Ofuscación:"
 #: src/muuli_wdr.cpp
 msgid "Kad:"
 msgstr "Kad:"
-
-#: src/muuli_wdr.cpp
-msgid "Vendor capabilities:"
-msgstr ""
 
 #: src/muuli_wdr.cpp
 msgid "Transfers to client"
@@ -7282,16 +7251,6 @@ msgid "Connected since:"
 msgstr "Coneutáu"
 
 #: src/ServerWnd.cpp
-#, fuzzy
-msgid "IPv4 reachability:"
-msgstr "Disponibilidá"
-
-#: src/ServerWnd.cpp
-#, fuzzy
-msgid "IPv6 reachability:"
-msgstr "Disponibilidá"
-
-#: src/ServerWnd.cpp
 msgid "Kademlia Status:"
 msgstr "Estáu Kademlia:"
 
@@ -9394,12 +9353,6 @@ msgstr ""
 #: packaging/windows/installer_strings.c
 msgid "Removing user data at $APPDATA\\aMule..."
 msgstr ""
-
-#~ msgid "ListenSocket: Ok."
-#~ msgstr "Socket d'escucha: Ok"
-
-#~ msgid "ERROR: Could not listen to TCP port."
-#~ msgstr "FALLU: Nun pue escuchase nel puertu TCP."
 
 #, fuzzy
 #~ msgid "Available Parts"

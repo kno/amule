@@ -7,7 +7,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: aMule\n"
 "Report-Msgid-Bugs-To: https://github.com/amule-org/amule/issues\n"
-"POT-Creation-Date: 2026-09-04 08:48+0200\n"
+"POT-Creation-Date: 2026-09-02 12:15+0200\n"
 "PO-Revision-Date: 2026-09-03 11:05+0000\n"
 "Last-Translator: Dévai Tamás <gonosztopi@amule.org>\n"
 "Language-Team: Hungarian <hu@li.org>\n"
@@ -410,14 +410,6 @@ msgid "You requested to run amuleapi on startup, but the amuleapi binary cannot 
 msgstr "A web szerver futtatását kérte induláskor, de az amuleweb program nem futtatható. Kérem telepítse az aMule web szervert tartalmazó csomagot, vagy építse az aMule-t a forráskódból a -DBUILD_WEBSERVER=YES paraméterrel és installálja azt."
 
 #: src/amule.cpp
-msgid "Could not bind an IPv6 socket. IPv6 appears to be unavailable on this host; IPv4 operation is unaffected."
-msgstr ""
-
-#: src/amule.cpp
-msgid "Could not bind an IPv4 socket."
-msgstr ""
-
-#: src/amule.cpp
 #, c-format
 msgid "External connection: could not bind to '%s', listening on 127.0.0.1 only."
 msgstr ""
@@ -446,11 +438,6 @@ msgstr ""
 "Ez azt jelenti, hogy alacsony kliens azonosítót kapsz (LOWID).\n"
 "\n"
 "Ellenőrízd a hálózatodat, hogy megbizonyosodj, hogy a port nyitva van kifelé és befelé egyaránt."
-
-#: src/amule.cpp
-#, c-format
-msgid "Client UDP socket (extended eMule) listening on %s port %u (IPv6)."
-msgstr ""
 
 #: src/amule.cpp
 msgid "Failed to create OnlineSig File"
@@ -2890,7 +2877,7 @@ msgstr "Várólistán: %u"
 msgid "Uploading"
 msgstr "Feltöltés alatt"
 
-#: src/GenericClientListCtrl.cpp src/PeerCapabilities.h
+#: src/GenericClientListCtrl.cpp
 msgid "None"
 msgstr "Egyik sem"
 
@@ -3018,12 +3005,6 @@ msgstr "%s letöltése %s-től sikertelen"
 #: src/IPFilter.cpp
 msgid "Loading IP filters 'ipfilter.dat' and 'ipfilter_static.dat'."
 msgstr "IP-szűrők 'ipfilter.dat' és 'ipfilter_static.dat' betöltése."
-
-#: src/IPFilter.cpp
-#, fuzzy, c-format
-msgid "Loaded %u IPv6 prefix rule."
-msgid_plural "Loaded %u IPv6 prefix rules."
-msgstr[0] "%u IP-tartomány '%s'-ból betöltve."
 
 #: src/IPFilter.cpp
 #, c-format
@@ -3308,19 +3289,12 @@ msgid "Asio thread %d started"
 msgstr "Asio szál %d elindítva"
 
 #: src/ListenSocket.cpp
-#, c-format
-msgid "ListenSocket: listening on %s (IPv6, also accepting IPv4 peers in mapped form)."
-msgstr ""
+msgid "ListenSocket: Ok."
+msgstr "ListenSocket: rendben."
 
 #: src/ListenSocket.cpp
-#, c-format
-msgid "ListenSocket: listening on %s (%s)."
-msgstr ""
-
-#: src/ListenSocket.cpp
-#, c-format
-msgid "Inbound IPv6 connection from %s on %s."
-msgstr ""
+msgid "ERROR: Could not listen to TCP port."
+msgstr "HIBA: A TCP porton nem lehet hallgatni."
 
 #: src/Logger.cpp
 msgid "ERROR: "
@@ -4153,10 +4127,6 @@ msgstr "Zavarás:"
 #: src/muuli_wdr.cpp
 msgid "Kad:"
 msgstr "Kad:"
-
-#: src/muuli_wdr.cpp
-msgid "Vendor capabilities:"
-msgstr ""
 
 #: src/muuli_wdr.cpp
 msgid "Transfers to client"
@@ -7218,16 +7188,6 @@ msgid "Connected since:"
 msgstr "Csatlakozva"
 
 #: src/ServerWnd.cpp
-#, fuzzy
-msgid "IPv4 reachability:"
-msgstr "Elérhetőség"
-
-#: src/ServerWnd.cpp
-#, fuzzy
-msgid "IPv6 reachability:"
-msgstr "Elérhetőség"
-
-#: src/ServerWnd.cpp
 msgid "Kademlia Status:"
 msgstr "Kademlia állapot:"
 
@@ -9295,12 +9255,6 @@ msgstr ""
 #: packaging/windows/installer_strings.c
 msgid "Removing user data at $APPDATA\\aMule..."
 msgstr ""
-
-#~ msgid "ListenSocket: Ok."
-#~ msgstr "ListenSocket: rendben."
-
-#~ msgid "ERROR: Could not listen to TCP port."
-#~ msgstr "HIBA: A TCP porton nem lehet hallgatni."
 
 #~ msgid "Available Parts"
 #~ msgstr "Elérhető részek"

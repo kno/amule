@@ -650,10 +650,7 @@ void CUpDownClient::UnBan()
 	m_Aggressiveness = 0;
 
 	theApp->clientlist->AddTrackClient(this);
-	// The ban list is keyed on the address, so this passes the address rather
-	// than a 32-bit form that is zero for a native IPv6 peer -- which would
-	// have made an IPv6 peer impossible to ban and impossible to unban.
-	theApp->clientlist->RemoveBannedClient(GetAddress());
+	theApp->clientlist->RemoveBannedClient(GetIP());
 	SetUploadState(US_NONE);
 	ClearWaitStartTime();
 }
@@ -661,7 +658,7 @@ void CUpDownClient::UnBan()
 void CUpDownClient::Ban()
 {
 	theApp->clientlist->AddTrackClient(this);
-	theApp->clientlist->AddBannedClient(GetAddress());
+	theApp->clientlist->AddBannedClient(GetIP());
 
 	AddDebugLogLineN(logClient,
 		"Client '" + GetUserName() +
@@ -674,7 +671,7 @@ void CUpDownClient::Ban()
 
 bool CUpDownClient::IsBanned() const
 {
-	return (theApp->clientlist->IsBannedClient(GetAddress()) && m_nDownloadState != DS_DOWNLOADING);
+	return ((theApp->clientlist->IsBannedClient(GetIP())) && m_nDownloadState != DS_DOWNLOADING);
 }
 
 void CUpDownClient::CheckForAggressive()

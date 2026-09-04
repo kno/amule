@@ -35,7 +35,6 @@
 #include "Preferences.h"
 #include "Statistics.h"
 #include "RLE.h"
-#include "IPv6Reachability.h"       // Needed for DualStack::CLocalReachability
 #include "SearchList.h"             // Needed for CSearchFile
 #include "kademlia/utils/UInt128.h" // Needed for CUInt128
 
@@ -1190,13 +1189,6 @@ public:
 	const wxDateTime &GetED2KConnectedSince() const { return m_ed2kConnectedSince; }
 	const wxDateTime &GetKadConnectedSince() const { return m_kadConnectedSince; }
 
-	// Same reason, same shape: the reachability rows in ServerWnd.cpp render
-	// through this on both builds. Populated from EC_TAG_CONNSTATE's
-	// EC_TAG_LOCAL_REACHABILITY sub-tag in CServerConnectRem::HandlePacket; an
-	// older daemon sends no such tag and leaves it at "unavailable".
-	DualStack::CLocalReachability &GetReachability() { return m_reachability; }
-	const DualStack::CLocalReachability &GetReachability() const { return m_reachability; }
-
 	bool IsKadRunning() const
 	{
 		return ((m_ConnState & CONNECTED_KAD_OK) || (m_ConnState & CONNECTED_KAD_FIREWALLED) ||
@@ -1243,8 +1235,6 @@ public:
 	// GetED2KConnectedSince()/GetKadConnectedSince() accessors above.
 	wxDateTime m_ed2kConnectedSince;
 	wxDateTime m_kadConnectedSince;
-	//! Mirror of the daemon's own reachability; see GetReachability().
-	DualStack::CLocalReachability m_reachability;
 
 	wxLocale m_locale;
 	// This KnownFile collects all currently uploading clients for display in the upload list control

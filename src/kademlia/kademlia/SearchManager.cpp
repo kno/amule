@@ -560,8 +560,7 @@ void CSearchManager::ProcessResponse(
 	delete results;
 }
 
-void CSearchManager::ProcessResult(
-	const CUInt128 &target, const CUInt128 &answer, TagPtrList *info, uint32_t fromIP, uint16_t fromPort)
+void CSearchManager::ProcessResult(const CUInt128 &target, const CUInt128 &answer, TagPtrList *info)
 {
 	// We have results for a request for info.
 	CSearch *s = NULL;
@@ -576,7 +575,7 @@ void CSearchManager::ProcessResult(
 			"Search either never existed or receiving late results "
 			"(CSearchManager::ProcessResult)");
 	} else {
-		s->ProcessResult(answer, info, fromIP, fromPort);
+		s->ProcessResult(answer, info);
 	}
 }
 

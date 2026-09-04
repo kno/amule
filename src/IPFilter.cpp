@@ -27,7 +27,6 @@
 #include <wx/ffile.h>
 
 #include "IPFilter.h"               // Interface declarations.
-#include "IPFilterRanges.h"         // Needed for IPFilterRangesContain
 #include "IPFilterScanner.h"        // Interface for flexer
 #include "Preferences.h"            // Needed for thePrefs
 #include "amule.h"                  // Needed for theApp
@@ -57,8 +56,7 @@ class CIPFilterEvent : public wxEvent
 public:
 	CIPFilterEvent(CIPFilter::RangeIPs rangeIPs,
 		CIPFilter::RangeLengths rangeLengths,
-		CIPFilter::RangeNames rangeNames,
-		CIPv6FilterTable ipv6Rules)
+		CIPFilter::RangeNames rangeNames)
 	: wxEvent(wxID_ANY, MULE_EVT_IPFILTER_LOADED)
 	{
 		// Physically copy the vectors, this will hopefully resize them back to their needed capacity.
@@ -66,7 +64,6 @@ public:
 		m_rangeLengths = rangeLengths;
 		// This one is usually empty, and should always be swapped, not copied.
 		std::swap(m_rangeNames, rangeNames);
-		m_ipv6Rules = std::move(ipv6Rules);
 	}
 
 	/** @see wxEvent::Clone */
@@ -75,7 +72,6 @@ public:
 	CIPFilter::RangeIPs m_rangeIPs;
 	CIPFilter::RangeLengths m_rangeLengths;
 	CIPFilter::RangeNames m_rangeNames;
-	CIPv6FilterTable m_ipv6Rules;
 };
 
 wxDEFINE_EVENT(MULE_EVT_IPFILTER_LOADED, CIPFilterEvent);
@@ -196,20 +192,7 @@ private:
 		AddDebugLogLineN(logIPFilter,
 			CFormat("Ranges in map: %d  blocked ranges in table: %d") % size % m_rangeIPs.size());
 
-		// Visible, unlike the IPv4 table's own diagnostics, and only when
-		// there is something to say: an IPv6 rule is a new thing for this file
-		// to contain, so a user who adds one needs to see that it was read
-		// rather than discarded as a malformed line. Silent on the
-		// overwhelmingly common IPv4-only list.
-		if (!m_ipv6Rules.Empty()) {
-			const unsigned int ipv6Rules = (unsigned int)m_ipv6Rules.Size();
-			AddLogLineN(CFormat(wxPLURAL("Loaded %u IPv6 prefix rule.",
-					    "Loaded %u IPv6 prefix rules.",
-					    ipv6Rules)) %
-				    ipv6Rules);
-		}
-
-		CIPFilterEvent evt(m_rangeIPs, m_rangeLengths, m_rangeNames, m_ipv6Rules);
+		CIPFilterEvent evt(m_rangeIPs, m_rangeLengths, m_rangeNames);
 		wxQueueEvent(m_owner, (evt).Clone());
 	}
 
@@ -240,7 +223,6 @@ private:
 	CIPFilter::RangeIPs m_rangeIPs;
 	CIPFilter::RangeLengths m_rangeLengths;
 	CIPFilter::RangeNames m_rangeNames;
-	CIPv6FilterTable m_ipv6Rules;
 
 	wxEvtHandler *m_owner;
 	// temporary map for filter generation
@@ -281,49 +263,6 @@ private:
 	}
 
 	/**
-	 * Reads the IPv6 prefix rules out of an already-unpacked filter file.
-	 *
-	 * Hand-written rather than added to the flex grammar in IPFilterScanner.l:
-	 * that file's output is checked in and only regenerated where flex is
-	 * installed, so a grammar change silently does nothing on a build host
-	 * without it -- and a filter rule that silently does nothing is the worst
-	 * possible failure mode for this file.
-	 *
-	 * @return The number of rules read.
-	 */
-	int LoadIPv6FromFile(const CPath &path)
-	{
-		CTextFile file;
-		if (!file.Open(path, CTextFile::read)) {
-			return 0;
-		}
-
-		const uint8 accessLevel = thePrefs::GetIPFilterLevel();
-		int count = 0;
-		while (!file.Eof()) {
-			const wxString line = file.GetNextLine();
-			if (line.IsEmpty()) {
-				continue;
-			}
-			SIPv6Prefix prefix;
-			uint16 ruleLevel = 0;
-			std::string description;
-			if (!ParseIPv6FilterLine(
-				    std::string(unicode2char(line)), prefix, ruleLevel, description)) {
-				continue;
-			}
-			++count;
-			// Same level test the IPv4 table applies: a rule above the
-			// configured level is read and then not enforced.
-			if (ruleLevel >= accessLevel) {
-				continue;
-			}
-			m_ipv6Rules.Add(prefix, m_storeDescriptions ? description : std::string());
-		}
-		return count;
-	}
-
-	/**
 	 * Loads a IP-list from the specified file, can be text or zip.
 	 *
 	 * @return True if the file was loaded, false otherwise.
@@ -359,13 +298,6 @@ private:
 			return 0;
 		}
 
-		// IPv6 rules first, and separately: the flex lexer only knows the
-		// dotted-quad grammar, so an IPv6 line reaches it as a malformed one.
-		// Reading them here means a user can put an IPv6 prefix in the same
-		// ipfilter.dat as everything else and have it work, rather than having
-		// it silently counted as a discarded line.
-		const int ipv6count = LoadIPv6FromFile(path);
-
 		int filtercount = 0;
 		yyip_Bad = 0;
 		wxFFile readFile;
@@ -394,15 +326,6 @@ private:
 				file);
 			return 0;
 		}
-
-		// Both adjustments before the message is built, so the count the user
-		// reads is the count that is returned. The lexer counted every IPv6
-		// line as malformed on its way past; they were not, they were read
-		// above.
-		if (yyip_Bad >= (unsigned)ipv6count) {
-			yyip_Bad -= (unsigned)ipv6count;
-		}
-		filtercount += ipv6count;
 
 		wxString msg = CFormat(wxPLURAL("Loaded %u IP-range from '%s'.",
 				       "Loaded %u IP-ranges from '%s'.",
@@ -493,65 +416,6 @@ uint32 CIPFilter::BanCount() const
 	return m_rangeIPs.size();
 }
 
-bool CIPFilter::IsFiltered(const CNetworkAddress &address, bool isServer)
-{
-	if (address.IsAbsent()) {
-		// No connection to filter.
-		return false;
-	}
-	if ((!thePrefs::IsFilteringClients() && !isServer) || (!thePrefs::IsFilteringServers() && isServer)) {
-		return false;
-	}
-	if (!m_ready) {
-		// Somebody connected before we even started the networks.
-		// Filter is not up yet, so block him.
-		AddDebugLogLineN(logIPFilter,
-			CFormat("Filtered IP %s because filter isn't ready yet.") % address.ToString());
-		CountFiltered(isServer);
-		return true;
-	}
-
-	SFilterVerdict verdict;
-	{
-		wxMutexLocker lock(m_mutex);
-		verdict = MatchFilterRules(address, m_rangeIPs, m_rangeLengths, m_ipv6Rules);
-		if (!verdict.blocked) {
-			return false;
-		}
-		// The rule's own description, read under the same lock as the tables
-		// it was found in.
-		wxString ruleName;
-		if (verdict.family == EFilterRuleFamily::IPv4) {
-			if (verdict.ruleIndex < m_rangeNames.size()) {
-				ruleName = char2unicode(m_rangeNames[verdict.ruleIndex].c_str());
-			}
-		} else {
-			ruleName = char2unicode(m_ipv6Rules.Description(verdict.ruleIndex).c_str());
-		}
-		// The rule's family, not the connection's. A peer arriving as
-		// ::ffff:a.b.c.d and blocked by an IPv4 range must say so, or the log
-		// sends the user looking for an IPv6 rule they never wrote.
-		AddDebugLogLineN(logIPFilter,
-			CFormat("Filtered %s%s by %s rule #%d%s") % verdict.matchedAddress.ToString() %
-				(verdict.arrivedMapped ? " (arrived IPv4-mapped)" : "") %
-				(verdict.family == EFilterRuleFamily::IPv4 ? "IPv4" : "IPv6") %
-				(int)verdict.ruleIndex %
-				(ruleName.IsEmpty() ? wxString(wxEmptyString)
-						    : wxString(" (" + ruleName + ")")));
-	}
-	CountFiltered(isServer);
-	return true;
-}
-
-void CIPFilter::CountFiltered(bool isServer)
-{
-	if (isServer) {
-		theStats::AddFilteredServer();
-	} else {
-		theStats::AddFilteredClient();
-	}
-}
-
 bool CIPFilter::IsFiltered(uint32 IPTest, bool isServer)
 {
 	if ((!thePrefs::IsFilteringClients() && !isServer) || (!thePrefs::IsFilteringServers() && isServer)) {
@@ -570,16 +434,35 @@ bool CIPFilter::IsFiltered(uint32 IPTest, bool isServer)
 		return true;
 	}
 	wxMutexLocker lock(m_mutex);
-	// The range table is in host order; the address handed to us is in ed2k
-	// order. IPFilterRangesContain() owns the search itself -- see
-	// IPFilterRanges.h for why it lives outside this class.
-	const uint32 ip = wxUINT32_SWAP_ALWAYS(IPTest);
-	size_t i = 0;
-	const bool found = IPFilterRangesContain(m_rangeIPs, m_rangeLengths, ip, i);
+	// The IP needs to be in host order
+	uint32 ip = wxUINT32_SWAP_ALWAYS(IPTest);
+	int imin = 0;
+	int imax = m_rangeIPs.size() - 1;
+	int i;
+	bool found = false;
+	while (imin <= imax) {
+		i = (imin + imax) / 2;
+		uint32 curIP = m_rangeIPs[i];
+		if (curIP <= ip) {
+			uint32 curLength = m_rangeLengths[i];
+			if (curLength >= 0x8000) {
+				curLength = ((curLength & 0x7fff) << 12) + 0xfff;
+			}
+			if (curIP + curLength >= ip) {
+				found = true;
+				break;
+			}
+		}
+		if (curIP > ip) {
+			imax = i - 1;
+		} else {
+			imin = i + 1;
+		}
+	}
 	if (found) {
 		AddDebugLogLineN(logIPFilter,
 			CFormat("Filtered IP %s%s") % Uint32toStringIP(IPTest) %
-				(i < m_rangeNames.size()
+				(i < (int)m_rangeNames.size()
 						? (" (" + wxString(char2unicode(m_rangeNames[i].c_str())) +
 							  ")")
 						: wxString("")));
@@ -658,7 +541,6 @@ void CIPFilter::OnIPFilterEvent(CIPFilterEvent &evt)
 		std::swap(m_rangeIPs, evt.m_rangeIPs);
 		std::swap(m_rangeLengths, evt.m_rangeLengths);
 		std::swap(m_rangeNames, evt.m_rangeNames);
-		m_ipv6Rules = std::move(evt.m_ipv6Rules);
 		m_ready = true;
 	}
 	if (theApp->IsOnShutDown()) {

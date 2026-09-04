@@ -120,15 +120,10 @@ private:
 	// Kad1.0
 	void SendLegacyChallenge(uint32_t ip, uint16_t port, const CUInt128 &contactID);
 
-	// The sender's address travels with every search response so that
-	// CSearch can look the answering contact up and gate
-	// version-dependent result tags on its advertised Kad version.
-	void ProcessSearchResponse(CMemFile &bio, uint32_t fromIP, uint16_t fromPort);
-	void ProcessSearchResponse(
-		const uint8_t *packetData, uint32_t lenPacket, uint32_t fromIP, uint16_t fromPort);
+	void ProcessSearchResponse(CMemFile &bio);
+	void ProcessSearchResponse(const uint8_t *packetData, uint32_t lenPacket);
 	void ProcessPublishResponse(const uint8_t *packetData, uint32_t lenPacket, uint32_t ip);
-	void ProcessSearchNotesResponse(
-		const uint8_t *packetData, uint32_t lenPacket, uint32_t ip, uint16_t port);
+	void ProcessSearchNotesResponse(const uint8_t *packetData, uint32_t lenPacket, uint32_t ip);
 	void ProcessFirewalledRequest(const uint8_t *packetData,
 		uint32_t lenPacket,
 		uint32_t ip,
@@ -212,11 +207,8 @@ private:
 		uint32_t ip,
 		uint16_t port,
 		const CKadUDPKey &senderKey);
-	void Process2SearchResponse(const uint8_t *packetData,
-		uint32_t lenPacket,
-		uint32_t ip,
-		uint16_t port,
-		const CKadUDPKey &senderKey);
+	void Process2SearchResponse(
+		const uint8_t *packetData, uint32_t lenPacket, const CKadUDPKey &senderKey);
 	void Process2PublishNotesRequest(const uint8_t *packetData,
 		uint32_t lenPacket,
 		uint32_t ip,

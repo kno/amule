@@ -92,7 +92,6 @@
 #include "ServerList.h"                 // Needed for CServerList
 #include "ServerConnect.h"              // Needed for CServerConnect
 #include "ServerUDPSocket.h"            // Needed for CServerUDPSocket
-#include "GetTickCount.h"               // Needed for GetTickCount64
 #include "Statistics.h"                 // Needed for CStatistics
 #include "AmuleApiCredentials.h"        // Needed for AmuleApiCredentials::RefreshState
 #include <AtomicFile.h>                 // webcommon::WriteFileAtomic0600 for the EC token
@@ -238,7 +237,6 @@ CamuleApp::CamuleApp()
 	sharedfiles = NULL;
 	listensocket = NULL;
 	clientudp = NULL;
-	clientudpV6 = NULL;
 	clientcredits = NULL;
 	friendlist = NULL;
 	downloadqueue = NULL;
@@ -424,9 +422,6 @@ int CamuleApp::OnExit()
 
 	delete clientudp;
 	clientudp = NULL;
-
-	delete clientudpV6;
-	clientudpV6 = NULL;
 
 	delete knownfiles;
 	knownfiles = NULL;
@@ -1472,24 +1467,6 @@ bool CamuleApp::OnInit()
 	return true;
 }
 
-void CamuleApp::LogBindFailure(DualStack::EFamily family, uint16 port, const wxString &protocol)
-{
-	// Every attempt is visible in the debug log; the user-visible log gets one
-	// line per family per start. See the declaration for why.
-	AddDebugLogLineN(logGeneral,
-		CFormat("Could not bind a %s %s socket on port %u") % DualStack::FamilyName(family) %
-			protocol % port);
-	if (!m_listenerState.ShouldReportFailure(family)) {
-		return;
-	}
-	if (family == DualStack::EFamily::IPv6) {
-		AddLogLineC(_("Could not bind an IPv6 socket. IPv6 appears to be unavailable on this "
-			      "host; IPv4 operation is unaffected."));
-	} else {
-		AddLogLineC(_("Could not bind an IPv4 socket."));
-	}
-}
-
 bool CamuleApp::ReinitializeNetwork(wxString *msg)
 {
 	bool ok = true;
@@ -1591,84 +1568,14 @@ bool CamuleApp::ReinitializeNetwork(wxString *msg)
 	// Used for Client Port / Connections from other clients,
 	// Client to Client Source Exchange.
 	// Default is 4662.
-	//
-	// Dual stack, in the order the spec requires: one socket serving both
-	// families first, and only if the platform refuses it, one socket per
-	// family. The wildcard case is the only one that gets a second family at
-	// all -- a user who pinned a specific address in the preferences asked for
-	// that address, and quietly adding a listener on another family would
-	// expose the client on a network they thought they had excluded.
-	const bool wildcardBind = thePrefs::GetAddress().IsEmpty();
-	const DualStack::CListenPlan listenPlan(
-		wildcardBind ? AddressFamilyPolicy::Configured() : AddressFamilyPolicy::Families::IPv4Only);
-	m_reachability.Reset();
-	m_listenerState.Reset();
-
 	myaddr[2] = myaddr[1];
 	myaddr[2].Service(thePrefs::GetPort());
-
-	for (const DualStack::SBindAttempt &attempt : listenPlan.FirstAttempts()) {
-		amuleIPV4Address listenAddr = myaddr[2];
-		if (attempt.family == DualStack::EFamily::IPv6) {
-			listenAddr.SetAddress(CNetworkAddress::AnyIPv6());
-			listenAddr.SetV6Only(attempt.v6Only);
-		}
-		listenAddr.Service(thePrefs::GetPort());
-		listensocket = new CListenSocket(listenAddr);
-		if (listensocket->IsOk()) {
-			m_listenerState.RecordBound(attempt.family, attempt.servesBothFamilies);
-			break;
-		}
-		// Not this arrangement. The object is discarded rather than reused:
-		// its acceptor is bound (or rather, not bound) for good.
-		LogBindFailure(attempt.family, thePrefs::GetPort(), "TCP");
-		m_listenerState.RecordFailure(attempt.family);
-		delete listensocket;
-		listensocket = NULL;
-	}
-
-	if (!m_listenerState.IsAnyListening()) {
-		for (const DualStack::SBindAttempt &attempt : listenPlan.FallbackAttempts()) {
-			amuleIPV4Address listenAddr = myaddr[2];
-			if (attempt.family == DualStack::EFamily::IPv6) {
-				listenAddr.SetAddress(CNetworkAddress::AnyIPv6());
-				listenAddr.SetV6Only(attempt.v6Only);
-			}
-			listenAddr.Service(thePrefs::GetPort());
-			if (listensocket == NULL) {
-				listensocket = new CListenSocket(listenAddr);
-				if (listensocket->IsOk()) {
-					m_listenerState.RecordBound(
-						attempt.family, attempt.servesBothFamilies);
-					continue;
-				}
-				LogBindFailure(attempt.family, thePrefs::GetPort(), "TCP");
-				m_listenerState.RecordFailure(attempt.family);
-				delete listensocket;
-				listensocket = NULL;
-			} else if (listensocket->AddSecondaryListener(listenAddr)) {
-				m_listenerState.RecordBound(attempt.family, attempt.servesBothFamilies);
-			} else {
-				LogBindFailure(attempt.family, thePrefs::GetPort(), "TCP");
-				m_listenerState.RecordFailure(attempt.family);
-			}
-		}
-	}
-
-	m_reachability.SetBound(
-		DualStack::EFamily::IPv4, m_listenerState.IsListening(DualStack::EFamily::IPv4));
-	m_reachability.SetBound(
-		DualStack::EFamily::IPv6, m_listenerState.IsListening(DualStack::EFamily::IPv6));
-
+	listensocket = new CListenSocket(myaddr[2]);
 	*msg << CFormat("*** TCP socket (TCP) listening on %s:%u\n") % ip %
 			(unsigned int)(thePrefs::GetPort());
 	// Notify(true) has already been called to the ListenSocket, so events may
 	// be already coming in.
-	//
-	// The LowID warning is gated on no family listening at all, not on the
-	// first attempt having failed: the client must not report itself
-	// unreachable while either socket is listening.
-	if (m_listenerState.IsUnreachable()) {
+	if (!listensocket->IsOk()) {
 		// If we weren't able to start listening, we need to warn the user
 		wxString err;
 		err = CFormat(_("Port %u is not available. You will be LOWID\n")) %
@@ -1696,47 +1603,11 @@ bool CamuleApp::ReinitializeNetwork(wxString *msg)
 		*msg << "*** Client UDP socket (extended eMule) disabled on preferences";
 	}
 
-	// The same socket for the other family. A separate object rather than a
-	// dual-stack UDP socket: the two are bound to the same port, so the IPv6
-	// one is restricted with IPV6_V6ONLY and the IPv4 one keeps every mapped
-	// datagram it would otherwise have had to share.
-	//
-	// Kademlia shares this socket and stays IPv4: it has no way to carry a
-	// 128-bit address on its wire, so nothing it sends will ever go out of the
-	// IPv6 one. What the IPv6 socket buys is inbound ed2k UDP over IPv6.
-	if (wildcardBind && AddressFamilyPolicy::PermitsIPv6() && !thePrefs::IsUDPDisabled()) {
-		amuleIPV4Address udpV6Addr;
-		udpV6Addr.SetAddress(CNetworkAddress::AnyIPv6());
-		udpV6Addr.SetV6Only(true);
-		udpV6Addr.Service(thePrefs::GetUDPPort());
-		clientudpV6 = new CClientUDPSocket(udpV6Addr, thePrefs::GetProxyData());
-		if (clientudpV6->Ok()) {
-			AddLogLineNS(CFormat(_("Client UDP socket (extended eMule) listening on %s "
-					       "port %u (IPv6).")) %
-				     udpV6Addr.IPAddress() % thePrefs::GetUDPPort());
-		} else {
-			LogBindFailure(DualStack::EFamily::IPv6, thePrefs::GetUDPPort(), "UDP");
-			delete clientudpV6;
-			clientudpV6 = NULL;
-		}
-	}
-
 #ifdef ENABLE_UPNP
 	StartUPnP();
 #endif
 
 	return ok;
-}
-
-CClientUDPSocket *CamuleApp::GetClientUDPSocketFor(const CNetworkAddress &target) const
-{
-	if (target.IsIPv6() && !target.IsIPv4Mapped()) {
-		// No silent fall back to the IPv4 socket: it is bound to an IPv4
-		// endpoint and a mapped send is exactly what IPV6_V6ONLY refuses. A
-		// caller that gets NULL here has no UDP route to this peer.
-		return clientudpV6;
-	}
-	return clientudp;
 }
 
 #ifdef ENABLE_UPNP
@@ -2129,32 +2000,6 @@ void CamuleApp::OnCoreTimer(CTimerEvent &WXUNUSED(evt))
 	}
 	recurse = true;
 
-	// uTP's timers, every core tick and independently of any traffic.
-	// libutp does retransmission and congestion control in
-	// utp_check_timeouts(), so a context driven only from the receive path
-	// cannot recover a lost packet on an idle connection -- the packet that
-	// would drive the recovery is the one that was lost. CORE_TIMER_PERIOD is
-	// 100 ms (300 ms in the daemon), comfortably inside libutp's 500 ms
-	// requirement. A no-op in a build without libutp.
-	if (clientudp) {
-		const uint64_t nowMs = ::GetTickCount64();
-		clientudp->ServiceUtp(nowMs);
-
-		// QUIC's timers, from the same tick and for the same reason: loss
-		// detection and the idle timer live in that pass, so an endpoint
-		// driven only from the receive path cannot recover a lost packet on
-		// an idle connection. A no-op in a build without ngtcp2, which is the
-		// default build and every macOS build.
-		clientudp->ServiceQuic(nowMs);
-
-		// The hole-punch schedules, polled from the same tick. They hold no
-		// timer of their own precisely so that 120 seconds and a 60 second
-		// backoff are functions of a tick a test can supply -- neither bound is
-		// observable through a real NAT without a lab. Emits nothing unless a
-		// rendezvous is in flight, which for an ordinary peer never happens.
-		clientudp->ServiceNatRendezvous(nowMs);
-	}
-
 	uploadqueue->Process();
 	downloadqueue->Process();
 	// theApp->clientcredits->Process();
@@ -2191,20 +2036,8 @@ void CamuleApp::OnCoreTimer(CTimerEvent &WXUNUSED(evt))
 			Kademlia::CKademlia::Process();
 			if (Kademlia::CKademlia::GetPrefs()->HasLostConnection()) {
 				StopKad();
-				// Both sockets are rebound here: this path exists to
-				// recover from a socket the OS dropped, and both were
-				// opened by the same call. Each is checked because
-				// either can be absent -- clientudp starts NULL and is
-				// only assigned once the UDP socket is created, which
-				// is why every other caller in the tree tests it too.
-				if (clientudp) {
-					clientudp->Close();
-					clientudp->Open();
-				}
-				if (clientudpV6) {
-					clientudpV6->Close();
-					clientudpV6->Open();
-				}
+				clientudp->Close();
+				clientudp->Open();
 				if (thePrefs::Reconnect()) {
 					StartKad();
 				}
@@ -2758,7 +2591,6 @@ void CamuleApp::ShutDown()
 	// Close sockets to avoid new clients coming in
 	if (listensocket) {
 		listensocket->Close();
-		listensocket->CloseSecondaryListener();
 		listensocket->KillAllSockets();
 	}
 

@@ -1,6 +1,4 @@
 #include <muleunit/test.h>
-#include <AddressFamilyPolicy.h>
-#include <NetworkAddress.h>
 #include <NetworkFunctions.h>
 #include <amuleIPV4Address.h>
 
@@ -197,17 +195,10 @@ TEST(NetworkFunctions, IsGoodIP)
 	}
 }
 
-// amuleIPV4Address can hold an IPv6 address since
-// amule-dual-stack-reachability -- the name is now historical -- but a *name*
-// still resolves to IPv4. Name resolution used to hand back whatever the
-// platform resolver ranked first, which on a dual-stack name is routinely an
-// AAAA record -- issue #695.
-//
-// That restriction stays, for a different reason than it started with: the
-// callers of this overload bind or dial a single address from a name the user
-// typed, and answering with an IPv6 address for a name that has both would
-// silently move that traffic onto the other family. The dual-stack listeners
-// ask for the family they want explicitly instead of going through a name.
+// amuleIPV4Address is v4-only by contract: the endpoint feeds uint32 IPs
+// and v4 sockets throughout aMule. Name resolution used to hand back
+// whatever the platform resolver ranked first, which on a dual-stack name
+// is routinely an AAAA record -- issue #695.
 //
 // Every case here resolves offline: numeric addresses and "localhost" (hosts
 // file) need no DNS server, so the test cannot go flaky when a public zone
@@ -224,7 +215,7 @@ TEST(NetworkFunctions, IsGoodIP)
 // surfaces varies by platform and between runs (round-robin, resolver
 // ordering), so pinning one would be flaky by construction. The invariant is
 // the address family.
-TEST(NetworkFunctions, HostnameFamilySelection)
+TEST(NetworkFunctions, HostnameResolvesToIPv4Only)
 {
 	amuleIPV4Address addr;
 
@@ -232,21 +223,12 @@ TEST(NetworkFunctions, HostnameFamilySelection)
 	ASSERT_TRUE(addr.Hostname(wxT("127.0.0.1")));
 	ASSERT_EQUALS(wxString(wxT("127.0.0.1")), addr.IPAddress());
 
-	// An IPv6 literal is now stored as itself: the endpoint can hold one, and
-	// the socket layer opens a v6 socket for it.
+	// An IPv6 literal has no v4 answer, so it must be refused outright
+	// rather than stored in a v4-only endpoint.
 	amuleIPV4Address v6literal;
-	ASSERT_TRUE(v6literal.Hostname(wxT("::1")));
-	ASSERT_EQUALS(wxString(wxT("::1")), v6literal.IPAddress());
+	ASSERT_FALSE(v6literal.Hostname(wxT("::1")));
 	amuleIPV4Address v6global;
-	ASSERT_TRUE(v6global.Hostname(wxT("2001:4860:4860::8888")));
-
-	// Under a configuration that excludes IPv6 it is refused outright, exactly
-	// as it was before dual stack -- that is what a user restricting the client
-	// to IPv4, or a host with no IPv6 stack, gets.
-	AddressFamilyPolicy::SetConfigured(AddressFamilyPolicy::Families::IPv4Only);
-	amuleIPV4Address v6refused;
-	ASSERT_FALSE(v6refused.Hostname(wxT("::1")));
-	AddressFamilyPolicy::SetConfigured(AddressFamilyPolicy::Families::DualStack);
+	ASSERT_FALSE(v6global.Hostname(wxT("2001:4860:4860::8888")));
 
 	// A name that has both A and AAAA records must still yield IPv4.
 	amuleIPV4Address local;
@@ -264,44 +246,4 @@ TEST(NetworkFunctions, HostnameFamilySelection)
 	// An empty name is rejected rather than resolved to anything.
 	amuleIPV4Address empty;
 	ASSERT_FALSE(empty.Hostname(wxEmptyString));
-}
-
-// A wildcard-bound ed2k listener accepts IPv4 peers in IPv4-mapped form, so the
-// socket layer sees the peer as "::ffff:a.b.c.d". Narrowing that to the 32-bit
-// field the ed2k core keys clients on must yield the same value the plain dotted
-// form yields -- reparsing the string does not, because StringIPtoUint32() only
-// understands "a.b.c.d" and answers zero for anything else. Zero is also the
-// honest answer for a real IPv6 peer, which is exactly why the two must not be
-// conflated: a mapped peer that narrows to zero silently disables every
-// m_IPint consumer, and the server-callback throttler bypass reads as "no
-// address" and never fires, costing a HighID.
-TEST(NetworkFunctions, MappedPeerNarrowsLikeItsDottedForm)
-{
-	const std::string dotted("192.0.2.1");
-	const uint32 fromString = StringIPtoUint32(wxString::FromAscii(dotted.c_str()));
-
-	ASSERT_TRUE(fromString != 0);
-
-	// The plain form: narrowing and parsing agree, so replacing one with the
-	// other cannot move an existing IPv4 peer.
-	const CNetworkAddress plain = CNetworkAddress::FromString(dotted);
-	ASSERT_TRUE(plain.IsIPv4());
-	ASSERT_EQUALS(fromString, plain.ToIPv4NetworkOrderOrZero());
-
-	// The mapped form: the same peer, the same 32-bit value...
-	const CNetworkAddress mapped = CNetworkAddress::FromString("::ffff:" + dotted);
-	// (ToString() below returns std::string, hence the explicit widening.)
-	ASSERT_TRUE(mapped.IsIPv4Mapped());
-	ASSERT_EQUALS(fromString, mapped.ToIPv4NetworkOrderOrZero());
-
-	// ...but its string form is not something StringIPtoUint32() can read, so
-	// reparsing loses the peer entirely. This is the trap.
-	ASSERT_EQUALS(0u, StringIPtoUint32(wxString::FromAscii(mapped.ToString().c_str())));
-
-	// A real IPv6 peer has no 32-bit form. It narrows to zero from either
-	// route, and that zero is correct rather than a lost value.
-	const CNetworkAddress v6 = CNetworkAddress::FromString("2001:db8::1");
-	ASSERT_TRUE(v6.IsIPv6());
-	ASSERT_FALSE(v6.IsIPv4Mapped());
-	ASSERT_EQUALS(0u, v6.ToIPv4NetworkOrderOrZero());
 }

@@ -43,8 +43,6 @@ there client on the eMule forum..
 #include "Defines.h"
 #include "Indexed.h"
 #include "UDPFirewallTester.h"
-#include "../net/FastKad.h"
-#include "../net/SafeKad.h"
 #include "../routing/RoutingZone.h"
 #include "../utils/KadUDPKey.h"
 #include "../utils/KadClientSearcher.h"
@@ -168,13 +166,6 @@ void CKademlia::Stop()
 
 	// Make sure all zones are removed.
 	m_events.clear();
-
-	// The protection tables and the response-time window are keyed on
-	// addresses from a Kad session that has just ended; carrying them into
-	// the next one would judge fresh contacts on stale evidence, and Kad is
-	// restarted on every reconnect.
-	safeKad.Clear();
-	fastKad.Clear();
 
 	//	theApp->ShowConnectionState();
 }

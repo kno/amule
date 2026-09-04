@@ -10,7 +10,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: aMule\n"
 "Report-Msgid-Bugs-To: https://github.com/amule-org/amule/issues\n"
-"POT-Creation-Date: 2026-09-04 08:48+0200\n"
+"POT-Creation-Date: 2026-09-02 12:15+0200\n"
 "PO-Revision-Date: 2026-09-03 11:06+0000\n"
 "Last-Translator: Hyunju Kang <rexington@gmail.com>\n"
 "Language-Team: Korean <hoenny@daum.net>\n"
@@ -405,14 +405,6 @@ msgid "You requested to run amuleapi on startup, but the amuleapi binary cannot 
 msgstr ""
 
 #: src/amule.cpp
-msgid "Could not bind an IPv6 socket. IPv6 appears to be unavailable on this host; IPv4 operation is unaffected."
-msgstr ""
-
-#: src/amule.cpp
-msgid "Could not bind an IPv4 socket."
-msgstr ""
-
-#: src/amule.cpp
 #, c-format
 msgid "External connection: could not bind to '%s', listening on 127.0.0.1 only."
 msgstr ""
@@ -441,11 +433,6 @@ msgstr ""
 "이것은 낮은아이디를 가질것이라는걸 의미합니다.\n"
 "\n"
 "나가고 들어오는것에 대해 포트가 열려있는지 통신망을 체크하세요. "
-
-#: src/amule.cpp
-#, c-format
-msgid "Client UDP socket (extended eMule) listening on %s port %u (IPv6)."
-msgstr ""
 
 #: src/amule.cpp
 msgid "Failed to create OnlineSig File"
@@ -2916,7 +2903,7 @@ msgstr "대기열에"
 msgid "Uploading"
 msgstr "올려주기"
 
-#: src/GenericClientListCtrl.cpp src/PeerCapabilities.h
+#: src/GenericClientListCtrl.cpp
 #, fuzzy
 msgid "None"
 msgstr "아무도"
@@ -3046,13 +3033,6 @@ msgstr "%s로부터 서버 목록를 내려받지 못함"
 #, fuzzy
 msgid "Loading IP filters 'ipfilter.dat' and 'ipfilter_static.dat'."
 msgstr "'ipfilter.dat' 와 'ipfilter_static.dat'의 IP 차단을 읽어옵니다."
-
-#: src/IPFilter.cpp
-#, fuzzy, c-format
-msgid "Loaded %u IPv6 prefix rule."
-msgid_plural "Loaded %u IPv6 prefix rules."
-msgstr[0] "%u 개의 IP 범위를 '%s'로부터 읽었습니다. %u 개의 잘못된 줄은 무시했습니다."
-msgstr[1] "%u 개의 IP 범위를 '%s'로부터 읽었습니다. %u 개의 잘못된 줄은 무시했습니다."
 
 #: src/IPFilter.cpp
 #, c-format
@@ -3344,18 +3324,11 @@ msgid "Asio thread %d started"
 msgstr "동기화 스레드가 시작되었습니다."
 
 #: src/ListenSocket.cpp
-#, c-format
-msgid "ListenSocket: listening on %s (IPv6, also accepting IPv4 peers in mapped form)."
+msgid "ListenSocket: Ok."
 msgstr ""
 
 #: src/ListenSocket.cpp
-#, c-format
-msgid "ListenSocket: listening on %s (%s)."
-msgstr ""
-
-#: src/ListenSocket.cpp
-#, c-format
-msgid "Inbound IPv6 connection from %s on %s."
+msgid "ERROR: Could not listen to TCP port."
 msgstr ""
 
 #: src/Logger.cpp
@@ -4197,10 +4170,6 @@ msgstr ""
 
 #: src/muuli_wdr.cpp
 msgid "Kad:"
-msgstr ""
-
-#: src/muuli_wdr.cpp
-msgid "Vendor capabilities:"
 msgstr ""
 
 #: src/muuli_wdr.cpp
@@ -7290,16 +7259,6 @@ msgstr "연결 상태:"
 #, fuzzy
 msgid "Connected since:"
 msgstr "연결됨"
-
-#: src/ServerWnd.cpp
-#, fuzzy
-msgid "IPv4 reachability:"
-msgstr "유효성"
-
-#: src/ServerWnd.cpp
-#, fuzzy
-msgid "IPv6 reachability:"
-msgstr "유효성"
 
 #: src/ServerWnd.cpp
 msgid "Kademlia Status:"

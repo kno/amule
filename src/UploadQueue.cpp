@@ -359,29 +359,19 @@ bool CUploadQueue::IsDownloading(const CUpDownClient *client) const
 }
 
 CUpDownClient *CUploadQueue::GetWaitingClientByIP_UDP(
-	const CNetworkAddress &address, uint16 nUDPPort, bool bIgnorePortOnUniqueIP, bool *pbMultipleIPs)
+	uint32 dwIP, uint16 nUDPPort, bool bIgnorePortOnUniqueIP, bool *pbMultipleIPs)
 {
 	CUpDownClient *pMatchingIPClient = NULL;
 
 	int cMatches = 0;
 
-	if (address.IsAbsent()) {
-		// `dwIP == cur_client->GetIP()` used to match a client with no address
-		// against a caller with no address, and answer that they were the same
-		// peer. They are not, and now they cannot compare equal by accident.
-		if (pbMultipleIPs) {
-			*pbMultipleIPs = false;
-		}
-		return NULL;
-	}
-
 	CClientRefList::iterator it = m_waitinglist.begin();
 	for (; it != m_waitinglist.end(); ++it) {
 		CUpDownClient *cur_client = it->GetClient();
 
-		if ((address == cur_client->GetAddress()) && (nUDPPort == cur_client->GetUDPPort())) {
+		if ((dwIP == cur_client->GetIP()) && (nUDPPort == cur_client->GetUDPPort())) {
 			return cur_client;
-		} else if ((address == cur_client->GetAddress()) && bIgnorePortOnUniqueIP) {
+		} else if ((dwIP == cur_client->GetIP()) && bIgnorePortOnUniqueIP) {
 			pMatchingIPClient = cur_client;
 			cMatches++;
 		}
@@ -484,13 +474,8 @@ void CUploadQueue::AddClientToQueue(CUpDownClient *client)
 		}
 	}
 
-	// Count the number of clients from the same peer. Scoped rather than keyed
-	// on the exact address: for IPv4 that is the exact address and the count is
-	// what it always was, and for IPv6 it is the peer's /64. Passing the 32-bit
-	// form here used to make this limit unreachable for a native IPv6 peer --
-	// its address narrowed to zero, the lookup found nothing, and the slot cap
-	// did not apply to it at all.
-	found = theApp->clientlist->GetClientsInRateLimitScope(client->GetAddress());
+	// Count the number of clients with the same IP-address
+	found = theApp->clientlist->GetClientsByIP(client->GetIP());
 
 	int ipCount = 0;
 	for (it = found.begin(); it != found.end(); ++it) {
