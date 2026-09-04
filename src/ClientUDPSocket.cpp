@@ -716,6 +716,12 @@ void CClientUDPSocket::ProcessNattControlFrame(
 			// displace one. CNattCandidateSet has no method that removes
 			// anything, which is what makes that structural rather than
 			// remembered.
+			//
+			// Whether the relayed endpoint becomes a candidate at all is the
+			// manager's decision, not this one: it holds what a punch from
+			// that peer was observed arriving from, and an observed source
+			// beats a claimed one. See CNatRendezvousManager::
+			// OnRelayedRendezvous().
 			CNattCandidateSet known;
 			const CMD4Hash targetHash(decision.peerHash);
 			const CClientList::SourceList matches =
@@ -730,11 +736,17 @@ void CClientUDPSocket::ProcessNattControlFrame(
 			}
 
 			if (m_natRendezvous.OnRelayedRendezvous(decision, known, nowMs)) {
+				// The relayed endpoint is named as what the forward CLAIMED,
+				// not as where the punch went: it is dropped in favour of an
+				// observed mapping when there is one, and a line reading
+				// "punching toward" an address this client refused to punch at
+				// would be the kind of log that hides the rule it is reporting.
 				AddDebugLogLineN(logClientUDP,
-					CFormat("Punching toward %s:%u for a rendezvous relayed by "
+					CFormat("Started a rendezvous for a forward relayed by %s:%u naming "
 						"%s:%u") %
+						peerText % port %
 						wxString(decision.punchEndpoint.ToString()) %
-						decision.punchPort % peerText % port);
+						decision.punchPort);
 			}
 			return;
 		}

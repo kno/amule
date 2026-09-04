@@ -516,3 +516,151 @@ TEST(NatTraversalPolicy, HintAloneIsUsableWhenNothingElseIsKnown)
 	ASSERT_EQUALS(1u, candidates.Count());
 	ASSERT_TRUE(candidates.At(0).fromHint);
 }
+
+// ChooseNattPunchDestination(): the precedence between what this client saw and
+// what a sender said. Three clauses, and the first one is the one with teeth.
+//
+// The claimed endpoint is a different PUBLIC address here, which is what makes
+// this a test of precedence rather than of routability. A routability predicate
+// asks whether an address is dialable at all and would let 81.2.69.142 through;
+// this rule asks whether the sender should be believed over the observation and
+// answers no while there is an observation to believe instead.
+TEST(NatTraversalPolicy, ObservedSourceWinsOverAPublicClaimedEndpoint)
+{
+	const SNattDestinationChoice choice =
+		ChooseNattPunchDestination(CNetworkAddress::FromString("198.51.100.7"),
+			51413,
+			CNetworkAddress::FromString("81.2.69.142"),
+			4662);
+
+	ASSERT_EQUALS((int)NATT_DESTINATION_OBSERVED, (int)choice.source);
+	ASSERT_TRUE(choice.address == CNetworkAddress::FromString("198.51.100.7"));
+	ASSERT_EQUALS(51413, (int)choice.port);
+}
+
+// The observed source does not have to be globally routable to win. A peer on
+// the same LAN whose datagram reached us is reachable BY DEFINITION -- the
+// packet proves the path -- and the routability question belongs to the claimed
+// endpoint alone, where there is no such proof.
+TEST(NatTraversalPolicy, ObservedSourceWinsEvenOnAPrivateNetwork)
+{
+	const SNattDestinationChoice choice =
+		ChooseNattPunchDestination(CNetworkAddress::FromString("192.168.1.40"),
+			4672,
+			CNetworkAddress::FromString("81.2.69.142"),
+			4662);
+
+	ASSERT_EQUALS((int)NATT_DESTINATION_OBSERVED, (int)choice.source);
+	ASSERT_TRUE(choice.address == CNetworkAddress::FromString("192.168.1.40"));
+}
+
+// An observed IPv6 mapping wins too. IsGloballyRoutableIPv4() answers false for
+// every IPv6 address, so a rule that reused it for the observed side would
+// silently prefer a claimed IPv4 endpoint over an IPv6 peer that had just
+// reached us.
+TEST(NatTraversalPolicy, ObservedIPv6MappingWinsOverAClaimedIPv4Endpoint)
+{
+	const SNattDestinationChoice choice =
+		ChooseNattPunchDestination(CNetworkAddress::FromString("2001:db8::7"),
+			4672,
+			CNetworkAddress::FromString("81.2.69.142"),
+			4662);
+
+	ASSERT_EQUALS((int)NATT_DESTINATION_OBSERVED, (int)choice.source);
+	ASSERT_TRUE(choice.address == CNetworkAddress::FromString("2001:db8::7"));
+}
+
+// Clause two. With nothing observed there is nothing to prefer, so a claimed
+// endpoint may be dialled -- and only then. Refusing it outright would leave
+// the peer this whole path exists for with no destination at all.
+TEST(NatTraversalPolicy, PublicClaimedEndpointIsUsedWhenNothingWasObserved)
+{
+	const SNattDestinationChoice choice = ChooseNattPunchDestination(
+		CNetworkAddress::Absent(), 0, CNetworkAddress::FromString("81.2.69.142"), 4662);
+
+	ASSERT_EQUALS((int)NATT_DESTINATION_CLAIMED_HINT, (int)choice.source);
+	ASSERT_TRUE(choice.address == CNetworkAddress::FromString("81.2.69.142"));
+	ASSERT_EQUALS(4662, (int)choice.port);
+}
+
+// Clause three. Nothing observed and a claimed endpoint that is not on the
+// public internet: neither is used, and the caller gets an absent address
+// rather than a zero it could dial by mistake.
+TEST(NatTraversalPolicy, NeitherIsUsedWhenTheClaimedEndpointIsNotPublic)
+{
+	const char *const unroutable[] = {
+		"127.0.0.1",   // loopback
+		"10.0.0.5",    // RFC 1918
+		"192.168.1.1", // RFC 1918
+		"172.16.9.9",  // RFC 1918
+		"169.254.3.4", // link-local
+		"100.100.1.2", // CGNAT, RFC 6598
+		"224.0.0.1",   // multicast
+		"2001:db8::9", // no IPv6 endpoint format on this opcode at all
+	};
+
+	for (const char *address : unroutable) {
+		const SNattDestinationChoice choice = ChooseNattPunchDestination(
+			CNetworkAddress::Absent(), 0, CNetworkAddress::FromString(address), 4662);
+
+		ASSERT_EQUALS((int)NATT_DESTINATION_NONE, (int)choice.source);
+		ASSERT_TRUE(choice.address.IsAbsent());
+		ASSERT_EQUALS(0, (int)choice.port);
+	}
+}
+
+// An observed address with no port is not an observation this client can dial,
+// so it does not win -- it is not there. Otherwise the first clause would
+// swallow the second and a peer with a half-recorded mapping would be punched
+// at nothing while a usable claimed endpoint sat unused.
+TEST(NatTraversalPolicy, ObservedAddressWithoutAPortDoesNotWin)
+{
+	const SNattDestinationChoice choice =
+		ChooseNattPunchDestination(CNetworkAddress::FromString("198.51.100.7"),
+			0,
+			CNetworkAddress::FromString("81.2.69.142"),
+			4662);
+
+	ASSERT_EQUALS((int)NATT_DESTINATION_CLAIMED_HINT, (int)choice.source);
+	ASSERT_TRUE(choice.address == CNetworkAddress::FromString("81.2.69.142"));
+}
+
+// The unspecified address is not an observation either, whichever family
+// spells it. A datagram attributed to 0.0.0.0 identifies no host.
+TEST(NatTraversalPolicy, UnspecifiedObservedAddressDoesNotWin)
+{
+	ASSERT_EQUALS((int)NATT_DESTINATION_CLAIMED_HINT,
+		(int)ChooseNattPunchDestination(CNetworkAddress::FromString("0.0.0.0"),
+			4672,
+			CNetworkAddress::FromString("81.2.69.142"),
+			4662)
+			.source);
+	ASSERT_EQUALS((int)NATT_DESTINATION_CLAIMED_HINT,
+		(int)ChooseNattPunchDestination(CNetworkAddress::FromString("::"),
+			4672,
+			CNetworkAddress::FromString("81.2.69.142"),
+			4662)
+			.source);
+}
+
+// Neither side has anything: nothing is dialled. The default answer of this
+// function is none, which is what makes a caller that ignores the source field
+// still unable to send anywhere.
+TEST(NatTraversalPolicy, NothingObservedAndNothingClaimedChoosesNothing)
+{
+	const SNattDestinationChoice choice =
+		ChooseNattPunchDestination(CNetworkAddress::Absent(), 0, CNetworkAddress::Absent(), 0);
+
+	ASSERT_EQUALS((int)NATT_DESTINATION_NONE, (int)choice.source);
+	ASSERT_TRUE(choice.address.IsAbsent());
+}
+
+// A claimed endpoint with a port of zero is not usable, however routable its
+// address is: a punch has to leave for somewhere.
+TEST(NatTraversalPolicy, ClaimedEndpointWithoutAPortIsNotUsed)
+{
+	const SNattDestinationChoice choice = ChooseNattPunchDestination(
+		CNetworkAddress::Absent(), 0, CNetworkAddress::FromString("81.2.69.142"), 0);
+
+	ASSERT_EQUALS((int)NATT_DESTINATION_NONE, (int)choice.source);
+}

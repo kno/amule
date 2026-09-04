@@ -512,4 +512,93 @@ private:
 	size_t m_count = 0;
 };
 
+//! Where a punch destination came from, which is the whole answer of
+//! ChooseNattPunchDestination(): the three clauses of the precedence rule, one
+//! value each.
+enum ENattDestinationSource
+{
+	//! Nothing may be dialled. The default, so a caller that reads the address
+	//! without reading this field finds an absent one rather than a zero.
+	NATT_DESTINATION_NONE,
+	//! The address a datagram from that peer actually arrived from.
+	NATT_DESTINATION_OBSERVED,
+	//! The address the sender claimed, usable only under clause two below.
+	NATT_DESTINATION_CLAIMED_HINT
+};
+
+//! The one endpoint a punch may be sent to, and which of the two sources it
+//! came from. Absent and zero unless `source` is not NATT_DESTINATION_NONE.
+struct SNattDestinationChoice
+{
+	ENattDestinationSource source = NATT_DESTINATION_NONE;
+	CNetworkAddress address;
+	uint16_t port = 0;
+};
+
+/**
+ * Whether a punch goes to what this client observed or to what a sender
+ * claimed.
+ *
+ * Prefer the observed source; fall back to the claimed hint only when it is
+ * public; use the hint as a lookup key everywhere else.
+ *
+ * Three clauses, and the second is the one worth emphasising because it is
+ * independent of routability rather than a refinement of it:
+ *
+ *  1. **A usable observed source wins, always.** The source address of a
+ *     datagram cannot be forged without controlling the path to us, while an
+ *     address written inside a message costs its author nothing. Usable here
+ *     means present, not the unspecified address, and with a port -- and
+ *     deliberately NOT "globally routable": a peer on the same LAN whose
+ *     packet reached us is reachable by definition, the packet being the
+ *     proof, and IsGloballyRoutableIPv4() answers false for every IPv6
+ *     address, so reusing it here would quietly prefer a claimed IPv4 endpoint
+ *     over an IPv6 peer that had just spoken to us.
+ *  2. **Only with nothing observed may the claimed endpoint be dialled**, and
+ *     only if it is on the public internet. This is a rule about whom to
+ *     believe, not about what is dialable: an implementation can enforce
+ *     routability perfectly and still fail here, by taking a public but
+ *     attacker-chosen address while holding a usable observed one. That is why
+ *     the clause is a precedence and not another predicate.
+ *  3. **Otherwise neither is used.** The claimed address remains what it
+ *     already is everywhere else in this tree -- a key to look a peer up by,
+ *     never a destination.
+ *
+ * CNetworkAddress::IsGloballyRoutableIPv4() is the routability predicate,
+ * unchanged and unduplicated: NatRendezvousRelay.h and UtpEncryptionPolicy.h
+ * already ask it, and a second list of blocks maintained here would be a second
+ * thing to keep correct.
+ *
+ * @param observed where a datagram from that peer was seen coming from, absent
+ *        when none has been.
+ * @param observedPort its port. Zero counts as no observation: half a mapping
+ *        is not one, and treating it as one would have clause 1 swallow clause
+ *        2 and punch at nothing.
+ * @param claimedHint the endpoint the sender named.
+ * @param hintPort its port.
+ */
+inline SNattDestinationChoice ChooseNattPunchDestination(const CNetworkAddress &observed,
+	uint16_t observedPort,
+	const CNetworkAddress &claimedHint,
+	uint16_t hintPort)
+{
+	SNattDestinationChoice choice;
+
+	if (observedPort != 0 && observed.IsPresent() && !observed.IsUnspecified()) {
+		choice.source = NATT_DESTINATION_OBSERVED;
+		choice.address = observed;
+		choice.port = observedPort;
+		return choice;
+	}
+
+	if (hintPort != 0 && claimedHint.IsGloballyRoutableIPv4()) {
+		choice.source = NATT_DESTINATION_CLAIMED_HINT;
+		choice.address = claimedHint;
+		choice.port = hintPort;
+		return choice;
+	}
+
+	return choice;
+}
+
 #endif // NATTRAVERSALPOLICY_H
