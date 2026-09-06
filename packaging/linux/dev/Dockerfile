@@ -107,13 +107,60 @@ COPY . /src
 # says nothing whatsoever about the uTP transport. The adapter behind
 # AMULE_UTP_TRANSPORT has to be compiled somewhere, and this is that somewhere.
 # It uses the vendored libutp in src/extern/libutp (see its AMULE_PROVENANCE.md).
+#
+# The target list is the one ccpp.yml builds, so a green run here means the
+# same thing a green run there does.
+#
+# CMAKE_BUILD_TYPE is stated rather than left to default, and a Debug
+# configuration is built alongside it, because ccpp.yml runs both and the two
+# do not compile the same code. `src/libs/ec/cpp/ECTag.cpp` defines
+# DEBUG_EC_IMPLEMENTATION only under __DEBUG__, and that macro is what emits
+# the generated switch over every EC tag value. In Release that switch does
+# not exist, so two tags sharing one value is not a duplicate case anywhere
+# the compiler looks: a Release-only baseline passed while CI failed on
+# exactly that. Widening the target list did not find it -- the missing
+# dimension was the build type, which was verified by reintroducing the
+# collision and watching a 20-target Release build stay green.
 RUN cmake -B build -G Ninja \
+        -DCMAKE_BUILD_TYPE=Release \
         -DBUILD_TESTING=YES \
         -DBUILD_MONOLITHIC=YES \
         -DBUILD_DAEMON=YES \
         -DBUILD_REMOTEGUI=YES \
+        -DBUILD_AMULECMD=YES \
+        -DBUILD_AMULEAPI=YES \
+        -DBUILD_WEBSERVER=YES \
+        -DBUILD_ED2K=YES \
+        -DBUILD_ALC=YES \
+        -DBUILD_ALCC=YES \
+        -DBUILD_CAS=YES \
+        -DBUILD_WXCAS=YES \
+        -DENABLE_NLS=YES \
+        -DENABLE_UPNP=YES \
         -DENABLE_UTP=YES \
     && cmake --build build -j"$(nproc)"
+
+# The Debug half of ccpp.yml's matrix. Same targets, same options: only
+# CMAKE_BUILD_TYPE differs, which is the whole point. Built into its own
+# directory so a failure names which configuration failed.
+RUN cmake -B build-debug -G Ninja \
+        -DCMAKE_BUILD_TYPE=Debug \
+        -DBUILD_TESTING=YES \
+        -DBUILD_MONOLITHIC=YES \
+        -DBUILD_DAEMON=YES \
+        -DBUILD_REMOTEGUI=YES \
+        -DBUILD_AMULECMD=YES \
+        -DBUILD_AMULEAPI=YES \
+        -DBUILD_WEBSERVER=YES \
+        -DBUILD_ED2K=YES \
+        -DBUILD_ALC=YES \
+        -DBUILD_ALCC=YES \
+        -DBUILD_CAS=YES \
+        -DBUILD_WXCAS=YES \
+        -DENABLE_NLS=YES \
+        -DENABLE_UPNP=YES \
+        -DENABLE_UTP=YES \
+    && cmake --build build-debug -j"$(nproc)"
 
 # Recorded separately from the build so a compile failure and a test failure
 # are distinguishable in the layer log.
