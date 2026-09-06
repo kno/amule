@@ -9,8 +9,8 @@ msgid ""
 msgstr ""
 "Project-Id-Version: aMule\n"
 "Report-Msgid-Bugs-To: https://github.com/amule-org/amule/issues\n"
-"POT-Creation-Date: 2026-09-04 08:48+0200\n"
-"PO-Revision-Date: 2026-09-03 11:11+0000\n"
+"POT-Creation-Date: 2026-09-06 09:03+0200\n"
+"PO-Revision-Date: 2026-09-05 11:02+0000\n"
 "Last-Translator: \n"
 "Language-Team: Turkish <li@li.org>\n"
 "Language: tr\n"
@@ -1266,6 +1266,14 @@ msgid "Send message"
 msgstr "İleti Gönder"
 
 #: src/ClientContextActions.cpp
+msgid "Send message to user"
+msgstr "Kullanıcıya ileti gönder"
+
+#: src/ClientContextActions.cpp
+msgid "Message to send:"
+msgstr "Gönderilecek ileti:"
+
+#: src/ClientContextActions.cpp
 msgid ""
 "You are not allowed to set more than one friend slot.\n"
 " Only one slot was assigned."
@@ -1278,12 +1286,36 @@ msgid "Multiple selection"
 msgstr "Çoklu seçim"
 
 #: src/ClientContextActions.cpp
-msgid "Send message to user"
-msgstr "Kullanıcıya ileti gönder"
+#, c-format
+msgid "Add %u client to your friend list?"
+msgid_plural "Add %u clients to your friend list?"
+msgstr[0] "Arkadaş listenize %u istemci eklensin mi?"
+msgstr[1] "Arkadaş listenize %u istemci eklensin mi?"
 
 #: src/ClientContextActions.cpp
-msgid "Message to send:"
-msgstr "Gönderilecek ileti:"
+#, c-format
+msgid "Remove %u client from your friend list?"
+msgid_plural "Remove %u clients from your friend list?"
+msgstr[0] "%u istemci arkadaş listenizden çıkarılsın mı?"
+msgstr[1] "%u istemci arkadaş listenizden çıkarılsın mı?"
+
+#: src/ClientContextActions.cpp
+#, c-format
+msgid "Could not add %u selected client to your friend list: no address is known for it."
+msgid_plural "Could not add %u selected clients to your friend list: no address is known for them."
+msgstr[0] "%u seçili istemci arkadaş listenize eklenemedi: onun için hiçbir adres bilinmiyor."
+msgstr[1] "%u seçili istemci arkadaş listenize eklenemedi: onlar için hiçbir adres bilinmiyor."
+
+#: src/ClientContextActions.cpp
+#, c-format
+msgid "Request the shared files of %u client?"
+msgid_plural "Request the shared files of %u clients?"
+msgstr[0] "%u istemciden paylaşılan dosyalar talep edilsin mi?"
+msgstr[1] "%u istemciden paylaşılan dosyalar talep edilsin mi?"
+
+#: src/ClientContextActions.cpp
+msgid "A connection is opened to each of them."
+msgstr "Her biri için bir bağlantı açılmıştır."
 
 #: src/ClientCreditsList.cpp
 #, c-format
@@ -1344,7 +1376,7 @@ msgstr "Bağlantı kesildi"
 msgid "%.1f KiB/s"
 msgstr "%.1f KiB/s"
 
-#: src/ClientHistoryListCtrl.cpp src/ClientsListCtrl.cpp
+#: src/ClientHistoryListCtrl.cpp src/ClientsListCtrl.cpp src/muuli_wdr.cpp
 msgid "Name"
 msgstr "Ad"
 
@@ -1352,7 +1384,7 @@ msgstr "Ad"
 msgid "Software"
 msgstr "Yazılım"
 
-#: src/ClientHistoryListCtrl.cpp src/ClientsListCtrl.cpp
+#: src/ClientHistoryListCtrl.cpp src/ClientsListCtrl.cpp src/muuli_wdr.cpp
 msgid "IP Address"
 msgstr "IP Adresi"
 
@@ -1418,6 +1450,13 @@ msgstr "N/A"
 #: src/ClientRef.cpp
 msgid "Not Available"
 msgstr "Uygun değil"
+
+#: src/ClientRowListCtrl.cpp
+#, c-format
+msgid "Could not ask %u selected client for its shared files."
+msgid_plural "Could not ask %u selected clients for their shared files."
+msgstr[0] "%u seçili istemciden paylaşılan dosyaları talep edilemedi."
+msgstr[1] "%u seçili istemciden paylaşılan dosyaları talep edilemedi."
 
 #: src/ClientsListCtrl.cpp src/PrefsUnifiedDlg.cpp src/ServerListCtrl.cpp
 msgid "Files"
@@ -1513,7 +1552,7 @@ msgstr "Kullanıcı %s (%u)nın paylaşılmış dizin/dosyalara erişimi reddedi
 msgid "File Comments"
 msgstr "Dosya Yorumları"
 
-#: src/CommentDialogLst.cpp src/FriendListCtrl.cpp
+#: src/CommentDialogLst.cpp src/FriendListCtrl.cpp src/muuli_wdr.cpp
 msgid "Username"
 msgstr "Kullanıcı Adı"
 
@@ -1526,7 +1565,7 @@ msgstr "Dosya Adı"
 msgid "Rating"
 msgstr "Puanlama"
 
-#: src/CommentDialogLst.cpp
+#: src/CommentDialogLst.cpp src/muuli_wdr.cpp
 msgid "Comment"
 msgstr "Yorum"
 
@@ -2143,6 +2182,10 @@ msgstr "çıkarılacak sunucunun tanımlanması gerekli"
 #: src/ExternalConn.cpp
 msgid "eD2k is disabled in preferences."
 msgstr "eD2k ayarlarda devre dışı bırakılmış."
+
+#: src/ExternalConn.cpp
+msgid "No address known for that friend yet."
+msgstr "Bu arkadaş için henüz hiçbir adres bilinmiyor."
 
 #: src/ExternalConn.cpp
 msgid "Friend not found."
@@ -2782,6 +2825,11 @@ msgid "Failed to open friend list file 'emfriends.met' for writing!"
 msgstr "Arkadaş listesi 'emfriends.met' dosyasına yazılamıyor!"
 
 #: src/FriendList.cpp
+#, c-format
+msgid "No address known for friend '%s' yet, cannot browse them."
+msgstr "'%s' arkadaşı için henüz hiçbir adres bilinmiyor, ona göz atamazsınız."
+
+#: src/FriendList.cpp
 msgid "CRITICAL - no client on StartChatSession"
 msgstr "KRİTİK - SohbetOturumunuBaşlat' ta istemci yok"
 
@@ -2802,6 +2850,11 @@ msgid "Send &Message"
 msgstr "&İleti Gönder"
 
 #: src/FriendListCtrl.cpp
+#, c-format
+msgid "No address known for friend '%s' yet, cannot message them."
+msgstr "'%s' arkadaşı için henüz hiçbir adres bilinmiyor, ona mesaj gönderemezsiniz."
+
+#: src/FriendListCtrl.cpp
 msgid "Are you sure that you wish to delete the selected friend?"
 msgstr "Seçili arkadaşı silmek istediğinizden emin misiniz?"
 
@@ -2818,46 +2871,10 @@ msgstr ""
 "Sadece bir slot kuruldu."
 
 #: src/GenericClientListCtrl.cpp
-msgid "This source does not have the part"
-msgstr "Bu kaynakta parça mevcut değil"
-
-#: src/GenericClientListCtrl.cpp
-msgid "You and this source both have the part"
-msgstr "Hem siz hem de bu kaynak parçaya sahipsiniz"
-
-#: src/GenericClientListCtrl.cpp
-msgid "Being downloaded from this source now"
-msgstr "Şu anda bu kaynaktan indiriliyor"
-
-#: src/GenericClientListCtrl.cpp
-msgid "The next part that will be asked of this source"
-msgstr "Bu kaynaktan istenecek gelecek parça"
-
-#: src/GenericClientListCtrl.cpp
-msgid "This source has the part and you still need it"
-msgstr "Bu kaynak parçaya sahip ve sizin hâlâ buna ihtiyacınız var"
-
-#: src/GenericClientListCtrl.cpp
-msgid "This peer already has the part"
-msgstr "Bu eşte zaten parça mevcut"
-
-#: src/GenericClientListCtrl.cpp
-msgid "This peer does not have the part"
-msgstr "Bu eşte parça mevcut değil"
-
-#: src/GenericClientListCtrl.cpp
-msgid "One block per part of the file being downloaded."
-msgstr "İndirilmekte olan dosyanın her bir parçası için bir blok."
-
-#: src/GenericClientListCtrl.cpp
-msgid "One block per part of the shared file."
-msgstr "Paylaşılan dosyanın her bir parçası için bir blok."
-
-#: src/GenericClientListCtrl.cpp
 msgid "Swap to this file"
 msgstr "Bu dosyaya geçir"
 
-#: src/GenericClientListCtrl.cpp
+#: src/GenericClientListCtrl.cpp src/SharedFilesCtrl.cpp
 msgid "Colour legend"
 msgstr "Renk açıklaması"
 
@@ -3675,10 +3692,6 @@ msgstr "Şu an bağlanılan sunucu."
 msgid "Search"
 msgstr "Ara"
 
-#: src/muuli_wdr.cpp
-msgid "Name:"
-msgstr "Ad:"
-
 #: src/muuli_wdr.cpp src/SearchListCtrl.cpp src/SharedFilesCtrl.cpp
 msgid "Type"
 msgstr "Tür"
@@ -3768,8 +3781,8 @@ msgid "Availability"
 msgstr "Uygunluk"
 
 #: src/muuli_wdr.cpp
-msgid "Filter:"
-msgstr "Süz:"
+msgid "Filter"
+msgstr "Süz"
 
 #: src/muuli_wdr.cpp
 msgid "Invert Result"
@@ -3824,6 +3837,10 @@ msgid "Clears completed downloads"
 msgstr "Tamamlanan aktarımları temizler."
 
 #: src/muuli_wdr.cpp
+msgid "Filter:"
+msgstr "Süz:"
+
+#: src/muuli_wdr.cpp
 msgid "File sources:"
 msgstr "Dosya kaynakları:"
 
@@ -3832,80 +3849,76 @@ msgid "General"
 msgstr "Genel"
 
 #: src/muuli_wdr.cpp
-msgid "Full Name :"
-msgstr "Tam Ad :"
+msgid "Full Name"
+msgstr "Tam Ad"
 
 #: src/muuli_wdr.cpp
-msgid "met-File :"
-msgstr "met-Dosyası :"
+msgid "met-File"
+msgstr "met-Dosyası"
 
 #: src/muuli_wdr.cpp
-msgid "Hash :"
-msgstr "Adresleme:"
+msgid "Hash"
+msgstr "Adresleme"
 
 #: src/muuli_wdr.cpp
-msgid "Filesize :"
-msgstr "Dosya Boyutu :"
+msgid "Filesize"
+msgstr "Dosya Boyutu"
 
 #: src/muuli_wdr.cpp src/Statistics.cpp
 msgid "Transfer"
 msgstr "Aktarım"
 
 #: src/muuli_wdr.cpp
-msgid "Partfilestatus :"
-msgstr "Parça Dosya Durumu :"
+msgid "Partfilestatus"
+msgstr "Parça Dosya Durumu"
 
 #: src/muuli_wdr.cpp
-msgid "Last seen complete :"
-msgstr "Son Görülen Tamamlama :"
+msgid "Last seen complete"
+msgstr "Son Görülen Tamamlama"
 
 #: src/muuli_wdr.cpp
-msgid "Found Sources :"
-msgstr "Bulunan Kaynaklar:"
+msgid "Found Sources"
+msgstr "Bulunan Kaynaklar"
 
 #: src/muuli_wdr.cpp
-msgid "Transferring Sources :"
-msgstr "Aktarılan Kaynaklar:"
+msgid "Transferring Sources"
+msgstr "Aktarılan Kaynaklar"
 
 #: src/muuli_wdr.cpp
-msgid "Filepart-Count :"
-msgstr "Dosya Parçası-Sayısı:"
+msgid "Filepart-Count"
+msgstr "Dosya Parçası-Sayısı"
 
 #: src/muuli_wdr.cpp
-msgid "Available :"
-msgstr "Uygun:"
+msgid "Available"
+msgstr "Uygun"
 
 #: src/muuli_wdr.cpp
-msgid "Datarate :"
-msgstr "Veri Oranı:"
+msgid "Datarate"
+msgstr "Veri Oranı"
 
 #: src/muuli_wdr.cpp
-msgid "Download Active Time: "
-msgstr "Aktarım Süresi: "
+msgid "Download Active Time"
+msgstr "Aktarım Süresi"
 
 #: src/muuli_wdr.cpp
-msgid "Transferred :"
-msgstr "Aktarılan:"
-
-#: src/muuli_wdr.cpp
-msgid "Completed Size :"
-msgstr "Tamamlanmış Boyut:"
+msgid "Completed Size"
+msgstr "Tamamlanmış Boyut"
 
 #: src/muuli_wdr.cpp
 msgid "Intelligent Corruption Handling"
 msgstr "Akıllı Bozulma Yakalayıcısı"
 
 #: src/muuli_wdr.cpp
-msgid "Lost to corruption :"
-msgstr "Bozulma ile kaybedilen:"
+msgid "Lost to corruption"
+msgstr "Bozulma ile kaybedilen"
 
 #: src/muuli_wdr.cpp
-msgid "Gained by compression :"
-msgstr "Sıkıştırma ile kazanılan:"
+msgid "Gained by compression"
+msgstr "Sıkıştırma ile kazanılan"
 
 #: src/muuli_wdr.cpp
-msgid "Packages saved by I.C.H. :"
-msgstr "I.C.H ile kurtarılan paketler :"
+msgid "Packages saved by I.C.H."
+msgstr "I.C.H ile kurtarılan paketler"
 
 #: src/muuli_wdr.cpp
 msgid "Sharing"
@@ -3943,29 +3956,29 @@ msgstr "Son gönderme"
 msgid "Media Info"
 msgstr "Ortam Bilgileri"
 
-#: src/muuli_wdr.cpp
-msgid "Length :"
-msgstr "Süre:"
+#: src/muuli_wdr.cpp src/SearchListCtrl.cpp
+msgid "Length"
+msgstr "Süre"
+
+#: src/muuli_wdr.cpp src/SearchListCtrl.cpp
+msgid "Bitrate"
+msgstr "Akış hızı"
+
+#: src/muuli_wdr.cpp src/SearchListCtrl.cpp
+msgid "Codec"
+msgstr "Kodlama"
 
 #: src/muuli_wdr.cpp
-msgid "Bitrate :"
-msgstr "Akış hızı:"
+msgid "Artist"
+msgstr "Sanatçı"
 
 #: src/muuli_wdr.cpp
-msgid "Codec :"
-msgstr "Kodlama:"
+msgid "Album"
+msgstr "Albüm"
 
 #: src/muuli_wdr.cpp
-msgid "Artist :"
-msgstr "Sanatçı:"
-
-#: src/muuli_wdr.cpp
-msgid "Album :"
-msgstr "Albüm:"
-
-#: src/muuli_wdr.cpp
-msgid "Title :"
-msgstr "Başlık :"
+msgid "Title"
+msgstr "Başlık"
 
 #: src/muuli_wdr.cpp
 msgid "File Names"
@@ -4051,25 +4064,17 @@ msgstr "Boyut bilinmiyor"
 msgid "Required Information"
 msgstr "Gerekli Bilgiler"
 
-#: src/muuli_wdr.cpp
-msgid "IP Address :"
-msgstr "IP Adresi:"
-
-#: src/muuli_wdr.cpp
-msgid "Port :"
-msgstr "Port:"
+#: src/muuli_wdr.cpp src/ServerListCtrl.cpp
+msgid "Port"
+msgstr "Port"
 
 #: src/muuli_wdr.cpp
 msgid "Additional Information"
 msgstr "Ek Bilgi"
 
 #: src/muuli_wdr.cpp
-msgid "Username :"
-msgstr "Kullanıcı Adı :"
-
-#: src/muuli_wdr.cpp
-msgid "Userhash :"
-msgstr "Kullanıcı Adreslemesi :"
+msgid "Userhash"
+msgstr "Kullanıcı Adreslemesi"
 
 #: src/muuli_wdr.cpp src/utils/aLinkCreator/src/alcframe.cpp
 msgid "Add"
@@ -4104,44 +4109,28 @@ msgid "Statistics Tree"
 msgstr "İstatistik Ağacı"
 
 #: src/muuli_wdr.cpp
-msgid "Username:"
-msgstr "Kullanıcı Adı:"
+msgid "Client software"
+msgstr "Yazılım"
 
 #: src/muuli_wdr.cpp
-msgid "Userhash:"
-msgstr "Kullanıcı Adreslemesi:"
+msgid "Client version"
+msgstr "Yazılım Sürümü"
 
 #: src/muuli_wdr.cpp
-msgid "Client software:"
-msgstr "Yazılım:"
+msgid "User ID"
+msgstr "Kullanıcı ID"
 
 #: src/muuli_wdr.cpp
-msgid "Client version:"
-msgstr "Yazılım Sürümü:"
-
-#: src/muuli_wdr.cpp src/ServerWnd.cpp
-msgid "IP address:"
-msgstr "IP :"
+msgid "Server IP"
+msgstr "Sunucu IP"
 
 #: src/muuli_wdr.cpp
-msgid "User ID:"
-msgstr "Kullanıcı ID:"
+msgid "Server name"
+msgstr "Sunucu"
 
 #: src/muuli_wdr.cpp
-msgid "Server IP:"
-msgstr "Sunucu IP:"
-
-#: src/muuli_wdr.cpp
-msgid "Server name:"
-msgstr "Sunucu:"
-
-#: src/muuli_wdr.cpp
-msgid "Obfuscation:"
-msgstr "Gizleme:"
-
-#: src/muuli_wdr.cpp
-msgid "Kad:"
-msgstr "Kademlia:"
+msgid "Obfuscation"
+msgstr "Gizleme"
 
 #: src/muuli_wdr.cpp
 msgid "Vendor capabilities:"
@@ -4152,52 +4141,52 @@ msgid "Transfers to client"
 msgstr "Yapılan aktarımlar"
 
 #: src/muuli_wdr.cpp
-msgid "Current request:"
-msgstr "Şimdiki İstek:"
+msgid "Current request"
+msgstr "Şimdiki İstek"
 
 #: src/muuli_wdr.cpp
-msgid "Average upload rate:"
-msgstr "Ortalama gönderim oranı:"
+msgid "Average upload rate"
+msgstr "Ortalama gönderim oranı"
 
 #: src/muuli_wdr.cpp
-msgid "Average download rate:"
-msgstr "Ortalama aktarım oranı:"
+msgid "Average download rate"
+msgstr "Ortalama aktarım oranı"
 
 #: src/muuli_wdr.cpp
-msgid "Uploaded (session):"
-msgstr "Gönderilen (oturum):"
+msgid "Uploaded (session)"
+msgstr "Gönderilen (oturum)"
 
 #: src/muuli_wdr.cpp
-msgid "Downloaded (session):"
-msgstr "İndirilen (oturum):"
+msgid "Downloaded (session)"
+msgstr "İndirilen (oturum)"
 
 #: src/muuli_wdr.cpp
-msgid "Uploaded (total):"
-msgstr "Gönderilen (toplam):"
+msgid "Uploaded (total)"
+msgstr "Gönderilen (toplam)"
 
 #: src/muuli_wdr.cpp
-msgid "Downloaded (total):"
-msgstr "İndirilen (toplam):"
+msgid "Downloaded (total)"
+msgstr "İndirilen (toplam)"
 
 #: src/muuli_wdr.cpp
 msgid "Scores"
 msgstr "Skor"
 
 #: src/muuli_wdr.cpp
-msgid "DL/UP modifier:"
-msgstr "İND./GÖN. niteleyici:"
+msgid "DL/UP modifier"
+msgstr "İND./GÖN. niteleyici"
 
 #: src/muuli_wdr.cpp
-msgid "Secure ident:"
-msgstr "Güvenli Kimlik:"
+msgid "Secure ident"
+msgstr "Güvenli Kimlik"
 
 #: src/muuli_wdr.cpp
-msgid "Queue rank:"
-msgstr "Kuyruk sırası:"
+msgid "Queue rank"
+msgstr "Kuyruk sırası"
 
 #: src/muuli_wdr.cpp
-msgid "Queue score:"
-msgstr "Sıra skoru:"
+msgid "Queue score"
+msgstr "Sıra skoru"
 
 #: src/muuli_wdr.cpp
 msgid "Nick"
@@ -4976,24 +4965,20 @@ msgid "Reset any changes made to the preferences."
 msgstr "Ayarlarda yapılan değişiklikleri sil."
 
 #: src/muuli_wdr.cpp
-msgid "Comment :"
-msgstr "Yorum:"
+msgid "Incoming Dir"
+msgstr "Gelen Dosyalar Dizini"
 
 #: src/muuli_wdr.cpp
-msgid "Incoming Dir :"
-msgstr "Gelen Dosyalar Dizini :"
-
-#: src/muuli_wdr.cpp
-msgid "Change priority for new assigned files :"
-msgstr "Yeni eklenen dosyalar için öncelikleri değiştir:"
+msgid "Change priority for new assigned files"
+msgstr "Yeni eklenen dosyalar için öncelikleri değiştir"
 
 #: src/muuli_wdr.cpp
 msgid "Don't change"
 msgstr "Değiştirme"
 
 #: src/muuli_wdr.cpp
-msgid "Select color for this Category (currently selected) :"
-msgstr "Bu sınıf için renk seçiniz (varsayılan) :"
+msgid "Select color for this Category (currently selected)"
+msgstr "Bu sınıf için renk seçiniz (varsayılan)"
 
 #: src/muuli_wdr.cpp
 msgid "Click this button to reset the log."
@@ -5074,10 +5059,6 @@ msgstr "Düğüm:IP unsurundan ön yükleme yap"
 #: src/muuli_wdr.cpp
 msgid "Enter the IP of the node here, using the x.x.x.x format."
 msgstr "Düğümün IP adresini x.x.x.x biçiminde buraya giriniz."
-
-#: src/muuli_wdr.cpp
-msgid "Port:"
-msgstr "Port:"
 
 #: src/muuli_wdr.cpp
 msgid "Use Secure User Identification"
@@ -5354,20 +5335,20 @@ msgid "Enable/disable proxy support"
 msgstr "Vekil sunucu desteğini etkinleştir/devre dışı bırak"
 
 #: src/muuli_wdr.cpp
-msgid "Proxy type:"
-msgstr "Vekil sunucu Türü:"
+msgid "Proxy type"
+msgstr "Vekil sunucu Türü"
 
 #: src/muuli_wdr.cpp
-msgid "Proxy host:"
-msgstr "Vekil sunucu makine:"
+msgid "Proxy host"
+msgstr "Vekil sunucu makine"
 
 #: src/muuli_wdr.cpp
 msgid "The proxy host name"
 msgstr "Vekil sunucu makine adı"
 
 #: src/muuli_wdr.cpp
-msgid "Proxy port:"
-msgstr "Vekil sunucu Portu:"
+msgid "Proxy port"
+msgstr "Vekil sunucu Portu"
 
 #: src/muuli_wdr.cpp
 msgid "The proxy port"
@@ -5382,16 +5363,8 @@ msgid "Enable/disable username/password authentication"
 msgstr "Kullanıcı adı/şifre yetkilendirmeyi etkinleştir/devre dışı bırak."
 
 #: src/muuli_wdr.cpp
-msgid "Username: "
-msgstr "Kullanıcı adı: "
-
-#: src/muuli_wdr.cpp
 msgid "The username to use to connect to the proxy"
 msgstr "Vekil sunucuya bağlanmak için gerekli kullanıcı adı"
-
-#: src/muuli_wdr.cpp
-msgid "Password:"
-msgstr "Şifre:"
 
 #: src/muuli_wdr.cpp
 msgid "The password to use to connect to the proxy"
@@ -5404,10 +5377,6 @@ msgstr "Bağlan:"
 #: src/muuli_wdr.cpp
 msgid "Login to remote amule"
 msgstr "Uzaktan aMule'ye giriş yapınız."
-
-#: src/muuli_wdr.cpp
-msgid "User name"
-msgstr "Kullanıcı adı"
 
 #: src/muuli_wdr.cpp
 msgid "Remember those settings"
@@ -5569,6 +5538,15 @@ msgstr "saat"
 msgid "days"
 msgstr "gün"
 
+#. TRANSLATORS:
+#. Punctuation for a "label: value" pair. %s is the already-translated
+#. label. Place the colon as your language requires -- e.g. "%s :" with a
+#. space in French, "%s:" without one in Russian and English.
+#: src/OtherFunctions.cpp
+#, c-format
+msgid "%s:"
+msgstr ""
+
 #: src/OtherFunctions.cpp
 msgid "all"
 msgstr "tümü"
@@ -5601,6 +5579,75 @@ msgstr "Belge"
 #, c-format
 msgid "Using config dir: %s"
 msgstr "Kullanılan yapılandırma dizini: %s"
+
+#: src/PartBarLegendUI.cpp
+msgid "This source does not have the part"
+msgstr "Bu kaynakta parça mevcut değil"
+
+#: src/PartBarLegendUI.cpp
+msgid "You and this source both have the part"
+msgstr "Hem siz hem de bu kaynak parçaya sahipsiniz"
+
+#: src/PartBarLegendUI.cpp
+msgid "Being downloaded from this source now"
+msgstr "Şu anda bu kaynaktan indiriliyor"
+
+#: src/PartBarLegendUI.cpp
+msgid "The next part that will be asked of this source"
+msgstr "Bu kaynaktan istenecek gelecek parça"
+
+#: src/PartBarLegendUI.cpp
+msgid "This source has the part and you still need it"
+msgstr "Bu kaynak parçaya sahip ve sizin hâlâ buna ihtiyacınız var"
+
+#: src/PartBarLegendUI.cpp
+msgid "This peer already has the part"
+msgstr "Bu eşte zaten parça mevcut"
+
+#: src/PartBarLegendUI.cpp
+msgid "This peer does not have the part"
+msgstr "Bu eşte parça mevcut değil"
+
+#: src/PartBarLegendUI.cpp
+msgid "No other source has this part"
+msgstr "Başka hiçbir kaynakta bu parça mevcut değil"
+
+#: src/PartBarLegendUI.cpp
+msgid "One other source has this part"
+msgstr "Bir başka kaynakta bu parça mevcut"
+
+#: src/PartBarLegendUI.cpp
+#, c-format
+msgid "%u or more other sources have this part"
+msgstr "%u veya daha fazla kaynakta bu parça mevcut"
+
+#: src/PartBarLegendUI.cpp
+msgid "Already read back and hashed"
+msgstr "Zaten geri okundu ve karma değeri hesaplandı"
+
+#: src/PartBarLegendUI.cpp
+msgid "Still to be read"
+msgstr "Hâlâ okunacak"
+
+#: src/PartBarLegendUI.cpp
+msgid "One block per part of the file being downloaded."
+msgstr "İndirilmekte olan dosyanın her bir parçası için bir blok."
+
+#: src/PartBarLegendUI.cpp
+msgid "One block per part of the shared file."
+msgstr "Paylaşılan dosyanın her bir parçası için bir blok."
+
+#: src/PartBarLegendUI.cpp
+msgid "One block per part of the shared file, coloured by how many other sources have it."
+msgstr "Paylaşılan dosyanın her bir parçası için bir blok, kaç başka kaynağın ona sahip olduğuna göre renklendirilir."
+
+#: src/PartBarLegendUI.cpp
+msgid "One block per part of the shared file, showing how far the re-hash has read."
+msgstr "Paylaşılan dosyanın her bir parçası için bir blok, tekrar karma değeri hesaplamasının ne kadar okuduğunu gösterir."
+
+#: src/PartBarLegendUI.cpp
+msgid "In between, darkening as other sources are added"
+msgstr "Bu arada başka kaynaklar eklendikçe koyulaşır"
 
 #: src/PartFileConvert.cpp
 msgid "Waiting for partfile convert thread to die..."
@@ -6657,18 +6704,6 @@ msgid "FileID"
 msgstr "Dosya Adresi"
 
 #: src/SearchListCtrl.cpp
-msgid "Length"
-msgstr "Süre"
-
-#: src/SearchListCtrl.cpp
-msgid "Bitrate"
-msgstr "Akış hızı"
-
-#: src/SearchListCtrl.cpp
-msgid "Codec"
-msgstr "Kodlama"
-
-#: src/SearchListCtrl.cpp
 msgid "Expand all"
 msgstr "Tümünü genişlet"
 
@@ -6944,10 +6979,6 @@ msgstr "Yerel sunucu IP Süzgeci tarafından engellendi, başka bir sunucuya ba�
 #: src/ServerListCtrl.cpp
 msgid "Server Name"
 msgstr "Sunucu Adı"
-
-#: src/ServerListCtrl.cpp
-msgid "Port"
-msgstr "Port"
 
 #: src/ServerListCtrl.cpp
 msgid "Description"
@@ -7246,6 +7277,10 @@ msgid "Connected to buddy at %s"
 msgstr "Eşe %s üzerinde bağlandı"
 
 #: src/ServerWnd.cpp
+msgid "IP address:"
+msgstr "IP :"
+
+#: src/ServerWnd.cpp
 msgid "Indexed sources:"
 msgstr "Fihristlenen Kaynaklar:"
 
@@ -7390,8 +7425,8 @@ msgid "Shares File List"
 msgstr "Paylaşılan Dosyalar Listesi"
 
 #: src/SharedFilesCtrl.cpp
-msgid "Obtained Parts"
-msgstr "Alınan Parçalar"
+msgid "Source Availability"
+msgstr "Kaynak Mevcudiyeti"
 
 #: src/SharedFilesCtrl.cpp
 msgid "Directory Path"
@@ -9284,6 +9319,12 @@ msgstr "Kullanıcı verileri $APPDATA\\aMule konumunda kaldırılıyor…"
 
 #~ msgid "ERROR: Could not listen to TCP port."
 #~ msgstr "HATA: TCP portu dinlenemiyor."
+
+#~ msgid "User name"
+#~ msgstr "Kullanıcı adı"
+
+#~ msgid "Obtained Parts"
+#~ msgstr "Alınan Parçalar"
 
 #~ msgid "Available Parts"
 #~ msgstr "Erişilebilir Parçalar"

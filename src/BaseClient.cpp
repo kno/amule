@@ -819,7 +819,19 @@ bool CUpDownClient::ProcessHelloTypePacket(const CMemFile &data)
 		Ban();
 	}
 
-	if ((m_Friend = theApp->friendlist->FindFriend(m_UserHash, GetIP(), m_nUserPort)) != NULL) {
+	// A friend record can already be linked to this client from before the
+	// handshake, matched on address alone, and an address gets recycled. Now
+	// that the peer has said who it is, a record that turns out to be about
+	// somebody else has to let go: clearing only this client's side would
+	// leave that record pointing here and showing its friend as connected.
+	// Unlink first, because UnLinkClient() clears m_Friend as it goes.
+	CFriend *previous = m_Friend;
+	CFriend *found = theApp->friendlist->FindFriend(m_UserHash, GetIP(), m_nUserPort);
+	if (previous != nullptr && previous != found) {
+		previous->UnLinkClient();
+	}
+	m_Friend = found;
+	if (m_Friend != nullptr) {
 		m_Friend->LinkClient(
 			CCLIENTREF(this, "CUpDownClient::ProcessHelloTypePacket m_Friend->LinkClient"));
 	} else {
@@ -897,7 +909,7 @@ bool CUpDownClient::ProcessHelloTypePacket(const CMemFile &data)
  *     is required rather than tolerated, and it costs only the faster path --
  *     the peer falls back to uTP;
  *   - no valid user hash, or a zero port. Zero is "unknown" rather than a port
- *     (PeerIdentity::MatchesUdpSourcePort()), and an expectation under it would
+ *     (PeerAddressing::MatchesUdpSourcePort()), and an expectation under it would
  *     be found by any datagram whose source port could not be read.
  *
  * @param endpoint the address the QUIC datagrams will arrive from.

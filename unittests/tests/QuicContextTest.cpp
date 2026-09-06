@@ -499,7 +499,7 @@ TEST(QuicContext, ADifferentPortIsADifferentEndpoint)
 	ASSERT_TRUE(context.FindExpectation(CNetworkAddress::FromString("192.0.2.11"), 4672) == nullptr);
 }
 
-// IPv4-mapped and plain IPv4 are one peer, matching PeerIdentity::IndexKey().
+// IPv4-mapped and plain IPv4 are one peer, matching PeerAddressing::IndexKey().
 // The hello arrives over a TCP socket that may report either form and the
 // datagram arrives over a UDP socket that may report the other, so two
 // identities here would mean an expectation registered from the hello could
@@ -525,7 +525,7 @@ TEST(QuicContext, AnIncompleteRegistrationStoresNothing)
 	ASSERT_FALSE(context.RegisterExpectation(peer, 4672, nullptr, kPeerValue));
 	ASSERT_FALSE(context.RegisterExpectation(peer, 4672, kPeerHash, nullptr));
 	// Port zero is "unknown", not a port -- see
-	// PeerIdentity::MatchesUdpSourcePort(). An expectation under it would be
+	// PeerAddressing::MatchesUdpSourcePort(). An expectation under it would be
 	// found by any datagram whose source port could not be read.
 	ASSERT_FALSE(context.RegisterExpectation(peer, 0, kPeerHash, kPeerValue));
 	ASSERT_FALSE(context.RegisterExpectation(CNetworkAddress::Absent(), 4672, kPeerHash, kPeerValue));

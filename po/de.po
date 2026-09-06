@@ -13,8 +13,8 @@ msgid ""
 msgstr ""
 "Project-Id-Version: aMule\n"
 "Report-Msgid-Bugs-To: https://github.com/amule-org/amule/issues\n"
-"POT-Creation-Date: 2026-09-04 08:48+0200\n"
-"PO-Revision-Date: 2026-09-03 11:02+0000\n"
+"POT-Creation-Date: 2026-09-06 09:03+0200\n"
+"PO-Revision-Date: 2026-09-05 10:47+0000\n"
 "Last-Translator: Werner Mahr <werner@vollstreckernet.de>\n"
 "Language-Team: German <>\n"
 "Language: de\n"
@@ -1276,6 +1276,14 @@ msgid "Send message"
 msgstr "Sende Nachricht"
 
 #: src/ClientContextActions.cpp
+msgid "Send message to user"
+msgstr "Sende Nachricht an Benutzer"
+
+#: src/ClientContextActions.cpp
+msgid "Message to send:"
+msgstr "Zu sendende Nachricht:"
+
+#: src/ClientContextActions.cpp
 msgid ""
 "You are not allowed to set more than one friend slot.\n"
 " Only one slot was assigned."
@@ -1288,12 +1296,36 @@ msgid "Multiple selection"
 msgstr "Mehrfachauswahl"
 
 #: src/ClientContextActions.cpp
-msgid "Send message to user"
-msgstr "Sende Nachricht an Benutzer"
+#, c-format
+msgid "Add %u client to your friend list?"
+msgid_plural "Add %u clients to your friend list?"
+msgstr[0] ""
+msgstr[1] ""
 
 #: src/ClientContextActions.cpp
-msgid "Message to send:"
-msgstr "Zu sendende Nachricht:"
+#, fuzzy, c-format
+msgid "Remove %u client from your friend list?"
+msgid_plural "Remove %u clients from your friend list?"
+msgstr[0] "Entferne von Freundesliste"
+msgstr[1] "Entferne von Freundesliste"
+
+#: src/ClientContextActions.cpp
+#, c-format
+msgid "Could not add %u selected client to your friend list: no address is known for it."
+msgid_plural "Could not add %u selected clients to your friend list: no address is known for them."
+msgstr[0] ""
+msgstr[1] ""
+
+#: src/ClientContextActions.cpp
+#, fuzzy, c-format
+msgid "Request the shared files of %u client?"
+msgid_plural "Request the shared files of %u clients?"
+msgstr[0] "Liste freigegebener Dateien neu laden."
+msgstr[1] "Liste freigegebener Dateien neu laden."
+
+#: src/ClientContextActions.cpp
+msgid "A connection is opened to each of them."
+msgstr ""
 
 #: src/ClientCreditsList.cpp
 #, c-format
@@ -1354,19 +1386,17 @@ msgstr "Verbindung getrennt"
 msgid "%.1f KiB/s"
 msgstr ""
 
-#: src/ClientHistoryListCtrl.cpp src/ClientsListCtrl.cpp
-#, fuzzy
+#: src/ClientHistoryListCtrl.cpp src/ClientsListCtrl.cpp src/muuli_wdr.cpp
 msgid "Name"
-msgstr "Name:"
+msgstr "Name"
 
 #: src/ClientHistoryListCtrl.cpp src/ClientsListCtrl.cpp
 msgid "Software"
 msgstr ""
 
-#: src/ClientHistoryListCtrl.cpp src/ClientsListCtrl.cpp
-#, fuzzy
+#: src/ClientHistoryListCtrl.cpp src/ClientsListCtrl.cpp src/muuli_wdr.cpp
 msgid "IP Address"
-msgstr "IP-Adresse:"
+msgstr "IP-Adresse"
 
 #: src/ClientHistoryListCtrl.cpp src/ClientsListCtrl.cpp
 #: src/SharedFilePeersListCtrl.cpp src/SourceListCtrl.cpp
@@ -1436,6 +1466,13 @@ msgstr "Nicht verfügbar"
 #: src/ClientRef.cpp
 msgid "Not Available"
 msgstr "Nicht verfügbar"
+
+#: src/ClientRowListCtrl.cpp
+#, fuzzy, c-format
+msgid "Could not ask %u selected client for its shared files."
+msgid_plural "Could not ask %u selected clients for their shared files."
+msgstr[0] "Konnte %u Link nicht hinzufügen (Details: siehe Log)"
+msgstr[1] "Konnte %u Links nicht hinzufügen (Details: siehe Log)"
 
 #: src/ClientsListCtrl.cpp src/PrefsUnifiedDlg.cpp src/ServerListCtrl.cpp
 msgid "Files"
@@ -1534,7 +1571,7 @@ msgstr "Benutzer %s (%u) verweigert den Zugriff auf die Liste freigegebener Verz
 msgid "File Comments"
 msgstr "Dateikommentare"
 
-#: src/CommentDialogLst.cpp src/FriendListCtrl.cpp
+#: src/CommentDialogLst.cpp src/FriendListCtrl.cpp src/muuli_wdr.cpp
 msgid "Username"
 msgstr "Benutzername"
 
@@ -1547,7 +1584,7 @@ msgstr "Dateiname"
 msgid "Rating"
 msgstr "Bewertung"
 
-#: src/CommentDialogLst.cpp
+#: src/CommentDialogLst.cpp src/muuli_wdr.cpp
 msgid "Comment"
 msgstr "Kommentar"
 
@@ -2165,6 +2202,10 @@ msgstr "Der zu entfernende Server muss angegeben sein"
 #: src/ExternalConn.cpp
 msgid "eD2k is disabled in preferences."
 msgstr "eD2k ist in den Einstellungen deaktiviert."
+
+#: src/ExternalConn.cpp
+msgid "No address known for that friend yet."
+msgstr ""
 
 #: src/ExternalConn.cpp
 msgid "Friend not found."
@@ -2800,6 +2841,11 @@ msgid "Failed to open friend list file 'emfriends.met' for writing!"
 msgstr "Konnte Freundes-Liste 'emfriends.met' nicht schreiben!"
 
 #: src/FriendList.cpp
+#, c-format
+msgid "No address known for friend '%s' yet, cannot browse them."
+msgstr ""
+
+#: src/FriendList.cpp
 msgid "CRITICAL - no client on StartChatSession"
 msgstr "KRITISCH - kein Client bei StartChatSession"
 
@@ -2820,6 +2866,11 @@ msgid "Send &Message"
 msgstr "&Message senden"
 
 #: src/FriendListCtrl.cpp
+#, c-format
+msgid "No address known for friend '%s' yet, cannot message them."
+msgstr ""
+
+#: src/FriendListCtrl.cpp
 msgid "Are you sure that you wish to delete the selected friend?"
 msgstr "Den markierten Freund wirklich löschen?"
 
@@ -2836,48 +2887,10 @@ msgstr ""
 " Nur ein Slot wurde vergeben."
 
 #: src/GenericClientListCtrl.cpp
-#, fuzzy
-msgid "This source does not have the part"
-msgstr "Dieser Befehl sollte keine Parameter haben."
-
-#: src/GenericClientListCtrl.cpp
-msgid "You and this source both have the part"
-msgstr ""
-
-#: src/GenericClientListCtrl.cpp
-msgid "Being downloaded from this source now"
-msgstr ""
-
-#: src/GenericClientListCtrl.cpp
-msgid "The next part that will be asked of this source"
-msgstr ""
-
-#: src/GenericClientListCtrl.cpp
-msgid "This source has the part and you still need it"
-msgstr ""
-
-#: src/GenericClientListCtrl.cpp
-msgid "This peer already has the part"
-msgstr ""
-
-#: src/GenericClientListCtrl.cpp
-msgid "This peer does not have the part"
-msgstr ""
-
-#: src/GenericClientListCtrl.cpp
-msgid "One block per part of the file being downloaded."
-msgstr ""
-
-#: src/GenericClientListCtrl.cpp
-#, fuzzy
-msgid "One block per part of the shared file."
-msgstr "Hier den Serverport eingeben."
-
-#: src/GenericClientListCtrl.cpp
 msgid "Swap to this file"
 msgstr "Zu dieser Datei verschieben"
 
-#: src/GenericClientListCtrl.cpp
+#: src/GenericClientListCtrl.cpp src/SharedFilesCtrl.cpp
 msgid "Colour legend"
 msgstr ""
 
@@ -3700,10 +3713,6 @@ msgstr "Momentan verbundener Server."
 msgid "Search"
 msgstr "Suche"
 
-#: src/muuli_wdr.cpp
-msgid "Name:"
-msgstr "Name:"
-
 #: src/muuli_wdr.cpp src/SearchListCtrl.cpp src/SharedFilesCtrl.cpp
 msgid "Type"
 msgstr "Suchtyp"
@@ -3793,8 +3802,8 @@ msgid "Availability"
 msgstr "Verfügbarkeit"
 
 #: src/muuli_wdr.cpp
-msgid "Filter:"
-msgstr "Filter:"
+msgid "Filter"
+msgstr "Filter"
 
 #: src/muuli_wdr.cpp
 msgid "Invert Result"
@@ -3852,6 +3861,10 @@ msgid "Clears completed downloads"
 msgstr "Vollständige Downloads entfernen"
 
 #: src/muuli_wdr.cpp
+msgid "Filter:"
+msgstr "Filter:"
+
+#: src/muuli_wdr.cpp
 msgid "File sources:"
 msgstr "Dateiquellen:"
 
@@ -3860,80 +3873,76 @@ msgid "General"
 msgstr "Allgemein"
 
 #: src/muuli_wdr.cpp
-msgid "Full Name :"
-msgstr "Name:"
+msgid "Full Name"
+msgstr "Name"
 
 #: src/muuli_wdr.cpp
-msgid "met-File :"
-msgstr "met-Datei:"
+msgid "met-File"
+msgstr "met-Datei"
 
 #: src/muuli_wdr.cpp
-msgid "Hash :"
-msgstr "Prüfsumme:"
+msgid "Hash"
+msgstr "Prüfsumme"
 
 #: src/muuli_wdr.cpp
-msgid "Filesize :"
-msgstr "Dateigröße:"
+msgid "Filesize"
+msgstr "Dateigröße"
 
 #: src/muuli_wdr.cpp src/Statistics.cpp
 msgid "Transfer"
 msgstr "Übertragungen"
 
 #: src/muuli_wdr.cpp
-msgid "Partfilestatus :"
-msgstr "Status der Part-Datei:"
+msgid "Partfilestatus"
+msgstr "Status der Part-Datei"
 
 #: src/muuli_wdr.cpp
-msgid "Last seen complete :"
-msgstr "Zuletzt vollständig gesehen:"
+msgid "Last seen complete"
+msgstr "Zuletzt vollständig gesehen"
 
 #: src/muuli_wdr.cpp
-msgid "Found Sources :"
-msgstr "Gefundene Quellen:"
+msgid "Found Sources"
+msgstr "Gefundene Quellen"
 
 #: src/muuli_wdr.cpp
-msgid "Transferring Sources :"
-msgstr "Übertragende Quellen:"
+msgid "Transferring Sources"
+msgstr "Übertragende Quellen"
 
 #: src/muuli_wdr.cpp
-msgid "Filepart-Count :"
-msgstr "Anzahl der Part-Dateien:"
+msgid "Filepart-Count"
+msgstr "Anzahl der Part-Dateien"
 
 #: src/muuli_wdr.cpp
-msgid "Available :"
-msgstr "Verfügbar:"
+msgid "Available"
+msgstr "Verfügbar"
 
 #: src/muuli_wdr.cpp
-msgid "Datarate :"
-msgstr "Datenrate:"
+msgid "Datarate"
+msgstr "Datenrate"
 
 #: src/muuli_wdr.cpp
-msgid "Download Active Time: "
-msgstr "Dauer aktiven Herunterladens: "
+msgid "Download Active Time"
+msgstr "Dauer aktiven Herunterladens"
 
 #: src/muuli_wdr.cpp
-msgid "Transferred :"
-msgstr "Übertragen:"
-
-#: src/muuli_wdr.cpp
-msgid "Completed Size :"
-msgstr "Fertiggestellt:"
+msgid "Completed Size"
+msgstr "Fertiggestellt"
 
 #: src/muuli_wdr.cpp
 msgid "Intelligent Corruption Handling"
 msgstr "Intelligente Fehlerkorrektur"
 
 #: src/muuli_wdr.cpp
-msgid "Lost to corruption :"
-msgstr "Durch Fehler verloren:"
+msgid "Lost to corruption"
+msgstr "Durch Fehler verloren"
 
 #: src/muuli_wdr.cpp
-msgid "Gained by compression :"
-msgstr "Durch Kompression gewonnen:"
+msgid "Gained by compression"
+msgstr "Durch Kompression gewonnen"
 
 #: src/muuli_wdr.cpp
-msgid "Packages saved by I.C.H. :"
-msgstr "Durch I.C.H. gesparte Pakete:"
+msgid "Packages saved by I.C.H."
+msgstr "Durch I.C.H. gesparte Pakete"
 
 #: src/muuli_wdr.cpp
 #, fuzzy
@@ -3975,30 +3984,30 @@ msgstr ", Upload: "
 msgid "Media Info"
 msgstr "Kad-Info"
 
-#: src/muuli_wdr.cpp
-msgid "Length :"
+#: src/muuli_wdr.cpp src/SearchListCtrl.cpp
+msgid "Length"
 msgstr ""
 
-#: src/muuli_wdr.cpp
+#: src/muuli_wdr.cpp src/SearchListCtrl.cpp
 #, fuzzy
-msgid "Bitrate :"
+msgid "Bitrate"
 msgstr "Nicht bewertet"
 
-#: src/muuli_wdr.cpp
-msgid "Codec :"
+#: src/muuli_wdr.cpp src/SearchListCtrl.cpp
+msgid "Codec"
 msgstr ""
 
 #: src/muuli_wdr.cpp
-msgid "Artist :"
+msgid "Artist"
 msgstr ""
 
 #: src/muuli_wdr.cpp
-msgid "Album :"
+msgid "Album"
 msgstr ""
 
 #: src/muuli_wdr.cpp
-msgid "Title :"
-msgstr "Titel:"
+msgid "Title"
+msgstr "Titel"
 
 #: src/muuli_wdr.cpp
 msgid "File Names"
@@ -4085,25 +4094,17 @@ msgstr "Unbekannte Größe"
 msgid "Required Information"
 msgstr "Benötigte Information"
 
-#: src/muuli_wdr.cpp
-msgid "IP Address :"
-msgstr "IP-Adresse:"
-
-#: src/muuli_wdr.cpp
-msgid "Port :"
-msgstr "Port:"
+#: src/muuli_wdr.cpp src/ServerListCtrl.cpp
+msgid "Port"
+msgstr "Port"
 
 #: src/muuli_wdr.cpp
 msgid "Additional Information"
 msgstr "Zusätzliche Information"
 
 #: src/muuli_wdr.cpp
-msgid "Username :"
-msgstr "Benutzername:"
-
-#: src/muuli_wdr.cpp
-msgid "Userhash :"
-msgstr "Benutzerprüfsumme:"
+msgid "Userhash"
+msgstr "Benutzerprüfsumme"
 
 #: src/muuli_wdr.cpp src/utils/aLinkCreator/src/alcframe.cpp
 msgid "Add"
@@ -4138,44 +4139,28 @@ msgid "Statistics Tree"
 msgstr "Statistikbaum"
 
 #: src/muuli_wdr.cpp
-msgid "Username:"
-msgstr "Benutzername:"
+msgid "Client software"
+msgstr "Client-Software"
 
 #: src/muuli_wdr.cpp
-msgid "Userhash:"
-msgstr "Benutzerprüfsumme:"
+msgid "Client version"
+msgstr "Client-Version"
 
 #: src/muuli_wdr.cpp
-msgid "Client software:"
-msgstr "Client-Software:"
+msgid "User ID"
+msgstr "Benutzer-ID"
 
 #: src/muuli_wdr.cpp
-msgid "Client version:"
-msgstr "Client-Version:"
-
-#: src/muuli_wdr.cpp src/ServerWnd.cpp
-msgid "IP address:"
-msgstr "IP-Adresse:"
+msgid "Server IP"
+msgstr "Server-IP"
 
 #: src/muuli_wdr.cpp
-msgid "User ID:"
-msgstr "Benutzer-ID:"
+msgid "Server name"
+msgstr "Servername"
 
 #: src/muuli_wdr.cpp
-msgid "Server IP:"
-msgstr "Server-IP:"
-
-#: src/muuli_wdr.cpp
-msgid "Server name:"
-msgstr "Servername:"
-
-#: src/muuli_wdr.cpp
-msgid "Obfuscation:"
-msgstr "Verschleierung:"
-
-#: src/muuli_wdr.cpp
-msgid "Kad:"
-msgstr "Kad:"
+msgid "Obfuscation"
+msgstr "Verschleierung"
 
 #: src/muuli_wdr.cpp
 msgid "Vendor capabilities:"
@@ -4186,52 +4171,52 @@ msgid "Transfers to client"
 msgstr "Übertragungen zum Client"
 
 #: src/muuli_wdr.cpp
-msgid "Current request:"
-msgstr "Momentane Anfrage:"
+msgid "Current request"
+msgstr "Momentane Anfrage"
 
 #: src/muuli_wdr.cpp
-msgid "Average upload rate:"
-msgstr "Durchschnittliche Uploadrate:"
+msgid "Average upload rate"
+msgstr "Durchschnittliche Uploadrate"
 
 #: src/muuli_wdr.cpp
-msgid "Average download rate:"
-msgstr "Durchschnittliche Downloadrate:"
+msgid "Average download rate"
+msgstr "Durchschnittliche Downloadrate"
 
 #: src/muuli_wdr.cpp
-msgid "Uploaded (session):"
-msgstr "Hochgeladen (Sitzung):"
+msgid "Uploaded (session)"
+msgstr "Hochgeladen (Sitzung)"
 
 #: src/muuli_wdr.cpp
-msgid "Downloaded (session):"
-msgstr "Heruntergeladen (Sitzung):"
+msgid "Downloaded (session)"
+msgstr "Heruntergeladen (Sitzung)"
 
 #: src/muuli_wdr.cpp
-msgid "Uploaded (total):"
-msgstr "Hochgeladen (Gesamt):"
+msgid "Uploaded (total)"
+msgstr "Hochgeladen (Gesamt)"
 
 #: src/muuli_wdr.cpp
-msgid "Downloaded (total):"
-msgstr "Heruntergeladen (Gesamt):"
+msgid "Downloaded (total)"
+msgstr "Heruntergeladen (Gesamt)"
 
 #: src/muuli_wdr.cpp
 msgid "Scores"
 msgstr "Punkte"
 
 #: src/muuli_wdr.cpp
-msgid "DL/UP modifier:"
-msgstr "DL/UP-Modifikator:"
+msgid "DL/UP modifier"
+msgstr "DL/UP-Modifikator"
 
 #: src/muuli_wdr.cpp
-msgid "Secure ident:"
-msgstr "Sichere Erkennung:"
+msgid "Secure ident"
+msgstr "Sichere Erkennung"
 
 #: src/muuli_wdr.cpp
-msgid "Queue rank:"
-msgstr "Warteschlangenposition:"
+msgid "Queue rank"
+msgstr "Warteschlangenposition"
 
 #: src/muuli_wdr.cpp
-msgid "Queue score:"
-msgstr "Wartepunkte:"
+msgid "Queue score"
+msgstr "Wartepunkte"
 
 #: src/muuli_wdr.cpp
 msgid "Nick"
@@ -5026,24 +5011,20 @@ msgid "Reset any changes made to the preferences."
 msgstr "Alle Änderungen zu den Einstellungen zurücksetzen."
 
 #: src/muuli_wdr.cpp
-msgid "Comment :"
-msgstr "Kommentar:"
+msgid "Incoming Dir"
+msgstr "Verzeichnis für eingehende Dateien"
 
 #: src/muuli_wdr.cpp
-msgid "Incoming Dir :"
-msgstr "Verzeichnis für eingehende Dateien:"
-
-#: src/muuli_wdr.cpp
-msgid "Change priority for new assigned files :"
-msgstr "Priorität bei neu zugewiesenen Dateien ändern:"
+msgid "Change priority for new assigned files"
+msgstr "Priorität bei neu zugewiesenen Dateien ändern"
 
 #: src/muuli_wdr.cpp
 msgid "Don't change"
 msgstr "Nicht ändern"
 
 #: src/muuli_wdr.cpp
-msgid "Select color for this Category (currently selected) :"
-msgstr "Farbe für diese Kategorie wählen (momentan ausgewählt):"
+msgid "Select color for this Category (currently selected)"
+msgstr "Farbe für diese Kategorie wählen (momentan ausgewählt)"
 
 #: src/muuli_wdr.cpp
 msgid "Click this button to reset the log."
@@ -5126,10 +5107,6 @@ msgstr "Bootstrap von bekannten Clients"
 #, fuzzy
 msgid "Enter the IP of the node here, using the x.x.x.x format."
 msgstr "Hier die IP des Servers im Format x.x.x.x eingeben."
-
-#: src/muuli_wdr.cpp
-msgid "Port:"
-msgstr "Port:"
 
 #: src/muuli_wdr.cpp
 msgid "Use Secure User Identification"
@@ -5397,20 +5374,20 @@ msgid "Enable/disable proxy support"
 msgstr "Aktiviere/Deaktiviere Proxy-Unterstützung"
 
 #: src/muuli_wdr.cpp
-msgid "Proxy type:"
-msgstr "Proxy-Typ:"
+msgid "Proxy type"
+msgstr "Proxy-Typ"
 
 #: src/muuli_wdr.cpp
-msgid "Proxy host:"
-msgstr "Proxy-Host:"
+msgid "Proxy host"
+msgstr "Proxy-Host"
 
 #: src/muuli_wdr.cpp
 msgid "The proxy host name"
 msgstr "Der Hostname des Proxy"
 
 #: src/muuli_wdr.cpp
-msgid "Proxy port:"
-msgstr "Proxy-Port:"
+msgid "Proxy port"
+msgstr "Proxy-Port"
 
 #: src/muuli_wdr.cpp
 msgid "The proxy port"
@@ -5425,16 +5402,8 @@ msgid "Enable/disable username/password authentication"
 msgstr "Aktiviere/Deaktiviere Authentifizierung mit Benutzername/Passwort"
 
 #: src/muuli_wdr.cpp
-msgid "Username: "
-msgstr "Benutzername:"
-
-#: src/muuli_wdr.cpp
 msgid "The username to use to connect to the proxy"
 msgstr "Der Benutzername, um sich beim Proxy anzumelden"
-
-#: src/muuli_wdr.cpp
-msgid "Password:"
-msgstr "Passwort:"
 
 #: src/muuli_wdr.cpp
 msgid "The password to use to connect to the proxy"
@@ -5447,10 +5416,6 @@ msgstr "Verbinde zu:"
 #: src/muuli_wdr.cpp
 msgid "Login to remote amule"
 msgstr "Beim entfernten aMule anmelden"
-
-#: src/muuli_wdr.cpp
-msgid "User name"
-msgstr "Benutzername"
 
 #: src/muuli_wdr.cpp
 msgid "Remember those settings"
@@ -5613,6 +5578,15 @@ msgstr "Stunden"
 msgid "days"
 msgstr "tage"
 
+#. TRANSLATORS:
+#. Punctuation for a "label: value" pair. %s is the already-translated
+#. label. Place the colon as your language requires -- e.g. "%s :" with a
+#. space in French, "%s:" without one in Russian and English.
+#: src/OtherFunctions.cpp
+#, c-format
+msgid "%s:"
+msgstr ""
+
 #: src/OtherFunctions.cpp
 msgid "all"
 msgstr "alle"
@@ -5645,6 +5619,81 @@ msgstr "Text"
 #, c-format
 msgid "Using config dir: %s"
 msgstr "Verwende Konfigurationsverzeichnis: %s"
+
+#: src/PartBarLegendUI.cpp
+#, fuzzy
+msgid "This source does not have the part"
+msgstr "Dieser Befehl sollte keine Parameter haben."
+
+#: src/PartBarLegendUI.cpp
+msgid "You and this source both have the part"
+msgstr ""
+
+#: src/PartBarLegendUI.cpp
+msgid "Being downloaded from this source now"
+msgstr ""
+
+#: src/PartBarLegendUI.cpp
+msgid "The next part that will be asked of this source"
+msgstr ""
+
+#: src/PartBarLegendUI.cpp
+msgid "This source has the part and you still need it"
+msgstr ""
+
+#: src/PartBarLegendUI.cpp
+msgid "This peer already has the part"
+msgstr ""
+
+#: src/PartBarLegendUI.cpp
+msgid "This peer does not have the part"
+msgstr ""
+
+#: src/PartBarLegendUI.cpp
+#, fuzzy
+msgid "No other source has this part"
+msgstr "Dieser Befehl sollte keine Parameter haben."
+
+#: src/PartBarLegendUI.cpp
+#, fuzzy
+msgid "One other source has this part"
+msgstr "Dieser Befehl sollte keine Parameter haben."
+
+#: src/PartBarLegendUI.cpp
+#, fuzzy, c-format
+msgid "%u or more other sources have this part"
+msgstr "Dieser Befehl sollte keine Parameter haben."
+
+#: src/PartBarLegendUI.cpp
+msgid "Already read back and hashed"
+msgstr ""
+
+#: src/PartBarLegendUI.cpp
+msgid "Still to be read"
+msgstr ""
+
+#: src/PartBarLegendUI.cpp
+msgid "One block per part of the file being downloaded."
+msgstr ""
+
+#: src/PartBarLegendUI.cpp
+#, fuzzy
+msgid "One block per part of the shared file."
+msgstr "Hier den Serverport eingeben."
+
+#: src/PartBarLegendUI.cpp
+#, fuzzy
+msgid "One block per part of the shared file, coloured by how many other sources have it."
+msgstr "Hier den Serverport eingeben."
+
+#: src/PartBarLegendUI.cpp
+#, fuzzy
+msgid "One block per part of the shared file, showing how far the re-hash has read."
+msgstr "Hier den Serverport eingeben."
+
+#: src/PartBarLegendUI.cpp
+msgid "In between, darkening as other sources are added"
+msgstr ""
 
 #: src/PartFileConvert.cpp
 msgid "Waiting for partfile convert thread to die..."
@@ -6716,19 +6765,6 @@ msgid "FileID"
 msgstr "Datei-ID"
 
 #: src/SearchListCtrl.cpp
-msgid "Length"
-msgstr ""
-
-#: src/SearchListCtrl.cpp
-#, fuzzy
-msgid "Bitrate"
-msgstr "Nicht bewertet"
-
-#: src/SearchListCtrl.cpp
-msgid "Codec"
-msgstr ""
-
-#: src/SearchListCtrl.cpp
 msgid "Expand all"
 msgstr ""
 
@@ -7011,10 +7047,6 @@ msgstr "Lokaler Server ist gefiltert durch IPFilters, verbinde neu zu einem ande
 #: src/ServerListCtrl.cpp
 msgid "Server Name"
 msgstr "Servername"
-
-#: src/ServerListCtrl.cpp
-msgid "Port"
-msgstr "Port"
 
 #: src/ServerListCtrl.cpp
 msgid "Description"
@@ -7319,6 +7351,10 @@ msgid "Connected to buddy at %s"
 msgstr "Verbunden mit Kumpel an %s"
 
 #: src/ServerWnd.cpp
+msgid "IP address:"
+msgstr "IP-Adresse:"
+
+#: src/ServerWnd.cpp
 msgid "Indexed sources:"
 msgstr "Indizierte Quellen:"
 
@@ -7463,8 +7499,9 @@ msgid "Shares File List"
 msgstr "Liste der Freigaben"
 
 #: src/SharedFilesCtrl.cpp
-msgid "Obtained Parts"
-msgstr "Erhaltene Teile"
+#, fuzzy
+msgid "Source Availability"
+msgstr "Verfügbarkeit"
 
 #: src/SharedFilesCtrl.cpp
 msgid "Directory Path"
@@ -9360,6 +9397,12 @@ msgstr "Entferne Benutzerdaten von $APPDATA\\aMule..."
 
 #~ msgid "ERROR: Could not listen to TCP port."
 #~ msgstr "FEHLER: Kann nicht auf TCP-Port lauschen."
+
+#~ msgid "User name"
+#~ msgstr "Benutzername"
+
+#~ msgid "Obtained Parts"
+#~ msgstr "Erhaltene Teile"
 
 #~ msgid "Available Parts"
 #~ msgstr "Verfügbare Teile"

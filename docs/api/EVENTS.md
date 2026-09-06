@@ -377,7 +377,7 @@ Identical to the REST [`/api/v0/servers`](REFERENCE.md#get-apiv0servers) list-it
   "ecid":        1,
   "name":        "eMule Server",
   "description": "Public server",
-  "version":     "17.15",
+  "software_version": "17.15",
   "address":     "203.0.113.5:4242",
   "ip":          "203.0.113.5",
   "country_code": "de",
@@ -494,8 +494,8 @@ Identical to the REST [`/api/v0/clients`](REFERENCE.md#get-apiv0clients) list-it
   "download_state":         "idle",
   "ident_state":            "identified",
   "upload_file_hash":       "8b54a3c20fae9e4b9f7e0c2c8c01b6b1",
-  "download_file_hash":     "",
-  "download_file_name":     "",
+  "download_file_hash":     null,
+  "download_file_name":     null,
   "upload_file_name":       "example-distribution.iso",
   "uploaded_bytes_session":   22000000,
   "downloaded_bytes_session": 0,
@@ -507,6 +507,7 @@ Identical to the REST [`/api/v0/clients`](REFERENCE.md#get-apiv0clients) list-it
   "remote_queue_position":      0,
   "upload_queue_score":                  150,
   "obfuscation_state":     "enabled",
+  "connected":            true,
   "friend_slot":            false,
   "part_progress_percent":  75.0
 }

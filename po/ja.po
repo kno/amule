@@ -9,8 +9,8 @@ msgid ""
 msgstr ""
 "Project-Id-Version: aMule\n"
 "Report-Msgid-Bugs-To: https://github.com/amule-org/amule/issues\n"
-"POT-Creation-Date: 2026-09-04 08:48+0200\n"
-"PO-Revision-Date: 2026-09-03 11:06+0000\n"
+"POT-Creation-Date: 2026-09-06 09:03+0200\n"
+"PO-Revision-Date: 2026-09-05 10:54+0000\n"
 "Last-Translator: \n"
 "Language-Team: Japanese\n"
 "Language: ja\n"
@@ -1271,6 +1271,14 @@ msgid "Send message"
 msgstr "メッセージを送る"
 
 #: src/ClientContextActions.cpp
+msgid "Send message to user"
+msgstr "ユーザへメッセージを送る"
+
+#: src/ClientContextActions.cpp
+msgid "Message to send:"
+msgstr "メッセージ："
+
+#: src/ClientContextActions.cpp
 #, fuzzy
 msgid ""
 "You are not allowed to set more than one friend slot.\n"
@@ -1282,12 +1290,32 @@ msgid "Multiple selection"
 msgstr "複数選択"
 
 #: src/ClientContextActions.cpp
-msgid "Send message to user"
-msgstr "ユーザへメッセージを送る"
+#, c-format
+msgid "Add %u client to your friend list?"
+msgid_plural "Add %u clients to your friend list?"
+msgstr[0] ""
 
 #: src/ClientContextActions.cpp
-msgid "Message to send:"
-msgstr "メッセージ："
+#, fuzzy, c-format
+msgid "Remove %u client from your friend list?"
+msgid_plural "Remove %u clients from your friend list?"
+msgstr[0] "仲間リストから外す"
+
+#: src/ClientContextActions.cpp
+#, c-format
+msgid "Could not add %u selected client to your friend list: no address is known for it."
+msgid_plural "Could not add %u selected clients to your friend list: no address is known for them."
+msgstr[0] ""
+
+#: src/ClientContextActions.cpp
+#, fuzzy, c-format
+msgid "Request the shared files of %u client?"
+msgid_plural "Request the shared files of %u clients?"
+msgstr[0] "共有ファイル・リストを再ロードします。"
+
+#: src/ClientContextActions.cpp
+msgid "A connection is opened to each of them."
+msgstr ""
 
 #: src/ClientCreditsList.cpp
 #, c-format
@@ -1346,19 +1374,17 @@ msgstr "切断"
 msgid "%.1f KiB/s"
 msgstr ""
 
-#: src/ClientHistoryListCtrl.cpp src/ClientsListCtrl.cpp
-#, fuzzy
+#: src/ClientHistoryListCtrl.cpp src/ClientsListCtrl.cpp src/muuli_wdr.cpp
 msgid "Name"
-msgstr "名前："
+msgstr "名前"
 
 #: src/ClientHistoryListCtrl.cpp src/ClientsListCtrl.cpp
 msgid "Software"
 msgstr ""
 
-#: src/ClientHistoryListCtrl.cpp src/ClientsListCtrl.cpp
-#, fuzzy
+#: src/ClientHistoryListCtrl.cpp src/ClientsListCtrl.cpp src/muuli_wdr.cpp
 msgid "IP Address"
-msgstr "IPアドレス："
+msgstr "IPアドレス"
 
 #: src/ClientHistoryListCtrl.cpp src/ClientsListCtrl.cpp
 #: src/SharedFilePeersListCtrl.cpp src/SourceListCtrl.cpp
@@ -1430,6 +1456,12 @@ msgstr "非適用"
 #: src/ClientRef.cpp
 msgid "Not Available"
 msgstr "利用不可能です"
+
+#: src/ClientRowListCtrl.cpp
+#, c-format
+msgid "Could not ask %u selected client for its shared files."
+msgid_plural "Could not ask %u selected clients for their shared files."
+msgstr[0] ""
 
 #: src/ClientsListCtrl.cpp src/PrefsUnifiedDlg.cpp src/ServerListCtrl.cpp
 msgid "Files"
@@ -1528,7 +1560,7 @@ msgstr "ユーザ %s（%u）は共有ファイルまたはディレクトリ・�
 msgid "File Comments"
 msgstr "ファイル・コメント"
 
-#: src/CommentDialogLst.cpp src/FriendListCtrl.cpp
+#: src/CommentDialogLst.cpp src/FriendListCtrl.cpp src/muuli_wdr.cpp
 msgid "Username"
 msgstr "ユーザ名"
 
@@ -1541,7 +1573,7 @@ msgstr "ファイル名"
 msgid "Rating"
 msgstr "評価"
 
-#: src/CommentDialogLst.cpp
+#: src/CommentDialogLst.cpp src/muuli_wdr.cpp
 msgid "Comment"
 msgstr "コメント"
 
@@ -2160,6 +2192,10 @@ msgstr "削除したいサーバを定義しなければなりません"
 
 #: src/ExternalConn.cpp
 msgid "eD2k is disabled in preferences."
+msgstr ""
+
+#: src/ExternalConn.cpp
+msgid "No address known for that friend yet."
 msgstr ""
 
 #: src/ExternalConn.cpp
@@ -2798,6 +2834,11 @@ msgid "Failed to open friend list file 'emfriends.met' for writing!"
 msgstr ""
 
 #: src/FriendList.cpp
+#, c-format
+msgid "No address known for friend '%s' yet, cannot browse them."
+msgstr ""
+
+#: src/FriendList.cpp
 msgid "CRITICAL - no client on StartChatSession"
 msgstr ""
 
@@ -2818,6 +2859,11 @@ msgid "Send &Message"
 msgstr "送信 &Message"
 
 #: src/FriendListCtrl.cpp
+#, c-format
+msgid "No address known for friend '%s' yet, cannot message them."
+msgstr ""
+
+#: src/FriendListCtrl.cpp
 msgid "Are you sure that you wish to delete the selected friend?"
 msgstr "選択された友達を削除しますか？"
 
@@ -2832,48 +2878,10 @@ msgid ""
 msgstr "スロットが一つのみ提供されました。"
 
 #: src/GenericClientListCtrl.cpp
-#, fuzzy
-msgid "This source does not have the part"
-msgstr "このコマンドには引数が認められていません。"
-
-#: src/GenericClientListCtrl.cpp
-msgid "You and this source both have the part"
-msgstr ""
-
-#: src/GenericClientListCtrl.cpp
-msgid "Being downloaded from this source now"
-msgstr ""
-
-#: src/GenericClientListCtrl.cpp
-msgid "The next part that will be asked of this source"
-msgstr ""
-
-#: src/GenericClientListCtrl.cpp
-msgid "This source has the part and you still need it"
-msgstr ""
-
-#: src/GenericClientListCtrl.cpp
-msgid "This peer already has the part"
-msgstr ""
-
-#: src/GenericClientListCtrl.cpp
-msgid "This peer does not have the part"
-msgstr ""
-
-#: src/GenericClientListCtrl.cpp
-msgid "One block per part of the file being downloaded."
-msgstr ""
-
-#: src/GenericClientListCtrl.cpp
-#, fuzzy
-msgid "One block per part of the shared file."
-msgstr "サーバのポートをここに入力してください。"
-
-#: src/GenericClientListCtrl.cpp
 msgid "Swap to this file"
 msgstr "このファイルへ交換する"
 
-#: src/GenericClientListCtrl.cpp
+#: src/GenericClientListCtrl.cpp src/SharedFilesCtrl.cpp
 msgid "Colour legend"
 msgstr ""
 
@@ -3698,10 +3706,6 @@ msgstr "現在接続しているサーバ。"
 msgid "Search"
 msgstr "検索"
 
-#: src/muuli_wdr.cpp
-msgid "Name:"
-msgstr "名前："
-
 #: src/muuli_wdr.cpp src/SearchListCtrl.cpp src/SharedFilesCtrl.cpp
 msgid "Type"
 msgstr "タイプ"
@@ -3791,8 +3795,8 @@ msgid "Availability"
 msgstr "入手可能範囲"
 
 #: src/muuli_wdr.cpp
-msgid "Filter:"
-msgstr "フィルタ："
+msgid "Filter"
+msgstr "フィルタ"
 
 #: src/muuli_wdr.cpp
 msgid "Invert Result"
@@ -3850,6 +3854,10 @@ msgid "Clears completed downloads"
 msgstr "完成したダウンロードをクリアします"
 
 #: src/muuli_wdr.cpp
+msgid "Filter:"
+msgstr "フィルタ："
+
+#: src/muuli_wdr.cpp
 #, fuzzy
 msgid "File sources:"
 msgstr "ソース完了"
@@ -3859,80 +3867,76 @@ msgid "General"
 msgstr "一般"
 
 #: src/muuli_wdr.cpp
-msgid "Full Name :"
-msgstr "完全名："
+msgid "Full Name"
+msgstr "完全名"
 
 #: src/muuli_wdr.cpp
-msgid "met-File :"
-msgstr "metファイル："
+msgid "met-File"
+msgstr "metファイル"
 
 #: src/muuli_wdr.cpp
-msgid "Hash :"
-msgstr "ハッシュ："
+msgid "Hash"
+msgstr "ハッシュ"
 
 #: src/muuli_wdr.cpp
-msgid "Filesize :"
-msgstr "ファイル・サイズ："
+msgid "Filesize"
+msgstr "ファイル・サイズ"
 
 #: src/muuli_wdr.cpp src/Statistics.cpp
 msgid "Transfer"
 msgstr "転送"
 
 #: src/muuli_wdr.cpp
-msgid "Partfilestatus :"
-msgstr "部分ファイルの状態："
+msgid "Partfilestatus"
+msgstr "部分ファイルの状態"
 
 #: src/muuli_wdr.cpp
-msgid "Last seen complete :"
-msgstr "最後に完全として見た時間："
+msgid "Last seen complete"
+msgstr "最後に完全として見た時間"
 
 #: src/muuli_wdr.cpp
-msgid "Found Sources :"
-msgstr "見つかったソース："
+msgid "Found Sources"
+msgstr "見つかったソース"
 
 #: src/muuli_wdr.cpp
-msgid "Transferring Sources :"
-msgstr "転送中のソース："
+msgid "Transferring Sources"
+msgstr "転送中のソース"
 
 #: src/muuli_wdr.cpp
-msgid "Filepart-Count :"
-msgstr "ファイル部分の数："
+msgid "Filepart-Count"
+msgstr "ファイル部分の数"
 
 #: src/muuli_wdr.cpp
-msgid "Available :"
-msgstr "入手可能数："
+msgid "Available"
+msgstr "入手可能数"
 
 #: src/muuli_wdr.cpp
-msgid "Datarate :"
-msgstr "データ・レート："
+msgid "Datarate"
+msgstr "データ・レート"
 
 #: src/muuli_wdr.cpp
-msgid "Download Active Time: "
-msgstr "ダウンロードのアクティブ時間："
+msgid "Download Active Time"
+msgstr "ダウンロードのアクティブ時間"
 
 #: src/muuli_wdr.cpp
-msgid "Transferred :"
-msgstr "転送済み："
-
-#: src/muuli_wdr.cpp
-msgid "Completed Size :"
-msgstr "完全サイズ："
+msgid "Completed Size"
+msgstr "完全サイズ"
 
 #: src/muuli_wdr.cpp
 msgid "Intelligent Corruption Handling"
 msgstr "I.C.H.（知的破損処理）"
 
 #: src/muuli_wdr.cpp
-msgid "Lost to corruption :"
-msgstr "破損による損失："
+msgid "Lost to corruption"
+msgstr "破損による損失"
 
 #: src/muuli_wdr.cpp
-msgid "Gained by compression :"
-msgstr "圧縮による獲得："
+msgid "Gained by compression"
+msgstr "圧縮による獲得"
 
 #: src/muuli_wdr.cpp
-msgid "Packages saved by I.C.H. :"
-msgstr "I.C.H.に救済されたパケット："
+msgid "Packages saved by I.C.H."
+msgstr "I.C.H.に救済されたパケット"
 
 #: src/muuli_wdr.cpp
 #, fuzzy
@@ -3974,30 +3978,30 @@ msgstr "、 アップロード： "
 msgid "Media Info"
 msgstr "Kad情報"
 
-#: src/muuli_wdr.cpp
-msgid "Length :"
+#: src/muuli_wdr.cpp src/SearchListCtrl.cpp
+msgid "Length"
 msgstr ""
 
-#: src/muuli_wdr.cpp
+#: src/muuli_wdr.cpp src/SearchListCtrl.cpp
 #, fuzzy
-msgid "Bitrate :"
+msgid "Bitrate"
 msgstr "評価されていません"
 
-#: src/muuli_wdr.cpp
-msgid "Codec :"
+#: src/muuli_wdr.cpp src/SearchListCtrl.cpp
+msgid "Codec"
 msgstr ""
 
 #: src/muuli_wdr.cpp
-msgid "Artist :"
+msgid "Artist"
 msgstr ""
 
 #: src/muuli_wdr.cpp
-msgid "Album :"
+msgid "Album"
 msgstr ""
 
 #: src/muuli_wdr.cpp
-msgid "Title :"
-msgstr "タイトル："
+msgid "Title"
+msgstr "タイトル"
 
 #: src/muuli_wdr.cpp
 msgid "File Names"
@@ -4082,25 +4086,17 @@ msgstr "サイズが不明です"
 msgid "Required Information"
 msgstr "不可欠な情報"
 
-#: src/muuli_wdr.cpp
-msgid "IP Address :"
-msgstr "IPアドレス："
-
-#: src/muuli_wdr.cpp
-msgid "Port :"
-msgstr "ポート："
+#: src/muuli_wdr.cpp src/ServerListCtrl.cpp
+msgid "Port"
+msgstr "ポート"
 
 #: src/muuli_wdr.cpp
 msgid "Additional Information"
 msgstr "追加情報"
 
 #: src/muuli_wdr.cpp
-msgid "Username :"
-msgstr "ユーザ名："
-
-#: src/muuli_wdr.cpp
-msgid "Userhash :"
-msgstr "ユーザ・ハッシュ："
+msgid "Userhash"
+msgstr "ユーザ・ハッシュ"
 
 #: src/muuli_wdr.cpp src/utils/aLinkCreator/src/alcframe.cpp
 msgid "Add"
@@ -4135,44 +4131,28 @@ msgid "Statistics Tree"
 msgstr "統計木"
 
 #: src/muuli_wdr.cpp
-msgid "Username:"
-msgstr "ユーザ名："
+msgid "Client software"
+msgstr "クライアント・ソフトウェア"
 
 #: src/muuli_wdr.cpp
-msgid "Userhash:"
-msgstr "ユーザ・ハッシュ："
+msgid "Client version"
+msgstr "クライアント・バージョン"
 
 #: src/muuli_wdr.cpp
-msgid "Client software:"
-msgstr "クライアント・ソフトウェア："
+msgid "User ID"
+msgstr "ユーザID"
 
 #: src/muuli_wdr.cpp
-msgid "Client version:"
-msgstr "クライアント・バージョン："
-
-#: src/muuli_wdr.cpp src/ServerWnd.cpp
-msgid "IP address:"
-msgstr "IPアドレス："
+msgid "Server IP"
+msgstr "サーバIP"
 
 #: src/muuli_wdr.cpp
-msgid "User ID:"
-msgstr "ユーザID："
+msgid "Server name"
+msgstr "サーバ名"
 
 #: src/muuli_wdr.cpp
-msgid "Server IP:"
-msgstr "サーバIP："
-
-#: src/muuli_wdr.cpp
-msgid "Server name:"
-msgstr "サーバ名："
-
-#: src/muuli_wdr.cpp
-msgid "Obfuscation:"
-msgstr "難読化:"
-
-#: src/muuli_wdr.cpp
-msgid "Kad:"
-msgstr "Kad:"
+msgid "Obfuscation"
+msgstr "難読化"
 
 #: src/muuli_wdr.cpp
 msgid "Vendor capabilities:"
@@ -4183,53 +4163,53 @@ msgid "Transfers to client"
 msgstr "クライアントへの転送数"
 
 #: src/muuli_wdr.cpp
-msgid "Current request:"
-msgstr "現在の要求："
+msgid "Current request"
+msgstr "現在の要求"
 
 #: src/muuli_wdr.cpp
-msgid "Average upload rate:"
-msgstr "平均アップロード速度："
+msgid "Average upload rate"
+msgstr "平均アップロード速度"
 
 #: src/muuli_wdr.cpp
-msgid "Average download rate:"
-msgstr "平均ダウンロード速度："
+msgid "Average download rate"
+msgstr "平均ダウンロード速度"
 
 #: src/muuli_wdr.cpp
-msgid "Uploaded (session):"
-msgstr "アップロード（セッション）："
+msgid "Uploaded (session)"
+msgstr "アップロード（セッション）"
 
 #: src/muuli_wdr.cpp
-msgid "Downloaded (session):"
-msgstr "ダウンロード（セッション）："
+msgid "Downloaded (session)"
+msgstr "ダウンロード（セッション）"
 
 #: src/muuli_wdr.cpp
-msgid "Uploaded (total):"
-msgstr "アップロード（合計）："
+msgid "Uploaded (total)"
+msgstr "アップロード（合計）"
 
 #: src/muuli_wdr.cpp
-msgid "Downloaded (total):"
-msgstr "ダウンロード（合計）："
+msgid "Downloaded (total)"
+msgstr "ダウンロード（合計）"
 
 #: src/muuli_wdr.cpp
 msgid "Scores"
 msgstr "スコア"
 
 #: src/muuli_wdr.cpp
-msgid "DL/UP modifier:"
-msgstr "DL/UP変更："
+msgid "DL/UP modifier"
+msgstr "DL/UP変更"
 
 #: src/muuli_wdr.cpp
-msgid "Secure ident:"
-msgstr "セキュア認証："
+msgid "Secure ident"
+msgstr "セキュア認証"
 
 #: src/muuli_wdr.cpp
 #, fuzzy
-msgid "Queue rank:"
+msgid "Queue rank"
 msgstr "キューに追加しました"
 
 #: src/muuli_wdr.cpp
-msgid "Queue score:"
-msgstr "キュースコア："
+msgid "Queue score"
+msgstr "キュースコア"
 
 #: src/muuli_wdr.cpp
 msgid "Nick"
@@ -5021,16 +5001,12 @@ msgid "Reset any changes made to the preferences."
 msgstr "設定の変更を全てリセットする"
 
 #: src/muuli_wdr.cpp
-msgid "Comment :"
-msgstr "コメント："
+msgid "Incoming Dir"
+msgstr "受信ディレクトリ"
 
 #: src/muuli_wdr.cpp
-msgid "Incoming Dir :"
-msgstr "受信ディレクトリ："
-
-#: src/muuli_wdr.cpp
-msgid "Change priority for new assigned files :"
-msgstr "新しく割り当てられたファイルの優先度を変更する："
+msgid "Change priority for new assigned files"
+msgstr "新しく割り当てられたファイルの優先度を変更する"
 
 #: src/muuli_wdr.cpp
 #, fuzzy
@@ -5038,8 +5014,8 @@ msgid "Don't change"
 msgstr "変更しない"
 
 #: src/muuli_wdr.cpp
-msgid "Select color for this Category (currently selected) :"
-msgstr "このカテゴリの色を選択する（現在選択中）："
+msgid "Select color for this Category (currently selected)"
+msgstr "このカテゴリの色を選択する（現在選択中）"
 
 #: src/muuli_wdr.cpp
 msgid "Click this button to reset the log."
@@ -5124,10 +5100,6 @@ msgstr ""
 #, fuzzy
 msgid "Enter the IP of the node here, using the x.x.x.x format."
 msgstr "x.x.x.xフォーマットでサーバのIPアドレスを入力してください。"
-
-#: src/muuli_wdr.cpp
-msgid "Port:"
-msgstr "ポート："
 
 #: src/muuli_wdr.cpp
 msgid "Use Secure User Identification"
@@ -5396,20 +5368,20 @@ msgid "Enable/disable proxy support"
 msgstr "プロクシ・サポートを有効／無効にする"
 
 #: src/muuli_wdr.cpp
-msgid "Proxy type:"
-msgstr "プロクシの種類："
+msgid "Proxy type"
+msgstr "プロクシの種類"
 
 #: src/muuli_wdr.cpp
-msgid "Proxy host:"
-msgstr "プロクシー・ホスト："
+msgid "Proxy host"
+msgstr "プロクシー・ホスト"
 
 #: src/muuli_wdr.cpp
 msgid "The proxy host name"
 msgstr "プロクシー・ホスト名："
 
 #: src/muuli_wdr.cpp
-msgid "Proxy port:"
-msgstr "プロクシー・ポート："
+msgid "Proxy port"
+msgstr "プロクシー・ポート"
 
 #: src/muuli_wdr.cpp
 msgid "The proxy port"
@@ -5424,16 +5396,8 @@ msgid "Enable/disable username/password authentication"
 msgstr "ユーザ名／パスワード認証を有効／無効にする"
 
 #: src/muuli_wdr.cpp
-msgid "Username: "
-msgstr ""
-
-#: src/muuli_wdr.cpp
 msgid "The username to use to connect to the proxy"
 msgstr "プロクシーに接続に使うユーザ名"
-
-#: src/muuli_wdr.cpp
-msgid "Password:"
-msgstr "パスワード："
 
 #: src/muuli_wdr.cpp
 msgid "The password to use to connect to the proxy"
@@ -5446,10 +5410,6 @@ msgstr "次に接続する："
 #: src/muuli_wdr.cpp
 msgid "Login to remote amule"
 msgstr "リモートamuleにログインする"
-
-#: src/muuli_wdr.cpp
-msgid "User name"
-msgstr "ユーザ名"
 
 #: src/muuli_wdr.cpp
 msgid "Remember those settings"
@@ -5618,6 +5578,15 @@ msgstr "時間"
 msgid "days"
 msgstr "日"
 
+#. TRANSLATORS:
+#. Punctuation for a "label: value" pair. %s is the already-translated
+#. label. Place the colon as your language requires -- e.g. "%s :" with a
+#. space in French, "%s:" without one in Russian and English.
+#: src/OtherFunctions.cpp
+#, c-format
+msgid "%s:"
+msgstr ""
+
 #: src/OtherFunctions.cpp
 msgid "all"
 msgstr "全て"
@@ -5649,6 +5618,81 @@ msgstr "テキスト"
 #: src/OtherFunctions.cpp
 #, c-format
 msgid "Using config dir: %s"
+msgstr ""
+
+#: src/PartBarLegendUI.cpp
+#, fuzzy
+msgid "This source does not have the part"
+msgstr "このコマンドには引数が認められていません。"
+
+#: src/PartBarLegendUI.cpp
+msgid "You and this source both have the part"
+msgstr ""
+
+#: src/PartBarLegendUI.cpp
+msgid "Being downloaded from this source now"
+msgstr ""
+
+#: src/PartBarLegendUI.cpp
+msgid "The next part that will be asked of this source"
+msgstr ""
+
+#: src/PartBarLegendUI.cpp
+msgid "This source has the part and you still need it"
+msgstr ""
+
+#: src/PartBarLegendUI.cpp
+msgid "This peer already has the part"
+msgstr ""
+
+#: src/PartBarLegendUI.cpp
+msgid "This peer does not have the part"
+msgstr ""
+
+#: src/PartBarLegendUI.cpp
+#, fuzzy
+msgid "No other source has this part"
+msgstr "このコマンドには引数が認められていません。"
+
+#: src/PartBarLegendUI.cpp
+#, fuzzy
+msgid "One other source has this part"
+msgstr "このコマンドには引数が認められていません。"
+
+#: src/PartBarLegendUI.cpp
+#, fuzzy, c-format
+msgid "%u or more other sources have this part"
+msgstr "このコマンドには引数が認められていません。"
+
+#: src/PartBarLegendUI.cpp
+msgid "Already read back and hashed"
+msgstr ""
+
+#: src/PartBarLegendUI.cpp
+msgid "Still to be read"
+msgstr ""
+
+#: src/PartBarLegendUI.cpp
+msgid "One block per part of the file being downloaded."
+msgstr ""
+
+#: src/PartBarLegendUI.cpp
+#, fuzzy
+msgid "One block per part of the shared file."
+msgstr "サーバのポートをここに入力してください。"
+
+#: src/PartBarLegendUI.cpp
+#, fuzzy
+msgid "One block per part of the shared file, coloured by how many other sources have it."
+msgstr "サーバのポートをここに入力してください。"
+
+#: src/PartBarLegendUI.cpp
+#, fuzzy
+msgid "One block per part of the shared file, showing how far the re-hash has read."
+msgstr "サーバのポートをここに入力してください。"
+
+#: src/PartBarLegendUI.cpp
+msgid "In between, darkening as other sources are added"
 msgstr ""
 
 #: src/PartFileConvert.cpp
@@ -6713,19 +6757,6 @@ msgid "FileID"
 msgstr "ファイルID"
 
 #: src/SearchListCtrl.cpp
-msgid "Length"
-msgstr ""
-
-#: src/SearchListCtrl.cpp
-#, fuzzy
-msgid "Bitrate"
-msgstr "評価されていません"
-
-#: src/SearchListCtrl.cpp
-msgid "Codec"
-msgstr ""
-
-#: src/SearchListCtrl.cpp
 msgid "Expand all"
 msgstr ""
 
@@ -7007,10 +7038,6 @@ msgstr "ローカル・サーバはIPFiltersにフィルタされているため
 #: src/ServerListCtrl.cpp
 msgid "Server Name"
 msgstr "サーバ名"
-
-#: src/ServerListCtrl.cpp
-msgid "Port"
-msgstr "ポート"
 
 #: src/ServerListCtrl.cpp
 msgid "Description"
@@ -7319,6 +7346,10 @@ msgid "Connected to buddy at %s"
 msgstr "仲間と接続しています"
 
 #: src/ServerWnd.cpp
+msgid "IP address:"
+msgstr "IPアドレス："
+
+#: src/ServerWnd.cpp
 #, fuzzy
 msgid "Indexed sources:"
 msgstr "見つかったソース："
@@ -7462,8 +7493,9 @@ msgid "Shares File List"
 msgstr "共有ファイル"
 
 #: src/SharedFilesCtrl.cpp
-msgid "Obtained Parts"
-msgstr "得られた部分"
+#, fuzzy
+msgid "Source Availability"
+msgstr "入手可能範囲"
 
 #: src/SharedFilesCtrl.cpp
 msgid "Directory Path"
@@ -9327,6 +9359,12 @@ msgstr ""
 #: packaging/windows/installer_strings.c
 msgid "Removing user data at $APPDATA\\aMule..."
 msgstr ""
+
+#~ msgid "User name"
+#~ msgstr "ユーザ名"
+
+#~ msgid "Obtained Parts"
+#~ msgstr "得られた部分"
 
 #, fuzzy
 #~ msgid "Available Parts"

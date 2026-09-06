@@ -518,7 +518,7 @@ public:
 	 * @param peer  the peer's address. Absent refuses.
 	 * @param port  the UDP port the connection will arrive from. Zero refuses:
 	 *        zero is "unknown" rather than a port (see
-	 *        PeerIdentity::MatchesUdpSourcePort()), and an expectation stored
+	 *        PeerAddressing::MatchesUdpSourcePort()), and an expectation stored
 	 *        under it would be found by any datagram whose source port could
 	 *        not be read.
 	 * @param userHash   16 bytes, the peer's ed2k user hash. NULL refuses.

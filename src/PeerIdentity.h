@@ -25,232 +25,106 @@
 #ifndef PEERIDENTITY_H
 #define PEERIDENTITY_H
 
-#include "NetworkAddress.h"
-
-#include <cstdint>
-
-/**
- * What identifies a peer, once a peer can be IPv6.
- *
- * aMule identified a peer by a 32-bit address, so an inbound IPv6 peer was
- * accepted by the socket and then dropped: `CClientList` had nothing to index
- * it under, and the ed2k UDP handlers had nothing to look it up by. The
- * decisions that widening needs are collected here, away from the app classes
- * that carry them out, so each one is a value function with a test rather than a
- * condition buried in a 3000-line file.
- *
- * Three separate questions live here, and they deliberately give different
- * answers for the same address:
- *
- *  - **Identity.** Two peers are the same peer iff they have the same index
- *    key. Aggregating distinct hosts here would merge them -- the failure this
- *    tree has already had once, when an absent address was banned as the key
- *    0.0.0.0 and every client with an unknown address read back as banned.
- *  - **Rate limiting.** A budget is per *subscriber*, which under IPv6 is not
- *    per address. Aggregating is the point here, and the amount of aggregation
- *    is a decision, not a detail.
- *  - **Routing an inbound datagram.** Some subsystems cannot represent an IPv6
- *    peer at all -- Kad by design, ed2k UDP obfuscation by protocol. Those
- *    boundaries are reported, never crossed with a fabricated address.
- *
- * Nothing here fabricates an address. Every function that cannot answer for an
- * address says so; an absent address stays absent all the way through.
- */
-namespace PeerIdentity
-{
+#include "ClientDetailDialog.h" // Needed for ClientDetailInfo
+#include "ClientRef.h"          // Needed for CClientRef
+#include "MD4Hash.h"            // Needed for CMD4Hash
+#include "Types.h"              // Needed for uint16/uint32
 
 /**
- * Whether a peer with this address can be recorded in an address index.
+ * A peer a row names, whether or not we are talking to it right now.
  *
- * Only absence disqualifies. @c 0.0.0.0 and @c :: are odd addresses but they are
- * addresses: a peer claiming one is a peer whose claim we know, which is not the
- * same thing as a peer whose address we do not know. Keeping those two apart is
- * the reason CNetworkAddress exists.
+ * The identity fields come from the row and are enough to act on a peer that
+ * is offline: to friend it, or to open a connection when the user asks for one.
+ * `client` is linked only when the peer happens to be connected.
  */
-inline bool IsIndexable(const CNetworkAddress &address) noexcept
+struct PeerIdentity
 {
-	return address.IsPresent();
-}
+	CMD4Hash hash;
+	wxString name;
+	uint32 ip = 0;
+	uint16 port = 0;
+	CClientRef client;
 
-/**
- * The key a peer is indexed under.
- *
- * IPv4-mapped forms are collapsed to plain IPv4 here, once. A peer that
- * connects as @c 192.0.2.1 and later as @c ::ffff:192.0.2.1 is one peer over
- * one family, and giving it two identities would let it hold two queue slots,
- * two ban states and two credit records. CNetworkAddress deliberately does not
- * normalise on comparison -- that keeps its ordering total -- so the
- * normalisation is spelled out at the one place identity is decided.
- *
- * Everything else is returned unchanged, absence included: this never invents a
- * key for a peer that has no address.
- */
-inline CNetworkAddress IndexKey(const CNetworkAddress &address)
-{
-	return address.Unmapped();
-}
+	/**
+	 * What the details dialog should show when `client` is not linked.
+	 *
+	 * Only a list that keeps enough of a record to render it fills this in;
+	 * `hasDetail` says whether it did. A live peer needs none of it -- the
+	 * dialog snapshots the client instead, which knows strictly more.
+	 */
+	ClientDetailInfo detail;
 
-/**
- * Whether this peer can be named in an ed2k wire field or an on-disk record
- * that holds a 32-bit address.
- *
- * The ed2k protocol carries a peer's address as 32 bits: source exchange, the
- * server protocol, the relayed callback, the @c .part.met.seeds file. A native
- * IPv6 peer has no such form, so it cannot be published or persisted through
- * them -- and must be @b omitted rather than written as a zero, which would
- * publish "0.0.0.0" to every peer that asked for sources.
- *
- * Widening those formats is a protocol change and needs its own capability bit,
- * so this predicate is the boundary until one exists.
- */
-inline bool HasEd2kWireForm(const CNetworkAddress &address) noexcept
-{
-	std::uint32_t unused = 0;
-	return address.ToIPv4NetworkOrder(unused);
-}
+	/**
+	 * Whether a connection to this peer can be opened at all.
+	 *
+	 * Either we are already talking to it, or we hold an address to dial.
+	 */
+	bool CanOpenConnection() const { return client.IsLinked() || (ip != 0 && port != 0); }
 
-/**
- * Whether an inbound ed2k UDP datagram from this peer can be de-obfuscated.
- *
- * The ed2k UDP obfuscation key is MD5 over our user hash, a 32-bit address and
- * a magic byte -- see CEncryptedDatagramSocket::DecryptReceivedClient(), where
- * the receiver derives it from the sender's address, and EncryptSendClient(),
- * where the sender derives it from its own public IPv4. The protocol has no
- * IPv6 input to that key, so an obfuscated ed2k datagram from a native IPv6
- * peer is undecryptable by any implementation, not just by this one.
- *
- * Feeding the derivation a zero would produce a wrong key, the packet would
- * fail its magic-value check and be handled as junk, and nothing would record
- * why. So the boundary is reported here instead.
- */
-inline bool SupportsEd2kUdpObfuscation(const CNetworkAddress &address) noexcept
-{
-	// Same test as HasEd2kWireForm() and deliberately a separate name: these
-	// are two different protocol facts that happen to have the same boundary,
-	// and a caller that means one should not read as meaning the other.
-	return HasEd2kWireForm(address);
-}
+	/**
+	 * The peer a live client describes.
+	 *
+	 * Lets a list that holds clients rather than rows reach the same actions,
+	 * so a behaviour written for one path is not written twice for the other.
+	 */
+	static PeerIdentity FromClient(const CClientRef &live)
+	{
+		CClientRef &c = const_cast<CClientRef &>(live);
+		PeerIdentity peer;
+		peer.hash = c.GetUserHash();
+		peer.name = c.GetUserName();
+		peer.ip = c.GetIP();
+		peer.port = c.GetUserPort();
+		peer.client = live;
+		return peer;
+	}
 
-/** How far an inbound datagram from a given peer can be routed. */
-enum class EUdpRoute
-{
-	//! Not a usable peer address: absent, or the unspecified address.
-	Reject,
-	//! Full service. Everything ed2k and Kad can do for a 32-bit peer.
-	Ed2kAndKad,
-	//! ed2k only. Kad keeps its documented IPv4 interface.
-	Ed2kOnly
+	/**
+	 * Whether a live client carries an address a friend record could use.
+	 *
+	 * The one place that answers this for a client, so the menu that offers
+	 * an action and the action itself cannot read it differently.
+	 */
+	static bool Addressable(const CClientRef &live)
+	{
+		CClientRef &c = const_cast<CClientRef &>(live);
+		return c.GetIP() != 0 && c.GetUserPort() != 0;
+	}
+
+	/**
+	 * Whether a friend record can be stored for this peer.
+	 *
+	 * A hash is enough on its own. CFriendList::LookupFriend matches on the
+	 * hash whenever both the query and the record carry one, and
+	 * ProcessHelloTypePacket looks the peer up at every handshake, so a
+	 * hash-only record is recognised the moment the peer reappears:
+	 * CFriend::LinkClient then fills in the address and applies the stored
+	 * friend slot. Until then the record is inert rather than wrong, because
+	 * CanOpenConnection() gates browse and message on having an address.
+	 *
+	 * This matters most for the rows that need it. A credit record carries no
+	 * per-peer metadata until the peer has handshaked once since that
+	 * metadata existed, and ClientsWnd only fills a row's ip and port from
+	 * metadata, so on an established clients.met the address-less rows are
+	 * the older ones -- the ones the Known list exists to surface.
+	 *
+	 * The address requirement belongs to the hash-less record, which is why
+	 * CAddFriend demands ip and port: entered by address, it has no other
+	 * identifier.
+	 *
+	 * For a peer we are connected to the live client is the source of truth,
+	 * not the row. A row only learns an address once the peer has told us its
+	 * name, so a connected peer with an empty nickname has one the row does
+	 * not, and CFriend's client constructor copies it from the client anyway.
+	 */
+	bool CanBeFriended() const
+	{
+		if (!hash.IsEmpty()) {
+			return true;
+		}
+		return client.IsLinked() ? Addressable(client) : (ip != 0 && port != 0);
+	}
+	bool hasDetail = false;
 };
 
-/**
- * Classifies an inbound datagram's peer address.
- *
- * The @c Ed2kOnly case is the one this change adds. Before it, a native IPv6
- * datagram was dropped at the socket with a logged reason, because the handlers
- * below identified a peer by a 32-bit address. They no longer do, so the
- * datagram is now handled -- except by Kad, whose @c uint32 interface is a
- * documented conversion boundary (see the amule-address-widening design) and is
- * not widened here.
- *
- * Reject does not distinguish absent from unspecified: the caller holds the
- * address and can say which in its log, exactly as CMuleUDPSocket already does.
- */
-inline EUdpRoute ClassifyUdpPeer(const CNetworkAddress &address) noexcept
-{
-	if (address.IsAbsent() || address.IsUnspecified()) {
-		return EUdpRoute::Reject;
-	}
-	return SupportsEd2kUdpObfuscation(address) ? EUdpRoute::Ed2kAndKad : EUdpRoute::Ed2kOnly;
-}
-
-/**
- * Whether a client's advertised UDP port names it as the sender of a datagram
- * that arrived from @p sourcePort.
- *
- * A peer advertises two ports and they are not the same number: the ed2k TCP
- * port it accepts connections on, and the UDP port it accepts datagrams on. A
- * lookup that identifies the sender of a datagram by the first of those matches
- * nothing at all in the field, and does so silently -- it looks exactly like
- * "we do not know this peer", which is also the honest answer for a stranger.
- * Naming the port dimension in one predicate is what keeps the two apart at the
- * call sites.
- *
- * Zero on either side is @b unknown, not a port, and never matches. A client we
- * know by address carries a zero UDP port when it never advertised one, and
- * treating that as a value to compare would make every such client a candidate
- * for a datagram whose source port is also zero. Behind a carrier NAT one
- * address is many peers, so that match would name an arbitrary one of them --
- * and the rendezvous relay vouches for whoever this lookup returns. It fails
- * closed instead, which costs nothing: a peer that advertised no UDP port could
- * not have been matched by an exact comparison either.
- */
-inline bool MatchesUdpSourcePort(std::uint16_t advertisedPort, std::uint16_t sourcePort) noexcept
-{
-	if (advertisedPort == 0 || sourcePort == 0) {
-		return false;
-	}
-	return advertisedPort == sourcePort;
-}
-
-/**
- * How much of an IPv6 address a rate limit is counted against.
- *
- * A /64 is the smallest prefix an IPv6 subscriber is normally delegated, so it
- * is the smallest unit that behaves like "one customer". Larger aggregation
- * (/56, /48) would put unrelated subscribers of one provider in a single
- * bucket, where one of them could exhaust the budget for the others.
- */
-constexpr unsigned kIPv6RateLimitPrefixBits = 64;
-
-/**
- * The address a per-peer rate limit is counted against.
- *
- * IPv4 counts per address, which is what the 32-bit throttles did, so an IPv4
- * peer's budget is unchanged. IPv6 counts per /64.
- *
- * That asymmetry is the whole decision. An IPv4 address is roughly a host, so
- * per-address is per-host. An IPv6 /128 is not: a subscriber delegated a /64
- * can source every request from a fresh address, so a per-/128 limit counts to
- * one forever and throttles nothing at all. Applying the IPv4 shape unchanged
- * would therefore have been the same as removing the limit for IPv6.
- *
- * A mapped IPv4 address shares the IPv4 budget -- a peer must not double its
- * allowance by respelling its address -- and absence has no budget, because it
- * identifies nobody.
- */
-inline CNetworkAddress RateLimitScope(const CNetworkAddress &address)
-{
-	const CNetworkAddress unmapped = address.Unmapped();
-	if (!unmapped.IsIPv6()) {
-		// IPv4, or absent. Either way this is already the scope.
-		return unmapped;
-	}
-	return unmapped.TruncatedToPrefix(kIPv6RateLimitPrefixBits);
-}
-
-/**
- * Whether this address alone establishes that the peer accepts inbound
- * connections.
- *
- * Answers only for native IPv6, and only for globally routable addresses.
- *
- * LowID is an IPv4 concept: it is inferred from the ed2k ID a server issued,
- * and it means "behind something that will not accept an inbound connection".
- * An IPv6 peer has no ed2k ID, so the ID carries no information about it -- and
- * a peer whose ID field is zero would otherwise be read as firewalled and sent
- * down the callback path, which for an IPv6 peer cannot work: the callback goes
- * through an ed2k server or a Kad buddy, both of which speak 32-bit addresses.
- *
- * A link-local, unique-local, loopback or unspecified address proves nothing --
- * aMule cannot dial it from here -- so those keep the existing rule rather than
- * overriding it.
- */
-inline bool IsDirectlyReachable(const CNetworkAddress &address) noexcept
-{
-	return address.IsGloballyRoutableIPv6();
-}
-
-} // namespace PeerIdentity
-
 #endif // PEERIDENTITY_H
-// File_checked_for_headers

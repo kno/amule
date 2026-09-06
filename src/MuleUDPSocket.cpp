@@ -185,7 +185,7 @@ void CMuleUDPSocket::OnReceive(int errorCode)
 		// has none, and a fabricated zero was refused on purpose. They now take
 		// the address, so the peer is handled -- each handler deciding for
 		// itself what it can do for a family its subsystem may not speak. See
-		// PeerIdentity::ClassifyUdpPeer().
+		// PeerAddressing::ClassifyUdpPeer().
 		AddDebugLogLineN(logMuleUDP,
 			(m_name + ": Packet received (")
 				<< addr.IPAddress() << ":" << port << "): " << length << "b");

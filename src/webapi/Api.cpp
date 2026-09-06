@@ -2678,12 +2678,13 @@ CHttpServer::Response CApiDispatcher::HandleStatus(const CHttpServer::Request &r
 	// 0 when not connected -- gate on ed2k.state, not on this being nonzero.
 	w.Key("connected_since_at");
 	w.ValueInt(static_cast<int64_t>(s.ed2k_connected_since));
-	w.Key("server_name");
-	w.ValueString(wxString::FromUTF8(s.server_name.c_str()));
-	// Null when not connected, port with address: ed2k.state already says
-	// whether there is a server, so "" here only ever meant "not connected",
-	// and a port on its own describes nothing.
+	// Null when not connected, name and port with the address: ed2k.state
+	// already says whether there is a server, so "" here only ever meant
+	// "not connected", and a port on its own describes nothing. The name was
+	// the odd one out, spelling the same absence as "" beside two nulls in
+	// the object it shares.
 	const bool has_server = !s.server_ip.empty();
+	WriteStringOrNull(w, "server_name", has_server, s.server_name);
 	WriteStringOrNull(w, "server_ip", has_server, s.server_ip);
 	WriteIntOrNull(w, "server_port", has_server, static_cast<int64_t>(s.server_port));
 	// Network rollup, symmetric with kad.network below. Aggregate
@@ -3063,8 +3064,11 @@ void WriteClientBaseFields(CJsonWriter &w, const webapi::ClientSnapshot &c)
 {
 	w.Key("ecid");
 	w.ValueInt(static_cast<int64_t>(c.ecid));
-	w.Key("name");
-	w.ValueString(wxString::FromUTF8(c.client_name.c_str()));
+	// Null, not "", for every optional string below: an unknown value is null
+	// per R10, and WriteKnownClientObject already nulls the keys the two
+	// objects share. user_hash and the *_state enums stay unconditional --
+	// see the note above the states.
+	WriteStringOrNull(w, "name", !c.client_name.empty(), c.client_name);
 	w.Key("user_hash");
 	w.ValueString(wxString::FromUTF8(c.user_hash.c_str()));
 	// Nulled together, keyed on the address: a port without one describes
@@ -3075,26 +3079,22 @@ void WriteClientBaseFields(CJsonWriter &w, const webapi::ClientSnapshot &c)
 	WriteIntOrNull(w, "port", has_addr, static_cast<int64_t>(c.port));
 	// ISO 3166-1 alpha-2 (lowercase); null when GeoIP is off/unresolved (#439).
 	WriteStringOrNull(w, "country_code", !c.country_code.empty(), c.country_code);
-	w.Key("software");
-	w.ValueString(wxString::FromUTF8(c.software.c_str()));
-	w.Key("software_version");
-	w.ValueString(wxString::FromUTF8(c.software_version.c_str()));
-	w.Key("reported_os");
-	w.ValueString(wxString::FromUTF8(c.reported_os.c_str()));
+	WriteStringOrNull(w, "software", !c.software.empty(), c.software);
+	WriteStringOrNull(w, "software_version", !c.software_version.empty(), c.software_version);
+	WriteStringOrNull(w, "reported_os", !c.reported_os.empty(), c.reported_os);
+	// The three *_state values are enum labels, not free text: the daemon
+	// always answers, and an answer it does not recognise is the "unknown"
+	// member of the enum. Empty is unreachable, so there is nothing to null.
 	w.Key("upload_state");
 	w.ValueString(wxString::FromUTF8(c.upload_state.c_str()));
 	w.Key("download_state");
 	w.ValueString(wxString::FromUTF8(c.download_state.c_str()));
 	w.Key("ident_state");
 	w.ValueString(wxString::FromUTF8(c.ident_state.c_str()));
-	w.Key("download_file_name");
-	w.ValueString(wxString::FromUTF8(c.download_file_name.c_str()));
-	w.Key("upload_file_name");
-	w.ValueString(wxString::FromUTF8(c.upload_file_name.c_str()));
-	w.Key("upload_file_hash");
-	w.ValueString(wxString::FromUTF8(c.upload_file_hash.c_str()));
-	w.Key("download_file_hash");
-	w.ValueString(wxString::FromUTF8(c.download_file_hash.c_str()));
+	WriteStringOrNull(w, "download_file_name", !c.download_file_name.empty(), c.download_file_name);
+	WriteStringOrNull(w, "upload_file_name", !c.upload_file_name.empty(), c.upload_file_name);
+	WriteStringOrNull(w, "upload_file_hash", !c.upload_file_hash.empty(), c.upload_file_hash);
+	WriteStringOrNull(w, "download_file_hash", !c.download_file_hash.empty(), c.download_file_hash);
 	// R11: flattened out of the old `xfer` wrapper. A sub-object earns its
 	// place by grouping DIFFERENT quantities; this grouped one quantity split
 	// by time window, which belongs in the key. It also meant `xfer` named a
@@ -3124,8 +3124,10 @@ void WriteClientBaseFields(CJsonWriter &w, const webapi::ClientSnapshot &c)
 		static_cast<int64_t>(c.remote_queue_position));
 	w.Key("upload_queue_score");
 	w.ValueInt(static_cast<int64_t>(c.score));
-	w.Key("obfuscation_state");
-	w.ValueString(wxString::FromUTF8(c.obfuscation_state.c_str()));
+	WriteStringOrNull(w, "obfuscation_state", !c.obfuscation_state.empty(), c.obfuscation_state);
+	// Being in this list means the daemon holds a client object, which starts
+	// at the first contact attempt. This says whether a socket is actually up.
+	WriteBoolOrNull(w, "connected", c.has_connected, c.connected);
 	w.Key("friend_slot");
 	w.ValueBool(c.friend_slot);
 	// Promoted out of the detail object (issue #984): the desktop's per-file
@@ -3133,8 +3135,7 @@ void WriteClientBaseFields(CJsonWriter &w, const webapi::ClientSnapshot &c)
 	// caller should not have to fetch each peer individually to draw a table.
 	// Anything added here also reaches the SSE payload -- see ToJson AND Equal
 	// in EventDiff.cpp; a field in one but not the other never updates.
-	w.Key("source_origin");
-	w.ValueString(wxString::FromUTF8(c.source_origin.c_str()));
+	WriteStringOrNull(w, "source_origin", !c.source_origin.empty(), c.source_origin);
 	// Gated on the flag the refresher sets when the tag actually arrives.
 	// Emitted unconditionally, a peer that never reported its part map was
 	// indistinguishable from one reporting zero parts -- and zero is a real
@@ -3144,8 +3145,7 @@ void WriteClientBaseFields(CJsonWriter &w, const webapi::ClientSnapshot &c)
 		"parts_offered_count",
 		c.has_parts_offered_count,
 		static_cast<int64_t>(c.parts_offered_count));
-	w.Key("client_mod_name");
-	w.ValueString(wxString::FromUTF8(c.client_mod_name.c_str()));
+	WriteStringOrNull(w, "client_mod_name", !c.client_mod_name.empty(), c.client_mod_name);
 	// Inverted from the old `view_shared_disabled`: a negated boolean forces
 	// `=== false` at every call site, and R4 wants the positive form.
 	w.Key("shared_files_browsable");
@@ -3216,10 +3216,11 @@ webapi::KnownClientSnapshot DecodeKnownClient(const CECTag &entry)
 
 // One credit-store record (GET /known_clients).
 //
-// Optional fields are omitted rather than emitted empty: a record written
+// Optional fields are emitted as null rather than omitted: a record written
 // before the daemon kept per-peer metadata genuinely has no name, address or
 // software, and a consumer should be able to tell "not recorded" from "recorded
-// as empty". The hash, the totals and last_seen are always present.
+// as empty" without also having to test whether the key is there at all. The
+// hash, the totals and last_seen_at are always present.
 void WriteKnownClientObject(CJsonWriter &w, const webapi::KnownClientSnapshot &c)
 {
 	w.BeginObject();
@@ -3251,9 +3252,12 @@ void WriteKnownClientObject(CJsonWriter &w, const webapi::KnownClientSnapshot &c
 	const bool has_first_seen = c.first_seen_at != 0;
 	WriteUIntOrNull(w, "first_seen_at", has_first_seen, static_cast<uint64_t>(c.first_seen_at));
 	WriteUIntOrNull(w, "session_count", has_first_seen, static_cast<uint64_t>(c.session_count));
-	// Correlate with /clients by user_hash to reach the live peer.
-	w.Key("online");
-	w.ValueBool(c.online);
+	// Correlate with /clients by user_hash to reach the live peer. The value
+	// is reachability, not presence in that list: the daemon holds a client
+	// object from the first contact ATTEMPT, so a peer it can never reach used
+	// to read "online" here. null when the core predates
+	// EC_TAG_CLIENT_CONNECTED -- unknown, not offline.
+	WriteBoolOrNull(w, "online", c.has_online, c.online);
 	w.EndObject();
 }
 
@@ -3275,9 +3279,8 @@ void WriteClientDetailObject(CJsonWriter &w, const webapi::ClientSnapshot &c)
 	// that parts_offered_count uses as a real answer.
 	const bool has_server = !c.server_ip.empty();
 	WriteStringOrNull(w, "server_ip", has_server, c.server_ip);
+	WriteStringOrNull(w, "server_name", has_server, c.server_name);
 	WriteIntOrNull(w, "server_port", has_server, static_cast<int64_t>(c.server_port));
-	w.Key("server_name");
-	w.ValueString(wxString::FromUTF8(c.server_name.c_str()));
 	// Nulled on the same condition WriteClientBaseFields nulls ip/port, and
 	// the same one WriteKnownClientObject uses: a client with no recorded
 	// address has no recorded Kad port either, and a raw 0 here would spell
@@ -4457,6 +4460,9 @@ CHttpServer::Response CApiDispatcher::HandleFileClients(
 	auto a = Authenticate(req);
 	if (!a.ok)
 		return a.rejection;
+	if (auto r = RequireHashPath(key))
+		return *r;
+
 	if (auto r = RequireSnapshot(m_state))
 		return *r;
 
@@ -4816,6 +4822,9 @@ CHttpServer::Response CApiDispatcher::HandleDownloadCommentsKadSearch(
 	if (auto r = RequireAdmin(a))
 		return *r;
 
+	if (auto r = RequireHashPath(key))
+		return *r;
+
 	if (auto r = RequireSnapshot(m_state))
 		return *r;
 
@@ -4859,6 +4868,9 @@ CHttpServer::Response CApiDispatcher::HandleDownloadFilenames(
 	auto a = Authenticate(req);
 	if (!a.ok)
 		return a.rejection;
+
+	if (auto r = RequireHashPath(key))
+		return *r;
 
 	if (auto r = RequireSnapshot(m_state))
 		return *r;
@@ -4922,6 +4934,9 @@ CHttpServer::Response CApiDispatcher::HandleDownloadA4afAction(
 		return a.rejection;
 	if (auto rej = RequireAdmin(a))
 		return *rej;
+
+	if (auto r = RequireHashPath(key))
+		return *r;
 
 	if (auto r = RequireSnapshot(m_state))
 		return *r;
@@ -6031,8 +6046,11 @@ void WriteFriendObject(CJsonWriter &w, const webapi::FriendSnapshot &f)
 	// spells "no value" as null and never as 0 or -1, and a client joining
 	// naively on the raw value was building GET /clients/0 and taking a 404.
 	WriteIntOrNull(w, "client_ecid", f.client_ecid != 0, static_cast<int64_t>(f.client_ecid));
-	w.Key("online");
-	w.ValueBool(f.client_ecid != 0);
+	// Whether a socket to the peer is actually up, not whether the daemon
+	// holds a client object for it -- which it does from the first contact
+	// ATTEMPT, so this used to call an unroutable peer online. null when the
+	// daemon predates EC_TAG_CLIENT_CONNECTED: unknown, not offline.
+	WriteBoolOrNull(w, "online", f.has_connected, f.connected);
 	w.Key("friend_slot");
 	w.ValueBool(f.friend_slot);
 	w.EndObject();
@@ -6293,8 +6311,8 @@ void WriteChatObject(CJsonWriter &w, const webapi::ChatSessionSnapshot &s)
 	// absence, and /clients/0 is a 404 waiting to happen.
 	WriteIntOrNull(w, "client_ecid", s.client_ecid != 0, static_cast<int64_t>(s.client_ecid));
 	WriteIntOrNull(w, "friend_ecid", s.friend_ecid != 0, static_cast<int64_t>(s.friend_ecid));
-	w.Key("online");
-	w.ValueBool(s.client_ecid != 0);
+	// Same rule as the /friends row: reachability, not object existence.
+	WriteBoolOrNull(w, "online", s.has_connected, s.connected);
 	w.Key("message_count");
 	w.ValueInt(static_cast<int64_t>(s.messages.size()));
 	w.Key("last_message_id");
@@ -8633,6 +8651,17 @@ bool PrefTakeUint(const picojson::object &o,
 		return false;
 	}
 	const double v = it->second.get<double>();
+	// Reject a fractional value rather than truncating it at the cast below.
+	// Every numeric preference routes through this setter, so without the
+	// check `100.5` was accepted and stored as `100` on all of them, under an
+	// error string that already promised "non-negative integer". The step
+	// modulo further down is not a substitute: it runs on the already-
+	// truncated value, so it tests the floor's alignment and never
+	// integrality, and a field with no step skips it entirely.
+	if (!IsIntegralJsonNumber(v)) {
+		err = std::string(key) + " must be a non-negative integer";
+		return false;
+	}
 	if (v < 0 || v > static_cast<double>(max) || v < static_cast<double>(min)) {
 		// Name the bounds. These domains are narrower than the field's type for
 		// reasons a caller cannot infer -- a uint8 behind a byte count, a clamp
@@ -9882,6 +9911,9 @@ CHttpServer::Response CApiDispatcher::HandleSharedVerify(
 	if (auto rej = RequireAdmin(a))
 		return *rej;
 
+	if (auto r = RequireHashPath(key))
+		return *r;
+
 	if (auto r = RequireSnapshot(m_state))
 		return *r;
 
@@ -10018,6 +10050,9 @@ CHttpServer::Response CApiDispatcher::HandleSharedContent(
 	auto a = Authenticate(req);
 	if (!a.ok)
 		return a.rejection;
+
+	if (auto r = RequireHashPath(key))
+		return *r;
 
 	if (auto r = RequireSnapshot(m_state))
 		return *r;
@@ -10647,6 +10682,9 @@ CHttpServer::Response CApiDispatcher::HandleSharedMediaRefreshOne(
 		return a.rejection;
 	if (auto rej = RequireAdmin(a))
 		return *rej;
+
+	if (auto r = RequireHashPath(key))
+		return *r;
 
 	if (auto r = RequireSnapshot(m_state))
 		return *r;
@@ -11587,7 +11625,10 @@ CHttpServer::Response CApiDispatcher::HandleSearchDownload(
 
 	CMD4Hash file_hash;
 	if (!HashFromHex(needle, file_hash)) {
-		return ErrorResponse(400, "bad_request", "`{hash}` must be a 32-char hex MD4");
+		// Same wording as every other {hash} route. RequireHashPath owns the
+		// message; it is called only here, on the path where it is certain to
+		// return a response, so the hash is not parsed twice in the good case.
+		return *RequireHashPath(needle);
 	}
 
 	// Optional body: {"category_index": uint8, "ecid": uint32}. amulegui's
@@ -11775,7 +11816,10 @@ CHttpServer::Response CApiDispatcher::HandleSearchCommentsKadSearch(
 
 	CMD4Hash file_hash;
 	if (!HashFromHex(needle, file_hash)) {
-		return ErrorResponse(400, "bad_request", "`{hash}` must be a 32-char hex MD4");
+		// Same wording as every other {hash} route. RequireHashPath owns the
+		// message; it is called only here, on the path where it is certain to
+		// return a response, so the hash is not parsed twice in the good case.
+		return *RequireHashPath(needle);
 	}
 
 	// Must be a live search result in some open search (mirrors the download

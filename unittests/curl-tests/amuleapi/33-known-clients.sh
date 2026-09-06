@@ -178,10 +178,12 @@ if [ "${TOTAL:-0}" -gt 0 ]; then
 		_fail "user_hash" "expected 32 lowercase hex chars, got: ${HASH:-<none>}"
 	fi
 
-	if [ "$(_jq '.known_clients[0].online | type')" = "boolean" ]; then
-		_pass "online is a boolean"
+	# boolean, or null on a daemon that does not report peer connectivity.
+	ONLINE_TYPE=$(_jq '.known_clients[0].online | type')
+	if [ "$ONLINE_TYPE" = "boolean" ] || [ "$ONLINE_TYPE" = "null" ]; then
+		_pass "online is a boolean or null"
 	else
-		_fail "online" "expected boolean, got: $(_jq '.known_clients[0].online | type')"
+		_fail "online" "expected boolean or null, got: $ONLINE_TYPE"
 	fi
 
 	# Optional fields are omitted, never emitted empty: a record written
@@ -310,6 +312,80 @@ for m in POST PUT DELETE PATCH; do
 	_curl -X "$m" "$HOST/api/v0/known_clients"
 	_assert_status 405 "$m /known_clients is rejected"
 done
+
+# --- online means reachable, not "has a live row". -------------------
+#
+# The daemon holds a client object from the first contact ATTEMPT, so a peer
+# it is still trying to reach -- or can never reach -- has a /clients row.
+# online used to be exactly that row's presence, which called such a peer
+# online. It is now the peer's real connection state, so every record that
+# claims online must have a live counterpart that also says connected.
+#
+# Appended at the end: both requests are reads, but a new section in the
+# middle shifts the daemon state the later sections were written against.
+# The two lists come from separate requests, so a peer that disconnects
+# between them is a legitimate mismatch rather than a broken invariant.
+# Re-read both and require the SAME hash to still be inconsistent before
+# failing: a real defect persists, a race does not.
+_cross_check_online() {
+	_curl "$HOST/api/v0/known_clients?limit=200"
+	local online_hashes connected_hashes h missing=""
+	online_hashes=$(printf '%s' "$CURL_BODY" \
+		| jq -r '[.known_clients[] | select(.online == true) | .user_hash] | .[]')
+	[ -z "$online_hashes" ] && { echo "__NONE__"; return; }
+	_curl "$HOST/api/v0/clients?limit=1000"
+	# Flattened to one space-separated line: the membership test below is a
+	# `case` glob looking for " $h ", and jq -r emits one hash per LINE, so a
+	# newline-separated list matched nothing and reported every online hash
+	# as missing. It passed only when exactly one hash was connected, which
+	# is what made the failure look intermittent.
+	connected_hashes=$(printf '%s' "$CURL_BODY" \
+		| jq -r '[.clients[] | select(.connected == true) | .user_hash] | .[]' | tr '\n' ' ')
+	for h in $online_hashes; do
+		case " $connected_hashes " in
+		*" $h "*) ;;
+		*) missing="$missing $h" ;;
+		esac
+	done
+	echo "$missing"
+}
+# Sample repeatedly and intersect. The two lists come from separate
+# requests, so a peer that disconnects between them is inconsistent for that
+# sample alone and says nothing about the invariant. A hash inconsistent in
+# EVERY sample is not a disconnect in flight, and that is the defect this
+# exists to catch: a record claiming online with no connected peer behind
+# it. The loop exits on the first clean sample, so it costs nothing when the
+# lists agree, which is the normal case.
+PERSISTENT=""
+for i in $(seq 1 8); do
+	SAMPLE=$(_cross_check_online)
+	[ "$SAMPLE" = "__NONE__" ] && { PERSISTENT="__NONE__"; break; }
+	if [ -z "$SAMPLE" ]; then
+		PERSISTENT=""
+		break
+	fi
+	if [ "$i" = "1" ]; then
+		PERSISTENT="$SAMPLE"
+	else
+		KEEP=""
+		for h in $PERSISTENT; do
+			case " $SAMPLE " in
+			*" $h "*) KEEP="$KEEP $h" ;;
+			esac
+		done
+		PERSISTENT="$KEEP"
+		[ -z "$PERSISTENT" ] && break
+	fi
+	sleep 1
+done
+if [ "$PERSISTENT" = "__NONE__" ]; then
+	_skip "no known client is online; cannot cross-check against /clients"
+elif [ -z "$PERSISTENT" ]; then
+	_pass "every online known client has a connected /clients counterpart"
+else
+	_fail "known_clients online" \
+		"no connected /clients row for:$PERSISTENT (in every one of 8 samples)"
+fi
 
 echo
 SKIP_NOTE=""

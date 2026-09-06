@@ -99,6 +99,75 @@ CClientList::~CClientList()
 	wxASSERT(m_clientList.empty());
 }
 
+CUpDownClient *CClientList::FindReusableClient(const CMD4Hash &hash, uint32 ip, uint16 port)
+{
+	// Every client at this address, not just the first. FindClientByIP()
+	// stops at the first port match, which may be an unrelated client holding
+	// an address our peer used to have; rejecting that one without looking
+	// further would allocate a new object on every call.
+	std::pair<IDMap::iterator, IDMap::iterator> range = m_ipList.equal_range(ip);
+	for (; range.first != range.second; ++range.first) {
+		CUpDownClient *cur_client = range.first->second.GetClient();
+		if (cur_client->GetUserPort() != port) {
+			continue;
+		}
+		// Unidentified is a candidate: it is either this peer before its
+		// handshake, or a placeholder an earlier call made for it. An
+		// identified one is only this peer if the hashes agree.
+		if (cur_client->GetUserHash().IsEmpty() || cur_client->GetUserHash() == hash) {
+			return cur_client;
+		}
+	}
+	return nullptr;
+}
+
+CClientRef CClientList::CreateForAddress(const CMD4Hash &hash, uint32 ip, uint16 port, const wxString &name)
+{
+	// Reuse the client we already hold for this peer, so a repeated action
+	// does not stack up objects that no later lookup matches.
+	CUpDownClient *client = nullptr;
+	if (!hash.IsEmpty()) {
+		const SourceList byHash = GetClientsByHash(hash);
+		if (!byHash.empty()) {
+			client = byHash.front().GetClient();
+		}
+	}
+	if (client == nullptr) {
+		// An address alone identifies a peer only while nothing contradicts
+		// it. A stored address goes stale, and handing an unrelated client
+		// to CFriend::LinkClient() copies the stranger's hash into the
+		// friend record and saves it, losing the friend for good.
+		client = FindReusableClient(hash, ip, port);
+	}
+	if (client != nullptr) {
+		return CCLIENTREF(client, wxT("CClientList::CreateForAddress"));
+	}
+
+	if (ip == 0 || port == 0) {
+		// Nothing held for this peer and nowhere to dial: an invented client
+		// would only ever target 0.0.0.0, and AddClient() will not index a
+		// zero address, so the next lookup would miss it and make another.
+		// Callers ask IsLinked() rather than assuming they got one.
+		return CClientRef();
+	}
+
+	client = new CUpDownClient(port, ip, 0, 0, nullptr, true, true);
+	// The ctor only records the address to connect to, leaving GetIP() at 0.
+	// Seed it, or anything that reads the peer's IP back -- a friend record
+	// saving itself, a menu deciding whether it can message -- sees 0.0.0.0.
+	client->SetIP(ip);
+	client->SetUserName(name);
+	// The hash is deliberately NOT seeded. This client has never connected,
+	// so it carries no credits and reports zero for every lifetime total,
+	// while a hash is exactly what makes the Clients page treat it as a peer
+	// whose totals are known: it would publish those zeroes over the stored
+	// Total Up / Down of the row that asked for it, and mark that row online.
+	// The handshake sets the real hash when the peer answers, and the lookup
+	// above finds this object again in the meantime.
+	AddClient(client);
+	return CCLIENTREF(client, wxT("CClientList::CreateForAddress"));
+}
+
 void CClientList::AddClient(CUpDownClient *toadd)
 {
 	// Ensure that only new clients can be added to the list
@@ -116,8 +185,8 @@ void CClientList::AddClient(CUpDownClient *toadd)
 		// mean that, and no longer can: a native IPv6 peer's 32-bit form is
 		// zero, so it would have been read as "no address" and left unindexed --
 		// which is exactly the drop this change exists to remove.
-		if (PeerIdentity::IsIndexable(toadd->GetAddress())) {
-			m_ipList.insert(AddressMapPair(PeerIdentity::IndexKey(toadd->GetAddress()),
+		if (PeerAddressing::IsIndexable(toadd->GetAddress())) {
+			m_ipList.insert(AddressMapPair(PeerAddressing::IndexKey(toadd->GetAddress()),
 				CCLIENTREF(toadd, "CClientList::AddClient m_ipList.insert")));
 		}
 
@@ -178,9 +247,9 @@ void CClientList::UpdateClientIP(CUpDownClient *client, const CNetworkAddress &n
 
 	// Explicit absence check, not `if (newIP)`. Every present address has a key
 	// now, whatever family it is in; absence still has none.
-	if (PeerIdentity::IsIndexable(newIP)) {
+	if (PeerAddressing::IsIndexable(newIP)) {
 		m_ipList.insert(AddressMapPair(
-			PeerIdentity::IndexKey(newIP), CCLIENTREF(client, "CClientList::UpdateClientIP")));
+			PeerAddressing::IndexKey(newIP), CCLIENTREF(client, "CClientList::UpdateClientIP")));
 	}
 }
 
@@ -226,13 +295,13 @@ void CClientList::RemoveIPFromList(CUpDownClient *client)
 	// Check if we need to look for the IP entry. Explicit absence check rather
 	// than `if (!client->GetIP())`: UpdateClientIP() never records an absent
 	// address, so there can be no entry to remove for one.
-	if (!PeerIdentity::IsIndexable(client->GetAddress())) {
+	if (!PeerAddressing::IsIndexable(client->GetAddress())) {
 		return;
 	}
 
 	// Remove the IP entry
 	std::pair<AddressMap::iterator, AddressMap::iterator> range =
-		m_ipList.equal_range(PeerIdentity::IndexKey(client->GetAddress()));
+		m_ipList.equal_range(PeerAddressing::IndexKey(client->GetAddress()));
 
 	for (; range.first != range.second; ++range.first) {
 		if (client == range.first->second.GetClient()) {
@@ -270,7 +339,7 @@ CUpDownClient *CClientList::FindMatchingClient(CUpDownClient *client)
 	typedef std::pair<AddressMap::const_iterator, AddressMap::const_iterator> AddressMapIteratorPair;
 	wxCHECK(client, NULL);
 
-	const CNetworkAddress userAddress = PeerIdentity::IndexKey(client->GetAddress());
+	const CNetworkAddress userAddress = PeerAddressing::IndexKey(client->GetAddress());
 	const uint32 userID = client->GetUserIDHybrid();
 	const uint16 userPort = client->GetUserPort();
 	const uint16 userKadPort = client->GetKadPort();
@@ -283,7 +352,7 @@ CUpDownClient *CClientList::FindMatchingClient(CUpDownClient *client)
 
 			for (; range.first != range.second; ++range.first) {
 				CUpDownClient *other = range.first->second.GetClient();
-				wxASSERT(userAddress == PeerIdentity::IndexKey(other->GetAddress()));
+				wxASSERT(userAddress == PeerAddressing::IndexKey(other->GetAddress()));
 
 				if (userPort && (userPort == other->GetUserPort())) {
 					return other;
@@ -444,13 +513,13 @@ bool CClientList::AttachToAlreadyKnown(CUpDownClient **client, CClientTCPSocket 
 
 CUpDownClient *CClientList::FindClientByIP(const CNetworkAddress &address, uint16 port)
 {
-	if (!PeerIdentity::IsIndexable(address)) {
+	if (!PeerAddressing::IsIndexable(address)) {
 		return NULL;
 	}
 
 	// Find all items with the specified address
 	std::pair<AddressMap::iterator, AddressMap::iterator> range =
-		m_ipList.equal_range(PeerIdentity::IndexKey(address));
+		m_ipList.equal_range(PeerAddressing::IndexKey(address));
 
 	for (; range.first != range.second; ++range.first) {
 		CUpDownClient *cur_client = range.first->second.GetClient();
@@ -465,20 +534,20 @@ CUpDownClient *CClientList::FindClientByIP(const CNetworkAddress &address, uint1
 
 CUpDownClient *CClientList::FindClientByUDPEndpoint(const CNetworkAddress &address, uint16 udpPort)
 {
-	if (!PeerIdentity::IsIndexable(address)) {
+	if (!PeerAddressing::IsIndexable(address)) {
 		return NULL;
 	}
 
 	// Find all items with the specified address
 	std::pair<AddressMap::iterator, AddressMap::iterator> range =
-		m_ipList.equal_range(PeerIdentity::IndexKey(address));
+		m_ipList.equal_range(PeerAddressing::IndexKey(address));
 
 	for (; range.first != range.second; ++range.first) {
 		CUpDownClient *cur_client = range.first->second.GetClient();
 		// Same walk as FindClientByIP(), and deliberately the only difference:
 		// the client's UDP port is compared, not the ed2k TCP port it also
 		// advertised. Sharing an address is not enough to be the sender.
-		if (PeerIdentity::MatchesUdpSourcePort(cur_client->GetUDPPort(), udpPort)) {
+		if (PeerAddressing::MatchesUdpSourcePort(cur_client->GetUDPPort(), udpPort)) {
 			return cur_client;
 		}
 	}
@@ -488,13 +557,13 @@ CUpDownClient *CClientList::FindClientByUDPEndpoint(const CNetworkAddress &addre
 
 CUpDownClient *CClientList::FindClientByIP(const CNetworkAddress &address)
 {
-	if (!PeerIdentity::IsIndexable(address)) {
+	if (!PeerAddressing::IsIndexable(address)) {
 		return NULL;
 	}
 
 	// Find all items with the specified address
 	std::pair<AddressMap::iterator, AddressMap::iterator> range =
-		m_ipList.equal_range(PeerIdentity::IndexKey(address));
+		m_ipList.equal_range(PeerAddressing::IndexKey(address));
 
 	return (range.first != range.second) ? range.first->second.GetClient() : NULL;
 }
@@ -522,25 +591,25 @@ CUpDownClient *CClientList::FindClientByECID(uint32 ecid) const
 
 bool CClientList::IsIPAlreadyKnown(const CNetworkAddress &address)
 {
-	if (!PeerIdentity::IsIndexable(address)) {
+	if (!PeerAddressing::IsIndexable(address)) {
 		// Absence was never recorded, so it is not known.
 		return false;
 	}
 	// Find all items with the specified address
 	std::pair<AddressMap::iterator, AddressMap::iterator> range =
-		m_ipList.equal_range(PeerIdentity::IndexKey(address));
+		m_ipList.equal_range(PeerAddressing::IndexKey(address));
 	return range.first != range.second;
 }
 
 bool CClientList::ComparePriorUserhash(const CNetworkAddress &address, uint16 nPort, void *pNewHash)
 {
-	if (!PeerIdentity::IsIndexable(address)) {
+	if (!PeerAddressing::IsIndexable(address)) {
 		// No address, no tracked history to contradict the new hash. Formerly
 		// this looked the literal 0 up, which could only ever miss.
 		return true;
 	}
 	std::map<CNetworkAddress, CDeletedClient *>::iterator it =
-		m_trackedClientsList.find(PeerIdentity::IndexKey(address));
+		m_trackedClientsList.find(PeerAddressing::IndexKey(address));
 
 	if (it != m_trackedClientsList.end()) {
 		CDeletedClient *pResult = it->second;
@@ -561,12 +630,12 @@ bool CClientList::ComparePriorUserhash(const CNetworkAddress &address, uint16 nP
 
 void CClientList::AddTrackClient(CUpDownClient *toadd)
 {
-	if (!PeerIdentity::IsIndexable(toadd->GetAddress())) {
+	if (!PeerAddressing::IsIndexable(toadd->GetAddress())) {
 		// Nothing to track a hash change against: the entry would be keyed on
 		// "unknown", where every addressless client would collide.
 		return;
 	}
-	const CNetworkAddress key = PeerIdentity::IndexKey(toadd->GetAddress());
+	const CNetworkAddress key = PeerAddressing::IndexKey(toadd->GetAddress());
 	std::map<CNetworkAddress, CDeletedClient *>::iterator it = m_trackedClientsList.find(key);
 
 	if (it != m_trackedClientsList.end()) {
@@ -823,7 +892,7 @@ void CClientList::Process()
 
 void CClientList::AddBannedClient(const CNetworkAddress &address)
 {
-	if (!PeerIdentity::IsIndexable(address)) {
+	if (!PeerAddressing::IsIndexable(address)) {
 		// Nothing to ban. Previously an absent address arrived here as the
 		// literal 0 and was banned as "0.0.0.0", banning a value no real peer
 		// has while telling theStats one more client was banned.
@@ -833,17 +902,17 @@ void CClientList::AddBannedClient(const CNetworkAddress &address)
 	}
 	// An IPv6 peer is bannable now: the key is the address, so there is no
 	// longer a family the ban list cannot express.
-	m_bannedList[PeerIdentity::IndexKey(address)] = ::GetTickCount64();
+	m_bannedList[PeerAddressing::IndexKey(address)] = ::GetTickCount64();
 	theStats::AddBannedClient();
 }
 
 bool CClientList::IsBannedClient(const CNetworkAddress &address)
 {
-	if (!PeerIdentity::IsIndexable(address)) {
+	if (!PeerAddressing::IsIndexable(address)) {
 		return false;
 	}
 
-	ClientMap::iterator it = m_bannedList.find(PeerIdentity::IndexKey(address));
+	ClientMap::iterator it = m_bannedList.find(PeerAddressing::IndexKey(address));
 
 	if (it != m_bannedList.end()) {
 		if (it->second + CLIENTBANTIME > ::GetTickCount64()) {
@@ -857,10 +926,10 @@ bool CClientList::IsBannedClient(const CNetworkAddress &address)
 
 void CClientList::RemoveBannedClient(const CNetworkAddress &address)
 {
-	if (!PeerIdentity::IsIndexable(address)) {
+	if (!PeerAddressing::IsIndexable(address)) {
 		return;
 	}
-	m_bannedList.erase(PeerIdentity::IndexKey(address));
+	m_bannedList.erase(PeerAddressing::IndexKey(address));
 	theStats::RemoveBannedClient();
 }
 
@@ -895,7 +964,7 @@ CClientList::SourceList CClientList::GetClientsByIP(const CNetworkAddress &addre
 {
 	SourceList results;
 
-	if (!PeerIdentity::IsIndexable(address)) {
+	if (!PeerAddressing::IsIndexable(address)) {
 		// Absence is not a key: no client can be recorded under it, so the
 		// empty list is the whole answer.
 		return results;
@@ -903,7 +972,7 @@ CClientList::SourceList CClientList::GetClientsByIP(const CNetworkAddress &addre
 
 	// Find all items with the specified address
 	std::pair<AddressMap::iterator, AddressMap::iterator> range =
-		m_ipList.equal_range(PeerIdentity::IndexKey(address));
+		m_ipList.equal_range(PeerAddressing::IndexKey(address));
 
 	for (; range.first != range.second; range.first++) {
 		results.push_back(range.first->second);
@@ -916,7 +985,7 @@ CClientList::SourceList CClientList::GetClientsInRateLimitScope(const CNetworkAd
 {
 	SourceList results;
 
-	const CNetworkAddress scope = PeerIdentity::RateLimitScope(address);
+	const CNetworkAddress scope = PeerAddressing::RateLimitScope(address);
 	if (scope.IsAbsent()) {
 		return results;
 	}
@@ -928,7 +997,7 @@ CClientList::SourceList CClientList::GetClientsInRateLimitScope(const CNetworkAd
 	// exact-address lookup this replaces, rather than a scan of every client.
 	AddressMap::iterator it = m_ipList.lower_bound(scope);
 	for (; it != m_ipList.end(); ++it) {
-		if (PeerIdentity::RateLimitScope(it->first) != scope) {
+		if (PeerAddressing::RateLimitScope(it->first) != scope) {
 			break;
 		}
 		results.push_back(it->second);
@@ -954,6 +1023,11 @@ bool CClientList::IsDeadSource(const CUpDownClient *client)
 
 bool CClientList::SendChatMessage(uint64 client_id, const wxString &message)
 {
+	if (client_id == 0) {
+		// Names no peer: every such message would allocate another client
+		// aimed at 0.0.0.0, since a zero address is never indexed.
+		return false;
+	}
 	CUpDownClient *client = FindClientByIP(IP_FROM_GUI_ID(client_id), PORT_FROM_GUI_ID(client_id));
 	AddDebugLogLineN(logClient, "Trying to Send Message.");
 	if (client) {
@@ -964,9 +1038,19 @@ bool CClientList::SendChatMessage(uint64 client_id, const wxString &message)
 				"Creating") %
 				client_id % Uint32toStringIP(IP_FROM_GUI_ID(client_id)) %
 				PORT_FROM_GUI_ID(client_id));
-		client = new CUpDownClient(
-			PORT_FROM_GUI_ID(client_id), IP_FROM_GUI_ID(client_id), 0, 0, NULL, true, true);
-		AddClient(client);
+		// Through CreateForAddress(), which seeds GetIP() and reuses any
+		// client we already hold for this peer. Constructing one here
+		// directly leaves GetIP() at 0, so AddClient() keeps it out of the
+		// address index and the lookup above misses it next time: one
+		// unreachable client for every message sent. Both builds arrive
+		// here, amulegui by way of EC_OP_CHAT_SEND, so this is the place
+		// to get it right rather than at either call site.
+		CClientRef ref = CreateForAddress(
+			CMD4Hash(), IP_FROM_GUI_ID(client_id), PORT_FROM_GUI_ID(client_id), wxEmptyString);
+		if (!ref.IsLinked()) {
+			return false;
+		}
+		client = ref.GetClient();
 	}
 	// Record before sending, and record regardless of the result: a false
 	// return from CUpDownClient::SendChatMessage means "queued while
@@ -1281,7 +1365,7 @@ void CClientList::ProcessDirectCallbackList()
 
 void CClientList::AddTrackCallbackRequests(const CNetworkAddress &address)
 {
-	const CNetworkAddress scope = PeerIdentity::RateLimitScope(address);
+	const CNetworkAddress scope = PeerAddressing::RateLimitScope(address);
 	if (scope.IsAbsent()) {
 		// No address, no budget to charge. Recording absence would put every
 		// addressless requester in one bucket and let one of them throttle the
@@ -1302,7 +1386,7 @@ void CClientList::AddTrackCallbackRequests(const CNetworkAddress &address)
 
 bool CClientList::AllowCallbackRequest(const CNetworkAddress &address) const
 {
-	const CNetworkAddress scope = PeerIdentity::RateLimitScope(address);
+	const CNetworkAddress scope = PeerAddressing::RateLimitScope(address);
 	if (scope.IsAbsent()) {
 		// An unidentifiable requester gets no callback: it cannot be charged
 		// for one either, so allowing it would be an unlimited budget.

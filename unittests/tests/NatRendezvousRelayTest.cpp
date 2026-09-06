@@ -791,7 +791,7 @@ TEST(NatRendezvousRelay, LimiterMemoryIsBoundedAndFailsClosedWhenFull)
 {
 	CRendezvousRelayLimiter limiter;
 
-	// Distinct /64s, so PeerIdentity::RateLimitScope() cannot collapse them.
+	// Distinct /64s, so PeerAddressing::RateLimitScope() cannot collapse them.
 	for (uint32_t i = 0; i < kRendezvousRelayBucketCap; ++i) {
 		char text[64];
 		std::snprintf(text, sizeof(text), "2001:db8:%x:%x::1", (i >> 16) & 0xFFFF, i & 0xFFFF);
@@ -941,7 +941,7 @@ TEST(NatRendezvousRelay, ARequestFromAHostWeHoldIsRelayedDuringAFlood)
 }
 
 // IPv6 budgets count per /64, exactly as every other per-peer limit in this
-// tree does (PeerIdentity::RateLimitScope). A per-/128 limit would count to one
+// tree does (PeerAddressing::RateLimitScope). A per-/128 limit would count to one
 // forever for a subscriber delegated a prefix, which is the same as no limit.
 TEST(NatRendezvousRelay, IPv6RequestersShareABudgetPerSixtyFour)
 {

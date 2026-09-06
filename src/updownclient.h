@@ -40,7 +40,7 @@
 #include "NetworkAddress.h"      // Needed for CNetworkAddress
 #include "PeerCapabilities.h"    // Needed for CPeerCapabilities
 #include "PeerFamilyAttempts.h"  // Needed for DualStack::CPeerConnectAttempts
-#include "PeerIdentity.h"        // Needed for PeerIdentity::IsDirectlyReachable
+#include "PeerAddressing.h"        // Needed for PeerAddressing::IsDirectlyReachable
 #include "QuicProofValue.h"      // Needed for CQuicProofValue
 #include "UtpTransportFailure.h" // Needed for CUtpTransportState
 
@@ -327,12 +327,12 @@ public:
 	 * firewalled and be sent down the callback path, which goes through an ed2k
 	 * server or a Kad buddy and so cannot carry its address. A globally
 	 * routable IPv6 address is direct evidence of the opposite, so it decides.
-	 * See PeerIdentity::IsDirectlyReachable().
+	 * See PeerAddressing::IsDirectlyReachable().
 	 */
 	bool HasLowID() const
 	{
-		return IsLowID(m_nUserIDHybrid) && !PeerIdentity::IsDirectlyReachable(m_userAddress) &&
-		       !PeerIdentity::IsDirectlyReachable(m_connectAddress);
+		return IsLowID(m_nUserIDHybrid) && !PeerAddressing::IsDirectlyReachable(m_userAddress) &&
+		       !PeerAddressing::IsDirectlyReachable(m_connectAddress);
 	}
 
 	//! The peer's address as text, in its own family's notation. A peer with no
@@ -998,7 +998,7 @@ private:
 	//! The peer's address. Was a 32-bit ed2k-order field in which zero meant
 	//! both 0.0.0.0 and "unknown", which is why an inbound IPv6 peer could be
 	//! accepted and then not identified: it had no 32-bit form to be indexed
-	//! under. See PeerIdentity.h.
+	//! under. See PeerAddressing.h.
 	CNetworkAddress m_userAddress;
 	//! The supposed address or (after we had a connection) the real one.
 	CNetworkAddress m_connectAddress;

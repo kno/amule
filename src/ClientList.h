@@ -29,7 +29,7 @@
 #include "DeadSourceList.h" // Needed for CDeadSourceList
 #include "ClientRef.h"
 #include "NetworkAddress.h" // Needed for CNetworkAddress
-#include "PeerIdentity.h"   // Needed for PeerIdentity::IndexKey
+#include "PeerAddressing.h"   // Needed for PeerAddressing::IndexKey
 
 #include <deque>
 #include <list>
@@ -82,6 +82,26 @@ public:
 	 * @param toadd The new client.
 	 */
 	void AddClient(CUpDownClient *toadd);
+
+	/**
+	 * The client at this address that could still be the peer with this hash,
+	 * or nullptr. Skips any that identifies as somebody else.
+	 */
+	CUpDownClient *FindReusableClient(const CMD4Hash &hash, uint32 ip, uint16 port);
+
+	/**
+	 * A client for the peer at this address, added to the list.
+	 *
+	 * For the actions that inherently mean "go talk to this peer" -- browsing
+	 * its shared files, opening a chat -- when we are not already connected to
+	 * it and only hold its last known address. Creating the object does not
+	 * connect: the request the caller makes next is what opens a connection.
+	 *
+	 * Returns the client already held for this peer, matched by hash and
+	 * failing that by address, so repeating an action reuses the object the
+	 * previous one made instead of stacking up unreachable duplicates.
+	 */
+	CClientRef CreateForAddress(const CMD4Hash &hash, uint32 ip, uint16 port, const wxString &name);
 
 	/**
 	 * Removes a client from the  client lists.
@@ -195,7 +215,7 @@ public:
 	 *                finds nothing: no client is recorded under absence.
 	 * @param udpPort The datagram's source port. Zero is unknown rather
 	 *                than a port and matches nobody -- see
-	 *                PeerIdentity::MatchesUdpSourcePort().
+	 *                PeerAddressing::MatchesUdpSourcePort().
 	 */
 	CUpDownClient *FindClientByUDPEndpoint(const CNetworkAddress &address, uint16 udpPort);
 
@@ -307,7 +327,7 @@ public:
 	 * GetClientsByIP(). For an IPv6 peer it is every client in the same /64:
 	 * counting per /128 would let one subscriber take an unbounded number of
 	 * slots, one per address, which is the IPv6 shape of the limit this
-	 * answers. See PeerIdentity::RateLimitScope().
+	 * answers. See PeerAddressing::RateLimitScope().
 	 *
 	 * @param address The peer to scope. Absent yields nothing.
 	 */
@@ -331,7 +351,7 @@ public:
 	 * ever inserted under. That is what a 32-bit key could not offer: zero was
 	 * both 0.0.0.0 and "unknown", and a native IPv6 peer had no key at all.
 	 *
-	 * Keys go in through PeerIdentity::IndexKey(), so the mapped and native
+	 * Keys go in through PeerAddressing::IndexKey(), so the mapped and native
 	 * spellings of one IPv4 address are one entry rather than two identities.
 	 */
 	typedef std::multimap<CNetworkAddress, CClientRef> AddressMap;
@@ -400,7 +420,7 @@ public:
 	}
 	/**
 	 * The callback-request throttle. Counted against the peer's rate-limit
-	 * scope, not its exact address: see PeerIdentity::RateLimitScope(), which
+	 * scope, not its exact address: see PeerAddressing::RateLimitScope(), which
 	 * aggregates IPv6 at /64 because a per-/128 budget under IPv6 throttles
 	 * nothing at all.
 	 */

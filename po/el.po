@@ -9,8 +9,8 @@ msgid ""
 msgstr ""
 "Project-Id-Version: aMule\n"
 "Report-Msgid-Bugs-To: https://github.com/amule-org/amule/issues\n"
-"POT-Creation-Date: 2026-09-04 08:48+0200\n"
-"PO-Revision-Date: 2026-09-03 11:02+0000\n"
+"POT-Creation-Date: 2026-09-06 09:03+0200\n"
+"PO-Revision-Date: 2026-09-05 10:48+0000\n"
 "Last-Translator: Dimitris <dgalanak@yahoo.com>\n"
 "Language-Team: Greek\n"
 "Language: el\n"
@@ -1278,6 +1278,14 @@ msgid "Send message"
 msgstr "Αποστολή μηνύματος"
 
 #: src/ClientContextActions.cpp
+msgid "Send message to user"
+msgstr "Αποστολή μηνύματος στον χρήστη"
+
+#: src/ClientContextActions.cpp
+msgid "Message to send:"
+msgstr "Μήνυμα προς αποστολή:"
+
+#: src/ClientContextActions.cpp
 #, fuzzy
 msgid ""
 "You are not allowed to set more than one friend slot.\n"
@@ -1291,12 +1299,36 @@ msgid "Multiple selection"
 msgstr "Πολλαπλή επιλογή"
 
 #: src/ClientContextActions.cpp
-msgid "Send message to user"
-msgstr "Αποστολή μηνύματος στον χρήστη"
+#, c-format
+msgid "Add %u client to your friend list?"
+msgid_plural "Add %u clients to your friend list?"
+msgstr[0] ""
+msgstr[1] ""
 
 #: src/ClientContextActions.cpp
-msgid "Message to send:"
-msgstr "Μήνυμα προς αποστολή:"
+#, fuzzy, c-format
+msgid "Remove %u client from your friend list?"
+msgid_plural "Remove %u clients from your friend list?"
+msgstr[0] "Αφαίρεση από του φίλους"
+msgstr[1] "Αφαίρεση από του φίλους"
+
+#: src/ClientContextActions.cpp
+#, c-format
+msgid "Could not add %u selected client to your friend list: no address is known for it."
+msgid_plural "Could not add %u selected clients to your friend list: no address is known for them."
+msgstr[0] ""
+msgstr[1] ""
+
+#: src/ClientContextActions.cpp
+#, fuzzy, c-format
+msgid "Request the shared files of %u client?"
+msgid_plural "Request the shared files of %u clients?"
+msgstr[0] "Επαναφορτώνει τη λίστα κοινοχρήστων αρχείων."
+msgstr[1] "Επαναφορτώνει τη λίστα κοινοχρήστων αρχείων."
+
+#: src/ClientContextActions.cpp
+msgid "A connection is opened to each of them."
+msgstr ""
 
 #: src/ClientCreditsList.cpp
 #, c-format
@@ -1357,19 +1389,17 @@ msgstr "Αποσυνδεδεμένο"
 msgid "%.1f KiB/s"
 msgstr ""
 
-#: src/ClientHistoryListCtrl.cpp src/ClientsListCtrl.cpp
-#, fuzzy
+#: src/ClientHistoryListCtrl.cpp src/ClientsListCtrl.cpp src/muuli_wdr.cpp
 msgid "Name"
-msgstr "Όνομα:"
+msgstr "Όνομα"
 
 #: src/ClientHistoryListCtrl.cpp src/ClientsListCtrl.cpp
 msgid "Software"
 msgstr ""
 
-#: src/ClientHistoryListCtrl.cpp src/ClientsListCtrl.cpp
-#, fuzzy
+#: src/ClientHistoryListCtrl.cpp src/ClientsListCtrl.cpp src/muuli_wdr.cpp
 msgid "IP Address"
-msgstr "Διεύθυνση IP :"
+msgstr "Διεύθυνση IP"
 
 #: src/ClientHistoryListCtrl.cpp src/ClientsListCtrl.cpp
 #: src/SharedFilePeersListCtrl.cpp src/SourceListCtrl.cpp
@@ -1441,6 +1471,13 @@ msgstr "Δεν υπάρχει"
 #: src/ClientRef.cpp
 msgid "Not Available"
 msgstr "Δεν υπάρχει"
+
+#: src/ClientRowListCtrl.cpp
+#, c-format
+msgid "Could not ask %u selected client for its shared files."
+msgid_plural "Could not ask %u selected clients for their shared files."
+msgstr[0] ""
+msgstr[1] ""
 
 #: src/ClientsListCtrl.cpp src/PrefsUnifiedDlg.cpp src/ServerListCtrl.cpp
 msgid "Files"
@@ -1539,7 +1576,7 @@ msgstr "Ο χρήστης %s (%u) αρνήθηκε πρόσβαση στη λί�
 msgid "File Comments"
 msgstr "Σχόλια αρχείου"
 
-#: src/CommentDialogLst.cpp src/FriendListCtrl.cpp
+#: src/CommentDialogLst.cpp src/FriendListCtrl.cpp src/muuli_wdr.cpp
 msgid "Username"
 msgstr "Όνομα Χρήστη"
 
@@ -1552,7 +1589,7 @@ msgstr "Όνομα αρχείου"
 msgid "Rating"
 msgstr "Αξιολόγηση"
 
-#: src/CommentDialogLst.cpp
+#: src/CommentDialogLst.cpp src/muuli_wdr.cpp
 msgid "Comment"
 msgstr "Σχόλιο"
 
@@ -2175,6 +2212,10 @@ msgstr "χρειάζεται να οριστεί ο διακομιστής πο�
 #: src/ExternalConn.cpp
 msgid "eD2k is disabled in preferences."
 msgstr "Το eD2k είναι απενεργοποιημένο στις ρυθμίσεις."
+
+#: src/ExternalConn.cpp
+msgid "No address known for that friend yet."
+msgstr ""
 
 #: src/ExternalConn.cpp
 #, fuzzy
@@ -2811,6 +2852,11 @@ msgid "Failed to open friend list file 'emfriends.met' for writing!"
 msgstr "Αποτυχία γραψίματος στο αρχείο της λίστας φίλων 'emfriends.met' "
 
 #: src/FriendList.cpp
+#, c-format
+msgid "No address known for friend '%s' yet, cannot browse them."
+msgstr ""
+
+#: src/FriendList.cpp
 msgid "CRITICAL - no client on StartChatSession"
 msgstr ""
 
@@ -2831,6 +2877,11 @@ msgid "Send &Message"
 msgstr "Στείλε &Μήνυμα"
 
 #: src/FriendListCtrl.cpp
+#, c-format
+msgid "No address known for friend '%s' yet, cannot message them."
+msgstr ""
+
+#: src/FriendListCtrl.cpp
 msgid "Are you sure that you wish to delete the selected friend?"
 msgstr "Σίγουρα θέλετε να διαγράψετε τον επιλεγμένο φίλο;"
 
@@ -2847,48 +2898,10 @@ msgstr ""
 " Γι αυτό μόνο μία ανατέθηκε."
 
 #: src/GenericClientListCtrl.cpp
-#, fuzzy
-msgid "This source does not have the part"
-msgstr "Αυτή η εντολή δεν πρέπει να έχει παραμέτρους."
-
-#: src/GenericClientListCtrl.cpp
-msgid "You and this source both have the part"
-msgstr ""
-
-#: src/GenericClientListCtrl.cpp
-msgid "Being downloaded from this source now"
-msgstr ""
-
-#: src/GenericClientListCtrl.cpp
-msgid "The next part that will be asked of this source"
-msgstr ""
-
-#: src/GenericClientListCtrl.cpp
-msgid "This source has the part and you still need it"
-msgstr ""
-
-#: src/GenericClientListCtrl.cpp
-msgid "This peer already has the part"
-msgstr ""
-
-#: src/GenericClientListCtrl.cpp
-msgid "This peer does not have the part"
-msgstr ""
-
-#: src/GenericClientListCtrl.cpp
-msgid "One block per part of the file being downloaded."
-msgstr ""
-
-#: src/GenericClientListCtrl.cpp
-#, fuzzy
-msgid "One block per part of the shared file."
-msgstr "Γράψτε την θύρα του διακομιστή εδώ."
-
-#: src/GenericClientListCtrl.cpp
 msgid "Swap to this file"
 msgstr "Εναλλαγή σε αυτό το αρχείο"
 
-#: src/GenericClientListCtrl.cpp
+#: src/GenericClientListCtrl.cpp src/SharedFilesCtrl.cpp
 msgid "Colour legend"
 msgstr ""
 
@@ -3724,10 +3737,6 @@ msgstr "Διακομιστές συνδεδεμένοι αυτή τη στιγμ
 msgid "Search"
 msgstr "Αναζήτηση"
 
-#: src/muuli_wdr.cpp
-msgid "Name:"
-msgstr "Όνομα:"
-
 #: src/muuli_wdr.cpp src/SearchListCtrl.cpp src/SharedFilesCtrl.cpp
 msgid "Type"
 msgstr "Τύπος"
@@ -3817,8 +3826,8 @@ msgid "Availability"
 msgstr "Διαθεσιμότητα"
 
 #: src/muuli_wdr.cpp
-msgid "Filter:"
-msgstr "Φίλτρο:"
+msgid "Filter"
+msgstr "Φίλτρο"
 
 #: src/muuli_wdr.cpp
 msgid "Invert Result"
@@ -3876,6 +3885,10 @@ msgid "Clears completed downloads"
 msgstr "Καθάρισμα των ολοκληρωμένων κατεβασμάτων"
 
 #: src/muuli_wdr.cpp
+msgid "Filter:"
+msgstr "Φίλτρο:"
+
+#: src/muuli_wdr.cpp
 #, fuzzy
 msgid "File sources:"
 msgstr "Ολοκλήρωση πηγών"
@@ -3885,80 +3898,76 @@ msgid "General"
 msgstr "Γενικά"
 
 #: src/muuli_wdr.cpp
-msgid "Full Name :"
-msgstr "Πλήρες Όνομα :"
+msgid "Full Name"
+msgstr "Πλήρες Όνομα"
 
 #: src/muuli_wdr.cpp
-msgid "met-File :"
-msgstr "Αρχείο met:"
+msgid "met-File"
+msgstr "Αρχείο met"
 
 #: src/muuli_wdr.cpp
-msgid "Hash :"
-msgstr "Κατακερματισμός :"
+msgid "Hash"
+msgstr "Κατακερματισμός"
 
 #: src/muuli_wdr.cpp
-msgid "Filesize :"
-msgstr "Μέγεθος αρχείου :"
+msgid "Filesize"
+msgstr "Μέγεθος αρχείου"
 
 #: src/muuli_wdr.cpp src/Statistics.cpp
 msgid "Transfer"
 msgstr "Μεταφορά"
 
 #: src/muuli_wdr.cpp
-msgid "Partfilestatus :"
-msgstr "Κατάσταση ημιτελούς αρχείου:"
+msgid "Partfilestatus"
+msgstr "Κατάσταση ημιτελούς αρχείου"
 
 #: src/muuli_wdr.cpp
-msgid "Last seen complete :"
-msgstr "Τελευταία φορά που εμφανίστηκε ολόκληρο :"
+msgid "Last seen complete"
+msgstr "Τελευταία φορά που εμφανίστηκε ολόκληρο"
 
 #: src/muuli_wdr.cpp
-msgid "Found Sources :"
-msgstr "Βρέθηκαν πηγές :"
+msgid "Found Sources"
+msgstr "Βρέθηκαν πηγές"
 
 #: src/muuli_wdr.cpp
-msgid "Transferring Sources :"
-msgstr "Ενεργές πηγές :"
+msgid "Transferring Sources"
+msgstr "Ενεργές πηγές"
 
 #: src/muuli_wdr.cpp
-msgid "Filepart-Count :"
-msgstr "Απαρίθμηση τμημάτων αρχείου:"
+msgid "Filepart-Count"
+msgstr "Απαρίθμηση τμημάτων αρχείου"
 
 #: src/muuli_wdr.cpp
-msgid "Available :"
-msgstr "Διαθέσιμα:"
+msgid "Available"
+msgstr "Διαθέσιμα"
 
 #: src/muuli_wdr.cpp
-msgid "Datarate :"
-msgstr "Ρυθμός ροής δεδομένων :"
+msgid "Datarate"
+msgstr "Ρυθμός ροής δεδομένων"
 
 #: src/muuli_wdr.cpp
-msgid "Download Active Time: "
-msgstr "Ενεργός χρόνος κατεβάσματος:"
+msgid "Download Active Time"
+msgstr "Ενεργός χρόνος κατεβάσματος"
 
 #: src/muuli_wdr.cpp
-msgid "Transferred :"
-msgstr "Μεταφέρθηκαν :"
-
-#: src/muuli_wdr.cpp
-msgid "Completed Size :"
-msgstr "Ολοκληρωμένος όγκος :"
+msgid "Completed Size"
+msgstr "Ολοκληρωμένος όγκος"
 
 #: src/muuli_wdr.cpp
 msgid "Intelligent Corruption Handling"
 msgstr "Έξυπνη διαχείριση φθοράς (Ε.Δ.Φ.):"
 
 #: src/muuli_wdr.cpp
-msgid "Lost to corruption :"
-msgstr "Χάθηκε λόγο φθοράς :"
+msgid "Lost to corruption"
+msgstr "Χάθηκε λόγο φθοράς"
 
 #: src/muuli_wdr.cpp
-msgid "Gained by compression :"
-msgstr "Κέρδος σε μέγεθος λόγω συμπίεσης :"
+msgid "Gained by compression"
+msgstr "Κέρδος σε μέγεθος λόγω συμπίεσης"
 
 #: src/muuli_wdr.cpp
-msgid "Packages saved by I.C.H. :"
-msgstr "Πακέτα που σώθηκαν από την Ε.Δ.Φ. :"
+msgid "Packages saved by I.C.H."
+msgstr "Πακέτα που σώθηκαν από την Ε.Δ.Φ."
 
 #: src/muuli_wdr.cpp
 #, fuzzy
@@ -4000,30 +4009,30 @@ msgstr ", Ανέβασμα: "
 msgid "Media Info"
 msgstr "Πληροφορίες Kad"
 
-#: src/muuli_wdr.cpp
-msgid "Length :"
+#: src/muuli_wdr.cpp src/SearchListCtrl.cpp
+msgid "Length"
 msgstr ""
 
-#: src/muuli_wdr.cpp
+#: src/muuli_wdr.cpp src/SearchListCtrl.cpp
 #, fuzzy
-msgid "Bitrate :"
+msgid "Bitrate"
 msgstr "Μη αποτιμημένο"
 
-#: src/muuli_wdr.cpp
-msgid "Codec :"
+#: src/muuli_wdr.cpp src/SearchListCtrl.cpp
+msgid "Codec"
 msgstr ""
 
 #: src/muuli_wdr.cpp
-msgid "Artist :"
+msgid "Artist"
 msgstr ""
 
 #: src/muuli_wdr.cpp
-msgid "Album :"
+msgid "Album"
 msgstr ""
 
 #: src/muuli_wdr.cpp
-msgid "Title :"
-msgstr "Τίτλος:"
+msgid "Title"
+msgstr "Τίτλος"
 
 #: src/muuli_wdr.cpp
 msgid "File Names"
@@ -4110,25 +4119,17 @@ msgstr "Άγνωστο μέγεθος"
 msgid "Required Information"
 msgstr "Απαιτούμενες πληροφορίες"
 
-#: src/muuli_wdr.cpp
-msgid "IP Address :"
-msgstr "Διεύθυνση IP :"
-
-#: src/muuli_wdr.cpp
-msgid "Port :"
-msgstr "Θύρα :"
+#: src/muuli_wdr.cpp src/ServerListCtrl.cpp
+msgid "Port"
+msgstr "Θύρα"
 
 #: src/muuli_wdr.cpp
 msgid "Additional Information"
 msgstr "Πρόσθετες πληροφορίες"
 
 #: src/muuli_wdr.cpp
-msgid "Username :"
-msgstr "Όνομα χρήστη :"
-
-#: src/muuli_wdr.cpp
-msgid "Userhash :"
-msgstr "Τεμάχιο χρήστη :"
+msgid "Userhash"
+msgstr "Τεμάχιο χρήστη"
 
 #: src/muuli_wdr.cpp src/utils/aLinkCreator/src/alcframe.cpp
 msgid "Add"
@@ -4163,44 +4164,28 @@ msgid "Statistics Tree"
 msgstr "Δέντρο στατιστικών"
 
 #: src/muuli_wdr.cpp
-msgid "Username:"
-msgstr "Όνομα χρήστη:"
+msgid "Client software"
+msgstr "Λογισμικό πελάτη"
 
 #: src/muuli_wdr.cpp
-msgid "Userhash:"
-msgstr "Τεμάχιο χρήστη:"
+msgid "Client version"
+msgstr "Αριθμός έκδοσης πελάτη"
 
 #: src/muuli_wdr.cpp
-msgid "Client software:"
-msgstr "Λογισμικό πελάτη:"
+msgid "User ID"
+msgstr "Αριθμός Χρήστη"
 
 #: src/muuli_wdr.cpp
-msgid "Client version:"
-msgstr "Αριθμός έκδοσης πελάτη:"
-
-#: src/muuli_wdr.cpp src/ServerWnd.cpp
-msgid "IP address:"
-msgstr "Διεύθυνση IP:"
+msgid "Server IP"
+msgstr "Διεύθυνση διακομιστή"
 
 #: src/muuli_wdr.cpp
-msgid "User ID:"
-msgstr "Αριθμός Χρήστη:"
+msgid "Server name"
+msgstr "Όνομα διακομιστή"
 
 #: src/muuli_wdr.cpp
-msgid "Server IP:"
-msgstr "Διεύθυνση διακομιστή:"
-
-#: src/muuli_wdr.cpp
-msgid "Server name:"
-msgstr "Όνομα διακομιστή:"
-
-#: src/muuli_wdr.cpp
-msgid "Obfuscation:"
-msgstr "Συσκότιση:"
-
-#: src/muuli_wdr.cpp
-msgid "Kad:"
-msgstr "Kad:"
+msgid "Obfuscation"
+msgstr "Συσκότιση"
 
 #: src/muuli_wdr.cpp
 msgid "Vendor capabilities:"
@@ -4211,53 +4196,53 @@ msgid "Transfers to client"
 msgstr "Μεταφορές προς τον πελάτη"
 
 #: src/muuli_wdr.cpp
-msgid "Current request:"
-msgstr "Τρέχουσα αίτηση:"
+msgid "Current request"
+msgstr "Τρέχουσα αίτηση"
 
 #: src/muuli_wdr.cpp
-msgid "Average upload rate:"
-msgstr "Μέσος ρυθμός ανεβάσματος:"
+msgid "Average upload rate"
+msgstr "Μέσος ρυθμός ανεβάσματος"
 
 #: src/muuli_wdr.cpp
-msgid "Average download rate:"
-msgstr "Μέσος ρυθμός κατεβάσματος:"
+msgid "Average download rate"
+msgstr "Μέσος ρυθμός κατεβάσματος"
 
 #: src/muuli_wdr.cpp
-msgid "Uploaded (session):"
-msgstr "Ανέβηκαν (συνεδρία):"
+msgid "Uploaded (session)"
+msgstr "Ανέβηκαν (συνεδρία)"
 
 #: src/muuli_wdr.cpp
-msgid "Downloaded (session):"
-msgstr "Κατέβηκαν (συνεδρία):"
+msgid "Downloaded (session)"
+msgstr "Κατέβηκαν (συνεδρία)"
 
 #: src/muuli_wdr.cpp
-msgid "Uploaded (total):"
-msgstr "Ανέβηκαν (συνολικά):"
+msgid "Uploaded (total)"
+msgstr "Ανέβηκαν (συνολικά)"
 
 #: src/muuli_wdr.cpp
-msgid "Downloaded (total):"
-msgstr "Κατέβηκαν (συνολικά):"
+msgid "Downloaded (total)"
+msgstr "Κατέβηκαν (συνολικά)"
 
 #: src/muuli_wdr.cpp
 msgid "Scores"
 msgstr "Σκορ"
 
 #: src/muuli_wdr.cpp
-msgid "DL/UP modifier:"
-msgstr "Τροποποιητής Ανεβοκατεβάσματος:"
+msgid "DL/UP modifier"
+msgstr "Τροποποιητής Ανεβοκατεβάσματος"
 
 #: src/muuli_wdr.cpp
-msgid "Secure ident:"
-msgstr "Ασφαλής ταυτότητα:"
+msgid "Secure ident"
+msgstr "Ασφαλής ταυτότητα"
 
 #: src/muuli_wdr.cpp
 #, fuzzy
-msgid "Queue rank:"
+msgid "Queue rank"
 msgstr "Εν αναμονή"
 
 #: src/muuli_wdr.cpp
-msgid "Queue score:"
-msgstr "Βαθμολογία αναμονής:"
+msgid "Queue score"
+msgstr "Βαθμολογία αναμονής"
 
 #: src/muuli_wdr.cpp
 msgid "Nick"
@@ -5053,16 +5038,12 @@ msgid "Reset any changes made to the preferences."
 msgstr "Επαναφορά κάθε αλλαγής που έγινε στις προτιμήσεις."
 
 #: src/muuli_wdr.cpp
-msgid "Comment :"
-msgstr "Σχόλιο:"
+msgid "Incoming Dir"
+msgstr "Κατάλογος εισερχομένων"
 
 #: src/muuli_wdr.cpp
-msgid "Incoming Dir :"
-msgstr "Κατάλογος εισερχομένων :"
-
-#: src/muuli_wdr.cpp
-msgid "Change priority for new assigned files :"
-msgstr "Αλλαγή προτεραιότητας για τα νέα προσδιορισμένα αρχεία :"
+msgid "Change priority for new assigned files"
+msgstr "Αλλαγή προτεραιότητας για τα νέα προσδιορισμένα αρχεία"
 
 #: src/muuli_wdr.cpp
 #, fuzzy
@@ -5070,8 +5051,8 @@ msgid "Don't change"
 msgstr "Να μην αλλάξει"
 
 #: src/muuli_wdr.cpp
-msgid "Select color for this Category (currently selected) :"
-msgstr "Επιλογή χρώματος για τη συγκεκριμένη κατηγορία (τρέχουσα επιλογή) :"
+msgid "Select color for this Category (currently selected)"
+msgstr "Επιλογή χρώματος για τη συγκεκριμένη κατηγορία (τρέχουσα επιλογή)"
 
 #: src/muuli_wdr.cpp
 msgid "Click this button to reset the log."
@@ -5156,10 +5137,6 @@ msgstr ""
 #, fuzzy
 msgid "Enter the IP of the node here, using the x.x.x.x format."
 msgstr "Γράψτε την IP του διακομιστή εδώ, σε μορφή x.x.x.x"
-
-#: src/muuli_wdr.cpp
-msgid "Port:"
-msgstr "Θύρα:"
 
 #: src/muuli_wdr.cpp
 msgid "Use Secure User Identification"
@@ -5428,20 +5405,20 @@ msgid "Enable/disable proxy support"
 msgstr "Ενεργοποίηση/Απενεργοποίηση υποστήριξης διακομιστή μεσολάβησης"
 
 #: src/muuli_wdr.cpp
-msgid "Proxy type:"
+msgid "Proxy type"
 msgstr "Τύπος διαμεσολάβησης"
 
 #: src/muuli_wdr.cpp
-msgid "Proxy host:"
-msgstr "Διεύθυνση διακομιστή μεσολάβησης:"
+msgid "Proxy host"
+msgstr "Διεύθυνση διακομιστή μεσολάβησης"
 
 #: src/muuli_wdr.cpp
 msgid "The proxy host name"
 msgstr "Όνομα του διακομιστή μεσολάβησης"
 
 #: src/muuli_wdr.cpp
-msgid "Proxy port:"
-msgstr "Θύρα διακομιστή μεσολάβησης:"
+msgid "Proxy port"
+msgstr "Θύρα διακομιστή μεσολάβησης"
 
 #: src/muuli_wdr.cpp
 msgid "The proxy port"
@@ -5456,16 +5433,8 @@ msgid "Enable/disable username/password authentication"
 msgstr "Ενεργοποίηση/Απενεργοποίηση πιστοποίησης ονόματος χρήστη/κωδικού"
 
 #: src/muuli_wdr.cpp
-msgid "Username: "
-msgstr "Όνομα χρήστη:"
-
-#: src/muuli_wdr.cpp
 msgid "The username to use to connect to the proxy"
 msgstr "Το όνομα χρήστη για τη σύνδεση με τον μεσολαβητή"
-
-#: src/muuli_wdr.cpp
-msgid "Password:"
-msgstr "Κωδικός:"
 
 #: src/muuli_wdr.cpp
 msgid "The password to use to connect to the proxy"
@@ -5478,10 +5447,6 @@ msgstr "Σύνδεση με:"
 #: src/muuli_wdr.cpp
 msgid "Login to remote amule"
 msgstr "Σύνδεση σε απομακρυσμένο amule"
-
-#: src/muuli_wdr.cpp
-msgid "User name"
-msgstr "Όνομα χρήστη"
 
 #: src/muuli_wdr.cpp
 msgid "Remember those settings"
@@ -5652,6 +5617,15 @@ msgstr "ώρες"
 msgid "days"
 msgstr "μέρες"
 
+#. TRANSLATORS:
+#. Punctuation for a "label: value" pair. %s is the already-translated
+#. label. Place the colon as your language requires -- e.g. "%s :" with a
+#. space in French, "%s:" without one in Russian and English.
+#: src/OtherFunctions.cpp
+#, c-format
+msgid "%s:"
+msgstr ""
+
 #: src/OtherFunctions.cpp
 msgid "all"
 msgstr "όλα"
@@ -5683,6 +5657,81 @@ msgstr "Κείμενο "
 #: src/OtherFunctions.cpp
 #, c-format
 msgid "Using config dir: %s"
+msgstr ""
+
+#: src/PartBarLegendUI.cpp
+#, fuzzy
+msgid "This source does not have the part"
+msgstr "Αυτή η εντολή δεν πρέπει να έχει παραμέτρους."
+
+#: src/PartBarLegendUI.cpp
+msgid "You and this source both have the part"
+msgstr ""
+
+#: src/PartBarLegendUI.cpp
+msgid "Being downloaded from this source now"
+msgstr ""
+
+#: src/PartBarLegendUI.cpp
+msgid "The next part that will be asked of this source"
+msgstr ""
+
+#: src/PartBarLegendUI.cpp
+msgid "This source has the part and you still need it"
+msgstr ""
+
+#: src/PartBarLegendUI.cpp
+msgid "This peer already has the part"
+msgstr ""
+
+#: src/PartBarLegendUI.cpp
+msgid "This peer does not have the part"
+msgstr ""
+
+#: src/PartBarLegendUI.cpp
+#, fuzzy
+msgid "No other source has this part"
+msgstr "Αυτή η εντολή δεν πρέπει να έχει παραμέτρους."
+
+#: src/PartBarLegendUI.cpp
+#, fuzzy
+msgid "One other source has this part"
+msgstr "Αυτή η εντολή δεν πρέπει να έχει παραμέτρους."
+
+#: src/PartBarLegendUI.cpp
+#, fuzzy, c-format
+msgid "%u or more other sources have this part"
+msgstr "Αυτή η εντολή δεν πρέπει να έχει παραμέτρους."
+
+#: src/PartBarLegendUI.cpp
+msgid "Already read back and hashed"
+msgstr ""
+
+#: src/PartBarLegendUI.cpp
+msgid "Still to be read"
+msgstr ""
+
+#: src/PartBarLegendUI.cpp
+msgid "One block per part of the file being downloaded."
+msgstr ""
+
+#: src/PartBarLegendUI.cpp
+#, fuzzy
+msgid "One block per part of the shared file."
+msgstr "Γράψτε την θύρα του διακομιστή εδώ."
+
+#: src/PartBarLegendUI.cpp
+#, fuzzy
+msgid "One block per part of the shared file, coloured by how many other sources have it."
+msgstr "Γράψτε την θύρα του διακομιστή εδώ."
+
+#: src/PartBarLegendUI.cpp
+#, fuzzy
+msgid "One block per part of the shared file, showing how far the re-hash has read."
+msgstr "Γράψτε την θύρα του διακομιστή εδώ."
+
+#: src/PartBarLegendUI.cpp
+msgid "In between, darkening as other sources are added"
 msgstr ""
 
 #: src/PartFileConvert.cpp
@@ -6760,19 +6809,6 @@ msgid "FileID"
 msgstr "Τιμή ταυτότητας αρχείου"
 
 #: src/SearchListCtrl.cpp
-msgid "Length"
-msgstr ""
-
-#: src/SearchListCtrl.cpp
-#, fuzzy
-msgid "Bitrate"
-msgstr "Μη αποτιμημένο"
-
-#: src/SearchListCtrl.cpp
-msgid "Codec"
-msgstr ""
-
-#: src/SearchListCtrl.cpp
 msgid "Expand all"
 msgstr ""
 
@@ -7058,10 +7094,6 @@ msgstr "Ο τοπικός διακομιστής είναι φιλτραρισμ
 #: src/ServerListCtrl.cpp
 msgid "Server Name"
 msgstr "Όνομα διακομιστή"
-
-#: src/ServerListCtrl.cpp
-msgid "Port"
-msgstr "Θύρα"
 
 #: src/ServerListCtrl.cpp
 msgid "Description"
@@ -7371,6 +7403,10 @@ msgid "Connected to buddy at %s"
 msgstr "Συνδεδεμένος στον φιλαράκο"
 
 #: src/ServerWnd.cpp
+msgid "IP address:"
+msgstr "Διεύθυνση IP:"
+
+#: src/ServerWnd.cpp
 #, fuzzy
 msgid "Indexed sources:"
 msgstr "Βρέθηκαν πηγές :"
@@ -7521,8 +7557,9 @@ msgid "Shares File List"
 msgstr "Κοινόχρηστα αρχεία"
 
 #: src/SharedFilesCtrl.cpp
-msgid "Obtained Parts"
-msgstr "Κεκτημένα τμήματα"
+#, fuzzy
+msgid "Source Availability"
+msgstr "Διαθεσιμότητα"
 
 #: src/SharedFilesCtrl.cpp
 msgid "Directory Path"
@@ -9415,6 +9452,12 @@ msgstr ""
 
 #~ msgid "ERROR: Could not listen to TCP port."
 #~ msgstr "ΣΦΑΛΜΑ: Δεν μπορώ να ακούσω την θύρα TCP."
+
+#~ msgid "User name"
+#~ msgstr "Όνομα χρήστη"
+
+#~ msgid "Obtained Parts"
+#~ msgstr "Κεκτημένα τμήματα"
 
 #, fuzzy
 #~ msgid "Available Parts"

@@ -14,8 +14,8 @@ msgid ""
 msgstr ""
 "Project-Id-Version: aMule\n"
 "Report-Msgid-Bugs-To: https://github.com/amule-org/amule/issues\n"
-"POT-Creation-Date: 2026-09-04 08:48+0200\n"
-"PO-Revision-Date: 2026-09-03 11:12+0000\n"
+"POT-Creation-Date: 2026-09-06 09:03+0200\n"
+"PO-Revision-Date: 2026-09-05 11:04+0000\n"
 "Last-Translator: Wayne Su <mstarmstar@gmail.com>\n"
 "Language-Team: \n"
 "Language: zh_TW\n"
@@ -1269,6 +1269,14 @@ msgid "Send message"
 msgstr "傳送訊息"
 
 #: src/ClientContextActions.cpp
+msgid "Send message to user"
+msgstr "傳送訊息給使用者"
+
+#: src/ClientContextActions.cpp
+msgid "Message to send:"
+msgstr "傳送訊息："
+
+#: src/ClientContextActions.cpp
 #, fuzzy
 msgid ""
 "You are not allowed to set more than one friend slot.\n"
@@ -1282,12 +1290,32 @@ msgid "Multiple selection"
 msgstr "多重選取"
 
 #: src/ClientContextActions.cpp
-msgid "Send message to user"
-msgstr "傳送訊息給使用者"
+#, c-format
+msgid "Add %u client to your friend list?"
+msgid_plural "Add %u clients to your friend list?"
+msgstr[0] ""
 
 #: src/ClientContextActions.cpp
-msgid "Message to send:"
-msgstr "傳送訊息："
+#, fuzzy, c-format
+msgid "Remove %u client from your friend list?"
+msgid_plural "Remove %u clients from your friend list?"
+msgstr[0] "從好友中刪除"
+
+#: src/ClientContextActions.cpp
+#, c-format
+msgid "Could not add %u selected client to your friend list: no address is known for it."
+msgid_plural "Could not add %u selected clients to your friend list: no address is known for them."
+msgstr[0] ""
+
+#: src/ClientContextActions.cpp
+#, fuzzy, c-format
+msgid "Request the shared files of %u client?"
+msgid_plural "Request the shared files of %u clients?"
+msgstr[0] "重新載入分享檔案清單。"
+
+#: src/ClientContextActions.cpp
+msgid "A connection is opened to each of them."
+msgstr ""
 
 #: src/ClientCreditsList.cpp
 #, c-format
@@ -1346,16 +1374,15 @@ msgstr "已中斷連線"
 msgid "%.1f KiB/s"
 msgstr ""
 
-#: src/ClientHistoryListCtrl.cpp src/ClientsListCtrl.cpp
-#, fuzzy
+#: src/ClientHistoryListCtrl.cpp src/ClientsListCtrl.cpp src/muuli_wdr.cpp
 msgid "Name"
-msgstr "名稱："
+msgstr "名稱"
 
 #: src/ClientHistoryListCtrl.cpp src/ClientsListCtrl.cpp
 msgid "Software"
 msgstr ""
 
-#: src/ClientHistoryListCtrl.cpp src/ClientsListCtrl.cpp
+#: src/ClientHistoryListCtrl.cpp src/ClientsListCtrl.cpp src/muuli_wdr.cpp
 #, fuzzy
 msgid "IP Address"
 msgstr "IP 位址︰"
@@ -1428,6 +1455,12 @@ msgstr "N/A"
 #: src/ClientRef.cpp
 msgid "Not Available"
 msgstr "N/A"
+
+#: src/ClientRowListCtrl.cpp
+#, c-format
+msgid "Could not ask %u selected client for its shared files."
+msgid_plural "Could not ask %u selected clients for their shared files."
+msgstr[0] ""
 
 #: src/ClientsListCtrl.cpp src/PrefsUnifiedDlg.cpp src/ServerListCtrl.cpp
 msgid "Files"
@@ -1526,7 +1559,7 @@ msgstr "使用者 %s (%u) 拒絕傳送分享檔案/目錄清單"
 msgid "File Comments"
 msgstr "檔案註解"
 
-#: src/CommentDialogLst.cpp src/FriendListCtrl.cpp
+#: src/CommentDialogLst.cpp src/FriendListCtrl.cpp src/muuli_wdr.cpp
 msgid "Username"
 msgstr "使用者名稱"
 
@@ -1539,7 +1572,7 @@ msgstr "檔案名稱"
 msgid "Rating"
 msgstr "評價"
 
-#: src/CommentDialogLst.cpp
+#: src/CommentDialogLst.cpp src/muuli_wdr.cpp
 msgid "Comment"
 msgstr "註解"
 
@@ -2155,6 +2188,10 @@ msgstr "必須指定要刪除的伺服器"
 #: src/ExternalConn.cpp
 msgid "eD2k is disabled in preferences."
 msgstr "eD2k 網路已在偏好設定中被停用了。"
+
+#: src/ExternalConn.cpp
+msgid "No address known for that friend yet."
+msgstr ""
 
 #: src/ExternalConn.cpp
 #, fuzzy
@@ -2792,6 +2829,11 @@ msgid "Failed to open friend list file 'emfriends.met' for writing!"
 msgstr "無法開啟好友清單檔案 emfriends.met 供寫入！"
 
 #: src/FriendList.cpp
+#, c-format
+msgid "No address known for friend '%s' yet, cannot browse them."
+msgstr ""
+
+#: src/FriendList.cpp
 msgid "CRITICAL - no client on StartChatSession"
 msgstr "重大錯誤 - 開始交談時沒有客戶端"
 
@@ -2812,6 +2854,11 @@ msgid "Send &Message"
 msgstr "傳送訊息(&M)"
 
 #: src/FriendListCtrl.cpp
+#, c-format
+msgid "No address known for friend '%s' yet, cannot message them."
+msgstr ""
+
+#: src/FriendListCtrl.cpp
 msgid "Are you sure that you wish to delete the selected friend?"
 msgstr "您確定要刪除這個好友嗎？"
 
@@ -2828,48 +2875,10 @@ msgstr ""
 " 只設定了一個位置。"
 
 #: src/GenericClientListCtrl.cpp
-#, fuzzy
-msgid "This source does not have the part"
-msgstr "這個指令不能有參數。"
-
-#: src/GenericClientListCtrl.cpp
-msgid "You and this source both have the part"
-msgstr ""
-
-#: src/GenericClientListCtrl.cpp
-msgid "Being downloaded from this source now"
-msgstr ""
-
-#: src/GenericClientListCtrl.cpp
-msgid "The next part that will be asked of this source"
-msgstr ""
-
-#: src/GenericClientListCtrl.cpp
-msgid "This source has the part and you still need it"
-msgstr ""
-
-#: src/GenericClientListCtrl.cpp
-msgid "This peer already has the part"
-msgstr ""
-
-#: src/GenericClientListCtrl.cpp
-msgid "This peer does not have the part"
-msgstr ""
-
-#: src/GenericClientListCtrl.cpp
-msgid "One block per part of the file being downloaded."
-msgstr ""
-
-#: src/GenericClientListCtrl.cpp
-#, fuzzy
-msgid "One block per part of the shared file."
-msgstr "輸入伺服器的通訊埠。"
-
-#: src/GenericClientListCtrl.cpp
 msgid "Swap to this file"
 msgstr "轉移到這個檔案"
 
-#: src/GenericClientListCtrl.cpp
+#: src/GenericClientListCtrl.cpp src/SharedFilesCtrl.cpp
 msgid "Colour legend"
 msgstr ""
 
@@ -3689,10 +3698,6 @@ msgstr "目前連線的伺服器。"
 msgid "Search"
 msgstr "搜尋"
 
-#: src/muuli_wdr.cpp
-msgid "Name:"
-msgstr "名稱："
-
 #: src/muuli_wdr.cpp src/SearchListCtrl.cpp src/SharedFilesCtrl.cpp
 msgid "Type"
 msgstr "類型"
@@ -3782,8 +3787,8 @@ msgid "Availability"
 msgstr "最小來源數"
 
 #: src/muuli_wdr.cpp
-msgid "Filter:"
-msgstr "過濾："
+msgid "Filter"
+msgstr "過濾"
 
 #: src/muuli_wdr.cpp
 msgid "Invert Result"
@@ -3841,6 +3846,10 @@ msgid "Clears completed downloads"
 msgstr "清除已完成的檔案"
 
 #: src/muuli_wdr.cpp
+msgid "Filter:"
+msgstr "過濾："
+
+#: src/muuli_wdr.cpp
 msgid "File sources:"
 msgstr "檔案來源："
 
@@ -3849,80 +3858,76 @@ msgid "General"
 msgstr "一般"
 
 #: src/muuli_wdr.cpp
-msgid "Full Name :"
+msgid "Full Name"
 msgstr "全名︰"
 
 #: src/muuli_wdr.cpp
-msgid "met-File :"
+msgid "met-File"
 msgstr "met 檔"
 
 #: src/muuli_wdr.cpp
-msgid "Hash :"
-msgstr "hash 值："
+msgid "Hash"
+msgstr "hash 值"
 
 #: src/muuli_wdr.cpp
-msgid "Filesize :"
-msgstr "檔案大小："
+msgid "Filesize"
+msgstr "檔案大小"
 
 #: src/muuli_wdr.cpp src/Statistics.cpp
 msgid "Transfer"
 msgstr "傳輸"
 
 #: src/muuli_wdr.cpp
-msgid "Partfilestatus :"
-msgstr "暫存檔狀態："
+msgid "Partfilestatus"
+msgstr "暫存檔狀態"
 
 #: src/muuli_wdr.cpp
-msgid "Last seen complete :"
-msgstr "最後看到完整檔案："
+msgid "Last seen complete"
+msgstr "最後看到完整檔案"
 
 #: src/muuli_wdr.cpp
-msgid "Found Sources :"
-msgstr "找到的來源："
+msgid "Found Sources"
+msgstr "找到的來源"
 
 #: src/muuli_wdr.cpp
-msgid "Transferring Sources :"
-msgstr "正在傳輸的來源："
+msgid "Transferring Sources"
+msgstr "正在傳輸的來源"
 
 #: src/muuli_wdr.cpp
-msgid "Filepart-Count :"
-msgstr "檔案分段數："
+msgid "Filepart-Count"
+msgstr "檔案分段數"
 
 #: src/muuli_wdr.cpp
-msgid "Available :"
-msgstr "可用："
+msgid "Available"
+msgstr "可用"
 
 #: src/muuli_wdr.cpp
-msgid "Datarate :"
-msgstr "速度："
+msgid "Datarate"
+msgstr "速度"
 
 #: src/muuli_wdr.cpp
-msgid "Download Active Time: "
-msgstr "下載時間："
+msgid "Download Active Time"
+msgstr "下載時間"
 
 #: src/muuli_wdr.cpp
-msgid "Transferred :"
-msgstr "已傳輸："
-
-#: src/muuli_wdr.cpp
-msgid "Completed Size :"
-msgstr "已完成："
+msgid "Completed Size"
+msgstr "已完成"
 
 #: src/muuli_wdr.cpp
 msgid "Intelligent Corruption Handling"
 msgstr "智慧資料損壞處理 (I.C.H.)"
 
 #: src/muuli_wdr.cpp
-msgid "Lost to corruption :"
-msgstr "因資料損壞而損失："
+msgid "Lost to corruption"
+msgstr "因資料損壞而損失"
 
 #: src/muuli_wdr.cpp
-msgid "Gained by compression :"
-msgstr "壓縮量："
+msgid "Gained by compression"
+msgstr "壓縮量"
 
 #: src/muuli_wdr.cpp
-msgid "Packages saved by I.C.H. :"
-msgstr "由 I.C.H. 救回的封包："
+msgid "Packages saved by I.C.H."
+msgstr "由 I.C.H. 救回的封包"
 
 #: src/muuli_wdr.cpp
 #, fuzzy
@@ -3964,30 +3969,30 @@ msgstr "，上傳："
 msgid "Media Info"
 msgstr "Kad 資訊"
 
-#: src/muuli_wdr.cpp
-msgid "Length :"
+#: src/muuli_wdr.cpp src/SearchListCtrl.cpp
+msgid "Length"
 msgstr ""
 
-#: src/muuli_wdr.cpp
+#: src/muuli_wdr.cpp src/SearchListCtrl.cpp
 #, fuzzy
-msgid "Bitrate :"
+msgid "Bitrate"
 msgstr "未評價"
 
-#: src/muuli_wdr.cpp
-msgid "Codec :"
+#: src/muuli_wdr.cpp src/SearchListCtrl.cpp
+msgid "Codec"
 msgstr ""
 
 #: src/muuli_wdr.cpp
-msgid "Artist :"
+msgid "Artist"
 msgstr ""
 
 #: src/muuli_wdr.cpp
-msgid "Album :"
+msgid "Album"
 msgstr ""
 
 #: src/muuli_wdr.cpp
-msgid "Title :"
-msgstr "標題："
+msgid "Title"
+msgstr "標題"
 
 #: src/muuli_wdr.cpp
 msgid "File Names"
@@ -4074,25 +4079,17 @@ msgstr "不明大小"
 msgid "Required Information"
 msgstr "必要資訊"
 
-#: src/muuli_wdr.cpp
-msgid "IP Address :"
-msgstr "IP 位址︰"
-
-#: src/muuli_wdr.cpp
-msgid "Port :"
-msgstr "通訊埠︰"
+#: src/muuli_wdr.cpp src/ServerListCtrl.cpp
+msgid "Port"
+msgstr "通訊埠"
 
 #: src/muuli_wdr.cpp
 msgid "Additional Information"
 msgstr "附加資訊"
 
 #: src/muuli_wdr.cpp
-msgid "Username :"
-msgstr "使用者名稱︰"
-
-#: src/muuli_wdr.cpp
-msgid "Userhash :"
-msgstr "使用者 hash 值："
+msgid "Userhash"
+msgstr "使用者 hash 值"
 
 #: src/muuli_wdr.cpp src/utils/aLinkCreator/src/alcframe.cpp
 msgid "Add"
@@ -4127,44 +4124,28 @@ msgid "Statistics Tree"
 msgstr "統計資訊"
 
 #: src/muuli_wdr.cpp
-msgid "Username:"
-msgstr "使用者名稱︰"
+msgid "Client software"
+msgstr "客戶端軟體"
 
 #: src/muuli_wdr.cpp
-msgid "Userhash:"
-msgstr "使用者 hash 值："
+msgid "Client version"
+msgstr "版本"
 
 #: src/muuli_wdr.cpp
-msgid "Client software:"
-msgstr "客戶端軟體："
+msgid "User ID"
+msgstr "使用者 ID"
 
 #: src/muuli_wdr.cpp
-msgid "Client version:"
-msgstr "版本："
-
-#: src/muuli_wdr.cpp src/ServerWnd.cpp
-msgid "IP address:"
-msgstr "IP 位址："
+msgid "Server IP"
+msgstr "伺服器 IP"
 
 #: src/muuli_wdr.cpp
-msgid "User ID:"
-msgstr "使用者 ID："
+msgid "Server name"
+msgstr "伺服器名稱"
 
 #: src/muuli_wdr.cpp
-msgid "Server IP:"
-msgstr "伺服器 IP："
-
-#: src/muuli_wdr.cpp
-msgid "Server name:"
-msgstr "伺服器名稱："
-
-#: src/muuli_wdr.cpp
-msgid "Obfuscation:"
-msgstr "模糊協定："
-
-#: src/muuli_wdr.cpp
-msgid "Kad:"
-msgstr "Kad："
+msgid "Obfuscation"
+msgstr "模糊協定"
 
 #: src/muuli_wdr.cpp
 msgid "Vendor capabilities:"
@@ -4175,52 +4156,52 @@ msgid "Transfers to client"
 msgstr "傳輸"
 
 #: src/muuli_wdr.cpp
-msgid "Current request:"
-msgstr "目前要求："
+msgid "Current request"
+msgstr "目前要求"
 
 #: src/muuli_wdr.cpp
-msgid "Average upload rate:"
-msgstr "平均上傳速度："
+msgid "Average upload rate"
+msgstr "平均上傳速度"
 
 #: src/muuli_wdr.cpp
-msgid "Average download rate:"
-msgstr "平均下載速度："
+msgid "Average download rate"
+msgstr "平均下載速度"
 
 #: src/muuli_wdr.cpp
-msgid "Uploaded (session):"
-msgstr "本次上傳："
+msgid "Uploaded (session)"
+msgstr "本次上傳"
 
 #: src/muuli_wdr.cpp
-msgid "Downloaded (session):"
-msgstr "本次下載："
+msgid "Downloaded (session)"
+msgstr "本次下載"
 
 #: src/muuli_wdr.cpp
-msgid "Uploaded (total):"
-msgstr "總計上傳："
+msgid "Uploaded (total)"
+msgstr "總計上傳"
 
 #: src/muuli_wdr.cpp
-msgid "Downloaded (total):"
-msgstr "總計下載："
+msgid "Downloaded (total)"
+msgstr "總計下載"
 
 #: src/muuli_wdr.cpp
 msgid "Scores"
 msgstr "分數"
 
 #: src/muuli_wdr.cpp
-msgid "DL/UP modifier:"
-msgstr "下載/上傳 比率："
+msgid "DL/UP modifier"
+msgstr "下載/上傳 比率"
 
 #: src/muuli_wdr.cpp
-msgid "Secure ident:"
-msgstr "安全驗證："
+msgid "Secure ident"
+msgstr "安全驗證"
 
 #: src/muuli_wdr.cpp
-msgid "Queue rank:"
-msgstr "等候排名："
+msgid "Queue rank"
+msgstr "等候排名"
 
 #: src/muuli_wdr.cpp
-msgid "Queue score:"
-msgstr "得分："
+msgid "Queue score"
+msgstr "得分"
 
 #: src/muuli_wdr.cpp
 msgid "Nick"
@@ -5015,24 +4996,20 @@ msgid "Reset any changes made to the preferences."
 msgstr "取消所有偏好設定變更。"
 
 #: src/muuli_wdr.cpp
-msgid "Comment :"
-msgstr "註解："
+msgid "Incoming Dir"
+msgstr "新進檔目錄"
 
 #: src/muuli_wdr.cpp
-msgid "Incoming Dir :"
-msgstr "新進檔目錄："
-
-#: src/muuli_wdr.cpp
-msgid "Change priority for new assigned files :"
-msgstr "設定新加入的檔案優先等級為："
+msgid "Change priority for new assigned files"
+msgstr "設定新加入的檔案優先等級為"
 
 #: src/muuli_wdr.cpp
 msgid "Don't change"
 msgstr "不要變更"
 
 #: src/muuli_wdr.cpp
-msgid "Select color for this Category (currently selected) :"
-msgstr "選取該分類的顏色 (目前選擇)："
+msgid "Select color for this Category (currently selected)"
+msgstr "選取該分類的顏色 (目前選擇)"
 
 #: src/muuli_wdr.cpp
 msgid "Click this button to reset the log."
@@ -5115,10 +5092,6 @@ msgstr "從已知客戶端啓動"
 #, fuzzy
 msgid "Enter the IP of the node here, using the x.x.x.x format."
 msgstr "輸入新伺服器的 IP (格式：x.x.x.x)。"
-
-#: src/muuli_wdr.cpp
-msgid "Port:"
-msgstr "埠："
 
 #: src/muuli_wdr.cpp
 msgid "Use Secure User Identification"
@@ -5387,20 +5360,20 @@ msgid "Enable/disable proxy support"
 msgstr "啓用/停用代理伺服器支援"
 
 #: src/muuli_wdr.cpp
-msgid "Proxy type:"
-msgstr "類型："
+msgid "Proxy type"
+msgstr "類型"
 
 #: src/muuli_wdr.cpp
-msgid "Proxy host:"
-msgstr "主機："
+msgid "Proxy host"
+msgstr "主機"
 
 #: src/muuli_wdr.cpp
 msgid "The proxy host name"
 msgstr "代理伺服器主機名稱"
 
 #: src/muuli_wdr.cpp
-msgid "Proxy port:"
-msgstr "連接埠："
+msgid "Proxy port"
+msgstr "連接埠"
 
 #: src/muuli_wdr.cpp
 msgid "The proxy port"
@@ -5415,16 +5388,8 @@ msgid "Enable/disable username/password authentication"
 msgstr "啓用/停用 使用者名稱/密碼登入驗證"
 
 #: src/muuli_wdr.cpp
-msgid "Username: "
-msgstr "使用者名稱："
-
-#: src/muuli_wdr.cpp
 msgid "The username to use to connect to the proxy"
 msgstr "登入代理伺服器的使用者名稱"
-
-#: src/muuli_wdr.cpp
-msgid "Password:"
-msgstr "密碼："
 
 #: src/muuli_wdr.cpp
 msgid "The password to use to connect to the proxy"
@@ -5437,10 +5402,6 @@ msgstr "連線到："
 #: src/muuli_wdr.cpp
 msgid "Login to remote amule"
 msgstr "登入遠端 amule"
-
-#: src/muuli_wdr.cpp
-msgid "User name"
-msgstr "使用者名稱"
 
 #: src/muuli_wdr.cpp
 msgid "Remember those settings"
@@ -5603,6 +5564,15 @@ msgstr "時"
 msgid "days"
 msgstr "天"
 
+#. TRANSLATORS:
+#. Punctuation for a "label: value" pair. %s is the already-translated
+#. label. Place the colon as your language requires -- e.g. "%s :" with a
+#. space in French, "%s:" without one in Russian and English.
+#: src/OtherFunctions.cpp
+#, c-format
+msgid "%s:"
+msgstr ""
+
 #: src/OtherFunctions.cpp
 msgid "all"
 msgstr "全部"
@@ -5635,6 +5605,81 @@ msgstr "文件"
 #, c-format
 msgid "Using config dir: %s"
 msgstr "使用設定目錄：%s"
+
+#: src/PartBarLegendUI.cpp
+#, fuzzy
+msgid "This source does not have the part"
+msgstr "這個指令不能有參數。"
+
+#: src/PartBarLegendUI.cpp
+msgid "You and this source both have the part"
+msgstr ""
+
+#: src/PartBarLegendUI.cpp
+msgid "Being downloaded from this source now"
+msgstr ""
+
+#: src/PartBarLegendUI.cpp
+msgid "The next part that will be asked of this source"
+msgstr ""
+
+#: src/PartBarLegendUI.cpp
+msgid "This source has the part and you still need it"
+msgstr ""
+
+#: src/PartBarLegendUI.cpp
+msgid "This peer already has the part"
+msgstr ""
+
+#: src/PartBarLegendUI.cpp
+msgid "This peer does not have the part"
+msgstr ""
+
+#: src/PartBarLegendUI.cpp
+#, fuzzy
+msgid "No other source has this part"
+msgstr "這個指令不能有參數。"
+
+#: src/PartBarLegendUI.cpp
+#, fuzzy
+msgid "One other source has this part"
+msgstr "這個指令不能有參數。"
+
+#: src/PartBarLegendUI.cpp
+#, fuzzy, c-format
+msgid "%u or more other sources have this part"
+msgstr "這個指令不能有參數。"
+
+#: src/PartBarLegendUI.cpp
+msgid "Already read back and hashed"
+msgstr ""
+
+#: src/PartBarLegendUI.cpp
+msgid "Still to be read"
+msgstr ""
+
+#: src/PartBarLegendUI.cpp
+msgid "One block per part of the file being downloaded."
+msgstr ""
+
+#: src/PartBarLegendUI.cpp
+#, fuzzy
+msgid "One block per part of the shared file."
+msgstr "輸入伺服器的通訊埠。"
+
+#: src/PartBarLegendUI.cpp
+#, fuzzy
+msgid "One block per part of the shared file, coloured by how many other sources have it."
+msgstr "輸入伺服器的通訊埠。"
+
+#: src/PartBarLegendUI.cpp
+#, fuzzy
+msgid "One block per part of the shared file, showing how far the re-hash has read."
+msgstr "輸入伺服器的通訊埠。"
+
+#: src/PartBarLegendUI.cpp
+msgid "In between, darkening as other sources are added"
+msgstr ""
 
 #: src/PartFileConvert.cpp
 msgid "Waiting for partfile convert thread to die..."
@@ -6700,19 +6745,6 @@ msgid "FileID"
 msgstr "檔案 ID"
 
 #: src/SearchListCtrl.cpp
-msgid "Length"
-msgstr ""
-
-#: src/SearchListCtrl.cpp
-#, fuzzy
-msgid "Bitrate"
-msgstr "未評價"
-
-#: src/SearchListCtrl.cpp
-msgid "Codec"
-msgstr ""
-
-#: src/SearchListCtrl.cpp
 msgid "Expand all"
 msgstr ""
 
@@ -6992,10 +7024,6 @@ msgstr "本地伺服器被 IP 過濾器過濾掉了，正在重新連線到其�
 #: src/ServerListCtrl.cpp
 msgid "Server Name"
 msgstr "伺服器名稱"
-
-#: src/ServerListCtrl.cpp
-msgid "Port"
-msgstr "通訊埠"
 
 #: src/ServerListCtrl.cpp
 msgid "Description"
@@ -7301,6 +7329,10 @@ msgid "Connected to buddy at %s"
 msgstr "已與在 %s 的好友連線"
 
 #: src/ServerWnd.cpp
+msgid "IP address:"
+msgstr "IP 位址："
+
+#: src/ServerWnd.cpp
 msgid "Indexed sources:"
 msgstr "索引來源："
 
@@ -7438,8 +7470,9 @@ msgid "Shares File List"
 msgstr "分享檔案清單"
 
 #: src/SharedFilesCtrl.cpp
-msgid "Obtained Parts"
-msgstr "已獲得部分"
+#, fuzzy
+msgid "Source Availability"
+msgstr "最小來源數"
 
 #: src/SharedFilesCtrl.cpp
 msgid "Directory Path"
@@ -9306,6 +9339,12 @@ msgstr ""
 
 #~ msgid "ERROR: Could not listen to TCP port."
 #~ msgstr "錯誤：無法監聽 TCP 埠。"
+
+#~ msgid "User name"
+#~ msgstr "使用者名稱"
+
+#~ msgid "Obtained Parts"
+#~ msgstr "已獲得部分"
 
 #~ msgid "Available Parts"
 #~ msgstr "可取得的部份"

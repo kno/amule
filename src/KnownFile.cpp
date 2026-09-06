@@ -1216,7 +1216,7 @@ CPacket *CKnownFile::CreateSrcInfoPacket(
 		// this change an IPv6 peer was excluded incidentally, by having no ed2k
 		// id and therefore reading as LowID; it is now correctly HighID, so the
 		// wire boundary has to be stated.
-		if (cur_src->HasLowID() || !PeerIdentity::HasEd2kWireForm(cur_src->GetAddress()) ||
+		if (cur_src->HasLowID() || !PeerAddressing::HasEd2kWireForm(cur_src->GetAddress()) ||
 			cur_src == forClient ||
 			!(cur_src->GetUploadState() == US_UPLOADING ||
 				cur_src->GetUploadState() == US_ONUPLOADQUEUE)) {

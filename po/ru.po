@@ -14,8 +14,8 @@ msgid ""
 msgstr ""
 "Project-Id-Version: aMule\n"
 "Report-Msgid-Bugs-To: https://github.com/amule-org/amule/issues\n"
-"POT-Creation-Date: 2026-09-04 08:48+0200\n"
-"PO-Revision-Date: 2026-09-03 11:09+0000\n"
+"POT-Creation-Date: 2026-09-06 09:03+0200\n"
+"PO-Revision-Date: 2026-09-05 11:00+0000\n"
 "Last-Translator: Radist Morse <radist.morse@gmail.com>\n"
 "Language-Team: Russian <kde-russian@lists.kde.ru>\n"
 "Language: ru\n"
@@ -1280,6 +1280,14 @@ msgid "Send message"
 msgstr "Отправить сообщение"
 
 #: src/ClientContextActions.cpp
+msgid "Send message to user"
+msgstr "Послать сообщение пользователю"
+
+#: src/ClientContextActions.cpp
+msgid "Message to send:"
+msgstr "Сообщение:"
+
+#: src/ClientContextActions.cpp
 msgid ""
 "You are not allowed to set more than one friend slot.\n"
 " Only one slot was assigned."
@@ -1292,12 +1300,40 @@ msgid "Multiple selection"
 msgstr "Множественный выбор"
 
 #: src/ClientContextActions.cpp
-msgid "Send message to user"
-msgstr "Послать сообщение пользователю"
+#, c-format
+msgid "Add %u client to your friend list?"
+msgid_plural "Add %u clients to your friend list?"
+msgstr[0] "Добавить %u клиента в список друзей?"
+msgstr[1] "Добавить %u клиентов в список друзей?"
+msgstr[2] "Добавить %u клиентов в список друзей?"
 
 #: src/ClientContextActions.cpp
-msgid "Message to send:"
-msgstr "Сообщение:"
+#, c-format
+msgid "Remove %u client from your friend list?"
+msgid_plural "Remove %u clients from your friend list?"
+msgstr[0] "Удалить %u клиента из списка друзей?"
+msgstr[1] "Удалить %u клиентов из списка друзей?"
+msgstr[2] "Удалить %u клиентов из списка друзей?"
+
+#: src/ClientContextActions.cpp
+#, c-format
+msgid "Could not add %u selected client to your friend list: no address is known for it."
+msgid_plural "Could not add %u selected clients to your friend list: no address is known for them."
+msgstr[0] "Не удалось добавить %u выбранного клиента в список друзей: его адрес неизвестен."
+msgstr[1] "Не удалось добавить %u выбранных клиентов в список друзей: их адреса неизвестны."
+msgstr[2] "Не удалось добавить %u выбранных клиентов в список друзей: их адреса неизвестны."
+
+#: src/ClientContextActions.cpp
+#, c-format
+msgid "Request the shared files of %u client?"
+msgid_plural "Request the shared files of %u clients?"
+msgstr[0] "Запросить список общих файлов у %u клиента?"
+msgstr[1] "Запросить список общих файлов у %u клиентов?"
+msgstr[2] "Запросить список общих файлов у %u клиентов?"
+
+#: src/ClientContextActions.cpp
+msgid "A connection is opened to each of them."
+msgstr "Соединение открыто с каждым из них."
 
 #: src/ClientCreditsList.cpp
 #, c-format
@@ -1360,7 +1396,7 @@ msgstr "Отключён"
 msgid "%.1f KiB/s"
 msgstr "%.1f КиБ/с"
 
-#: src/ClientHistoryListCtrl.cpp src/ClientsListCtrl.cpp
+#: src/ClientHistoryListCtrl.cpp src/ClientsListCtrl.cpp src/muuli_wdr.cpp
 msgid "Name"
 msgstr "Имя"
 
@@ -1368,7 +1404,7 @@ msgstr "Имя"
 msgid "Software"
 msgstr "ПО"
 
-#: src/ClientHistoryListCtrl.cpp src/ClientsListCtrl.cpp
+#: src/ClientHistoryListCtrl.cpp src/ClientsListCtrl.cpp src/muuli_wdr.cpp
 msgid "IP Address"
 msgstr "IP-адрес"
 
@@ -1436,6 +1472,14 @@ msgstr "Н/Д"
 #: src/ClientRef.cpp
 msgid "Not Available"
 msgstr "Не доступно"
+
+#: src/ClientRowListCtrl.cpp
+#, c-format
+msgid "Could not ask %u selected client for its shared files."
+msgid_plural "Could not ask %u selected clients for their shared files."
+msgstr[0] "Не удалось запросить список общих файлов у %u выбранного клиента."
+msgstr[1] "Не удалось запросить список общих файлов у %u выбранных клиентов."
+msgstr[2] "Не удалось запросить список общих файлов у %u выбранных клиентов."
 
 #: src/ClientsListCtrl.cpp src/PrefsUnifiedDlg.cpp src/ServerListCtrl.cpp
 msgid "Files"
@@ -1531,7 +1575,7 @@ msgstr "Пользователь %s (%u) отказал в доступе к с�
 msgid "File Comments"
 msgstr "Комментарии файла"
 
-#: src/CommentDialogLst.cpp src/FriendListCtrl.cpp
+#: src/CommentDialogLst.cpp src/FriendListCtrl.cpp src/muuli_wdr.cpp
 msgid "Username"
 msgstr "Имя пользователя"
 
@@ -1544,7 +1588,7 @@ msgstr "Имя файла"
 msgid "Rating"
 msgstr "Оценка"
 
-#: src/CommentDialogLst.cpp
+#: src/CommentDialogLst.cpp src/muuli_wdr.cpp
 msgid "Comment"
 msgstr "Комментарий"
 
@@ -2166,6 +2210,10 @@ msgstr "необходимо выделить сервер для удалени
 #: src/ExternalConn.cpp
 msgid "eD2k is disabled in preferences."
 msgstr "Сеть eD2k отключена в настройках."
+
+#: src/ExternalConn.cpp
+msgid "No address known for that friend yet."
+msgstr "Адрес этого друга пока неизвестен."
 
 #: src/ExternalConn.cpp
 msgid "Friend not found."
@@ -2806,6 +2854,11 @@ msgid "Failed to open friend list file 'emfriends.met' for writing!"
 msgstr "Не удалось открыть файл списка друзей «emfriends.met» для записи!"
 
 #: src/FriendList.cpp
+#, c-format
+msgid "No address known for friend '%s' yet, cannot browse them."
+msgstr "Адрес друга «%s» пока неизвестен, невозможно просмотреть его файлы."
+
+#: src/FriendList.cpp
 msgid "CRITICAL - no client on StartChatSession"
 msgstr "КРИТИЧНО - нет клиентов на StartChatSession"
 
@@ -2826,6 +2879,11 @@ msgid "Send &Message"
 msgstr "Послать &сообщение"
 
 #: src/FriendListCtrl.cpp
+#, c-format
+msgid "No address known for friend '%s' yet, cannot message them."
+msgstr "Адрес друга «%s» пока неизвестен, невозможно отправить ему сообщение."
+
+#: src/FriendListCtrl.cpp
 msgid "Are you sure that you wish to delete the selected friend?"
 msgstr "Удалить выбранного пользователя из списка друзей?"
 
@@ -2842,46 +2900,10 @@ msgstr ""
 " Был выделен только один слот."
 
 #: src/GenericClientListCtrl.cpp
-msgid "This source does not have the part"
-msgstr "У этого источника нет части"
-
-#: src/GenericClientListCtrl.cpp
-msgid "You and this source both have the part"
-msgstr "Эта часть есть и у вас, и у источника"
-
-#: src/GenericClientListCtrl.cpp
-msgid "Being downloaded from this source now"
-msgstr "Сейчас загружается от этого источника"
-
-#: src/GenericClientListCtrl.cpp
-msgid "The next part that will be asked of this source"
-msgstr "Следующая часть, которая будет запрошена у этого источника"
-
-#: src/GenericClientListCtrl.cpp
-msgid "This source has the part and you still need it"
-msgstr "У источника есть эта часть, и она вам ещё нужна"
-
-#: src/GenericClientListCtrl.cpp
-msgid "This peer already has the part"
-msgstr "У этого пира уже есть эта часть"
-
-#: src/GenericClientListCtrl.cpp
-msgid "This peer does not have the part"
-msgstr "У этого пира нет этой части"
-
-#: src/GenericClientListCtrl.cpp
-msgid "One block per part of the file being downloaded."
-msgstr "Один блок на каждую часть загружаемого файла."
-
-#: src/GenericClientListCtrl.cpp
-msgid "One block per part of the shared file."
-msgstr "По одному блоку на каждую часть публикуемого файла."
-
-#: src/GenericClientListCtrl.cpp
 msgid "Swap to this file"
 msgstr "Переключить на этот файл"
 
-#: src/GenericClientListCtrl.cpp
+#: src/GenericClientListCtrl.cpp src/SharedFilesCtrl.cpp
 msgid "Colour legend"
 msgstr "Легенда цветов"
 
@@ -3714,10 +3736,6 @@ msgstr "Сейчас подключён к серверу."
 msgid "Search"
 msgstr "Поиск"
 
-#: src/muuli_wdr.cpp
-msgid "Name:"
-msgstr "Имя:"
-
 #: src/muuli_wdr.cpp src/SearchListCtrl.cpp src/SharedFilesCtrl.cpp
 msgid "Type"
 msgstr "Тип"
@@ -3807,8 +3825,8 @@ msgid "Availability"
 msgstr "Доступность"
 
 #: src/muuli_wdr.cpp
-msgid "Filter:"
-msgstr "Фильтр:"
+msgid "Filter"
+msgstr "Фильтр"
 
 #: src/muuli_wdr.cpp
 msgid "Invert Result"
@@ -3863,6 +3881,10 @@ msgid "Clears completed downloads"
 msgstr "Очистить завершённые загрузки"
 
 #: src/muuli_wdr.cpp
+msgid "Filter:"
+msgstr "Фильтр:"
+
+#: src/muuli_wdr.cpp
 msgid "File sources:"
 msgstr "Источники файлов:"
 
@@ -3871,80 +3893,76 @@ msgid "General"
 msgstr "Основные"
 
 #: src/muuli_wdr.cpp
-msgid "Full Name :"
-msgstr "Полное имя:"
+msgid "Full Name"
+msgstr "Полное имя"
 
 #: src/muuli_wdr.cpp
-msgid "met-File :"
-msgstr "Met-файл:"
+msgid "met-File"
+msgstr "Met-файл"
 
 #: src/muuli_wdr.cpp
-msgid "Hash :"
-msgstr "Хеш:"
+msgid "Hash"
+msgstr "Хеш"
 
 #: src/muuli_wdr.cpp
-msgid "Filesize :"
-msgstr "Размер файла:"
+msgid "Filesize"
+msgstr "Размер файла"
 
 #: src/muuli_wdr.cpp src/Statistics.cpp
 msgid "Transfer"
 msgstr "Передача"
 
 #: src/muuli_wdr.cpp
-msgid "Partfilestatus :"
-msgstr "Статус:"
+msgid "Partfilestatus"
+msgstr "Статус"
 
 #: src/muuli_wdr.cpp
-msgid "Last seen complete :"
-msgstr "Замечен целиком:"
+msgid "Last seen complete"
+msgstr "Замечен целиком"
 
 #: src/muuli_wdr.cpp
-msgid "Found Sources :"
-msgstr "Найдено источников:"
+msgid "Found Sources"
+msgstr "Найдено источников"
 
 #: src/muuli_wdr.cpp
-msgid "Transferring Sources :"
-msgstr "Передающие источники:"
+msgid "Transferring Sources"
+msgstr "Передающие источники"
 
 #: src/muuli_wdr.cpp
-msgid "Filepart-Count :"
-msgstr "Число частей:"
+msgid "Filepart-Count"
+msgstr "Число частей"
 
 #: src/muuli_wdr.cpp
-msgid "Available :"
-msgstr "Доступно:"
+msgid "Available"
+msgstr "Доступно"
 
 #: src/muuli_wdr.cpp
-msgid "Datarate :"
-msgstr "Скорость передачи:"
+msgid "Datarate"
+msgstr "Скорость передачи"
 
 #: src/muuli_wdr.cpp
-msgid "Download Active Time: "
-msgstr "Время активности загрузки: "
+msgid "Download Active Time"
+msgstr "Время активности загрузки"
 
 #: src/muuli_wdr.cpp
-msgid "Transferred :"
-msgstr "Передано:"
-
-#: src/muuli_wdr.cpp
-msgid "Completed Size :"
-msgstr "Завершено:"
+msgid "Completed Size"
+msgstr "Завершено"
 
 #: src/muuli_wdr.cpp
 msgid "Intelligent Corruption Handling"
 msgstr "Умный обработчик повреждений (ICH)"
 
 #: src/muuli_wdr.cpp
-msgid "Lost to corruption :"
-msgstr "Потери из-за повреждений:"
+msgid "Lost to corruption"
+msgstr "Потери из-за повреждений"
 
 #: src/muuli_wdr.cpp
-msgid "Gained by compression :"
-msgstr "Выигрыш сжатия:"
+msgid "Gained by compression"
+msgstr "Выигрыш сжатия"
 
 #: src/muuli_wdr.cpp
-msgid "Packages saved by I.C.H. :"
-msgstr "Экономия пакетов от ICH:"
+msgid "Packages saved by I.C.H."
+msgstr "Экономия пакетов от ICH"
 
 #: src/muuli_wdr.cpp
 msgid "Sharing"
@@ -3982,29 +4000,29 @@ msgstr "Последняя отдача"
 msgid "Media Info"
 msgstr "Сведения о медиафайле"
 
-#: src/muuli_wdr.cpp
-msgid "Length :"
-msgstr "Длительность:"
+#: src/muuli_wdr.cpp src/SearchListCtrl.cpp
+msgid "Length"
+msgstr "Длительность"
+
+#: src/muuli_wdr.cpp src/SearchListCtrl.cpp
+msgid "Bitrate"
+msgstr "Битрейт"
+
+#: src/muuli_wdr.cpp src/SearchListCtrl.cpp
+msgid "Codec"
+msgstr "Кодек"
 
 #: src/muuli_wdr.cpp
-msgid "Bitrate :"
-msgstr "Битрейт:"
+msgid "Artist"
+msgstr "Исполнитель"
 
 #: src/muuli_wdr.cpp
-msgid "Codec :"
-msgstr "Кодек:"
+msgid "Album"
+msgstr "Альбом"
 
 #: src/muuli_wdr.cpp
-msgid "Artist :"
-msgstr "Исполнитель:"
-
-#: src/muuli_wdr.cpp
-msgid "Album :"
-msgstr "Альбом:"
-
-#: src/muuli_wdr.cpp
-msgid "Title :"
-msgstr "Заголовок:"
+msgid "Title"
+msgstr "Заголовок"
 
 #: src/muuli_wdr.cpp
 msgid "File Names"
@@ -4092,25 +4110,17 @@ msgstr "Неизвестный размер"
 msgid "Required Information"
 msgstr "Обязательная информация"
 
-#: src/muuli_wdr.cpp
-msgid "IP Address :"
-msgstr "Адрес IP:"
-
-#: src/muuli_wdr.cpp
-msgid "Port :"
-msgstr "Порт:"
+#: src/muuli_wdr.cpp src/ServerListCtrl.cpp
+msgid "Port"
+msgstr "Порт"
 
 #: src/muuli_wdr.cpp
 msgid "Additional Information"
 msgstr "Дополнительная информация"
 
 #: src/muuli_wdr.cpp
-msgid "Username :"
-msgstr "Имя пользователя:"
-
-#: src/muuli_wdr.cpp
-msgid "Userhash :"
-msgstr "Хеш пользователя:"
+msgid "Userhash"
+msgstr "Хеш пользователя"
 
 #: src/muuli_wdr.cpp src/utils/aLinkCreator/src/alcframe.cpp
 msgid "Add"
@@ -4145,44 +4155,28 @@ msgid "Statistics Tree"
 msgstr "Дерево статистики"
 
 #: src/muuli_wdr.cpp
-msgid "Username:"
-msgstr "Имя пользователя:"
+msgid "Client software"
+msgstr "ПО клиента"
 
 #: src/muuli_wdr.cpp
-msgid "Userhash:"
-msgstr "Хеш пользователя:"
+msgid "Client version"
+msgstr "Версия клиента"
 
 #: src/muuli_wdr.cpp
-msgid "Client software:"
-msgstr "ПО клиента:"
+msgid "User ID"
+msgstr "ИД пользователя"
 
 #: src/muuli_wdr.cpp
-msgid "Client version:"
-msgstr "Версия клиента:"
-
-#: src/muuli_wdr.cpp src/ServerWnd.cpp
-msgid "IP address:"
-msgstr "Адрес IP:"
+msgid "Server IP"
+msgstr "IP сервера"
 
 #: src/muuli_wdr.cpp
-msgid "User ID:"
-msgstr "ИД пользователя:"
+msgid "Server name"
+msgstr "Имя сервера"
 
 #: src/muuli_wdr.cpp
-msgid "Server IP:"
-msgstr "IP сервера:"
-
-#: src/muuli_wdr.cpp
-msgid "Server name:"
-msgstr "Имя сервера:"
-
-#: src/muuli_wdr.cpp
-msgid "Obfuscation:"
-msgstr "Маскировка:"
-
-#: src/muuli_wdr.cpp
-msgid "Kad:"
-msgstr "Kad:"
+msgid "Obfuscation"
+msgstr "Маскировка"
 
 #: src/muuli_wdr.cpp
 msgid "Vendor capabilities:"
@@ -4193,52 +4187,52 @@ msgid "Transfers to client"
 msgstr "Передачи клиенту"
 
 #: src/muuli_wdr.cpp
-msgid "Current request:"
-msgstr "Текущий запрос:"
+msgid "Current request"
+msgstr "Текущий запрос"
 
 #: src/muuli_wdr.cpp
-msgid "Average upload rate:"
-msgstr "Средняя скорость отдачи:"
+msgid "Average upload rate"
+msgstr "Средняя скорость отдачи"
 
 #: src/muuli_wdr.cpp
-msgid "Average download rate:"
-msgstr "Средняя скорость загрузки:"
+msgid "Average download rate"
+msgstr "Средняя скорость загрузки"
 
 #: src/muuli_wdr.cpp
-msgid "Uploaded (session):"
-msgstr "Отдано (за сеанс):"
+msgid "Uploaded (session)"
+msgstr "Отдано (за сеанс)"
 
 #: src/muuli_wdr.cpp
-msgid "Downloaded (session):"
-msgstr "Загружено (за сеанс):"
+msgid "Downloaded (session)"
+msgstr "Загружено (за сеанс)"
 
 #: src/muuli_wdr.cpp
-msgid "Uploaded (total):"
-msgstr "Отдано (всего):"
+msgid "Uploaded (total)"
+msgstr "Отдано (всего)"
 
 #: src/muuli_wdr.cpp
-msgid "Downloaded (total):"
-msgstr "Загружено (всего):"
+msgid "Downloaded (total)"
+msgstr "Загружено (всего)"
 
 #: src/muuli_wdr.cpp
 msgid "Scores"
 msgstr "Счёт"
 
 #: src/muuli_wdr.cpp
-msgid "DL/UP modifier:"
-msgstr "Баланс приёма/отдачи:"
+msgid "DL/UP modifier"
+msgstr "Баланс приёма/отдачи"
 
 #: src/muuli_wdr.cpp
-msgid "Secure ident:"
-msgstr "Безопасная идентификация:"
+msgid "Secure ident"
+msgstr "Безопасная идентификация"
 
 #: src/muuli_wdr.cpp
-msgid "Queue rank:"
-msgstr "Позиция в очереди:"
+msgid "Queue rank"
+msgstr "Позиция в очереди"
 
 #: src/muuli_wdr.cpp
-msgid "Queue score:"
-msgstr "Счёт очереди:"
+msgid "Queue score"
+msgstr "Счёт очереди"
 
 #: src/muuli_wdr.cpp
 msgid "Nick"
@@ -5021,24 +5015,20 @@ msgid "Reset any changes made to the preferences."
 msgstr "Сбросить все изменения, внесенные вами."
 
 #: src/muuli_wdr.cpp
-msgid "Comment :"
-msgstr "Комментарий :"
+msgid "Incoming Dir"
+msgstr "Каталог загрузок"
 
 #: src/muuli_wdr.cpp
-msgid "Incoming Dir :"
-msgstr "Каталог загрузок:"
-
-#: src/muuli_wdr.cpp
-msgid "Change priority for new assigned files :"
-msgstr "Установить приоритет для новых файлов:"
+msgid "Change priority for new assigned files"
+msgstr "Установить приоритет для новых файлов"
 
 #: src/muuli_wdr.cpp
 msgid "Don't change"
 msgstr "Не изменять"
 
 #: src/muuli_wdr.cpp
-msgid "Select color for this Category (currently selected) :"
-msgstr "Выбрать цвет для этой категории:"
+msgid "Select color for this Category (currently selected)"
+msgstr "Выбрать цвет для этой категории"
 
 #: src/muuli_wdr.cpp
 msgid "Click this button to reset the log."
@@ -5120,10 +5110,6 @@ msgstr "Начальная загрузка от узла: IP"
 #: src/muuli_wdr.cpp
 msgid "Enter the IP of the node here, using the x.x.x.x format."
 msgstr "Введите здесь IP-адрес узла в формате x.x.x.x."
-
-#: src/muuli_wdr.cpp
-msgid "Port:"
-msgstr "Порт:"
 
 #: src/muuli_wdr.cpp
 msgid "Use Secure User Identification"
@@ -5401,20 +5387,20 @@ msgid "Enable/disable proxy support"
 msgstr "Включить/выключить поддержку прокси-сервера"
 
 #: src/muuli_wdr.cpp
-msgid "Proxy type:"
-msgstr "Тип прокси-сервера:"
+msgid "Proxy type"
+msgstr "Тип прокси-сервера"
 
 #: src/muuli_wdr.cpp
-msgid "Proxy host:"
-msgstr "Прокси-сервер:"
+msgid "Proxy host"
+msgstr "Прокси-сервер"
 
 #: src/muuli_wdr.cpp
 msgid "The proxy host name"
 msgstr "Имя прокси-сервера"
 
 #: src/muuli_wdr.cpp
-msgid "Proxy port:"
-msgstr "Порт прокси:"
+msgid "Proxy port"
+msgstr "Порт прокси"
 
 #: src/muuli_wdr.cpp
 msgid "The proxy port"
@@ -5429,16 +5415,8 @@ msgid "Enable/disable username/password authentication"
 msgstr "Включить/выключить использование пароля и логина"
 
 #: src/muuli_wdr.cpp
-msgid "Username: "
-msgstr "Имя пользователя: "
-
-#: src/muuli_wdr.cpp
 msgid "The username to use to connect to the proxy"
 msgstr "Имя пользователя для подключения к прокси-серверу"
-
-#: src/muuli_wdr.cpp
-msgid "Password:"
-msgstr "Пароль:"
 
 #: src/muuli_wdr.cpp
 msgid "The password to use to connect to the proxy"
@@ -5451,10 +5429,6 @@ msgstr "Соединиться с:"
 #: src/muuli_wdr.cpp
 msgid "Login to remote amule"
 msgstr "Войти на удалённый aMule"
-
-#: src/muuli_wdr.cpp
-msgid "User name"
-msgstr "Имя пользователя"
 
 #: src/muuli_wdr.cpp
 msgid "Remember those settings"
@@ -5618,6 +5592,15 @@ msgstr "ч"
 msgid "days"
 msgstr "д"
 
+#. TRANSLATORS:
+#. Punctuation for a "label: value" pair. %s is the already-translated
+#. label. Place the colon as your language requires -- e.g. "%s :" with a
+#. space in French, "%s:" without one in Russian and English.
+#: src/OtherFunctions.cpp
+#, c-format
+msgid "%s:"
+msgstr ""
+
 #: src/OtherFunctions.cpp
 msgid "all"
 msgstr "все"
@@ -5650,6 +5633,75 @@ msgstr "Текст"
 #, c-format
 msgid "Using config dir: %s"
 msgstr "Используем директорию конфигурации: %s"
+
+#: src/PartBarLegendUI.cpp
+msgid "This source does not have the part"
+msgstr "У этого источника нет части"
+
+#: src/PartBarLegendUI.cpp
+msgid "You and this source both have the part"
+msgstr "Эта часть есть и у вас, и у источника"
+
+#: src/PartBarLegendUI.cpp
+msgid "Being downloaded from this source now"
+msgstr "Сейчас загружается от этого источника"
+
+#: src/PartBarLegendUI.cpp
+msgid "The next part that will be asked of this source"
+msgstr "Следующая часть, которая будет запрошена у этого источника"
+
+#: src/PartBarLegendUI.cpp
+msgid "This source has the part and you still need it"
+msgstr "У источника есть эта часть, и она вам ещё нужна"
+
+#: src/PartBarLegendUI.cpp
+msgid "This peer already has the part"
+msgstr "У этого пира уже есть эта часть"
+
+#: src/PartBarLegendUI.cpp
+msgid "This peer does not have the part"
+msgstr "У этого пира нет этой части"
+
+#: src/PartBarLegendUI.cpp
+msgid "No other source has this part"
+msgstr "Ни у одного другого источника нет этой части"
+
+#: src/PartBarLegendUI.cpp
+msgid "One other source has this part"
+msgstr "У одного другого источника есть эта часть"
+
+#: src/PartBarLegendUI.cpp
+#, c-format
+msgid "%u or more other sources have this part"
+msgstr "У %u или более других источников есть эта часть"
+
+#: src/PartBarLegendUI.cpp
+msgid "Already read back and hashed"
+msgstr "Уже прочитано и захэшировано"
+
+#: src/PartBarLegendUI.cpp
+msgid "Still to be read"
+msgstr "Ожидает чтения"
+
+#: src/PartBarLegendUI.cpp
+msgid "One block per part of the file being downloaded."
+msgstr "Один блок на каждую часть загружаемого файла."
+
+#: src/PartBarLegendUI.cpp
+msgid "One block per part of the shared file."
+msgstr "По одному блоку на каждую часть публикуемого файла."
+
+#: src/PartBarLegendUI.cpp
+msgid "One block per part of the shared file, coloured by how many other sources have it."
+msgstr "Один блок на каждую часть публикуемого файла, цвет показывает, у скольких других источников есть эта часть."
+
+#: src/PartBarLegendUI.cpp
+msgid "One block per part of the shared file, showing how far the re-hash has read."
+msgstr "Один блок на каждую часть публикуемого файла, показывает, как далеко продвинулось перехеширование."
+
+#: src/PartBarLegendUI.cpp
+msgid "In between, darkening as other sources are added"
+msgstr "Промежуточное состояние, темнеет по мере добавления других источников"
 
 #: src/PartFileConvert.cpp
 msgid "Waiting for partfile convert thread to die..."
@@ -6719,18 +6771,6 @@ msgid "FileID"
 msgstr "ИД файла"
 
 #: src/SearchListCtrl.cpp
-msgid "Length"
-msgstr "Длительность"
-
-#: src/SearchListCtrl.cpp
-msgid "Bitrate"
-msgstr "Битрейт"
-
-#: src/SearchListCtrl.cpp
-msgid "Codec"
-msgstr "Кодек"
-
-#: src/SearchListCtrl.cpp
 msgid "Expand all"
 msgstr "Развернуть всё"
 
@@ -7009,10 +7049,6 @@ msgstr "Локальный сервер отфильтрован IP-фильтр
 #: src/ServerListCtrl.cpp
 msgid "Server Name"
 msgstr "Имя сервера"
-
-#: src/ServerListCtrl.cpp
-msgid "Port"
-msgstr "Порт"
 
 #: src/ServerListCtrl.cpp
 msgid "Description"
@@ -7313,6 +7349,10 @@ msgid "Connected to buddy at %s"
 msgstr "Соединяем с другом на %s"
 
 #: src/ServerWnd.cpp
+msgid "IP address:"
+msgstr "Адрес IP:"
+
+#: src/ServerWnd.cpp
 msgid "Indexed sources:"
 msgstr "Индексировано источников:"
 
@@ -7466,8 +7506,8 @@ msgid "Shares File List"
 msgstr "Общ. файлы"
 
 #: src/SharedFilesCtrl.cpp
-msgid "Obtained Parts"
-msgstr "Полученные части"
+msgid "Source Availability"
+msgstr "Доступность у источников"
 
 #: src/SharedFilesCtrl.cpp
 msgid "Directory Path"
@@ -9372,6 +9412,12 @@ msgstr "Удаление пользовательских данных в $APPDA
 
 #~ msgid "ERROR: Could not listen to TCP port."
 #~ msgstr "ОШИБКА: не удалось прослушать порт TCP."
+
+#~ msgid "User name"
+#~ msgstr "Имя пользователя"
+
+#~ msgid "Obtained Parts"
+#~ msgstr "Полученные части"
 
 #~ msgid "Available Parts"
 #~ msgstr "Доступные части"

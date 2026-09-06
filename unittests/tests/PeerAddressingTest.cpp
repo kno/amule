@@ -44,20 +44,20 @@
 
 #include <muleunit/test.h>
 
-#include <PeerIdentity.h>
+#include <PeerAddressing.h>
 
 #include <map>
 
 using namespace muleunit;
-using namespace PeerIdentity;
+using namespace PeerAddressing;
 
-DECLARE_SIMPLE(PeerIdentity)
+DECLARE_SIMPLE(PeerAddressing)
 
 // ---------------------------------------------------------------------------
 // Indexability
 // ---------------------------------------------------------------------------
 
-TEST(PeerIdentity, AbsentIsNeverIndexable)
+TEST(PeerAddressing, AbsentIsNeverIndexable)
 {
 	// The whole point of the type: absence is not an address, so it is not a
 	// group in any index. 0.0.0.0 and :: are addresses -- odd ones, but a peer
@@ -69,7 +69,7 @@ TEST(PeerIdentity, AbsentIsNeverIndexable)
 	ASSERT_TRUE(IsIndexable(CNetworkAddress::FromString("2001:db8::1")));
 }
 
-TEST(PeerIdentity, AbsentAndAllZeroAreDifferentKeys)
+TEST(PeerAddressing, AbsentAndAllZeroAreDifferentKeys)
 {
 	// This is the regression that already shipped once, in a different map. An
 	// index keyed on the address type must not let the two share a bucket, and
@@ -94,7 +94,7 @@ TEST(PeerIdentity, AbsentAndAllZeroAreDifferentKeys)
 	ASSERT_EQUALS((size_t)0, index.count(absent));
 }
 
-TEST(PeerIdentity, MappedAndNativeIPv4AreTheSamePeer)
+TEST(PeerAddressing, MappedAndNativeIPv4AreTheSamePeer)
 {
 	// A blocked IPv4 peer reconnecting as ::ffff:a.b.c.d is the same peer, and
 	// the index must not give it a second identity. The address type does not
@@ -115,7 +115,7 @@ TEST(PeerIdentity, MappedAndNativeIPv4AreTheSamePeer)
 	ASSERT_TRUE(IndexKey(v6) == v6);
 }
 
-TEST(PeerIdentity, DistinctIPv6PeersNeverShareAKey)
+TEST(PeerAddressing, DistinctIPv6PeersNeverShareAKey)
 {
 	// Two peers in the same /64 are two peers. The rate-limit scope aggregates
 	// them on purpose (below); the identity index must not.
@@ -142,7 +142,7 @@ TEST(PeerIdentity, DistinctIPv6PeersNeverShareAKey)
 // IPv4 characterisation -- must not change
 // ---------------------------------------------------------------------------
 
-TEST(PeerIdentity, IPv4RoundTripThroughIdentityIsExact)
+TEST(PeerAddressing, IPv4RoundTripThroughIdentityIsExact)
 {
 	// A client's address used to be an ed2k-order uint32 and the accessors
 	// still hand one out. Every IPv4 value must survive the wider storage
@@ -172,7 +172,7 @@ TEST(PeerIdentity, IPv4RoundTripThroughIdentityIsExact)
 	ASSERT_EQUALS(0u, unknown.ToIPv4NetworkOrderOrZero());
 }
 
-TEST(PeerIdentity, NativeIPv6HasNoThirtyTwoBitForm)
+TEST(PeerAddressing, NativeIPv6HasNoThirtyTwoBitForm)
 {
 	// The guarantee that stops a fabricated address reaching Kad, the ed2k wire
 	// or an obfuscation key: the narrowing fails and leaves the caller's
@@ -189,7 +189,7 @@ TEST(PeerIdentity, NativeIPv6HasNoThirtyTwoBitForm)
 // Inbound datagram routing
 // ---------------------------------------------------------------------------
 
-TEST(PeerIdentity, DatagramRoutingTable)
+TEST(PeerAddressing, DatagramRoutingTable)
 {
 	// No address at all, or one this build cannot parse: nothing to route to.
 	ASSERT_TRUE(ClassifyUdpPeer(CNetworkAddress::Absent()) == EUdpRoute::Reject);
@@ -211,7 +211,7 @@ TEST(PeerIdentity, DatagramRoutingTable)
 	ASSERT_TRUE(ClassifyUdpPeer(CNetworkAddress::FromString("fe80::1")) == EUdpRoute::Ed2kOnly);
 }
 
-TEST(PeerIdentity, Ed2kUdpObfuscationNeedsAThirtyTwoBitPeer)
+TEST(PeerAddressing, Ed2kUdpObfuscationNeedsAThirtyTwoBitPeer)
 {
 	// The ed2k UDP obfuscation key is MD5 over our user hash, a 32-bit address
 	// and a magic byte (EncryptedDatagramSocket.cpp). There is no IPv6 input to
@@ -229,7 +229,7 @@ TEST(PeerIdentity, Ed2kUdpObfuscationNeedsAThirtyTwoBitPeer)
 // Rate-limit scope
 // ---------------------------------------------------------------------------
 
-TEST(PeerIdentity, IPv4RateLimitScopeIsTheAddress)
+TEST(PeerAddressing, IPv4RateLimitScopeIsTheAddress)
 {
 	// Unchanged from the 32-bit throttle: one address, one budget. Neighbours
 	// are not aggregated, so a shared IPv4 address is the only thing that
@@ -248,7 +248,7 @@ TEST(PeerIdentity, IPv4RateLimitScopeIsTheAddress)
 	ASSERT_TRUE(RateLimitScope(CNetworkAddress::Absent()).IsAbsent());
 }
 
-TEST(PeerIdentity, IPv6RateLimitScopeAggregatesAtSixtyFour)
+TEST(PeerAddressing, IPv6RateLimitScopeAggregatesAtSixtyFour)
 {
 	// The decision this change had to make. A /128 budget under IPv6 throttles
 	// nothing: a subscriber holding a /64 sources each request from a fresh
@@ -279,7 +279,7 @@ TEST(PeerIdentity, IPv6RateLimitScopeAggregatesAtSixtyFour)
 // Direct reachability
 // ---------------------------------------------------------------------------
 
-TEST(PeerIdentity, GlobalIPv6PeerIsDirectlyReachable)
+TEST(PeerAddressing, GlobalIPv6PeerIsDirectlyReachable)
 {
 	// LowID is an IPv4-with-NAT concept: it means a peer that cannot accept an
 	// inbound connection, inferred from an ed2k ID a server issued. An IPv6
@@ -302,7 +302,7 @@ TEST(PeerIdentity, GlobalIPv6PeerIsDirectlyReachable)
 	ASSERT_FALSE(IsDirectlyReachable(CNetworkAddress::FromString("::ffff:192.0.2.1")));
 }
 
-TEST(PeerIdentity, RateLimitScopeMembersAreContiguousInTheIndexOrder)
+TEST(PeerAddressing, RateLimitScopeMembersAreContiguousInTheIndexOrder)
 {
 	// CClientList counts a peer's slots by starting at its scope's network
 	// address and walking while the scope holds. That is only correct if every
@@ -349,7 +349,7 @@ TEST(PeerIdentity, RateLimitScopeMembersAreContiguousInTheIndexOrder)
 	ASSERT_EQUALS((size_t)3, visited);
 }
 
-TEST(PeerIdentity, Ed2kWireFormIsWhatMayBePublished)
+TEST(PeerAddressing, Ed2kWireFormIsWhatMayBePublished)
 {
 	// Source exchange, the .part.met.seeds record and the relayed callback all
 	// carry a peer as a 32-bit address. A native IPv6 peer has none, and the
@@ -382,7 +382,7 @@ TEST(PeerIdentity, Ed2kWireFormIsWhatMayBePublished)
 // UDP source ports
 // ---------------------------------------------------------------------------
 
-TEST(PeerIdentity, UnknownUDPPortIdentifiesNobody)
+TEST(PeerAddressing, UnknownUDPPortIdentifiesNobody)
 {
 	// A client we know by address has a UDP port only if it advertised one, and
 	// zero is how "it never did" is spelled. Comparing that zero for equality
@@ -395,7 +395,7 @@ TEST(PeerIdentity, UnknownUDPPortIdentifiesNobody)
 	ASSERT_FALSE(MatchesUdpSourcePort(4672, 0));
 }
 
-TEST(PeerIdentity, AdvertisedUDPPortMatchesOnlyItself)
+TEST(PeerAddressing, AdvertisedUDPPortMatchesOnlyItself)
 {
 	// The ordinary case, and the reason this predicate exists at all: the port
 	// a peer advertised for UDP is not the ed2k TCP port it also advertised,

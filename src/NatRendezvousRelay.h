@@ -31,7 +31,7 @@
 
 #include "NatRendezvousProtocol.h" // Needed for the OP_RENDEZVOUS codec and bounds
 #include "NetworkAddress.h"        // Needed for CNetworkAddress
-#include "PeerIdentity.h"          // Needed for PeerIdentity::RateLimitScope
+#include "PeerAddressing.h"          // Needed for PeerAddressing::RateLimitScope
 
 /**
  * The relaying side of the rendezvous exchange.
@@ -166,7 +166,7 @@ enum ERendezvousRole
  * Inventing separate numbers here would give the change two independent safety
  * arguments to keep consistent.
  *
- * Keyed on PeerIdentity::RateLimitScope(), so IPv4 counts per address and IPv6
+ * Keyed on PeerAddressing::RateLimitScope(), so IPv4 counts per address and IPv6
  * counts per /64 -- the same asymmetry every other per-peer limit in this tree
  * uses, and for the same reason: a per-/128 budget counts to one forever for a
  * subscriber with a prefix, which is the same as having no budget.
@@ -194,7 +194,7 @@ public:
 	bool Admit(
 		const CNetworkAddress &requester, uint64_t nowMs, bool requesterIsKnown, ERendezvousRole role)
 	{
-		const CNetworkAddress scope = PeerIdentity::RateLimitScope(requester);
+		const CNetworkAddress scope = PeerAddressing::RateLimitScope(requester);
 		if (scope.IsAbsent()) {
 			// Identifies nobody. Charging a shared "unknown" bucket would
 			// let one such request throttle every other.

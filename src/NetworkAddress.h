@@ -547,7 +547,7 @@ public:
 	 *
 	 * Used where a limit or a rule applies to a block rather than to a host --
 	 * an IPv6 subscriber is delegated a prefix, not an address, so a per-address
-	 * budget under IPv6 counts to one forever (see PeerIdentity.h).
+	 * budget under IPv6 counts to one forever (see PeerAddressing.h).
 	 *
 	 * @param prefixBits Counted from the most significant bit of the address in
 	 *                   its own family: 0..32 for IPv4, 0..128 for IPv6. A value

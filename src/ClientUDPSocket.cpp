@@ -45,7 +45,7 @@
 #include "ClientTCPSocket.h" // Needed for CClientTCPSocket
 #include "MemFile.h"         // Needed for CMemFile
 #include "Logger.h"
-#include "PeerIdentity.h" // Needed for PeerIdentity::ClassifyUdpPeer
+#include "PeerAddressing.h" // Needed for PeerAddressing::ClassifyUdpPeer
 #include "kademlia/kademlia/Kademlia.h"
 #include "kademlia/utils/KadUDPKey.h"
 #include <zlib.h>
@@ -270,8 +270,8 @@ void CClientUDPSocket::OnPacketReceived(
 {
 	wxCHECK_RET(length >= 2, "Invalid packet.");
 
-	const PeerIdentity::EUdpRoute route = PeerIdentity::ClassifyUdpPeer(peer);
-	if (route == PeerIdentity::EUdpRoute::Reject) {
+	const PeerAddressing::EUdpRoute route = PeerAddressing::ClassifyUdpPeer(peer);
+	if (route == PeerAddressing::EUdpRoute::Reject) {
 		// The receive path already rejects an absent or unspecified peer, so
 		// reaching this is a caller bug rather than hostile traffic.
 		AddDebugLogLineN(logClientUDP,
@@ -290,7 +290,7 @@ void CClientUDPSocket::OnPacketReceived(
 	uint32_t receiverVerifyKey = 0;
 	uint32_t senderVerifyKey = 0;
 	int packetLen = static_cast<int>(length);
-	if (route == PeerIdentity::EUdpRoute::Ed2kAndKad) {
+	if (route == PeerAddressing::EUdpRoute::Ed2kAndKad) {
 		packetLen = CEncryptedDatagramSocket::DecryptReceivedClient(
 			buffer, length, &decryptedBuffer, ip, &receiverVerifyKey, &senderVerifyKey);
 	}
@@ -357,7 +357,7 @@ void CClientUDPSocket::ProcessEd2kDatagram(uint8_t *decryptedBuffer,
 	size_t datagramLength,
 	size_t receivedLength,
 	const CNetworkAddress &peer,
-	PeerIdentity::EUdpRoute route,
+	PeerAddressing::EUdpRoute route,
 	uint32 ip,
 	uint16 port,
 	uint32_t receiverVerifyKey,
@@ -376,7 +376,7 @@ void CClientUDPSocket::ProcessEd2kDatagram(uint8_t *decryptedBuffer,
 
 			case OP_KADEMLIAHEADER:
 				theStats::AddDownOverheadKad(receivedLength);
-				if (route != PeerIdentity::EUdpRoute::Ed2kAndKad) {
+				if (route != PeerAddressing::EUdpRoute::Ed2kAndKad) {
 					// Kad's interface is 32-bit behind a documented
 					// conversion boundary (amule-address-widening
 					// design), so a Kad datagram from a native IPv6
@@ -402,7 +402,7 @@ void CClientUDPSocket::ProcessEd2kDatagram(uint8_t *decryptedBuffer,
 
 			case OP_KADEMLIAPACKEDPROT:
 				theStats::AddDownOverheadKad(receivedLength);
-				if (route != PeerIdentity::EUdpRoute::Ed2kAndKad) {
+				if (route != PeerAddressing::EUdpRoute::Ed2kAndKad) {
 					AddDebugLogLineN(logClientKadUDP,
 						CFormat("Dropped compressed Kad packet from IPv6 peer %s: "
 							"Kad is IPv4 in this build") %
@@ -578,7 +578,7 @@ void CClientUDPSocket::SendNattControlMessage(
 		// The same IPv4 narrowing SendUtpDatagram() has, and the same reason:
 		// this socket's send path takes a 32-bit address. A native IPv6 peer
 		// is not punched at rather than being punched at 0.0.0.0 -- see the
-		// address-widening boundary in PeerIdentity.h.
+		// address-widening boundary in PeerAddressing.h.
 		return;
 	}
 

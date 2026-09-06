@@ -859,16 +859,17 @@ void MergeClientTag(const CEC_UpDownClient_Tag *c, ClientSnapshot &cs, bool is_n
 	// translation, so we key off the locale-independent numeric software
 	// code instead of the string: a client the daemon couldn't identify
 	// (SO_UNKNOWN, which is exactly the branch that sets the translated
-	// "Unknown") gets the lowercase "unknown" sentinel, matching the other
-	// enum-like string fields. A known client with an absent/empty version
-	// string falls through to the same sentinel.
+	// "Unknown") never has the string read at all, and is left empty.
+	//
+	// Empty then reaches the wire as null rather than as an "unknown"
+	// sentinel. software_version is free text, not an enum -- unlike
+	// `software`, there is no member to fall back to -- and R10 wants an
+	// unknown value spelled null. It also matches WriteKnownClientObject,
+	// which nulls this key rather than inventing a value for it.
 	if (soft_code != static_cast<std::uint32_t>(SO_UNKNOWN)) {
 		if (const CECTag *t = c->GetTagByName(EC_TAG_CLIENT_SOFT_VER_STR)) {
 			cs.software_version = std::string(t->GetStringData().utf8_str());
 		}
-	}
-	if (cs.software_version.empty()) {
-		cs.software_version = "unknown";
 	}
 	// reported_os is the peer's own self-reported OS string (raw external data,
 	// not gettext-translated by our daemon), so it carries no locale-leak;
@@ -898,6 +899,17 @@ void MergeClientTag(const CEC_UpDownClient_Tag *c, ClientSnapshot &cs, bool is_n
 			cs.ident_state = ClientIdentStateName(v);
 		} else if (is_new) {
 			cs.ident_state = "unknown";
+		}
+	}
+	{
+		// Tag-present is the daemon's answer either way; tag-absent leaves the
+		// cached value alone, the incremental-update rule the rest of this
+		// function follows. has_connected stays false only for a daemon that
+		// never sends it at all, and that reaches the wire as null.
+		bool v = false;
+		if (c->AssignIfExist(EC_TAG_CLIENT_CONNECTED, v)) {
+			cs.connected = v;
+			cs.has_connected = true;
 		}
 	}
 	// REMOTE_FILENAME = the file we are downloading from this peer
@@ -1895,6 +1907,16 @@ static void MergeFriendTag(const CEC_Friend_Tag *ft, FriendSnapshot &f, bool is_
 			f.client_ecid = client;
 	}
 	{
+		// Echoed from the linked client by the daemon. Linked but not
+		// connected is the ordinary case for an offline friend, and is
+		// exactly what client_ecid alone could not express.
+		bool v = false;
+		if (ft->AssignIfExist(EC_TAG_CLIENT_CONNECTED, v)) {
+			f.connected = v;
+			f.has_connected = true;
+		}
+	}
+	{
 		// Absent on daemons that predate the tag being serialized; the
 		// snapshot then keeps its default false.
 		bool slot = false;
@@ -1940,6 +1962,11 @@ void ApplyChatSessions(const CECPacket *resp,
 			session.name = std::string(nameTag->GetStringData().utf8_str());
 		if (const CECTag *clientTag = t->GetTagByName(EC_TAG_CLIENT))
 			session.client_ecid = static_cast<std::uint32_t>(clientTag->GetInt());
+		// Sent alongside EC_TAG_CLIENT whenever there is a live peer at all.
+		if (const CECTag *connTag = t->GetTagByName(EC_TAG_CLIENT_CONNECTED)) {
+			session.connected = connTag->GetInt() != 0;
+			session.has_connected = true;
+		}
 		if (const CECTag *friendTag = t->GetTagByName(EC_TAG_FRIEND))
 			session.friend_ecid = static_cast<std::uint32_t>(friendTag->GetInt());
 
@@ -2942,7 +2969,7 @@ void ParseConnectionPrefs(const CECTag *conn, PreferencesSnapshot &out)
 		out.proxy_port = static_cast<std::uint16_t>(t->GetInt());
 	}
 	if (const CECTag *t = conn->GetTagByName(EC_TAG_PROXY_AUTH)) {
-		out.proxy_auth = t->GetInt() != 0;
+		out.proxy_auth_enabled = t->GetInt() != 0;
 	}
 	if (const CECTag *t = conn->GetTagByName(EC_TAG_PROXY_USER)) {
 		out.proxy_user = std::string(t->GetStringData().utf8_str());

@@ -10,8 +10,8 @@ msgid ""
 msgstr ""
 "Project-Id-Version: aMule\n"
 "Report-Msgid-Bugs-To: https://github.com/amule-org/amule/issues\n"
-"POT-Creation-Date: 2026-09-04 08:48+0200\n"
-"PO-Revision-Date: 2026-09-03 11:04+0000\n"
+"POT-Creation-Date: 2026-09-06 09:03+0200\n"
+"PO-Revision-Date: 2026-09-05 10:50+0000\n"
 "Last-Translator: Piarres Beobide <pi@beobide.net>\n"
 "Language-Team: Euskara <librezale@librezale.org>\n"
 "Language: eu\n"
@@ -1268,6 +1268,14 @@ msgid "Send message"
 msgstr "Mezua bidali"
 
 #: src/ClientContextActions.cpp
+msgid "Send message to user"
+msgstr "Bidali mezua erabiltzaileari"
+
+#: src/ClientContextActions.cpp
+msgid "Message to send:"
+msgstr "Bidali behar de mezua:"
+
+#: src/ClientContextActions.cpp
 #, fuzzy
 msgid ""
 "You are not allowed to set more than one friend slot.\n"
@@ -1281,12 +1289,36 @@ msgid "Multiple selection"
 msgstr "Aukera anitza"
 
 #: src/ClientContextActions.cpp
-msgid "Send message to user"
-msgstr "Bidali mezua erabiltzaileari"
+#, c-format
+msgid "Add %u client to your friend list?"
+msgid_plural "Add %u clients to your friend list?"
+msgstr[0] ""
+msgstr[1] ""
 
 #: src/ClientContextActions.cpp
-msgid "Message to send:"
-msgstr "Bidali behar de mezua:"
+#, fuzzy, c-format
+msgid "Remove %u client from your friend list?"
+msgid_plural "Remove %u clients from your friend list?"
+msgstr[0] "Lagunetatik kendu"
+msgstr[1] "Lagunetatik kendu"
+
+#: src/ClientContextActions.cpp
+#, c-format
+msgid "Could not add %u selected client to your friend list: no address is known for it."
+msgid_plural "Could not add %u selected clients to your friend list: no address is known for them."
+msgstr[0] ""
+msgstr[1] ""
+
+#: src/ClientContextActions.cpp
+#, fuzzy, c-format
+msgid "Request the shared files of %u client?"
+msgid_plural "Request the shared files of %u clients?"
+msgstr[0] "Partekatutako fitxategi zerrenda birkargatu."
+msgstr[1] "Partekatutako fitxategi zerrenda birkargatu."
+
+#: src/ClientContextActions.cpp
+msgid "A connection is opened to each of them."
+msgstr ""
 
 #: src/ClientCreditsList.cpp
 #, c-format
@@ -1347,19 +1379,17 @@ msgstr "Deskonektatuta"
 msgid "%.1f KiB/s"
 msgstr ""
 
-#: src/ClientHistoryListCtrl.cpp src/ClientsListCtrl.cpp
-#, fuzzy
+#: src/ClientHistoryListCtrl.cpp src/ClientsListCtrl.cpp src/muuli_wdr.cpp
 msgid "Name"
-msgstr "Izena:"
+msgstr "Izena"
 
 #: src/ClientHistoryListCtrl.cpp src/ClientsListCtrl.cpp
 msgid "Software"
 msgstr ""
 
-#: src/ClientHistoryListCtrl.cpp src/ClientsListCtrl.cpp
-#, fuzzy
+#: src/ClientHistoryListCtrl.cpp src/ClientsListCtrl.cpp src/muuli_wdr.cpp
 msgid "IP Address"
-msgstr "IP helbidea :"
+msgstr "IP helbidea"
 
 #: src/ClientHistoryListCtrl.cpp src/ClientsListCtrl.cpp
 #: src/SharedFilePeersListCtrl.cpp src/SourceListCtrl.cpp
@@ -1429,6 +1459,13 @@ msgstr "E/G"
 #: src/ClientRef.cpp
 msgid "Not Available"
 msgstr "Ez dago erabilgarri"
+
+#: src/ClientRowListCtrl.cpp
+#, c-format
+msgid "Could not ask %u selected client for its shared files."
+msgid_plural "Could not ask %u selected clients for their shared files."
+msgstr[0] ""
+msgstr[1] ""
 
 #: src/ClientsListCtrl.cpp src/PrefsUnifiedDlg.cpp src/ServerListCtrl.cpp
 msgid "Files"
@@ -1527,7 +1564,7 @@ msgstr "%s (%u) erabiltzaileak fitxategi/direktorio partekatuen zerrenda ikustea
 msgid "File Comments"
 msgstr "Fitxategi Iruzkinak"
 
-#: src/CommentDialogLst.cpp src/FriendListCtrl.cpp
+#: src/CommentDialogLst.cpp src/FriendListCtrl.cpp src/muuli_wdr.cpp
 msgid "Username"
 msgstr "Erabiltzaile izena"
 
@@ -1540,7 +1577,7 @@ msgstr "Fitxategi izena"
 msgid "Rating"
 msgstr "Kalifikazioa"
 
-#: src/CommentDialogLst.cpp
+#: src/CommentDialogLst.cpp src/muuli_wdr.cpp
 msgid "Comment"
 msgstr "Iruzkina"
 
@@ -2159,6 +2196,10 @@ msgstr "ezabatzeko zerbitzaria ezarri behar da"
 #: src/ExternalConn.cpp
 msgid "eD2k is disabled in preferences."
 msgstr "eD2k ezgaiturik dago hobespenetan."
+
+#: src/ExternalConn.cpp
+msgid "No address known for that friend yet."
+msgstr ""
 
 #: src/ExternalConn.cpp
 #, fuzzy
@@ -2796,6 +2837,11 @@ msgid "Failed to open friend list file 'emfriends.met' for writing!"
 msgstr "Huts 'emfriends.met' lagun zerrenda fitxategia idazteko irekitzean!"
 
 #: src/FriendList.cpp
+#, c-format
+msgid "No address known for friend '%s' yet, cannot browse them."
+msgstr ""
+
+#: src/FriendList.cpp
 msgid "CRITICAL - no client on StartChatSession"
 msgstr "KRITIKOA - ez dago bezerorik StartChatSession-en"
 
@@ -2816,6 +2862,11 @@ msgid "Send &Message"
 msgstr "Bidali &mezua"
 
 #: src/FriendListCtrl.cpp
+#, c-format
+msgid "No address known for friend '%s' yet, cannot message them."
+msgstr ""
+
+#: src/FriendListCtrl.cpp
 msgid "Are you sure that you wish to delete the selected friend?"
 msgstr "Ziur zaude hautatako laguna ezabatu nahi duzula?"
 
@@ -2832,48 +2883,10 @@ msgstr ""
 " Ataka bat bakarrik dago sinaturik."
 
 #: src/GenericClientListCtrl.cpp
-#, fuzzy
-msgid "This source does not have the part"
-msgstr "Komando honek ez luke parametrorik eduki beharko."
-
-#: src/GenericClientListCtrl.cpp
-msgid "You and this source both have the part"
-msgstr ""
-
-#: src/GenericClientListCtrl.cpp
-msgid "Being downloaded from this source now"
-msgstr ""
-
-#: src/GenericClientListCtrl.cpp
-msgid "The next part that will be asked of this source"
-msgstr ""
-
-#: src/GenericClientListCtrl.cpp
-msgid "This source has the part and you still need it"
-msgstr ""
-
-#: src/GenericClientListCtrl.cpp
-msgid "This peer already has the part"
-msgstr ""
-
-#: src/GenericClientListCtrl.cpp
-msgid "This peer does not have the part"
-msgstr ""
-
-#: src/GenericClientListCtrl.cpp
-msgid "One block per part of the file being downloaded."
-msgstr ""
-
-#: src/GenericClientListCtrl.cpp
-#, fuzzy
-msgid "One block per part of the shared file."
-msgstr "Idatzi zerbitzariaren ataka hemen."
-
-#: src/GenericClientListCtrl.cpp
 msgid "Swap to this file"
 msgstr "Swap fitxategi honentzat"
 
-#: src/GenericClientListCtrl.cpp
+#: src/GenericClientListCtrl.cpp src/SharedFilesCtrl.cpp
 msgid "Colour legend"
 msgstr ""
 
@@ -3703,10 +3716,6 @@ msgstr "Une honetan konektaturiko zerbitzaria."
 msgid "Search"
 msgstr "Bilatu"
 
-#: src/muuli_wdr.cpp
-msgid "Name:"
-msgstr "Izena:"
-
 #: src/muuli_wdr.cpp src/SearchListCtrl.cpp src/SharedFilesCtrl.cpp
 msgid "Type"
 msgstr "Mota"
@@ -3796,8 +3805,8 @@ msgid "Availability"
 msgstr "Eskuragarritasuna"
 
 #: src/muuli_wdr.cpp
-msgid "Filter:"
-msgstr "Iragazkia:"
+msgid "Filter"
+msgstr "Iragazkia"
 
 #: src/muuli_wdr.cpp
 msgid "Invert Result"
@@ -3855,6 +3864,10 @@ msgid "Clears completed downloads"
 msgstr "Garbitu amaituriko deskargak"
 
 #: src/muuli_wdr.cpp
+msgid "Filter:"
+msgstr "Iragazkia:"
+
+#: src/muuli_wdr.cpp
 msgid "File sources:"
 msgstr "Fitxategiaren iturburua:"
 
@@ -3863,80 +3876,76 @@ msgid "General"
 msgstr "Orokorra"
 
 #: src/muuli_wdr.cpp
-msgid "Full Name :"
-msgstr "Izen osoa :"
+msgid "Full Name"
+msgstr "Izen osoa"
 
 #: src/muuli_wdr.cpp
-msgid "met-File :"
-msgstr "met-fitxategia :"
+msgid "met-File"
+msgstr "met-fitxategia"
 
 #: src/muuli_wdr.cpp
-msgid "Hash :"
-msgstr "Aztertze zenbakia :"
+msgid "Hash"
+msgstr "Aztertze zenbakia"
 
 #: src/muuli_wdr.cpp
-msgid "Filesize :"
-msgstr "Fitxategi tamaina :"
+msgid "Filesize"
+msgstr "Fitxategi tamaina"
 
 #: src/muuli_wdr.cpp src/Statistics.cpp
 msgid "Transfer"
 msgstr "Transferentzia"
 
 #: src/muuli_wdr.cpp
-msgid "Partfilestatus :"
-msgstr "Fitxategi zati egoera :"
+msgid "Partfilestatus"
+msgstr "Fitxategi zati egoera"
 
 #: src/muuli_wdr.cpp
-msgid "Last seen complete :"
-msgstr "Azkenez osorik ikusia :"
+msgid "Last seen complete"
+msgstr "Azkenez osorik ikusia"
 
 #: src/muuli_wdr.cpp
-msgid "Found Sources :"
-msgstr "Aurkitutako jatorriak :"
+msgid "Found Sources"
+msgstr "Aurkitutako jatorriak"
 
 #: src/muuli_wdr.cpp
-msgid "Transferring Sources :"
-msgstr "Jatorriak transferitzen :"
+msgid "Transferring Sources"
+msgstr "Jatorriak transferitzen"
 
 #: src/muuli_wdr.cpp
-msgid "Filepart-Count :"
-msgstr "Fitxategi zati kopurua :"
+msgid "Filepart-Count"
+msgstr "Fitxategi zati kopurua"
 
 #: src/muuli_wdr.cpp
-msgid "Available :"
-msgstr "Erabilgarri :"
+msgid "Available"
+msgstr "Erabilgarri"
 
 #: src/muuli_wdr.cpp
-msgid "Datarate :"
-msgstr "Data abiadura :"
+msgid "Datarate"
+msgstr "Data abiadura"
 
 #: src/muuli_wdr.cpp
-msgid "Download Active Time: "
-msgstr "Deskarga aktibo denbora: "
+msgid "Download Active Time"
+msgstr "Deskarga aktibo denbora"
 
 #: src/muuli_wdr.cpp
-msgid "Transferred :"
-msgstr "Transferituta :"
-
-#: src/muuli_wdr.cpp
-msgid "Completed Size :"
-msgstr "Amaitua tamaina :"
+msgid "Completed Size"
+msgstr "Amaitua tamaina"
 
 #: src/muuli_wdr.cpp
 msgid "Intelligent Corruption Handling"
 msgstr "Hondatze kudeaketa adimentsua"
 
 #: src/muuli_wdr.cpp
-msgid "Lost to corruption :"
-msgstr "Hondaketan galdutakoa :"
+msgid "Lost to corruption"
+msgstr "Hondaketan galdutakoa"
 
 #: src/muuli_wdr.cpp
-msgid "Gained by compression :"
-msgstr "Konpresioaz irabazitakoa :"
+msgid "Gained by compression"
+msgstr "Konpresioaz irabazitakoa"
 
 #: src/muuli_wdr.cpp
-msgid "Packages saved by I.C.H. :"
-msgstr "I.C.H. gordetako paketeak :"
+msgid "Packages saved by I.C.H."
+msgstr "I.C.H. gordetako paketeak"
 
 #: src/muuli_wdr.cpp
 #, fuzzy
@@ -3978,30 +3987,30 @@ msgstr ", Igoerak: "
 msgid "Media Info"
 msgstr "Kad Argb"
 
-#: src/muuli_wdr.cpp
-msgid "Length :"
+#: src/muuli_wdr.cpp src/SearchListCtrl.cpp
+msgid "Length"
 msgstr ""
 
-#: src/muuli_wdr.cpp
+#: src/muuli_wdr.cpp src/SearchListCtrl.cpp
 #, fuzzy
-msgid "Bitrate :"
+msgid "Bitrate"
 msgstr "Kalifikatu gabea"
 
-#: src/muuli_wdr.cpp
-msgid "Codec :"
+#: src/muuli_wdr.cpp src/SearchListCtrl.cpp
+msgid "Codec"
 msgstr ""
 
 #: src/muuli_wdr.cpp
-msgid "Artist :"
+msgid "Artist"
 msgstr ""
 
 #: src/muuli_wdr.cpp
-msgid "Album :"
+msgid "Album"
 msgstr ""
 
 #: src/muuli_wdr.cpp
-msgid "Title :"
-msgstr "Titulua :"
+msgid "Title"
+msgstr "Titulua"
 
 #: src/muuli_wdr.cpp
 msgid "File Names"
@@ -4088,25 +4097,17 @@ msgstr "Ezezaguna"
 msgid "Required Information"
 msgstr "Behar den Informazioa"
 
-#: src/muuli_wdr.cpp
-msgid "IP Address :"
-msgstr "IP helbidea :"
-
-#: src/muuli_wdr.cpp
-msgid "Port :"
-msgstr "Ataka :"
+#: src/muuli_wdr.cpp src/ServerListCtrl.cpp
+msgid "Port"
+msgstr "Ataka"
 
 #: src/muuli_wdr.cpp
 msgid "Additional Information"
 msgstr "Bestelako informazioa"
 
 #: src/muuli_wdr.cpp
-msgid "Username :"
-msgstr "Erabiltzaile-izena :"
-
-#: src/muuli_wdr.cpp
-msgid "Userhash :"
-msgstr "Erabiltzaile aztertze zenbakia :"
+msgid "Userhash"
+msgstr "Erabiltzaile aztertze zenbakia"
 
 #: src/muuli_wdr.cpp src/utils/aLinkCreator/src/alcframe.cpp
 msgid "Add"
@@ -4141,44 +4142,28 @@ msgid "Statistics Tree"
 msgstr "Estatistika zuhaitza"
 
 #: src/muuli_wdr.cpp
-msgid "Username:"
-msgstr "Erabiltzaile izena:"
+msgid "Client software"
+msgstr "Bezero softwarea"
 
 #: src/muuli_wdr.cpp
-msgid "Userhash:"
-msgstr "Erabiltzaile-Egiaztapena:"
+msgid "Client version"
+msgstr "Bezero bertsioa"
 
 #: src/muuli_wdr.cpp
-msgid "Client software:"
-msgstr "Bezero softwarea:"
+msgid "User ID"
+msgstr "Erabiltzaile ID-a"
 
 #: src/muuli_wdr.cpp
-msgid "Client version:"
-msgstr "Bezero bertsioa:"
-
-#: src/muuli_wdr.cpp src/ServerWnd.cpp
-msgid "IP address:"
-msgstr "IP helbidea:"
+msgid "Server IP"
+msgstr "Zerbitzaria IP-a"
 
 #: src/muuli_wdr.cpp
-msgid "User ID:"
-msgstr "Erabiltzaile ID-a:"
+msgid "Server name"
+msgstr "Zerbitzari izena"
 
 #: src/muuli_wdr.cpp
-msgid "Server IP:"
-msgstr "Zerbitzaria IP-a:"
-
-#: src/muuli_wdr.cpp
-msgid "Server name:"
-msgstr "Zerbitzari izena:"
-
-#: src/muuli_wdr.cpp
-msgid "Obfuscation:"
-msgstr "Nahasmena:"
-
-#: src/muuli_wdr.cpp
-msgid "Kad:"
-msgstr "Kad:"
+msgid "Obfuscation"
+msgstr "Nahasmena"
 
 #: src/muuli_wdr.cpp
 msgid "Vendor capabilities:"
@@ -4189,52 +4174,52 @@ msgid "Transfers to client"
 msgstr "bezerora transferentziak"
 
 #: src/muuli_wdr.cpp
-msgid "Current request:"
-msgstr "Uneko eskakizuna:"
+msgid "Current request"
+msgstr "Uneko eskakizuna"
 
 #: src/muuli_wdr.cpp
-msgid "Average upload rate:"
-msgstr "Bataz besteko igoera abiadura:"
+msgid "Average upload rate"
+msgstr "Bataz besteko igoera abiadura"
 
 #: src/muuli_wdr.cpp
-msgid "Average download rate:"
-msgstr "Bataz besteko deskarga abiadura:"
+msgid "Average download rate"
+msgstr "Bataz besteko deskarga abiadura"
 
 #: src/muuli_wdr.cpp
-msgid "Uploaded (session):"
-msgstr "Igoa (saioa):"
+msgid "Uploaded (session)"
+msgstr "Igoa (saioa)"
 
 #: src/muuli_wdr.cpp
-msgid "Downloaded (session):"
-msgstr "Deskargatua (saioa):"
+msgid "Downloaded (session)"
+msgstr "Deskargatua (saioa)"
 
 #: src/muuli_wdr.cpp
-msgid "Uploaded (total):"
-msgstr "Igoa (denera):"
+msgid "Uploaded (total)"
+msgstr "Igoa (denera)"
 
 #: src/muuli_wdr.cpp
-msgid "Downloaded (total):"
-msgstr "Deskargatua (denera):"
+msgid "Downloaded (total)"
+msgstr "Deskargatua (denera)"
 
 #: src/muuli_wdr.cpp
 msgid "Scores"
 msgstr "Puntuak"
 
 #: src/muuli_wdr.cpp
-msgid "DL/UP modifier:"
-msgstr "DE/IG aldagaia:"
+msgid "DL/UP modifier"
+msgstr "DE/IG aldagaia"
 
 #: src/muuli_wdr.cpp
-msgid "Secure ident:"
-msgstr "Identitate ziurra:"
+msgid "Secure ident"
+msgstr "Identitate ziurra"
 
 #: src/muuli_wdr.cpp
-msgid "Queue rank:"
-msgstr "Ilara ranking-a:"
+msgid "Queue rank"
+msgstr "Ilara ranking-a"
 
 #: src/muuli_wdr.cpp
-msgid "Queue score:"
-msgstr "Ilara puntuak:"
+msgid "Queue score"
+msgstr "Ilara puntuak"
 
 #: src/muuli_wdr.cpp
 msgid "Nick"
@@ -5029,24 +5014,20 @@ msgid "Reset any changes made to the preferences."
 msgstr "Berrezarri hobespenetan eginiko edozein aldaketa."
 
 #: src/muuli_wdr.cpp
-msgid "Comment :"
-msgstr "Iruzkina :"
+msgid "Incoming Dir"
+msgstr "Deskarga direktorioa"
 
 #: src/muuli_wdr.cpp
-msgid "Incoming Dir :"
-msgstr "Deskarga direktorioa :"
-
-#: src/muuli_wdr.cpp
-msgid "Change priority for new assigned files :"
-msgstr "Aldatu lehentasuna fitxategi berrientzat :"
+msgid "Change priority for new assigned files"
+msgstr "Aldatu lehentasuna fitxategi berrientzat"
 
 #: src/muuli_wdr.cpp
 msgid "Don't change"
 msgstr "Ez aldatu"
 
 #: src/muuli_wdr.cpp
-msgid "Select color for this Category (currently selected) :"
-msgstr "Hautatu kolorea kategoria honentzat (unean aukeratutakoa) :"
+msgid "Select color for this Category (currently selected)"
+msgstr "Hautatu kolorea kategoria honentzat (unean aukeratutakoa)"
 
 #: src/muuli_wdr.cpp
 msgid "Click this button to reset the log."
@@ -5129,10 +5110,6 @@ msgstr "Bezero ezagunetarik abiarazi"
 #, fuzzy
 msgid "Enter the IP of the node here, using the x.x.x.x format."
 msgstr "Idatzi x.x.x.x formatua erabiliaz zerbitzariaren ip helbidea."
-
-#: src/muuli_wdr.cpp
-msgid "Port:"
-msgstr "Ataka:"
 
 #: src/muuli_wdr.cpp
 msgid "Use Secure User Identification"
@@ -5401,20 +5378,20 @@ msgid "Enable/disable proxy support"
 msgstr "Proxy onarpena gaitu/ezgaitu"
 
 #: src/muuli_wdr.cpp
-msgid "Proxy type:"
-msgstr "Proxy mota:"
+msgid "Proxy type"
+msgstr "Proxy mota"
 
 #: src/muuli_wdr.cpp
-msgid "Proxy host:"
-msgstr "Proxy ostalaria:"
+msgid "Proxy host"
+msgstr "Proxy ostalaria"
 
 #: src/muuli_wdr.cpp
 msgid "The proxy host name"
 msgstr "Proxy ostalari izena"
 
 #: src/muuli_wdr.cpp
-msgid "Proxy port:"
-msgstr "Proxy ataka:"
+msgid "Proxy port"
+msgstr "Proxy ataka"
 
 #: src/muuli_wdr.cpp
 msgid "The proxy port"
@@ -5429,16 +5406,8 @@ msgid "Enable/disable username/password authentication"
 msgstr "erabiltzaile/pasahitz autentifikazioa gaitu/ezgaitu"
 
 #: src/muuli_wdr.cpp
-msgid "Username: "
-msgstr "Erabiltzaile izena: "
-
-#: src/muuli_wdr.cpp
 msgid "The username to use to connect to the proxy"
 msgstr "Proxy-ra konektatzeko erabiliko den erabiltzaile izena"
-
-#: src/muuli_wdr.cpp
-msgid "Password:"
-msgstr "Pasahitza:"
 
 #: src/muuli_wdr.cpp
 msgid "The password to use to connect to the proxy"
@@ -5451,10 +5420,6 @@ msgstr "Hona konektaturik:"
 #: src/muuli_wdr.cpp
 msgid "Login to remote amule"
 msgstr "Urruneko aMulen saioa hasi"
-
-#: src/muuli_wdr.cpp
-msgid "User name"
-msgstr "Erabiltzaile izena"
 
 #: src/muuli_wdr.cpp
 msgid "Remember those settings"
@@ -5619,6 +5584,15 @@ msgstr "ordu"
 msgid "days"
 msgstr "egunak"
 
+#. TRANSLATORS:
+#. Punctuation for a "label: value" pair. %s is the already-translated
+#. label. Place the colon as your language requires -- e.g. "%s :" with a
+#. space in French, "%s:" without one in Russian and English.
+#: src/OtherFunctions.cpp
+#, c-format
+msgid "%s:"
+msgstr ""
+
 #: src/OtherFunctions.cpp
 msgid "all"
 msgstr "denak"
@@ -5651,6 +5625,81 @@ msgstr "Testua"
 #, c-format
 msgid "Using config dir: %s"
 msgstr "Konfigurazio direktorioa: %s"
+
+#: src/PartBarLegendUI.cpp
+#, fuzzy
+msgid "This source does not have the part"
+msgstr "Komando honek ez luke parametrorik eduki beharko."
+
+#: src/PartBarLegendUI.cpp
+msgid "You and this source both have the part"
+msgstr ""
+
+#: src/PartBarLegendUI.cpp
+msgid "Being downloaded from this source now"
+msgstr ""
+
+#: src/PartBarLegendUI.cpp
+msgid "The next part that will be asked of this source"
+msgstr ""
+
+#: src/PartBarLegendUI.cpp
+msgid "This source has the part and you still need it"
+msgstr ""
+
+#: src/PartBarLegendUI.cpp
+msgid "This peer already has the part"
+msgstr ""
+
+#: src/PartBarLegendUI.cpp
+msgid "This peer does not have the part"
+msgstr ""
+
+#: src/PartBarLegendUI.cpp
+#, fuzzy
+msgid "No other source has this part"
+msgstr "Komando honek ez luke parametrorik eduki beharko."
+
+#: src/PartBarLegendUI.cpp
+#, fuzzy
+msgid "One other source has this part"
+msgstr "Komando honek ez luke parametrorik eduki beharko."
+
+#: src/PartBarLegendUI.cpp
+#, fuzzy, c-format
+msgid "%u or more other sources have this part"
+msgstr "Komando honek ez luke parametrorik eduki beharko."
+
+#: src/PartBarLegendUI.cpp
+msgid "Already read back and hashed"
+msgstr ""
+
+#: src/PartBarLegendUI.cpp
+msgid "Still to be read"
+msgstr ""
+
+#: src/PartBarLegendUI.cpp
+msgid "One block per part of the file being downloaded."
+msgstr ""
+
+#: src/PartBarLegendUI.cpp
+#, fuzzy
+msgid "One block per part of the shared file."
+msgstr "Idatzi zerbitzariaren ataka hemen."
+
+#: src/PartBarLegendUI.cpp
+#, fuzzy
+msgid "One block per part of the shared file, coloured by how many other sources have it."
+msgstr "Idatzi zerbitzariaren ataka hemen."
+
+#: src/PartBarLegendUI.cpp
+#, fuzzy
+msgid "One block per part of the shared file, showing how far the re-hash has read."
+msgstr "Idatzi zerbitzariaren ataka hemen."
+
+#: src/PartBarLegendUI.cpp
+msgid "In between, darkening as other sources are added"
+msgstr ""
 
 #: src/PartFileConvert.cpp
 msgid "Waiting for partfile convert thread to die..."
@@ -6723,19 +6772,6 @@ msgid "FileID"
 msgstr "FitxategiID"
 
 #: src/SearchListCtrl.cpp
-msgid "Length"
-msgstr ""
-
-#: src/SearchListCtrl.cpp
-#, fuzzy
-msgid "Bitrate"
-msgstr "Kalifikatu gabea"
-
-#: src/SearchListCtrl.cpp
-msgid "Codec"
-msgstr ""
-
-#: src/SearchListCtrl.cpp
 msgid "Expand all"
 msgstr ""
 
@@ -7018,10 +7054,6 @@ msgstr "Zerbitzari lokala IPIragazkiak iragazirik dago, beste zerbitzari batetar
 #: src/ServerListCtrl.cpp
 msgid "Server Name"
 msgstr "Zerbitzaria izena"
-
-#: src/ServerListCtrl.cpp
-msgid "Port"
-msgstr "Ataka"
 
 #: src/ServerListCtrl.cpp
 msgid "Description"
@@ -7328,6 +7360,10 @@ msgid "Connected to buddy at %s"
 msgstr "Lagunera %s-en konektaturik"
 
 #: src/ServerWnd.cpp
+msgid "IP address:"
+msgstr "IP helbidea:"
+
+#: src/ServerWnd.cpp
 msgid "Indexed sources:"
 msgstr "Indexatutako jatorriak:"
 
@@ -7472,8 +7508,9 @@ msgid "Shares File List"
 msgstr "Partekatutako fitxategi zerrendak"
 
 #: src/SharedFilesCtrl.cpp
-msgid "Obtained Parts"
-msgstr "Eskuratutako zatiak"
+#, fuzzy
+msgid "Source Availability"
+msgstr "Eskuragarritasuna"
 
 #: src/SharedFilesCtrl.cpp
 msgid "Directory Path"
@@ -9348,6 +9385,12 @@ msgstr ""
 
 #~ msgid "ERROR: Could not listen to TCP port."
 #~ msgstr "ERROREA: Ezin da TCP ataka entzun."
+
+#~ msgid "User name"
+#~ msgstr "Erabiltzaile izena"
+
+#~ msgid "Obtained Parts"
+#~ msgstr "Eskuratutako zatiak"
 
 #~ msgid "Available Parts"
 #~ msgstr "Zati eskuragarriak"
