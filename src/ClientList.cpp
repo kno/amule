@@ -105,7 +105,12 @@ CUpDownClient *CClientList::FindReusableClient(const CMD4Hash &hash, uint32 ip, 
 	// stops at the first port match, which may be an unrelated client holding
 	// an address our peer used to have; rejecting that one without looking
 	// further would allocate a new object on every call.
-	std::pair<IDMap::iterator, IDMap::iterator> range = m_ipList.equal_range(ip);
+	const CNetworkAddress address = CNetworkAddress::FromIPv4NetworkOrderOrAbsent(ip);
+	if (!PeerAddressing::IsIndexable(address)) {
+		return nullptr;
+	}
+	std::pair<AddressMap::iterator, AddressMap::iterator> range =
+		m_ipList.equal_range(PeerAddressing::IndexKey(address));
 	for (; range.first != range.second; ++range.first) {
 		CUpDownClient *cur_client = range.first->second.GetClient();
 		if (cur_client->GetUserPort() != port) {
