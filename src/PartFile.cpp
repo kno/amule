@@ -3110,7 +3110,8 @@ CPacket *CPartFile::CreateSrcInfoPacket(
 		// Same 32-bit wire boundary as CKnownFile::CreateSrcInfoPacket(): an
 		// IPv6 source has no address this packet can carry, so it is omitted
 		// rather than published as 0.0.0.0.
-		if (cur_src->HasLowID() || !PeerAddressing::HasEd2kWireForm(cur_src->GetAddress()) || !valid) {
+		if (cur_src->HasLowID() || !PeerAddressing::HasEd2kWireForm(cur_src->GetAddress()) ||
+			!valid) {
 			continue;
 		}
 

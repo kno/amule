@@ -10,7 +10,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: aMule\n"
 "Report-Msgid-Bugs-To: https://github.com/amule-org/amule/issues\n"
-"POT-Creation-Date: 2026-09-06 09:03+0200\n"
+"POT-Creation-Date: 2026-09-06 09:45+0200\n"
 "PO-Revision-Date: 2026-09-05 10:50+0000\n"
 "Last-Translator: Piarres Beobide <pi@beobide.net>\n"
 "Language-Team: Euskara <librezale@librezale.org>\n"
@@ -4166,8 +4166,9 @@ msgid "Obfuscation"
 msgstr "Nahasmena"
 
 #: src/muuli_wdr.cpp
-msgid "Vendor capabilities:"
-msgstr ""
+#, fuzzy
+msgid "Protocol extensions:"
+msgstr "Protokolo nahastea"
 
 #: src/muuli_wdr.cpp
 msgid "Transfers to client"

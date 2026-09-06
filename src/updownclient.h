@@ -40,7 +40,7 @@
 #include "NetworkAddress.h"      // Needed for CNetworkAddress
 #include "PeerCapabilities.h"    // Needed for CPeerCapabilities
 #include "PeerFamilyAttempts.h"  // Needed for DualStack::CPeerConnectAttempts
-#include "PeerAddressing.h"        // Needed for PeerAddressing::IsDirectlyReachable
+#include "PeerAddressing.h"      // Needed for PeerAddressing::IsDirectlyReachable
 #include "QuicProofValue.h"      // Needed for CQuicProofValue
 #include "UtpTransportFailure.h" // Needed for CUtpTransportState
 

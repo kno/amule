@@ -9,7 +9,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: aMule\n"
 "Report-Msgid-Bugs-To: https://github.com/amule-org/amule/issues\n"
-"POT-Creation-Date: 2026-09-06 09:03+0200\n"
+"POT-Creation-Date: 2026-09-06 09:45+0200\n"
 "PO-Revision-Date: 2026-09-05 11:02+0000\n"
 "Last-Translator: Oleksandr Kovalenko <alx.kovalenko@gmail.com>\n"
 "Language-Team: Ukrainian <translation@linux.org.ua>\n"
@@ -4207,8 +4207,9 @@ msgid "Obfuscation"
 msgstr "Приховування"
 
 #: src/muuli_wdr.cpp
-msgid "Vendor capabilities:"
-msgstr ""
+#, fuzzy
+msgid "Protocol extensions:"
+msgstr "Приховування протоколу"
 
 #: src/muuli_wdr.cpp
 msgid "Transfers to client"

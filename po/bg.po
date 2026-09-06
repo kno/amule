@@ -11,7 +11,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: aMule\n"
 "Report-Msgid-Bugs-To: https://github.com/amule-org/amule/issues\n"
-"POT-Creation-Date: 2026-09-06 09:03+0200\n"
+"POT-Creation-Date: 2026-09-06 09:45+0200\n"
 "PO-Revision-Date: 2026-09-05 10:45+0000\n"
 "Last-Translator: Sebastiano Pistore <SebastianoPistore.info@protonmail.ch>\n"
 "Language-Team: Bulgarian <dict@linux.zonebg.com>\n"
@@ -4118,8 +4118,11 @@ msgid "Obfuscation"
 msgstr ""
 
 #: src/muuli_wdr.cpp
-msgid "Vendor capabilities:"
+#, fuzzy
+msgid "Protocol extensions:"
 msgstr ""
+"\n"
+"Налични разширения:\n"
 
 #: src/muuli_wdr.cpp
 msgid "Transfers to client"

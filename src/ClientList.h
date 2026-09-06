@@ -29,7 +29,7 @@
 #include "DeadSourceList.h" // Needed for CDeadSourceList
 #include "ClientRef.h"
 #include "NetworkAddress.h" // Needed for CNetworkAddress
-#include "PeerAddressing.h"   // Needed for PeerAddressing::IndexKey
+#include "PeerAddressing.h" // Needed for PeerAddressing::IndexKey
 
 #include <deque>
 #include <list>

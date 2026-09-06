@@ -31,7 +31,7 @@
 
 #include "NatRendezvousProtocol.h" // Needed for the OP_RENDEZVOUS codec and bounds
 #include "NetworkAddress.h"        // Needed for CNetworkAddress
-#include "PeerAddressing.h"          // Needed for PeerAddressing::RateLimitScope
+#include "PeerAddressing.h"        // Needed for PeerAddressing::RateLimitScope
 
 /**
  * The relaying side of the rendezvous exchange.
