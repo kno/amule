@@ -713,12 +713,8 @@ bool CamuleRemoteGuiApp::ShowConnectionDialog()
 		// on the fresh object right here.
 		m_connect->SetForceZlib(dialog->ForceZlib());
 		m_connect->SetCanAEAD(dialog->Encryption());
-		if (m_connect->ConnectToCore(dialog->Host(),
-			    dialog->Port(),
-			    dialog->Login(),
-			    dialog->PassHash(),
-			    "amule-remote",
-			    "0x0001")) {
+		if (m_connect->ConnectToCore(
+			    dialog->Host(), dialog->Port(), dialog->PassHash(), "amule-remote", "0x0001")) {
 			// Sync part succeeded; async OnECConnection will
 			// resolve the auth outcome.
 			return true;
@@ -1086,8 +1082,7 @@ void CamuleRemoteGuiApp::AttemptReconnect()
 	connect_timeout_timer = new wxTimer(this, ID_REMOTE_CONNECT_TIMEOUT_TIMER);
 	connect_timeout_timer->StartOnce(15000);
 
-	if (!m_connect->ConnectToCore(
-		    m_ecHost, m_ecPort, wxEmptyString, m_ecPass, "amule-remote", "0x0001")) {
+	if (!m_connect->ConnectToCore(m_ecHost, m_ecPort, m_ecPass, "amule-remote", "0x0001")) {
 		// Couldn't even initiate the connect — space out the next attempt.
 		AddLogLineCS(_("Reconnect could not start; retrying shortly."));
 		delete connect_timeout_timer;
@@ -3494,6 +3489,21 @@ void CFriendListRem::AddFriend(
 	m_conn->SendPacket(&req);
 }
 
+CFriend *CFriendListRem::LookupFriend(const CMD4Hash &userhash, uint32 dwIP, uint16 nPort) const
+{
+	for (CFriend *cur_friend : m_items) {
+		if (!userhash.IsEmpty() && cur_friend->HasHash()) {
+			if (cur_friend->GetUserHash() == userhash) {
+				return cur_friend;
+			}
+		} else if (dwIP != 0 && cur_friend->GetIP() == dwIP && cur_friend->GetPort() == nPort) {
+			// A zero address is the absence of one, not a value to match on.
+			return cur_friend;
+		}
+	}
+	return nullptr;
+}
+
 void CFriendListRem::RemoveFriend(CFriend *toremove)
 {
 	CECPacket req(EC_OP_FRIEND);
@@ -3507,6 +3517,9 @@ void CFriendListRem::RemoveFriend(CFriend *toremove)
 
 void CFriendListRem::SetFriendSlot(CFriend *Friend, bool new_state)
 {
+	if (!Friend) {
+		return;
+	}
 	CECPacket req(EC_OP_FRIEND);
 
 	CECTag slottag(EC_TAG_FRIEND_FRIENDSLOT, new_state);

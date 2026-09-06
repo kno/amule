@@ -7,8 +7,8 @@ msgid ""
 msgstr ""
 "Project-Id-Version: aMule GIT\n"
 "Report-Msgid-Bugs-To: https://github.com/amule-org/amule/issues\n"
-"POT-Creation-Date: 2026-09-02 12:15+0200\n"
-"PO-Revision-Date: 2026-09-03 11:13+0000\n"
+"POT-Creation-Date: 2026-09-05 12:01+0200\n"
+"PO-Revision-Date: 2026-09-05 11:05+0000\n"
 "Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
 "Language-Team: none\n"
 "Language: lv\n"
@@ -1226,6 +1226,14 @@ msgid "Send message"
 msgstr "Sūtīt ziņojumu"
 
 #: src/ClientContextActions.cpp
+msgid "Send message to user"
+msgstr ""
+
+#: src/ClientContextActions.cpp
+msgid "Message to send:"
+msgstr ""
+
+#: src/ClientContextActions.cpp
 msgid ""
 "You are not allowed to set more than one friend slot.\n"
 " Only one slot was assigned."
@@ -1236,11 +1244,39 @@ msgid "Multiple selection"
 msgstr ""
 
 #: src/ClientContextActions.cpp
-msgid "Send message to user"
-msgstr ""
+#, c-format
+msgid "Add %u client to your friend list?"
+msgid_plural "Add %u clients to your friend list?"
+msgstr[0] ""
+msgstr[1] ""
+msgstr[2] ""
 
 #: src/ClientContextActions.cpp
-msgid "Message to send:"
+#, fuzzy, c-format
+msgid "Remove %u client from your friend list?"
+msgid_plural "Remove %u clients from your friend list?"
+msgstr[0] "Noņemt no draugu saraksta"
+msgstr[1] "Noņemt no draugu saraksta"
+msgstr[2] "Noņemt no draugu saraksta"
+
+#: src/ClientContextActions.cpp
+#, c-format
+msgid "Could not add %u selected client to your friend list: no address is known for it."
+msgid_plural "Could not add %u selected clients to your friend list: no address is known for them."
+msgstr[0] ""
+msgstr[1] ""
+msgstr[2] ""
+
+#: src/ClientContextActions.cpp
+#, fuzzy, c-format
+msgid "Request the shared files of %u client?"
+msgid_plural "Request the shared files of %u clients?"
+msgstr[0] "Pārlādēt kopīgoto datņu sarakstu."
+msgstr[1] "Pārlādēt kopīgoto datņu sarakstu."
+msgstr[2] "Pārlādēt kopīgoto datņu sarakstu."
+
+#: src/ClientContextActions.cpp
+msgid "A connection is opened to each of them."
 msgstr ""
 
 #: src/ClientCreditsList.cpp
@@ -1302,7 +1338,7 @@ msgstr "Atslēgts"
 msgid "%.1f KiB/s"
 msgstr "%.1f KiB/s"
 
-#: src/ClientHistoryListCtrl.cpp src/ClientsListCtrl.cpp
+#: src/ClientHistoryListCtrl.cpp src/ClientsListCtrl.cpp src/muuli_wdr.cpp
 msgid "Name"
 msgstr "Nosaukums"
 
@@ -1310,7 +1346,7 @@ msgstr "Nosaukums"
 msgid "Software"
 msgstr "Programma"
 
-#: src/ClientHistoryListCtrl.cpp src/ClientsListCtrl.cpp
+#: src/ClientHistoryListCtrl.cpp src/ClientsListCtrl.cpp src/muuli_wdr.cpp
 msgid "IP Address"
 msgstr "IP adrese"
 
@@ -1377,6 +1413,14 @@ msgstr ""
 #: src/ClientRef.cpp
 msgid "Not Available"
 msgstr ""
+
+#: src/ClientRowListCtrl.cpp
+#, c-format
+msgid "Could not ask %u selected client for its shared files."
+msgid_plural "Could not ask %u selected clients for their shared files."
+msgstr[0] ""
+msgstr[1] ""
+msgstr[2] ""
 
 #: src/ClientsListCtrl.cpp src/PrefsUnifiedDlg.cpp src/ServerListCtrl.cpp
 msgid "Files"
@@ -1474,7 +1518,7 @@ msgstr ""
 msgid "File Comments"
 msgstr "Datnes komentāri"
 
-#: src/CommentDialogLst.cpp src/FriendListCtrl.cpp
+#: src/CommentDialogLst.cpp src/FriendListCtrl.cpp src/muuli_wdr.cpp
 msgid "Username"
 msgstr "Dalībniekvārds"
 
@@ -1487,7 +1531,7 @@ msgstr "Datnes nosaukums"
 msgid "Rating"
 msgstr "Vērtējums"
 
-#: src/CommentDialogLst.cpp
+#: src/CommentDialogLst.cpp src/muuli_wdr.cpp
 msgid "Comment"
 msgstr "Komentārs"
 
@@ -2105,6 +2149,10 @@ msgid "eD2k is disabled in preferences."
 msgstr ""
 
 #: src/ExternalConn.cpp
+msgid "No address known for that friend yet."
+msgstr ""
+
+#: src/ExternalConn.cpp
 msgid "Friend not found."
 msgstr ""
 
@@ -2704,6 +2752,11 @@ msgid "Failed to open friend list file 'emfriends.met' for writing!"
 msgstr ""
 
 #: src/FriendList.cpp
+#, c-format
+msgid "No address known for friend '%s' yet, cannot browse them."
+msgstr ""
+
+#: src/FriendList.cpp
 msgid "CRITICAL - no client on StartChatSession"
 msgstr "KRITISKI – ziņojumapmaiņas sesiju nevar uzsākt klienta trūkuma dēļ"
 
@@ -2724,6 +2777,11 @@ msgid "Send &Message"
 msgstr "Sūtīt ziņoju&mu"
 
 #: src/FriendListCtrl.cpp
+#, c-format
+msgid "No address known for friend '%s' yet, cannot message them."
+msgstr ""
+
+#: src/FriendListCtrl.cpp
 msgid "Are you sure that you wish to delete the selected friend?"
 msgstr "Vai tiešām vēlaties dzēst atlasīto draugu?"
 
@@ -2738,46 +2796,10 @@ msgid ""
 msgstr ""
 
 #: src/GenericClientListCtrl.cpp
-msgid "This source does not have the part"
-msgstr ""
-
-#: src/GenericClientListCtrl.cpp
-msgid "You and this source both have the part"
-msgstr ""
-
-#: src/GenericClientListCtrl.cpp
-msgid "Being downloaded from this source now"
-msgstr ""
-
-#: src/GenericClientListCtrl.cpp
-msgid "The next part that will be asked of this source"
-msgstr ""
-
-#: src/GenericClientListCtrl.cpp
-msgid "This source has the part and you still need it"
-msgstr ""
-
-#: src/GenericClientListCtrl.cpp
-msgid "This peer already has the part"
-msgstr ""
-
-#: src/GenericClientListCtrl.cpp
-msgid "This peer does not have the part"
-msgstr ""
-
-#: src/GenericClientListCtrl.cpp
-msgid "One block per part of the file being downloaded."
-msgstr ""
-
-#: src/GenericClientListCtrl.cpp
-msgid "One block per part of the shared file."
-msgstr ""
-
-#: src/GenericClientListCtrl.cpp
 msgid "Swap to this file"
 msgstr ""
 
-#: src/GenericClientListCtrl.cpp
+#: src/GenericClientListCtrl.cpp src/SharedFilesCtrl.cpp
 msgid "Colour legend"
 msgstr ""
 
@@ -3585,10 +3607,6 @@ msgstr "Serveris, kuram šobrīd esiet pieslēdzies."
 msgid "Search"
 msgstr "Meklēt"
 
-#: src/muuli_wdr.cpp
-msgid "Name:"
-msgstr "Nosaukums:"
-
 #: src/muuli_wdr.cpp src/SearchListCtrl.cpp src/SharedFilesCtrl.cpp
 msgid "Type"
 msgstr ""
@@ -3678,8 +3696,9 @@ msgid "Availability"
 msgstr "Pieejamība"
 
 #: src/muuli_wdr.cpp
-msgid "Filter:"
-msgstr ""
+#, fuzzy
+msgid "Filter"
+msgstr "Skatīt datnes"
 
 #: src/muuli_wdr.cpp
 msgid "Invert Result"
@@ -3736,6 +3755,10 @@ msgid "Clears completed downloads"
 msgstr ""
 
 #: src/muuli_wdr.cpp
+msgid "Filter:"
+msgstr ""
+
+#: src/muuli_wdr.cpp
 msgid "File sources:"
 msgstr ""
 
@@ -3744,79 +3767,86 @@ msgid "General"
 msgstr ""
 
 #: src/muuli_wdr.cpp
-msgid "Full Name :"
-msgstr ""
+#, fuzzy
+msgid "Full Name"
+msgstr "Datnes nosaukums"
 
 #: src/muuli_wdr.cpp
-msgid "met-File :"
-msgstr ""
+#, fuzzy
+msgid "met-File"
+msgstr "Datnes"
 
 #: src/muuli_wdr.cpp
-msgid "Hash :"
-msgstr "Kontrolsumma :"
+msgid "Hash"
+msgstr "Kontrolsumma"
 
 #: src/muuli_wdr.cpp
-msgid "Filesize :"
-msgstr "Datnes izmērs :"
+msgid "Filesize"
+msgstr "Datnes izmērs"
 
 #: src/muuli_wdr.cpp src/Statistics.cpp
 msgid "Transfer"
 msgstr ""
 
 #: src/muuli_wdr.cpp
-msgid "Partfilestatus :"
+#, fuzzy
+msgid "Partfilestatus"
+msgstr "Statuss"
+
+#: src/muuli_wdr.cpp
+#, fuzzy
+msgid "Last seen complete"
+msgstr "Pēdējo reizi datne bija pilnībā pieejama"
+
+#: src/muuli_wdr.cpp
+#, fuzzy
+msgid "Found Sources"
+msgstr "Avoti"
+
+#: src/muuli_wdr.cpp
+#, fuzzy
+msgid "Transferring Sources"
+msgstr "Pārsūtīti"
+
+#: src/muuli_wdr.cpp
+msgid "Filepart-Count"
 msgstr ""
 
 #: src/muuli_wdr.cpp
-msgid "Last seen complete :"
-msgstr ""
+#, fuzzy
+msgid "Available"
+msgstr "Pieejamība"
 
 #: src/muuli_wdr.cpp
-msgid "Found Sources :"
-msgstr ""
+#, fuzzy
+msgid "Datarate"
+msgstr "Datubāze"
 
 #: src/muuli_wdr.cpp
-msgid "Transferring Sources :"
-msgstr ""
+#, fuzzy
+msgid "Download Active Time"
+msgstr "↓ Lejupielādes ātrums"
 
 #: src/muuli_wdr.cpp
-msgid "Filepart-Count :"
-msgstr ""
-
-#: src/muuli_wdr.cpp
-msgid "Available :"
-msgstr ""
-
-#: src/muuli_wdr.cpp
-msgid "Datarate :"
-msgstr ""
-
-#: src/muuli_wdr.cpp
-msgid "Download Active Time: "
-msgstr ""
-
-#: src/muuli_wdr.cpp
-msgid "Transferred :"
-msgstr ""
-
-#: src/muuli_wdr.cpp
-msgid "Completed Size :"
-msgstr ""
+#, fuzzy
+msgid "Completed Size"
+msgstr "Pabeigta"
 
 #: src/muuli_wdr.cpp
 msgid "Intelligent Corruption Handling"
 msgstr ""
 
 #: src/muuli_wdr.cpp
-msgid "Lost to corruption :"
+msgid "Lost to corruption"
 msgstr ""
 
 #: src/muuli_wdr.cpp
-msgid "Gained by compression :"
-msgstr ""
+#, fuzzy
+msgid "Gained by compression"
+msgstr "Iespējot Gzip saspiešanu"
 
 #: src/muuli_wdr.cpp
-msgid "Packages saved by I.C.H. :"
+msgid "Packages saved by I.C.H."
 msgstr ""
 
 #: src/muuli_wdr.cpp
@@ -3855,29 +3885,29 @@ msgstr "Pēdējoreiz augšupielādēta"
 msgid "Media Info"
 msgstr ""
 
-#: src/muuli_wdr.cpp
-msgid "Length :"
-msgstr "Ilgums :"
+#: src/muuli_wdr.cpp src/SearchListCtrl.cpp
+msgid "Length"
+msgstr "Ilgums"
+
+#: src/muuli_wdr.cpp src/SearchListCtrl.cpp
+msgid "Bitrate"
+msgstr "Bitu pārraides ātrums"
+
+#: src/muuli_wdr.cpp src/SearchListCtrl.cpp
+msgid "Codec"
+msgstr "Kodeks"
 
 #: src/muuli_wdr.cpp
-msgid "Bitrate :"
-msgstr "Bitu pārraides ātrums :"
+msgid "Artist"
+msgstr "Izpildītājs"
 
 #: src/muuli_wdr.cpp
-msgid "Codec :"
-msgstr "Kodeks :"
+msgid "Album"
+msgstr "Albums"
 
 #: src/muuli_wdr.cpp
-msgid "Artist :"
-msgstr "Izpildītājs :"
-
-#: src/muuli_wdr.cpp
-msgid "Album :"
-msgstr "Albums :"
-
-#: src/muuli_wdr.cpp
-msgid "Title :"
-msgstr "Nosaukums :"
+msgid "Title"
+msgstr "Nosaukums"
 
 #: src/muuli_wdr.cpp
 msgid "File Names"
@@ -3961,25 +3991,17 @@ msgstr "Nezināms izmērs"
 msgid "Required Information"
 msgstr "Nepieciešamā informācija"
 
-#: src/muuli_wdr.cpp
-msgid "IP Address :"
-msgstr "IP adrese :"
-
-#: src/muuli_wdr.cpp
-msgid "Port :"
-msgstr "Ports :"
+#: src/muuli_wdr.cpp src/ServerListCtrl.cpp
+msgid "Port"
+msgstr "Ports"
 
 #: src/muuli_wdr.cpp
 msgid "Additional Information"
 msgstr "Papildinformācija"
 
 #: src/muuli_wdr.cpp
-msgid "Username :"
-msgstr "Dalībniekvārds :"
-
-#: src/muuli_wdr.cpp
-msgid "Userhash :"
-msgstr "Dalībnieka atpazīšanas kods (jaucējvērtība) :"
+msgid "Userhash"
+msgstr "Dalībnieka atpazīšanas kods (jaucējvērtība)"
 
 #: src/muuli_wdr.cpp src/utils/aLinkCreator/src/alcframe.cpp
 msgid "Add"
@@ -4014,96 +4036,83 @@ msgid "Statistics Tree"
 msgstr ""
 
 #: src/muuli_wdr.cpp
-msgid "Username:"
-msgstr "Dalībniekvārds:"
+msgid "Client software"
+msgstr "Klienta programma"
 
 #: src/muuli_wdr.cpp
-msgid "Userhash:"
-msgstr "Dalībnieka atpazīšanas kods (jaucējvērtība):"
+msgid "Client version"
+msgstr "Klienta programmas versija"
 
 #: src/muuli_wdr.cpp
-msgid "Client software:"
-msgstr "Klienta programma:"
+msgid "User ID"
+msgstr "Dalībnieka ID"
 
 #: src/muuli_wdr.cpp
-msgid "Client version:"
-msgstr "Klienta programmas versija:"
-
-#: src/muuli_wdr.cpp src/ServerWnd.cpp
-msgid "IP address:"
-msgstr "IP adrese:"
+msgid "Server IP"
+msgstr "Servera IP adrese"
 
 #: src/muuli_wdr.cpp
-msgid "User ID:"
-msgstr "Dalībnieka ID:"
+msgid "Server name"
+msgstr "Servera nosaukums"
 
 #: src/muuli_wdr.cpp
-msgid "Server IP:"
-msgstr "Servera IP adrese:"
-
-#: src/muuli_wdr.cpp
-msgid "Server name:"
-msgstr "Servera nosaukums:"
-
-#: src/muuli_wdr.cpp
-msgid "Obfuscation:"
+msgid "Obfuscation"
 msgstr ""
-
-#: src/muuli_wdr.cpp
-msgid "Kad:"
-msgstr "Kad:"
 
 #: src/muuli_wdr.cpp
 msgid "Transfers to client"
 msgstr ""
 
 #: src/muuli_wdr.cpp
-msgid "Current request:"
-msgstr ""
+#, fuzzy
+msgid "Current request"
+msgstr "Pašreizējais"
 
 #: src/muuli_wdr.cpp
-msgid "Average upload rate:"
-msgstr "↑ Vidējais augšupielādes ātrums:"
+msgid "Average upload rate"
+msgstr "↑ Vidējais augšupielādes ātrums"
 
 #: src/muuli_wdr.cpp
-msgid "Average download rate:"
-msgstr "↓ Vidējais lejupielādes ātrums:"
+msgid "Average download rate"
+msgstr "↓ Vidējais lejupielādes ātrums"
 
 #: src/muuli_wdr.cpp
-msgid "Uploaded (session):"
-msgstr "↑ Augšupielādēti (šajā sesijā):"
+msgid "Uploaded (session)"
+msgstr "↑ Augšupielādēti (šajā sesijā)"
 
 #: src/muuli_wdr.cpp
-msgid "Downloaded (session):"
-msgstr "↓ Lejupielādēti (šajā sesijā):"
+msgid "Downloaded (session)"
+msgstr "↓ Lejupielādēti (šajā sesijā)"
 
 #: src/muuli_wdr.cpp
-msgid "Uploaded (total):"
-msgstr "↑ Augšupielādēti (pavisam kopā):"
+msgid "Uploaded (total)"
+msgstr "↑ Augšupielādēti (pavisam kopā)"
 
 #: src/muuli_wdr.cpp
-msgid "Downloaded (total):"
-msgstr "↓ Lejupielādēti (pavisam kopā):"
+msgid "Downloaded (total)"
+msgstr "↓ Lejupielādēti (pavisam kopā)"
 
 #: src/muuli_wdr.cpp
 msgid "Scores"
 msgstr ""
 
 #: src/muuli_wdr.cpp
-msgid "DL/UP modifier:"
+msgid "DL/UP modifier"
 msgstr ""
 
 #: src/muuli_wdr.cpp
-msgid "Secure ident:"
-msgstr ""
+#, fuzzy
+msgid "Secure ident"
+msgstr "Drošība"
 
 #: src/muuli_wdr.cpp
-msgid "Queue rank:"
-msgstr "Rindas pozīcija:"
+msgid "Queue rank"
+msgstr "Rindas pozīcija"
 
 #: src/muuli_wdr.cpp
-msgid "Queue score:"
-msgstr ""
+#, fuzzy
+msgid "Queue score"
+msgstr "Rindas pozīcija"
 
 #: src/muuli_wdr.cpp
 msgid "Nick"
@@ -4884,15 +4893,12 @@ msgid "Reset any changes made to the preferences."
 msgstr ""
 
 #: src/muuli_wdr.cpp
-msgid "Comment :"
-msgstr "Komentārs :"
+#, fuzzy
+msgid "Incoming Dir"
+msgstr "Ienākošās datnes"
 
 #: src/muuli_wdr.cpp
-msgid "Incoming Dir :"
-msgstr ""
-
-#: src/muuli_wdr.cpp
-msgid "Change priority for new assigned files :"
+msgid "Change priority for new assigned files"
 msgstr ""
 
 #: src/muuli_wdr.cpp
@@ -4900,7 +4906,7 @@ msgid "Don't change"
 msgstr ""
 
 #: src/muuli_wdr.cpp
-msgid "Select color for this Category (currently selected) :"
+msgid "Select color for this Category (currently selected)"
 msgstr ""
 
 #: src/muuli_wdr.cpp
@@ -4982,10 +4988,6 @@ msgstr ""
 #: src/muuli_wdr.cpp
 msgid "Enter the IP of the node here, using the x.x.x.x format."
 msgstr ""
-
-#: src/muuli_wdr.cpp
-msgid "Port:"
-msgstr "Ports:"
 
 #: src/muuli_wdr.cpp
 msgid "Use Secure User Identification"
@@ -5249,20 +5251,20 @@ msgid "Enable/disable proxy support"
 msgstr ""
 
 #: src/muuli_wdr.cpp
-msgid "Proxy type:"
-msgstr "Starpniekservera tips:"
+msgid "Proxy type"
+msgstr "Starpniekservera tips"
 
 #: src/muuli_wdr.cpp
-msgid "Proxy host:"
-msgstr "Starpniekserveris:"
+msgid "Proxy host"
+msgstr "Starpniekserveris"
 
 #: src/muuli_wdr.cpp
 msgid "The proxy host name"
 msgstr "Starpniekservera resursdatora nosaukums"
 
 #: src/muuli_wdr.cpp
-msgid "Proxy port:"
-msgstr "Starpniekservera ports:"
+msgid "Proxy port"
+msgstr "Starpniekservera ports"
 
 #: src/muuli_wdr.cpp
 msgid "The proxy port"
@@ -5277,16 +5279,8 @@ msgid "Enable/disable username/password authentication"
 msgstr ""
 
 #: src/muuli_wdr.cpp
-msgid "Username: "
-msgstr "Lietotājvārds: "
-
-#: src/muuli_wdr.cpp
 msgid "The username to use to connect to the proxy"
 msgstr "Lietotājvārds, ko lietot, kad izmanto starpniekserveri"
-
-#: src/muuli_wdr.cpp
-msgid "Password:"
-msgstr "Parole:"
 
 #: src/muuli_wdr.cpp
 msgid "The password to use to connect to the proxy"
@@ -5299,10 +5293,6 @@ msgstr ""
 #: src/muuli_wdr.cpp
 msgid "Login to remote amule"
 msgstr ""
-
-#: src/muuli_wdr.cpp
-msgid "User name"
-msgstr "Lietotājvārds"
 
 #: src/muuli_wdr.cpp
 msgid "Remember those settings"
@@ -5466,6 +5456,15 @@ msgstr "stundas"
 msgid "days"
 msgstr "dienas"
 
+#. TRANSLATORS:
+#. Punctuation for a "label: value" pair. %s is the already-translated
+#. label. Place the colon as your language requires -- e.g. "%s :" with a
+#. space in French, "%s:" without one in Russian and English.
+#: src/OtherFunctions.cpp
+#, c-format
+msgid "%s:"
+msgstr ""
+
 #: src/OtherFunctions.cpp
 msgid "all"
 msgstr ""
@@ -5497,6 +5496,75 @@ msgstr ""
 #: src/OtherFunctions.cpp
 #, c-format
 msgid "Using config dir: %s"
+msgstr ""
+
+#: src/PartBarLegendUI.cpp
+msgid "This source does not have the part"
+msgstr ""
+
+#: src/PartBarLegendUI.cpp
+msgid "You and this source both have the part"
+msgstr ""
+
+#: src/PartBarLegendUI.cpp
+msgid "Being downloaded from this source now"
+msgstr ""
+
+#: src/PartBarLegendUI.cpp
+msgid "The next part that will be asked of this source"
+msgstr ""
+
+#: src/PartBarLegendUI.cpp
+msgid "This source has the part and you still need it"
+msgstr ""
+
+#: src/PartBarLegendUI.cpp
+msgid "This peer already has the part"
+msgstr ""
+
+#: src/PartBarLegendUI.cpp
+msgid "This peer does not have the part"
+msgstr ""
+
+#: src/PartBarLegendUI.cpp
+msgid "No other source has this part"
+msgstr ""
+
+#: src/PartBarLegendUI.cpp
+msgid "One other source has this part"
+msgstr ""
+
+#: src/PartBarLegendUI.cpp
+#, c-format
+msgid "%u or more other sources have this part"
+msgstr ""
+
+#: src/PartBarLegendUI.cpp
+msgid "Already read back and hashed"
+msgstr ""
+
+#: src/PartBarLegendUI.cpp
+msgid "Still to be read"
+msgstr ""
+
+#: src/PartBarLegendUI.cpp
+msgid "One block per part of the file being downloaded."
+msgstr ""
+
+#: src/PartBarLegendUI.cpp
+msgid "One block per part of the shared file."
+msgstr ""
+
+#: src/PartBarLegendUI.cpp
+msgid "One block per part of the shared file, coloured by how many other sources have it."
+msgstr ""
+
+#: src/PartBarLegendUI.cpp
+msgid "One block per part of the shared file, showing how far the re-hash has read."
+msgstr ""
+
+#: src/PartBarLegendUI.cpp
+msgid "In between, darkening as other sources are added"
 msgstr ""
 
 #: src/PartFileConvert.cpp
@@ -6524,18 +6592,6 @@ msgid "FileID"
 msgstr "Datnes ID"
 
 #: src/SearchListCtrl.cpp
-msgid "Length"
-msgstr "Ilgums"
-
-#: src/SearchListCtrl.cpp
-msgid "Bitrate"
-msgstr "Bitu pārraides ātrums"
-
-#: src/SearchListCtrl.cpp
-msgid "Codec"
-msgstr "Kodeks"
-
-#: src/SearchListCtrl.cpp
 msgid "Expand all"
 msgstr "Izvērst visu"
 
@@ -6814,10 +6870,6 @@ msgstr ""
 #: src/ServerListCtrl.cpp
 msgid "Server Name"
 msgstr "Servera nosaukums"
-
-#: src/ServerListCtrl.cpp
-msgid "Port"
-msgstr "Ports"
 
 #: src/ServerListCtrl.cpp
 msgid "Description"
@@ -7109,6 +7161,10 @@ msgid "Connected to buddy at %s"
 msgstr "Savienots ar draugu %s"
 
 #: src/ServerWnd.cpp
+msgid "IP address:"
+msgstr "IP adrese:"
+
+#: src/ServerWnd.cpp
 msgid "Indexed sources:"
 msgstr ""
 
@@ -7259,8 +7315,9 @@ msgid "Shares File List"
 msgstr ""
 
 #: src/SharedFilesCtrl.cpp
-msgid "Obtained Parts"
-msgstr ""
+#, fuzzy
+msgid "Source Availability"
+msgstr "Pieejamība"
 
 #: src/SharedFilesCtrl.cpp
 msgid "Directory Path"
@@ -9083,6 +9140,9 @@ msgstr "Izskatās, ka aMule darbojas. Lūdzu, aizveriet to un vēlreiz palaidiet
 #: packaging/windows/installer_strings.c
 msgid "Removing user data at $APPDATA\\aMule..."
 msgstr "Dzēš lietotāja datus, kas atrodas $APPDATA\\aMule mapē…"
+
+#~ msgid "User name"
+#~ msgstr "Lietotājvārds"
 
 #~ msgid " MB/s"
 #~ msgstr " MB/s"

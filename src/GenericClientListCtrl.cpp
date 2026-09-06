@@ -40,7 +40,6 @@
 #include "DataToText.h"           // Needed for PriorityToStr
 #include "FileDetailDialog.h"     // Needed for CFileDetailDialog
 #include "GuiEvents.h"            // Needed for CoreNotify_*
-#include "InfoGridDialog.h"       // Needed for ShowInfoGridDialog
 #ifdef GEOIP_GUI
 #include "CountryFlags.h"   // Needed for CCountryFlags (flag bitmaps)
 #include "CountryDisplay.h" // Needed for GetDisplayCountryCode
@@ -48,6 +47,7 @@
 #include "MuleBarRenderer.h" // Needed for CBarFillSpec, CBarFillSpan, CMuleBarRenderer
 #include "MuleColour.h"      // Needed for IsListBackgroundDark
 #include "muuli_wdr.h"       // Needed for ID_CLIENTCOUNT
+#include "PartBarLegendUI.h" // Needed for ShowPartBarLegend, ToMuleColour
 #include "PartFile.h"        // Needed for CPartFile
 #include "Preferences.h"
 #include "SharedFileList.h" // Needed for CSharedFileList
@@ -62,12 +62,6 @@
 #include "updownclient.h"
 #endif
 #include "FriendList.h"
-
-#include <wx/dcmemory.h> // Needed for wxMemoryDC (legend swatches)
-#include <wx/dialog.h>   // Needed for wxDialog (legend)
-#include <wx/sizer.h>    // Needed for wxBoxSizer, wxFlexGridSizer
-#include <wx/statbmp.h>  // Needed for wxStaticBitmap
-#include <wx/stattext.h> // Needed for wxStaticText
 
 namespace
 {
@@ -103,57 +97,6 @@ public:
 		return true;
 	}
 };
-
-/**
- * A 16x16 swatch of one bar colour, drawn the way CCatDialog::MakeBitmap()
- * draws the category colour: a wxMemoryDC over a wxBitmap, default pen, so the
- * fill keeps a border and the two pale greys stay visible on a light dialog.
- */
-wxBitmap MakeLegendSwatch(const partbar::BarColour &colour)
-{
-	wxBitmap bitmap(16, 16);
-	wxMemoryDC dc(bitmap);
-
-	dc.SetBrush(CMuleColour(colour.red, colour.green, colour.blue).GetBrush());
-	dc.DrawRectangle(0, 0, 16, 16);
-
-	return bitmap;
-}
-
-wxString SourcePartStateLabel(partbar::SourcePartState state)
-{
-	switch (state) {
-	case partbar::SourcePartState::Missing:
-		return _("This source does not have the part");
-	case partbar::SourcePartState::Complete:
-		return _("You and this source both have the part");
-	case partbar::SourcePartState::Downloading:
-		return _("Being downloaded from this source now");
-	case partbar::SourcePartState::NextRequested:
-		return _("The next part that will be asked of this source");
-	case partbar::SourcePartState::Needed:
-		return _("This source has the part and you still need it");
-	}
-	return wxEmptyString;
-}
-
-wxString PeerPartStateLabel(partbar::PeerPartState state)
-{
-	switch (state) {
-	case partbar::PeerPartState::Present:
-		return _("This peer already has the part");
-	case partbar::PeerPartState::Missing:
-		return _("This peer does not have the part");
-	}
-	return wxEmptyString;
-}
-
-//! One swatch-and-text row of a legend.
-void AddLegendRow(wxWindow *parent, wxSizer *grid, const partbar::BarColour &colour, const wxString &label)
-{
-	grid->Add(new wxStaticBitmap(parent, wxID_ANY, MakeLegendSwatch(colour)), 0, wxALIGN_CENTRE_VERTICAL);
-	grid->Add(new wxStaticText(parent, wxID_ANY, label), 0, wxALIGN_CENTRE_VERTICAL);
-}
 } // namespace
 
 #define m_ImageList theApp->amuledlg->m_imagelist
@@ -631,12 +574,33 @@ std::vector<CClientRef> SelectedClients(const std::vector<wxUIntPtr> &selected)
 
 void CGenericClientListCtrl::OnViewFiles(wxCommandEvent &WXUNUSED(event))
 {
-	ClientActionViewFiles(SelectedClients(GetSelectedItemData()));
+	const std::vector<CClientRef> clients = SelectedClients(GetSelectedItemData());
+	if (clients.empty()) {
+		return;
+	}
+	// One result tab per peer, and a connection to any of them we are not
+	// already talking to: this list holds queued and A4AF sources, which are
+	// peers whose queue we sit in without holding a socket.
+	if (!ConfirmBrowseAction(this, clients.size())) {
+		return;
+	}
+	ClientActionViewFiles(clients);
 }
 
 void CGenericClientListCtrl::OnAddFriend(wxCommandEvent &WXUNUSED(event))
 {
-	ClientActionToggleFriend(SelectedClients(GetSelectedItemData()));
+	// The direction comes from the first selected client, which is the row the
+	// menu was built for. Read from the live selection rather than the pointer
+	// stashed at popup time: PopupMenu() runs a nested event loop, a source
+	// removal during it deletes the ClientCtrlItem_Struct, and nothing clears
+	// that pointer. The selection cannot go stale the same way, because the
+	// control maintains it.
+	const std::vector<CClientRef> clients = SelectedClients(GetSelectedItemData());
+	if (clients.empty()) {
+		return;
+	}
+	const bool addThem = !PeerIsFriend(PeerIdentity::FromClient(clients.front()));
+	PeerActionSetFriendsForClients(this, clients, addThem);
 }
 
 void CGenericClientListCtrl::OnSetFriendslot(wxCommandEvent &evt)
@@ -708,33 +672,10 @@ int CGenericClientListCtrl::FindBarLegendColumn() const
 
 void CGenericClientListCtrl::ShowBarLegend(partbar::BarLegendKind kind, const wxString &columnTitle)
 {
-	// Both legends read their colours from the functions GetItemBarFill()
-	// fills the bar from, under the bar preference in force right now: a
-	// swatch cannot disagree with the pixels it explains.
-	const bool bFlat = thePrefs::UseFlatBar();
-	const bool sourceKind = (kind == partbar::BarLegendKind::SourceParts);
-
-	ShowInfoGridDialog(this,
-		columnTitle,
-		sourceKind ? _("One block per part of the file being downloaded.")
-			   : _("One block per part of the shared file."),
-		[bFlat, sourceKind](wxWindow *dlg, wxSizer *grid) {
-			if (sourceKind) {
-				for (const partbar::SourcePartState state : partbar::kSourceLegendOrder) {
-					AddLegendRow(dlg,
-						grid,
-						partbar::SourcePartColour(state, bFlat),
-						SourcePartStateLabel(state));
-				}
-			} else {
-				for (const partbar::PeerPartState state : partbar::kPeerLegendOrder) {
-					AddLegendRow(dlg,
-						grid,
-						partbar::PeerPartColour(state, bFlat),
-						PeerPartStateLabel(state));
-				}
-			}
-		});
+	// The dialog and its swatches live in PartBarLegendUI: since #1220 the
+	// shared-files list opens legends of its own, and two copies of a swatch
+	// are two things to keep in step with the palette.
+	ShowPartBarLegend(this, kind, columnTitle);
 }
 
 void CGenericClientListCtrl::OnShowBarLegend(wxCommandEvent &WXUNUSED(event))
@@ -971,16 +912,6 @@ bool CGenericClientListCtrl::GetItemAttr(wxUIntPtr data, unsigned column, wxData
 		return false;
 	}
 }
-
-namespace
-{
-//! The bar palette lives in PartBarLegend.h, where the legend reads the same
-//! values -- see the header comment for why they cannot be kept in two places.
-inline CMuleColour ToMuleColour(const partbar::BarColour &colour)
-{
-	return CMuleColour(colour.red, colour.green, colour.blue);
-}
-} // namespace
 
 void CGenericClientListCtrl::GetItemBarFill(wxUIntPtr data, unsigned column, CBarFillSpec &out) const
 {
