@@ -10,7 +10,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: aMule\n"
 "Report-Msgid-Bugs-To: https://github.com/amule-org/amule/issues\n"
-"POT-Creation-Date: 2026-09-06 09:45+0200\n"
+"POT-Creation-Date: 2026-09-07 12:03+0200\n"
 "PO-Revision-Date: 2026-09-05 10:49+0000\n"
 "Last-Translator: \n"
 "Language-Team: Estonian <kde-i18n-doc@kde.org>\n"
@@ -3228,6 +3228,163 @@ msgstr "Tuntud falide loetelu laadimine ebaõnnestus, fail võib olla vigane"
 msgid "Invalid entry in known file list, file may be corrupt: "
 msgstr "Tuntud falide loetelus vigane kirje, fail võib olla vigane: "
 
+#: src/LanguageList.cpp
+msgid "System default"
+msgstr "Süsteemi vaikeväärtus"
+
+#: src/LanguageList.cpp
+msgid "Albanian"
+msgstr "Albaania"
+
+#: src/LanguageList.cpp
+msgid "Arabic"
+msgstr "Araabia"
+
+#: src/LanguageList.cpp
+msgid "Asturian"
+msgstr "Asturia"
+
+#: src/LanguageList.cpp
+msgid "Basque"
+msgstr "Baski"
+
+#: src/LanguageList.cpp
+msgid "Bulgarian"
+msgstr "Bulgaaria"
+
+#: src/LanguageList.cpp
+msgid "Catalan"
+msgstr "Kataloonia"
+
+#: src/LanguageList.cpp
+msgid "Chinese (Simplified)"
+msgstr "Hiina (Lihtsustatud)"
+
+#: src/LanguageList.cpp
+msgid "Chinese (Traditional)"
+msgstr "Hiina (Traditsiooniline)"
+
+#: src/LanguageList.cpp
+msgid "Croatian"
+msgstr "Kroaatia"
+
+#: src/LanguageList.cpp
+msgid "Czech"
+msgstr "Tšehhi"
+
+#: src/LanguageList.cpp
+msgid "Danish"
+msgstr "Taani"
+
+#: src/LanguageList.cpp
+msgid "Dutch"
+msgstr "Hollandi"
+
+#: src/LanguageList.cpp
+msgid "English (U.K.)"
+msgstr "Inglise (U.K.)"
+
+#: src/LanguageList.cpp
+#, fuzzy
+msgid "English (U.S.)"
+msgstr "Inglise (U.K.)"
+
+#: src/LanguageList.cpp
+msgid "Estonian"
+msgstr "Eesti"
+
+#: src/LanguageList.cpp
+msgid "Finnish"
+msgstr "Soome"
+
+#: src/LanguageList.cpp
+msgid "French"
+msgstr "Prantsuse"
+
+#: src/LanguageList.cpp
+msgid "Galician"
+msgstr "Galiitsia"
+
+#: src/LanguageList.cpp
+msgid "German"
+msgstr "Saksa"
+
+#: src/LanguageList.cpp
+msgid "Greek"
+msgstr "Kreeka"
+
+#: src/LanguageList.cpp
+msgid "Hebrew"
+msgstr "Heebrea"
+
+#: src/LanguageList.cpp
+msgid "Hungarian"
+msgstr "Ungari"
+
+#: src/LanguageList.cpp
+msgid "Italian"
+msgstr "Itaalia"
+
+#: src/LanguageList.cpp
+msgid "Japanese"
+msgstr "Jaapani"
+
+#: src/LanguageList.cpp
+msgid "Korean"
+msgstr "Korea"
+
+#: src/LanguageList.cpp
+msgid "Latvian"
+msgstr ""
+
+#: src/LanguageList.cpp
+msgid "Lithuanian"
+msgstr "Leedu"
+
+#: src/LanguageList.cpp
+msgid "Norwegian (Nynorsk)"
+msgstr "Norra"
+
+#: src/LanguageList.cpp
+msgid "Polish"
+msgstr "Poola"
+
+#: src/LanguageList.cpp
+msgid "Portuguese"
+msgstr "Portugali"
+
+#: src/LanguageList.cpp
+msgid "Portuguese (Brazilian)"
+msgstr "Portugali (Brasiilia)"
+
+#: src/LanguageList.cpp
+msgid "Romanian"
+msgstr "Rumeenia"
+
+#: src/LanguageList.cpp
+msgid "Russian"
+msgstr "Vene"
+
+#: src/LanguageList.cpp
+msgid "Slovenian"
+msgstr "Sloveenia"
+
+#: src/LanguageList.cpp
+msgid "Spanish"
+msgstr "Hispaania"
+
+#: src/LanguageList.cpp
+msgid "Swedish"
+msgstr "Rootsi"
+
+#: src/LanguageList.cpp
+msgid "Turkish"
+msgstr "Türgi"
+
+#: src/LanguageList.cpp
+msgid "Ukrainian"
+msgstr "Ukraina"
+
 #: src/libs/common/Format.cpp
 #, fuzzy, c-format
 msgid "Unknown error %d"
@@ -5953,176 +6110,6 @@ msgstr "Ebapiisav kettaruum"
 #, c-format
 msgid "ERROR: Failed to open partfile '%s'"
 msgstr "VIGA: Osafaili '%s' avamine ebaõnnestus"
-
-#: src/Preferences.cpp
-msgid "System default"
-msgstr "Süsteemi vaikeväärtus"
-
-#: src/Preferences.cpp
-msgid "Albanian"
-msgstr "Albaania"
-
-#: src/Preferences.cpp
-msgid "Arabic"
-msgstr "Araabia"
-
-#: src/Preferences.cpp
-msgid "Asturian"
-msgstr "Asturia"
-
-#: src/Preferences.cpp
-msgid "Basque"
-msgstr "Baski"
-
-#: src/Preferences.cpp
-msgid "Bulgarian"
-msgstr "Bulgaaria"
-
-#: src/Preferences.cpp
-msgid "Catalan"
-msgstr "Kataloonia"
-
-#: src/Preferences.cpp
-msgid "Chinese (Simplified)"
-msgstr "Hiina (Lihtsustatud)"
-
-#: src/Preferences.cpp
-msgid "Chinese (Traditional)"
-msgstr "Hiina (Traditsiooniline)"
-
-#: src/Preferences.cpp
-msgid "Croatian"
-msgstr "Kroaatia"
-
-#: src/Preferences.cpp
-msgid "Czech"
-msgstr "Tšehhi"
-
-#: src/Preferences.cpp
-msgid "Danish"
-msgstr "Taani"
-
-#: src/Preferences.cpp
-msgid "Dutch"
-msgstr "Hollandi"
-
-#: src/Preferences.cpp
-msgid "English (U.K.)"
-msgstr "Inglise (U.K.)"
-
-#: src/Preferences.cpp
-#, fuzzy
-msgid "English (U.S.)"
-msgstr "Inglise (U.K.)"
-
-#: src/Preferences.cpp
-msgid "Estonian"
-msgstr "Eesti"
-
-#: src/Preferences.cpp
-msgid "Finnish"
-msgstr "Soome"
-
-#: src/Preferences.cpp
-msgid "French"
-msgstr "Prantsuse"
-
-#: src/Preferences.cpp
-msgid "Galician"
-msgstr "Galiitsia"
-
-#: src/Preferences.cpp
-msgid "German"
-msgstr "Saksa"
-
-#: src/Preferences.cpp
-msgid "Greek"
-msgstr "Kreeka"
-
-#: src/Preferences.cpp
-msgid "Hebrew"
-msgstr "Heebrea"
-
-#: src/Preferences.cpp
-msgid "Hungarian"
-msgstr "Ungari"
-
-#: src/Preferences.cpp
-msgid "Italian"
-msgstr "Itaalia"
-
-#: src/Preferences.cpp
-msgid "Japanese"
-msgstr "Jaapani"
-
-#: src/Preferences.cpp
-msgid "Korean"
-msgstr "Korea"
-
-#: src/Preferences.cpp
-msgid "Latvian"
-msgstr ""
-
-#: src/Preferences.cpp
-msgid "Lithuanian"
-msgstr "Leedu"
-
-#: src/Preferences.cpp
-msgid "Norwegian (Nynorsk)"
-msgstr "Norra"
-
-#: src/Preferences.cpp
-msgid "Polish"
-msgstr "Poola"
-
-#: src/Preferences.cpp
-msgid "Portuguese"
-msgstr "Portugali"
-
-#: src/Preferences.cpp
-msgid "Portuguese (Brazilian)"
-msgstr "Portugali (Brasiilia)"
-
-#: src/Preferences.cpp
-msgid "Romanian"
-msgstr "Rumeenia"
-
-#: src/Preferences.cpp
-msgid "Russian"
-msgstr "Vene"
-
-#: src/Preferences.cpp
-msgid "Slovenian"
-msgstr "Sloveenia"
-
-#: src/Preferences.cpp
-msgid "Spanish"
-msgstr "Hispaania"
-
-#: src/Preferences.cpp
-msgid "Swedish"
-msgstr "Rootsi"
-
-#: src/Preferences.cpp
-msgid "Turkish"
-msgstr "Türgi"
-
-#: src/Preferences.cpp
-msgid "Ukrainian"
-msgstr "Ukraina"
-
-#: src/Preferences.cpp
-msgid "Change Language"
-msgstr "Muuda keel"
-
-#: src/Preferences.cpp
-msgid "There are no translations installed for aMule"
-msgstr ""
-
-#: src/Preferences.cpp
-#, fuzzy
-msgid "No languages available"
-msgstr "Info puudub"
 
 #: src/Preferences.cpp
 msgid "no options available"
@@ -9386,6 +9373,13 @@ msgstr ""
 
 #~ msgid "ERROR: Could not listen to TCP port."
 #~ msgstr "VIGA: Ei suuda kuulata TCP porti."
+
+#~ msgid "Change Language"
+#~ msgstr "Muuda keel"
+
+#, fuzzy
+#~ msgid "No languages available"
+#~ msgstr "Info puudub"
 
 #~ msgid "User name"
 #~ msgstr "Kasutaja nimi"

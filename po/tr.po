@@ -9,7 +9,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: aMule\n"
 "Report-Msgid-Bugs-To: https://github.com/amule-org/amule/issues\n"
-"POT-Creation-Date: 2026-09-06 09:45+0200\n"
+"POT-Creation-Date: 2026-09-07 12:03+0200\n"
 "PO-Revision-Date: 2026-09-05 11:02+0000\n"
 "Last-Translator: \n"
 "Language-Team: Turkish <li@li.org>\n"
@@ -3216,6 +3216,162 @@ msgstr "Bilinen dosyalar listesinden girdi yüklenemedi. Dosya bozuk olabilir"
 msgid "Invalid entry in known file list, file may be corrupt: "
 msgstr "Bilinen dosyalar listesinde geçersiz girdi bulundu. Dosya bozuk olabilir: "
 
+#: src/LanguageList.cpp
+msgid "System default"
+msgstr "Sistem öntanımlısı"
+
+#: src/LanguageList.cpp
+msgid "Albanian"
+msgstr "Arnavutça"
+
+#: src/LanguageList.cpp
+msgid "Arabic"
+msgstr "Arapça"
+
+#: src/LanguageList.cpp
+msgid "Asturian"
+msgstr "Asturyasça"
+
+#: src/LanguageList.cpp
+msgid "Basque"
+msgstr "Baskça"
+
+#: src/LanguageList.cpp
+msgid "Bulgarian"
+msgstr "Bulgarca"
+
+#: src/LanguageList.cpp
+msgid "Catalan"
+msgstr "Katalanca"
+
+#: src/LanguageList.cpp
+msgid "Chinese (Simplified)"
+msgstr "Çince (Basitleştirilmiş)"
+
+#: src/LanguageList.cpp
+msgid "Chinese (Traditional)"
+msgstr "Çince (Geleneksel)"
+
+#: src/LanguageList.cpp
+msgid "Croatian"
+msgstr "Hırvatça"
+
+#: src/LanguageList.cpp
+msgid "Czech"
+msgstr "Çekçe"
+
+#: src/LanguageList.cpp
+msgid "Danish"
+msgstr "Danca"
+
+#: src/LanguageList.cpp
+msgid "Dutch"
+msgstr "Felemenkçe"
+
+#: src/LanguageList.cpp
+msgid "English (U.K.)"
+msgstr "İngilizce (U.K)"
+
+#: src/LanguageList.cpp
+msgid "English (U.S.)"
+msgstr "İngilizce (ABD)"
+
+#: src/LanguageList.cpp
+msgid "Estonian"
+msgstr "Estonca"
+
+#: src/LanguageList.cpp
+msgid "Finnish"
+msgstr "Fince"
+
+#: src/LanguageList.cpp
+msgid "French"
+msgstr "Fransızca"
+
+#: src/LanguageList.cpp
+msgid "Galician"
+msgstr "Galce"
+
+#: src/LanguageList.cpp
+msgid "German"
+msgstr "Almanca"
+
+#: src/LanguageList.cpp
+msgid "Greek"
+msgstr "Yunanca"
+
+#: src/LanguageList.cpp
+msgid "Hebrew"
+msgstr "İbranice"
+
+#: src/LanguageList.cpp
+msgid "Hungarian"
+msgstr "Macarca"
+
+#: src/LanguageList.cpp
+msgid "Italian"
+msgstr "İtalyanca"
+
+#: src/LanguageList.cpp
+msgid "Japanese"
+msgstr "Japonca"
+
+#: src/LanguageList.cpp
+msgid "Korean"
+msgstr "Korece"
+
+#: src/LanguageList.cpp
+msgid "Latvian"
+msgstr "Letonca"
+
+#: src/LanguageList.cpp
+msgid "Lithuanian"
+msgstr "Litvanyaca"
+
+#: src/LanguageList.cpp
+msgid "Norwegian (Nynorsk)"
+msgstr "Norveççe (Nynorsk)"
+
+#: src/LanguageList.cpp
+msgid "Polish"
+msgstr "Lehçe"
+
+#: src/LanguageList.cpp
+msgid "Portuguese"
+msgstr "Portekizce"
+
+#: src/LanguageList.cpp
+msgid "Portuguese (Brazilian)"
+msgstr "Portekizce (Brezilya)"
+
+#: src/LanguageList.cpp
+msgid "Romanian"
+msgstr "Rumence"
+
+#: src/LanguageList.cpp
+msgid "Russian"
+msgstr "Rusça"
+
+#: src/LanguageList.cpp
+msgid "Slovenian"
+msgstr "Slovence"
+
+#: src/LanguageList.cpp
+msgid "Spanish"
+msgstr "İspanyolca"
+
+#: src/LanguageList.cpp
+msgid "Swedish"
+msgstr "İsveççe"
+
+#: src/LanguageList.cpp
+msgid "Turkish"
+msgstr "Türkçe"
+
+#: src/LanguageList.cpp
+msgid "Ukrainian"
+msgstr "Ukraynaca"
+
 #: src/libs/common/Format.cpp
 #, c-format
 msgid "Unknown error %d"
@@ -5902,174 +6058,6 @@ msgstr "Yetersiz disk alanı"
 #, c-format
 msgid "ERROR: Failed to open partfile '%s'"
 msgstr "HATA: Parça dosyası '%s' açılamıyor"
-
-#: src/Preferences.cpp
-msgid "System default"
-msgstr "Sistem öntanımlısı"
-
-#: src/Preferences.cpp
-msgid "Albanian"
-msgstr "Arnavutça"
-
-#: src/Preferences.cpp
-msgid "Arabic"
-msgstr "Arapça"
-
-#: src/Preferences.cpp
-msgid "Asturian"
-msgstr "Asturyasça"
-
-#: src/Preferences.cpp
-msgid "Basque"
-msgstr "Baskça"
-
-#: src/Preferences.cpp
-msgid "Bulgarian"
-msgstr "Bulgarca"
-
-#: src/Preferences.cpp
-msgid "Catalan"
-msgstr "Katalanca"
-
-#: src/Preferences.cpp
-msgid "Chinese (Simplified)"
-msgstr "Çince (Basitleştirilmiş)"
-
-#: src/Preferences.cpp
-msgid "Chinese (Traditional)"
-msgstr "Çince (Geleneksel)"
-
-#: src/Preferences.cpp
-msgid "Croatian"
-msgstr "Hırvatça"
-
-#: src/Preferences.cpp
-msgid "Czech"
-msgstr "Çekçe"
-
-#: src/Preferences.cpp
-msgid "Danish"
-msgstr "Danca"
-
-#: src/Preferences.cpp
-msgid "Dutch"
-msgstr "Felemenkçe"
-
-#: src/Preferences.cpp
-msgid "English (U.K.)"
-msgstr "İngilizce (U.K)"
-
-#: src/Preferences.cpp
-msgid "English (U.S.)"
-msgstr "İngilizce (ABD)"
-
-#: src/Preferences.cpp
-msgid "Estonian"
-msgstr "Estonca"
-
-#: src/Preferences.cpp
-msgid "Finnish"
-msgstr "Fince"
-
-#: src/Preferences.cpp
-msgid "French"
-msgstr "Fransızca"
-
-#: src/Preferences.cpp
-msgid "Galician"
-msgstr "Galce"
-
-#: src/Preferences.cpp
-msgid "German"
-msgstr "Almanca"
-
-#: src/Preferences.cpp
-msgid "Greek"
-msgstr "Yunanca"
-
-#: src/Preferences.cpp
-msgid "Hebrew"
-msgstr "İbranice"
-
-#: src/Preferences.cpp
-msgid "Hungarian"
-msgstr "Macarca"
-
-#: src/Preferences.cpp
-msgid "Italian"
-msgstr "İtalyanca"
-
-#: src/Preferences.cpp
-msgid "Japanese"
-msgstr "Japonca"
-
-#: src/Preferences.cpp
-msgid "Korean"
-msgstr "Korece"
-
-#: src/Preferences.cpp
-msgid "Latvian"
-msgstr "Letonca"
-
-#: src/Preferences.cpp
-msgid "Lithuanian"
-msgstr "Litvanyaca"
-
-#: src/Preferences.cpp
-msgid "Norwegian (Nynorsk)"
-msgstr "Norveççe (Nynorsk)"
-
-#: src/Preferences.cpp
-msgid "Polish"
-msgstr "Lehçe"
-
-#: src/Preferences.cpp
-msgid "Portuguese"
-msgstr "Portekizce"
-
-#: src/Preferences.cpp
-msgid "Portuguese (Brazilian)"
-msgstr "Portekizce (Brezilya)"
-
-#: src/Preferences.cpp
-msgid "Romanian"
-msgstr "Rumence"
-
-#: src/Preferences.cpp
-msgid "Russian"
-msgstr "Rusça"
-
-#: src/Preferences.cpp
-msgid "Slovenian"
-msgstr "Slovence"
-
-#: src/Preferences.cpp
-msgid "Spanish"
-msgstr "İspanyolca"
-
-#: src/Preferences.cpp
-msgid "Swedish"
-msgstr "İsveççe"
-
-#: src/Preferences.cpp
-msgid "Turkish"
-msgstr "Türkçe"
-
-#: src/Preferences.cpp
-msgid "Ukrainian"
-msgstr "Ukraynaca"
-
-#: src/Preferences.cpp
-msgid "Change Language"
-msgstr "Dili Değiştirin"
-
-#: src/Preferences.cpp
-msgid "There are no translations installed for aMule"
-msgstr "aMule tercümeleri kurulu değildir"
-
-#: src/Preferences.cpp
-msgid "No languages available"
-msgstr "Diller mevcut değil"
 
 #: src/Preferences.cpp
 msgid "no options available"
@@ -9320,6 +9308,15 @@ msgstr "Kullanıcı verileri $APPDATA\\aMule konumunda kaldırılıyor…"
 
 #~ msgid "ERROR: Could not listen to TCP port."
 #~ msgstr "HATA: TCP portu dinlenemiyor."
+
+#~ msgid "Change Language"
+#~ msgstr "Dili Değiştirin"
+
+#~ msgid "There are no translations installed for aMule"
+#~ msgstr "aMule tercümeleri kurulu değildir"
+
+#~ msgid "No languages available"
+#~ msgstr "Diller mevcut değil"
 
 #~ msgid "User name"
 #~ msgstr "Kullanıcı adı"

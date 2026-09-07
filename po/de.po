@@ -13,7 +13,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: aMule\n"
 "Report-Msgid-Bugs-To: https://github.com/amule-org/amule/issues\n"
-"POT-Creation-Date: 2026-09-06 09:45+0200\n"
+"POT-Creation-Date: 2026-09-07 12:03+0200\n"
 "PO-Revision-Date: 2026-09-05 10:47+0000\n"
 "Last-Translator: Werner Mahr <werner@vollstreckernet.de>\n"
 "Language-Team: German <>\n"
@@ -3233,6 +3233,163 @@ msgstr "Laden eines Eintrags aus der Liste bekannter Dateien fehlgeschlagen, Dat
 msgid "Invalid entry in known file list, file may be corrupt: "
 msgstr "Ungültiger Eintrag in der Liste bekannter Dateien, Datei möglicherweise beschädigt: "
 
+#: src/LanguageList.cpp
+msgid "System default"
+msgstr "Systemvorgabe"
+
+#: src/LanguageList.cpp
+msgid "Albanian"
+msgstr "Albanisch"
+
+#: src/LanguageList.cpp
+msgid "Arabic"
+msgstr "Arabisch"
+
+#: src/LanguageList.cpp
+msgid "Asturian"
+msgstr "Asturisch"
+
+#: src/LanguageList.cpp
+msgid "Basque"
+msgstr "Baskisch"
+
+#: src/LanguageList.cpp
+msgid "Bulgarian"
+msgstr "Bulgarisch"
+
+#: src/LanguageList.cpp
+msgid "Catalan"
+msgstr "Katalanisch"
+
+#: src/LanguageList.cpp
+msgid "Chinese (Simplified)"
+msgstr "Chinesisch (vereinfacht)"
+
+#: src/LanguageList.cpp
+msgid "Chinese (Traditional)"
+msgstr "Chinesisch (traditionell)"
+
+#: src/LanguageList.cpp
+msgid "Croatian"
+msgstr "Kroatisch"
+
+#: src/LanguageList.cpp
+msgid "Czech"
+msgstr "Tschechisch"
+
+#: src/LanguageList.cpp
+msgid "Danish"
+msgstr "Dänisch"
+
+#: src/LanguageList.cpp
+msgid "Dutch"
+msgstr "Holländisch"
+
+#: src/LanguageList.cpp
+msgid "English (U.K.)"
+msgstr "Englisch (UK)"
+
+#: src/LanguageList.cpp
+#, fuzzy
+msgid "English (U.S.)"
+msgstr "Englisch (UK)"
+
+#: src/LanguageList.cpp
+msgid "Estonian"
+msgstr "Estnisch"
+
+#: src/LanguageList.cpp
+msgid "Finnish"
+msgstr "Finnisch"
+
+#: src/LanguageList.cpp
+msgid "French"
+msgstr "Französisch"
+
+#: src/LanguageList.cpp
+msgid "Galician"
+msgstr "Galizisch"
+
+#: src/LanguageList.cpp
+msgid "German"
+msgstr "Deutsch"
+
+#: src/LanguageList.cpp
+msgid "Greek"
+msgstr "Griechisch"
+
+#: src/LanguageList.cpp
+msgid "Hebrew"
+msgstr "Hebräisch"
+
+#: src/LanguageList.cpp
+msgid "Hungarian"
+msgstr "Ungarisch"
+
+#: src/LanguageList.cpp
+msgid "Italian"
+msgstr "Italienisch"
+
+#: src/LanguageList.cpp
+msgid "Japanese"
+msgstr "Japanisch"
+
+#: src/LanguageList.cpp
+msgid "Korean"
+msgstr "Koreanisch"
+
+#: src/LanguageList.cpp
+msgid "Latvian"
+msgstr ""
+
+#: src/LanguageList.cpp
+msgid "Lithuanian"
+msgstr "Litauisch"
+
+#: src/LanguageList.cpp
+msgid "Norwegian (Nynorsk)"
+msgstr "Norwegisch"
+
+#: src/LanguageList.cpp
+msgid "Polish"
+msgstr "Polnisch"
+
+#: src/LanguageList.cpp
+msgid "Portuguese"
+msgstr "Portugiesisch"
+
+#: src/LanguageList.cpp
+msgid "Portuguese (Brazilian)"
+msgstr "Portugiesisch (Brasilianisch)"
+
+#: src/LanguageList.cpp
+msgid "Romanian"
+msgstr "Rumänisch"
+
+#: src/LanguageList.cpp
+msgid "Russian"
+msgstr "Russisch"
+
+#: src/LanguageList.cpp
+msgid "Slovenian"
+msgstr "Slowenisch"
+
+#: src/LanguageList.cpp
+msgid "Spanish"
+msgstr "Spanisch"
+
+#: src/LanguageList.cpp
+msgid "Swedish"
+msgstr "Schwedisch"
+
+#: src/LanguageList.cpp
+msgid "Turkish"
+msgstr "Türkisch"
+
+#: src/LanguageList.cpp
+msgid "Ukrainian"
+msgstr "Ukrainisch"
+
 #: src/libs/common/Format.cpp
 #, c-format
 msgid "Unknown error %d"
@@ -5948,175 +6105,6 @@ msgstr "Zu wenig Festplattenplatz"
 #, c-format
 msgid "ERROR: Failed to open partfile '%s'"
 msgstr "FEHLER: Öffnen von Partfile '%s' fehlgeschlagen"
-
-#: src/Preferences.cpp
-msgid "System default"
-msgstr "Systemvorgabe"
-
-#: src/Preferences.cpp
-msgid "Albanian"
-msgstr "Albanisch"
-
-#: src/Preferences.cpp
-msgid "Arabic"
-msgstr "Arabisch"
-
-#: src/Preferences.cpp
-msgid "Asturian"
-msgstr "Asturisch"
-
-#: src/Preferences.cpp
-msgid "Basque"
-msgstr "Baskisch"
-
-#: src/Preferences.cpp
-msgid "Bulgarian"
-msgstr "Bulgarisch"
-
-#: src/Preferences.cpp
-msgid "Catalan"
-msgstr "Katalanisch"
-
-#: src/Preferences.cpp
-msgid "Chinese (Simplified)"
-msgstr "Chinesisch (vereinfacht)"
-
-#: src/Preferences.cpp
-msgid "Chinese (Traditional)"
-msgstr "Chinesisch (traditionell)"
-
-#: src/Preferences.cpp
-msgid "Croatian"
-msgstr "Kroatisch"
-
-#: src/Preferences.cpp
-msgid "Czech"
-msgstr "Tschechisch"
-
-#: src/Preferences.cpp
-msgid "Danish"
-msgstr "Dänisch"
-
-#: src/Preferences.cpp
-msgid "Dutch"
-msgstr "Holländisch"
-
-#: src/Preferences.cpp
-msgid "English (U.K.)"
-msgstr "Englisch (UK)"
-
-#: src/Preferences.cpp
-#, fuzzy
-msgid "English (U.S.)"
-msgstr "Englisch (UK)"
-
-#: src/Preferences.cpp
-msgid "Estonian"
-msgstr "Estnisch"
-
-#: src/Preferences.cpp
-msgid "Finnish"
-msgstr "Finnisch"
-
-#: src/Preferences.cpp
-msgid "French"
-msgstr "Französisch"
-
-#: src/Preferences.cpp
-msgid "Galician"
-msgstr "Galizisch"
-
-#: src/Preferences.cpp
-msgid "German"
-msgstr "Deutsch"
-
-#: src/Preferences.cpp
-msgid "Greek"
-msgstr "Griechisch"
-
-#: src/Preferences.cpp
-msgid "Hebrew"
-msgstr "Hebräisch"
-
-#: src/Preferences.cpp
-msgid "Hungarian"
-msgstr "Ungarisch"
-
-#: src/Preferences.cpp
-msgid "Italian"
-msgstr "Italienisch"
-
-#: src/Preferences.cpp
-msgid "Japanese"
-msgstr "Japanisch"
-
-#: src/Preferences.cpp
-msgid "Korean"
-msgstr "Koreanisch"
-
-#: src/Preferences.cpp
-msgid "Latvian"
-msgstr ""
-
-#: src/Preferences.cpp
-msgid "Lithuanian"
-msgstr "Litauisch"
-
-#: src/Preferences.cpp
-msgid "Norwegian (Nynorsk)"
-msgstr "Norwegisch"
-
-#: src/Preferences.cpp
-msgid "Polish"
-msgstr "Polnisch"
-
-#: src/Preferences.cpp
-msgid "Portuguese"
-msgstr "Portugiesisch"
-
-#: src/Preferences.cpp
-msgid "Portuguese (Brazilian)"
-msgstr "Portugiesisch (Brasilianisch)"
-
-#: src/Preferences.cpp
-msgid "Romanian"
-msgstr "Rumänisch"
-
-#: src/Preferences.cpp
-msgid "Russian"
-msgstr "Russisch"
-
-#: src/Preferences.cpp
-msgid "Slovenian"
-msgstr "Slowenisch"
-
-#: src/Preferences.cpp
-msgid "Spanish"
-msgstr "Spanisch"
-
-#: src/Preferences.cpp
-msgid "Swedish"
-msgstr "Schwedisch"
-
-#: src/Preferences.cpp
-msgid "Turkish"
-msgstr "Türkisch"
-
-#: src/Preferences.cpp
-msgid "Ukrainian"
-msgstr "Ukrainisch"
-
-#: src/Preferences.cpp
-msgid "Change Language"
-msgstr "Sprache ändern"
-
-#: src/Preferences.cpp
-msgid "There are no translations installed for aMule"
-msgstr "Für aMule sind keine Übersetzungen installiert"
-
-#: src/Preferences.cpp
-msgid "No languages available"
-msgstr "Keine Sprachen verfügbar"
 
 #: src/Preferences.cpp
 msgid "no options available"
@@ -9398,6 +9386,15 @@ msgstr "Entferne Benutzerdaten von $APPDATA\\aMule..."
 
 #~ msgid "ERROR: Could not listen to TCP port."
 #~ msgstr "FEHLER: Kann nicht auf TCP-Port lauschen."
+
+#~ msgid "Change Language"
+#~ msgstr "Sprache ändern"
+
+#~ msgid "There are no translations installed for aMule"
+#~ msgstr "Für aMule sind keine Übersetzungen installiert"
+
+#~ msgid "No languages available"
+#~ msgstr "Keine Sprachen verfügbar"
 
 #~ msgid "User name"
 #~ msgstr "Benutzername"

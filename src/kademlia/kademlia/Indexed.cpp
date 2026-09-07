@@ -182,24 +182,28 @@ void CIndexed::ReadFile()
 												toAdd->m_uIP =
 													tag->GetInt();
 												toAdd->AddTag(
-													tag);
+													tag,
+													0);
 											} else if (
 												!tag->GetName()
 													 .Cmp(TAG_SOURCEPORT)) {
 												toAdd->m_uTCPport =
 													tag->GetInt();
 												toAdd->AddTag(
-													tag);
+													tag,
+													0);
 											} else if (
 												!tag->GetName()
 													 .Cmp(TAG_SOURCEUPORT)) {
 												toAdd->m_uUDPport =
 													tag->GetInt();
 												toAdd->AddTag(
-													tag);
+													tag,
+													0);
 											} else {
 												toAdd->AddTag(
-													tag);
+													tag,
+													0);
 											}
 										}
 										tagList--;
@@ -251,21 +255,21 @@ void CIndexed::ReadFile()
 											    TAG_SOURCEIP)) {
 											toAdd->m_uIP =
 												tag->GetInt();
-											toAdd->AddTag(tag);
+											toAdd->AddTag(tag, 0);
 										} else if (
 											!tag->GetName().Cmp(
 												TAG_SOURCEPORT)) {
 											toAdd->m_uTCPport =
 												tag->GetInt();
-											toAdd->AddTag(tag);
+											toAdd->AddTag(tag, 0);
 										} else if (
 											!tag->GetName().Cmp(
 												TAG_SOURCEUPORT)) {
 											toAdd->m_uUDPport =
 												tag->GetInt();
-											toAdd->AddTag(tag);
+											toAdd->AddTag(tag, 0);
 										} else {
-											toAdd->AddTag(tag);
+											toAdd->AddTag(tag, 0);
 										}
 									}
 									tagList--;
@@ -376,7 +380,17 @@ CIndexed::~CIndexed()
 
 		CFile k_file;
 		if (k_file.Open(m_kfilename, CFile::write)) {
+			// Version 4 carries the AICH block and the per-publisher hash
+			// index; gated with the writer in
+			// CKeyEntry::WritePublishTrackingDataToFile, so a gate-off
+			// build writes the version-3 file upstream writes. Reading
+			// both is unconditional, so switching the gate either way
+			// never invalidates an existing keyword index.
+#ifdef ENABLE_KAD_PROTOCOL_10
 			k_file.WriteUInt32(4); // version, see the note in ReadFile()
+#else
+			k_file.WriteUInt32(3); // version, see the note in ReadFile()
+#endif
 			k_file.WriteUInt32(now + KADEMLIAREPUBLISHTIMEK);
 			k_file.WriteUInt128(Kademlia::CKademlia::GetPrefs()->GetKadID());
 

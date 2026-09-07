@@ -77,6 +77,39 @@ CEntry *CEntry::Copy() const
 	return entry;
 }
 
+void CEntry::AddTag(CTag *tag, uint32_t dbgSourceIP)
+{
+	// Filter tags which are for sending query results only and should never be stored (or even
+	// worse sent within the taglist). TAG_PUBLISHINFO is one we build when answering a keyword
+	// search, out of our own count of distinct publishers and how much we trust them; stored, a
+	// peer-supplied one travels back out of CKeyEntry::WriteTagListWithPublishInfo() alongside
+	// our genuine value.
+	//
+	// TAG_KADAICHHASHRESULT is the same shape of tag and belongs in the same
+	// branch: we build it when answering a keyword search, out of the AICH
+	// hashes publishers gave us and how many gave each one. A stored
+	// peer-supplied one leaves by the same route and reads as our own
+	// assessment. Deliberately ungated: the guard's value is that it is one
+	// unconditional branch covering every caller, and filtering a tag this
+	// build never emits costs nothing. It also covers the three storing paths
+	// a handler-side filter does not -- source and notes publishing, and
+	// CIndexed::ReadFile(), which rebuilds every entry from key_index.dat
+	// with its raw taglist, so a node poisoned before this fix would reload
+	// the tag on restart and keep serving it.
+	//
+	// TAG_KADAICHHASHPUB is not here: that one is consumed into a member
+	// rather than filtered, which is the split 0.70b, 0.72a, eMuleAI and
+	// emule-qt all use.
+	if (!tag->GetName().Cmp(TAG_PUBLISHINFO) || !tag->GetName().Cmp(TAG_KADAICHHASHRESULT)) {
+		AddDebugLogLineN(logKadEntryTracking,
+			CFormat("Filtered result-only tag on storing, source %s") %
+				(dbgSourceIP ? KadIPToString(dbgSourceIP) : wxString(wxT("local"))));
+		delete tag;
+		return;
+	}
+	m_taglist.push_back(tag);
+}
+
 bool CEntry::GetIntTagValue(const wxString &tagname, uint64_t &value, bool includeVirtualTags) const
 {
 	for (TagPtrList::const_iterator it = m_taglist.begin(); it != m_taglist.end(); ++it) {
@@ -556,7 +589,7 @@ void CKeyEntry::MergeIPsAndFilenames(CKeyEntry *fromEntry)
 		wxASSERT(m_uIP != 0);
 		uint16_t aichHashIdx = hasNewAICHHash ? m_aichHashes.AddReference(newAICHHash)
 						      : CKadAICHHashList::INVALID_INDEX;
-		sPublishingIP add = { m_uIP, time(NULL), aichHashIdx };
+		sPublishingIP add = { m_uIP, time(nullptr), aichHashIdx };
 		m_publishingIPs->push_back(add);
 
 		// add the publisher to the tacking list
@@ -671,6 +704,12 @@ void CKeyEntry::WritePublishTrackingDataToFile(CFileDataIO *data)
 	// Only referenced hashes are written, so the stored indexes are the
 	// compacted ones -- otherwise a hash whose last publisher expired would
 	// be reloaded with a popularity of zero for ever.
+	//
+	// Gated together with the keyword-index version in CIndexed: with the
+	// gate off we write a version-3 file with neither the AICH block nor the
+	// per-publisher index, which is byte-for-byte what upstream writes and
+	// what an upstream binary can read back.
+#ifdef ENABLE_KAD_PROTOCOL_10
 	const std::vector<uint16_t> newIndexes = m_aichHashes.BuildCompactionMap();
 	data->WriteUInt16(m_aichHashes.GetReferencedCount());
 	for (uint16_t i = 0; i < m_aichHashes.GetSlotCount(); i++) {
@@ -679,6 +718,7 @@ void CKeyEntry::WritePublishTrackingDataToFile(CFileDataIO *data)
 			data->Write(hash.data(), hash.size());
 		}
 	}
+#endif
 
 	data->WriteUInt32((uint32_t)m_filenames.size());
 	for (FileNameList::const_iterator it = m_filenames.begin(); it != m_filenames.end(); ++it) {
@@ -694,11 +734,13 @@ void CKeyEntry::WritePublishTrackingDataToFile(CFileDataIO *data)
 			wxASSERT(it->m_ip != 0);
 			data->WriteUInt32(it->m_ip);
 			data->WriteUInt32((uint32_t)it->m_lastPublish);
+#ifdef ENABLE_KAD_PROTOCOL_10
 			uint16_t idx = CKadAICHHashList::INVALID_INDEX;
 			if (it->m_aichHashIdx != CKadAICHHashList::INVALID_INDEX) {
 				idx = newIndexes[it->m_aichHashIdx];
 			}
 			data->WriteUInt16(idx);
+#endif
 		}
 	} else {
 		wxFAIL;
@@ -814,7 +856,13 @@ void CKeyEntry::WriteTagListWithPublishInfo(CFileDataIO *data)
 	// that gates on the sender's advertised version (see
 	// CSearch::ProcessResultKeyword) so a fake tag from an old node cannot
 	// be laundered through us.
+#ifdef ENABLE_KAD_PROTOCOL_10
 	std::vector<uint8_t> aichTagValue = m_aichHashes.EncodeResultTag();
+#else
+	// Gate off: no AICH tag is ever put in a search answer, so the tag count
+	// and the packet are exactly upstream's.
+	const std::vector<uint8_t> aichTagValue;
+#endif
 	WriteTagListInc(data, aichTagValue.empty() ? 1 : 2);
 
 	uint32_t trust = (uint16_t)(GetTrustValue() * 100);

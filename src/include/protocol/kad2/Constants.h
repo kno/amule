@@ -42,13 +42,21 @@
 #define KADEMLIA_VERSION8_49b 0x08 /* TAG_KADMISCOPTIONS, KADEMLIA2_HELLO_RES_ACK */
 #define KADEMLIA_VERSION9_50a 0x09 /* AICH hashes on keyword storage */
 
-// Our own advertised version.  Bumped from 0x08 to 0x0a alongside the AICH
-// keyword-storage support that 0x09 introduced; 0x0a adds no further wire
-// element of its own and is the level eMule/eMuleAI advertise.
+// Our own advertised version.  0x0a alongside the AICH keyword-storage support
+// that 0x09 introduced; 0x0a adds no further wire element of its own and is the
+// level eMule/eMuleAI advertise.
+//
+// Gated on ENABLE_KAD_PROTOCOL_10 (configure-time, OFF by default) because this
+// byte goes out in every Kad2 hello: without the switch we keep advertising
+// 0x08, which is what a build without the 0x09 features can honestly claim.
 //
 // Note for a future bump: CT_EMULE_MISCOPTIONS2 has to change once the Kad
 // version reaches 0x0F, because the eD2k capability field only reserves four
 // bits for it.
+#ifdef ENABLE_KAD_PROTOCOL_10
 #define KADEMLIA_VERSION 0x0a
+#else
+#define KADEMLIA_VERSION 0x08 /* 0.49b */
+#endif
 
 #endif // KAD2CONSTANTS_H

@@ -61,8 +61,8 @@ void CKadAICHHashList::DropReferenceAt(uint16_t index)
 uint16_t CKadAICHHashList::GetReferencedCount() const
 {
 	uint16_t count = 0;
-	for (size_t i = 0; i < m_popularity.size(); ++i) {
-		if (m_popularity[i] > 0) {
+	for (const uint16_t popularity : m_popularity) {
+		if (popularity > 0) {
 			count++;
 		}
 	}
@@ -85,7 +85,10 @@ const CKadAICHHash &CKadAICHHashList::GetHashAt(uint16_t index) const
 
 std::vector<uint16_t> CKadAICHHashList::BuildCompactionMap() const
 {
-	std::vector<uint16_t> map(m_hashes.size(), INVALID_INDEX);
+	// uint16_t(...) rather than INVALID_INDEX: the fill constructor takes a
+	// const reference, which would ODR-use the member and need an
+	// out-of-line definition -- ill-formed for a constexpr member in C++17.
+	std::vector<uint16_t> map(m_hashes.size(), uint16_t(INVALID_INDEX));
 	uint16_t next = 0;
 	for (size_t i = 0; i < m_hashes.size(); ++i) {
 		if (m_popularity[i] > 0) {
@@ -126,7 +129,7 @@ std::vector<uint8_t> CKadAICHHashList::EncodeResultTag() const
 bool CKadAICHHashList::DecodeResultTag(const uint8_t *data, size_t length, std::vector<SResultHash> &out)
 {
 	out.clear();
-	if (data == NULL || length < 1) {
+	if (data == nullptr || length < 1) {
 		return false;
 	}
 
@@ -158,15 +161,43 @@ bool CKadAICHHashList::PeerSupportsAICHKeywordStorage(uint8_t peerKadVersion)
 	return peerKadVersion >= KADEMLIA_VERSION9_50a;
 }
 
-const CKadAICHHashList::SResultHash *CKadAICHHashList::GetMostPopular(const std::vector<SResultHash> &hashes)
+const CKadAICHHashList::SResultHash *CKadAICHHashList::SelectTrusted(
+	const std::vector<SResultHash> &hashes, uint32_t publishersKnown)
 {
-	const SResultHash *best = NULL;
-	for (size_t i = 0; i < hashes.size(); ++i) {
-		if (best == NULL || hashes[i].m_popularity > best->m_popularity) {
-			best = &hashes[i];
-		}
+	// Two rules, both eMule 0.70b's at SearchList.cpp:795-805, and both
+	// refusals rather than choices.
+	//
+	// Competing hashes for one file id mean at least one publisher is lying.
+	// Taking the most popular of them looks like the obvious answer and is
+	// the wrong one: popularity here is a count a peer reports about itself,
+	// so whoever is lying also controls the number that would decide the
+	// vote. Upstream ignores AICH for such a result entirely, and the
+	// destination being SetMasterHash(hash, AICH_VERIFIED) is why -- there is
+	// no "probably right" state to put a contested hash into.
+	if (hashes.size() != 1) {
+		return nullptr;
 	}
-	return best;
+
+	// One hash still is not enough on its own. A single publisher out of many
+	// is not agreement, it is one peer we happen to have asked, so the hash
+	// must come from at least a third of the publishers known for this file.
+	// Written as a ratio to match upstream's own arithmetic rather than
+	// restating it as a multiplication.
+	//
+	// publishersKnown == 0 is refused, which upstream guards explicitly too:
+	// its condition is byPublishers > 0 && popularity > 0 && the ratio. Worth
+	// stating because the ratio alone would pass it, 0 / anything being 0. A
+	// zero count means TAG_PUBLISHINFO was absent or zero, so there is no
+	// publisher count to be a third of, and accepting there would make a
+	// result with no corroboration at all the easiest one to get accepted.
+	const uint8_t popularity = hashes[0].m_popularity;
+	if (popularity == 0 || publishersKnown == 0) {
+		return nullptr;
+	}
+	if (publishersKnown / popularity > 3) {
+		return nullptr;
+	}
+	return &hashes[0];
 }
 
 } // namespace Kademlia

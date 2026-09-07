@@ -322,3 +322,49 @@ endif()
 # package manager want OFF, so the distro's package manager owns updates.
 # Standalone / portable / AppImage builds and Windows/macOS want ON.
 option (ENABLE_VERSION_CHECK "compile in the in-app new-version check (startup notification + About 'Check for updates'); OFF for OS-package builds" ON)
+
+# Master switch for the Kademlia protocol 0x0a catch-up: the advertised
+# KADEMLIA_VERSION bump from 0x08 to 0x0a and the AICH hashes that 0x09 added
+# to keyword storage.
+#
+# OFF by default, and OFF means inert: every site that would put a different
+# byte on the wire, or a different byte in the on-disk keyword index, is
+# compiled out, so a default build advertises 0x08 and emits exactly what
+# upstream emits. CKadAICHHashList and its unit test are compiled either way --
+# the class is self-contained, so gating the file would only cost test
+# coverage.
+#
+# The switch is a plain compile definition rather than a config.h entry because
+# it has to be visible inside src/include/protocol/kad2/Constants.h, which is
+# pulled in by headers that never see config.h.
+option (ENABLE_KAD_PROTOCOL_10 "advertise Kademlia protocol 0x0a and enable the AICH hashes on keyword storage that Kad 0x09 introduced" OFF)
+
+# Every experimental switch, named once. A switch belongs here as well as in its
+# own option() above, and that is the only bookkeeping adding one costs: the
+# loop below defines it, and ENABLE_ALL_EXPERIMENTAL turns the whole set on, so
+# no CI job has to name individual switches. The clang-tidy jobs build their
+# compile database with ENABLE_ALL_EXPERIMENTAL, because a switch that is OFF is
+# removed by the preprocessor and never analysed at all.
+#
+# Deliberately a list rather than a naming convention or a grep over ENABLE_*:
+# the latter would sweep in ENABLE_UPNP, ENABLE_NLS and the rest, which are
+# ordinary build options rather than unfinished features.
+set (AMULE_EXPERIMENTAL_OPTIONS
+	ENABLE_KAD_PROTOCOL_10
+)
+
+option (ENABLE_ALL_EXPERIMENTAL "turn on every switch in AMULE_EXPERIMENTAL_OPTIONS at once" OFF)
+
+foreach (experimental_option IN LISTS AMULE_EXPERIMENTAL_OPTIONS)
+	# ENABLE_ALL_EXPERIMENTAL wins over an individual switch: option() leaves
+	# an unset switch defined as OFF, so an explicit -DENABLE_X=NO is
+	# indistinguishable from not passing it and cannot be honoured as an
+	# opt-out. To build every switch but one, name the switches individually
+	# and leave ENABLE_ALL_EXPERIMENTAL off.
+	#
+	# Nothing here writes the cache, so enabling the set for one configure
+	# does not leave the individual switches ON for later ones.
+	if (${experimental_option} OR ENABLE_ALL_EXPERIMENTAL)
+		add_compile_definitions (${experimental_option})
+	endif()
+endforeach()

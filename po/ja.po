@@ -9,7 +9,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: aMule\n"
 "Report-Msgid-Bugs-To: https://github.com/amule-org/amule/issues\n"
-"POT-Creation-Date: 2026-09-06 09:45+0200\n"
+"POT-Creation-Date: 2026-09-07 12:03+0200\n"
 "PO-Revision-Date: 2026-09-05 10:54+0000\n"
 "Last-Translator: \n"
 "Language-Team: Japanese\n"
@@ -3222,6 +3222,165 @@ msgstr ""
 msgid "Invalid entry in known file list, file may be corrupt: "
 msgstr ""
 
+#: src/LanguageList.cpp
+msgid "System default"
+msgstr "システムの標準設定"
+
+#: src/LanguageList.cpp
+msgid "Albanian"
+msgstr "アルバニア語"
+
+#: src/LanguageList.cpp
+msgid "Arabic"
+msgstr "アラブ語"
+
+#: src/LanguageList.cpp
+#, fuzzy
+msgid "Asturian"
+msgstr "エストニア語"
+
+#: src/LanguageList.cpp
+msgid "Basque"
+msgstr "バスク語"
+
+#: src/LanguageList.cpp
+msgid "Bulgarian"
+msgstr "ブルガリア語"
+
+#: src/LanguageList.cpp
+msgid "Catalan"
+msgstr "カタロニア語"
+
+#: src/LanguageList.cpp
+msgid "Chinese (Simplified)"
+msgstr "中国語（簡体字）"
+
+#: src/LanguageList.cpp
+msgid "Chinese (Traditional)"
+msgstr "中国語（繁体字）"
+
+#: src/LanguageList.cpp
+msgid "Croatian"
+msgstr "クロアチア語"
+
+#: src/LanguageList.cpp
+msgid "Czech"
+msgstr "チェコ語"
+
+#: src/LanguageList.cpp
+msgid "Danish"
+msgstr "デンマーク語"
+
+#: src/LanguageList.cpp
+msgid "Dutch"
+msgstr "オランダ語"
+
+#: src/LanguageList.cpp
+msgid "English (U.K.)"
+msgstr "英語（U.K.）"
+
+#: src/LanguageList.cpp
+#, fuzzy
+msgid "English (U.S.)"
+msgstr "英語（U.K.）"
+
+#: src/LanguageList.cpp
+msgid "Estonian"
+msgstr "エストニア語"
+
+#: src/LanguageList.cpp
+msgid "Finnish"
+msgstr "フィンランド語"
+
+#: src/LanguageList.cpp
+msgid "French"
+msgstr "フランス語"
+
+#: src/LanguageList.cpp
+msgid "Galician"
+msgstr "ガリシア語"
+
+#: src/LanguageList.cpp
+msgid "German"
+msgstr "ドイツ語"
+
+#: src/LanguageList.cpp
+msgid "Greek"
+msgstr "ギリシア語"
+
+#: src/LanguageList.cpp
+msgid "Hebrew"
+msgstr "ヘブライ語"
+
+#: src/LanguageList.cpp
+msgid "Hungarian"
+msgstr "ハンガリー語"
+
+#: src/LanguageList.cpp
+msgid "Italian"
+msgstr "イタリア語"
+
+#: src/LanguageList.cpp
+msgid "Japanese"
+msgstr "日本語"
+
+#: src/LanguageList.cpp
+msgid "Korean"
+msgstr "韓国語"
+
+#: src/LanguageList.cpp
+msgid "Latvian"
+msgstr ""
+
+#: src/LanguageList.cpp
+msgid "Lithuanian"
+msgstr "リトアニア語"
+
+#: src/LanguageList.cpp
+msgid "Norwegian (Nynorsk)"
+msgstr "ルウェー語"
+
+#: src/LanguageList.cpp
+msgid "Polish"
+msgstr "ポーランド語"
+
+#: src/LanguageList.cpp
+msgid "Portuguese"
+msgstr "ポルトガル語"
+
+#: src/LanguageList.cpp
+msgid "Portuguese (Brazilian)"
+msgstr "ポルトガル語（ブラジル）"
+
+#: src/LanguageList.cpp
+#, fuzzy
+msgid "Romanian"
+msgstr "アルバニア語"
+
+#: src/LanguageList.cpp
+msgid "Russian"
+msgstr "ロシア語"
+
+#: src/LanguageList.cpp
+msgid "Slovenian"
+msgstr "スロベニア語"
+
+#: src/LanguageList.cpp
+msgid "Spanish"
+msgstr "スペイン語"
+
+#: src/LanguageList.cpp
+msgid "Swedish"
+msgstr "スウェーデン語"
+
+#: src/LanguageList.cpp
+msgid "Turkish"
+msgstr "トルコ語"
+
+#: src/LanguageList.cpp
+msgid "Ukrainian"
+msgstr ""
+
 #: src/libs/common/Format.cpp
 #, fuzzy, c-format
 msgid "Unknown error %d"
@@ -5947,179 +6106,6 @@ msgstr ""
 #, c-format
 msgid "ERROR: Failed to open partfile '%s'"
 msgstr "エラー: 部分ファイル '%s' が開けませんでした"
-
-#: src/Preferences.cpp
-msgid "System default"
-msgstr "システムの標準設定"
-
-#: src/Preferences.cpp
-msgid "Albanian"
-msgstr "アルバニア語"
-
-#: src/Preferences.cpp
-msgid "Arabic"
-msgstr "アラブ語"
-
-#: src/Preferences.cpp
-#, fuzzy
-msgid "Asturian"
-msgstr "エストニア語"
-
-#: src/Preferences.cpp
-msgid "Basque"
-msgstr "バスク語"
-
-#: src/Preferences.cpp
-msgid "Bulgarian"
-msgstr "ブルガリア語"
-
-#: src/Preferences.cpp
-msgid "Catalan"
-msgstr "カタロニア語"
-
-#: src/Preferences.cpp
-msgid "Chinese (Simplified)"
-msgstr "中国語（簡体字）"
-
-#: src/Preferences.cpp
-msgid "Chinese (Traditional)"
-msgstr "中国語（繁体字）"
-
-#: src/Preferences.cpp
-msgid "Croatian"
-msgstr "クロアチア語"
-
-#: src/Preferences.cpp
-msgid "Czech"
-msgstr "チェコ語"
-
-#: src/Preferences.cpp
-msgid "Danish"
-msgstr "デンマーク語"
-
-#: src/Preferences.cpp
-msgid "Dutch"
-msgstr "オランダ語"
-
-#: src/Preferences.cpp
-msgid "English (U.K.)"
-msgstr "英語（U.K.）"
-
-#: src/Preferences.cpp
-#, fuzzy
-msgid "English (U.S.)"
-msgstr "英語（U.K.）"
-
-#: src/Preferences.cpp
-msgid "Estonian"
-msgstr "エストニア語"
-
-#: src/Preferences.cpp
-msgid "Finnish"
-msgstr "フィンランド語"
-
-#: src/Preferences.cpp
-msgid "French"
-msgstr "フランス語"
-
-#: src/Preferences.cpp
-msgid "Galician"
-msgstr "ガリシア語"
-
-#: src/Preferences.cpp
-msgid "German"
-msgstr "ドイツ語"
-
-#: src/Preferences.cpp
-msgid "Greek"
-msgstr "ギリシア語"
-
-#: src/Preferences.cpp
-msgid "Hebrew"
-msgstr "ヘブライ語"
-
-#: src/Preferences.cpp
-msgid "Hungarian"
-msgstr "ハンガリー語"
-
-#: src/Preferences.cpp
-msgid "Italian"
-msgstr "イタリア語"
-
-#: src/Preferences.cpp
-msgid "Japanese"
-msgstr "日本語"
-
-#: src/Preferences.cpp
-msgid "Korean"
-msgstr "韓国語"
-
-#: src/Preferences.cpp
-msgid "Latvian"
-msgstr ""
-
-#: src/Preferences.cpp
-msgid "Lithuanian"
-msgstr "リトアニア語"
-
-#: src/Preferences.cpp
-msgid "Norwegian (Nynorsk)"
-msgstr "ルウェー語"
-
-#: src/Preferences.cpp
-msgid "Polish"
-msgstr "ポーランド語"
-
-#: src/Preferences.cpp
-msgid "Portuguese"
-msgstr "ポルトガル語"
-
-#: src/Preferences.cpp
-msgid "Portuguese (Brazilian)"
-msgstr "ポルトガル語（ブラジル）"
-
-#: src/Preferences.cpp
-#, fuzzy
-msgid "Romanian"
-msgstr "アルバニア語"
-
-#: src/Preferences.cpp
-msgid "Russian"
-msgstr "ロシア語"
-
-#: src/Preferences.cpp
-msgid "Slovenian"
-msgstr "スロベニア語"
-
-#: src/Preferences.cpp
-msgid "Spanish"
-msgstr "スペイン語"
-
-#: src/Preferences.cpp
-msgid "Swedish"
-msgstr "スウェーデン語"
-
-#: src/Preferences.cpp
-msgid "Turkish"
-msgstr "トルコ語"
-
-#: src/Preferences.cpp
-msgid "Ukrainian"
-msgstr ""
-
-#: src/Preferences.cpp
-#, fuzzy
-msgid "Change Language"
-msgstr "言語"
-
-#: src/Preferences.cpp
-msgid "There are no translations installed for aMule"
-msgstr ""
-
-#: src/Preferences.cpp
-#, fuzzy
-msgid "No languages available"
-msgstr "利用不可"
 
 #: src/Preferences.cpp
 msgid "no options available"
@@ -9360,6 +9346,14 @@ msgstr ""
 #: packaging/windows/installer_strings.c
 msgid "Removing user data at $APPDATA\\aMule..."
 msgstr ""
+
+#, fuzzy
+#~ msgid "Change Language"
+#~ msgstr "言語"
+
+#, fuzzy
+#~ msgid "No languages available"
+#~ msgstr "利用不可"
 
 #~ msgid "User name"
 #~ msgstr "ユーザ名"

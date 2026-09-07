@@ -9,7 +9,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: aMule\n"
 "Report-Msgid-Bugs-To: https://github.com/amule-org/amule/issues\n"
-"POT-Creation-Date: 2026-09-06 09:45+0200\n"
+"POT-Creation-Date: 2026-09-07 12:03+0200\n"
 "PO-Revision-Date: 2026-09-05 10:59+0000\n"
 "Last-Translator: Angelescu Constantin <titus0818@yahoo.com>\n"
 "Language-Team: English <kde-i18n-doc@kde.org>\n"
@@ -3244,6 +3244,163 @@ msgstr "A eșuat încărcarea intrării în lista de fișiere cunoscute, fișier
 msgid "Invalid entry in known file list, file may be corrupt: "
 msgstr "Intrare nevalidă în lista de fișiere cunoscute, fișierul poate fi corupt:"
 
+#: src/LanguageList.cpp
+msgid "System default"
+msgstr "Valoare implicită a sistemului"
+
+#: src/LanguageList.cpp
+msgid "Albanian"
+msgstr "Albaneză"
+
+#: src/LanguageList.cpp
+msgid "Arabic"
+msgstr "Arabă"
+
+#: src/LanguageList.cpp
+msgid "Asturian"
+msgstr "Asturian"
+
+#: src/LanguageList.cpp
+msgid "Basque"
+msgstr "Bască"
+
+#: src/LanguageList.cpp
+msgid "Bulgarian"
+msgstr "Bulgară"
+
+#: src/LanguageList.cpp
+msgid "Catalan"
+msgstr "Catalană"
+
+#: src/LanguageList.cpp
+msgid "Chinese (Simplified)"
+msgstr "Chineză (Simplificat)"
+
+#: src/LanguageList.cpp
+msgid "Chinese (Traditional)"
+msgstr "Chinez (tradițional)"
+
+#: src/LanguageList.cpp
+msgid "Croatian"
+msgstr "Croată"
+
+#: src/LanguageList.cpp
+msgid "Czech"
+msgstr "Cehă"
+
+#: src/LanguageList.cpp
+msgid "Danish"
+msgstr "Daneză"
+
+#: src/LanguageList.cpp
+msgid "Dutch"
+msgstr "Olandeză"
+
+#: src/LanguageList.cpp
+msgid "English (U.K.)"
+msgstr "Englez (U.K.)"
+
+#: src/LanguageList.cpp
+#, fuzzy
+msgid "English (U.S.)"
+msgstr "Englez (U.K.)"
+
+#: src/LanguageList.cpp
+msgid "Estonian"
+msgstr "Estonă"
+
+#: src/LanguageList.cpp
+msgid "Finnish"
+msgstr "Finlandeză"
+
+#: src/LanguageList.cpp
+msgid "French"
+msgstr "Franceză"
+
+#: src/LanguageList.cpp
+msgid "Galician"
+msgstr "Galiciană"
+
+#: src/LanguageList.cpp
+msgid "German"
+msgstr "Germană"
+
+#: src/LanguageList.cpp
+msgid "Greek"
+msgstr "Grecesc"
+
+#: src/LanguageList.cpp
+msgid "Hebrew"
+msgstr "Ebraică"
+
+#: src/LanguageList.cpp
+msgid "Hungarian"
+msgstr "Maghiară"
+
+#: src/LanguageList.cpp
+msgid "Italian"
+msgstr "Italiană"
+
+#: src/LanguageList.cpp
+msgid "Japanese"
+msgstr "Japoneză"
+
+#: src/LanguageList.cpp
+msgid "Korean"
+msgstr "Koreană"
+
+#: src/LanguageList.cpp
+msgid "Latvian"
+msgstr ""
+
+#: src/LanguageList.cpp
+msgid "Lithuanian"
+msgstr "Lituaniană"
+
+#: src/LanguageList.cpp
+msgid "Norwegian (Nynorsk)"
+msgstr "Norvegian"
+
+#: src/LanguageList.cpp
+msgid "Polish"
+msgstr "Poloneză"
+
+#: src/LanguageList.cpp
+msgid "Portuguese"
+msgstr "Portugheză"
+
+#: src/LanguageList.cpp
+msgid "Portuguese (Brazilian)"
+msgstr "Portugheză (Brazilia)"
+
+#: src/LanguageList.cpp
+msgid "Romanian"
+msgstr "Română"
+
+#: src/LanguageList.cpp
+msgid "Russian"
+msgstr "Rusă"
+
+#: src/LanguageList.cpp
+msgid "Slovenian"
+msgstr "Slovenă"
+
+#: src/LanguageList.cpp
+msgid "Spanish"
+msgstr "Spaniolă"
+
+#: src/LanguageList.cpp
+msgid "Swedish"
+msgstr "Suedeză"
+
+#: src/LanguageList.cpp
+msgid "Turkish"
+msgstr "Turcă"
+
+#: src/LanguageList.cpp
+msgid "Ukrainian"
+msgstr "Ucraineană"
+
 #: src/libs/common/Format.cpp
 #, c-format
 msgid "Unknown error %d"
@@ -5975,175 +6132,6 @@ msgstr "Spațiu pe disc insuficient"
 #, c-format
 msgid "ERROR: Failed to open partfile '%s'"
 msgstr "EROARE: A eșuat deschiderea fișierului parțial '%s'"
-
-#: src/Preferences.cpp
-msgid "System default"
-msgstr "Valoare implicită a sistemului"
-
-#: src/Preferences.cpp
-msgid "Albanian"
-msgstr "Albaneză"
-
-#: src/Preferences.cpp
-msgid "Arabic"
-msgstr "Arabă"
-
-#: src/Preferences.cpp
-msgid "Asturian"
-msgstr "Asturian"
-
-#: src/Preferences.cpp
-msgid "Basque"
-msgstr "Bască"
-
-#: src/Preferences.cpp
-msgid "Bulgarian"
-msgstr "Bulgară"
-
-#: src/Preferences.cpp
-msgid "Catalan"
-msgstr "Catalană"
-
-#: src/Preferences.cpp
-msgid "Chinese (Simplified)"
-msgstr "Chineză (Simplificat)"
-
-#: src/Preferences.cpp
-msgid "Chinese (Traditional)"
-msgstr "Chinez (tradițional)"
-
-#: src/Preferences.cpp
-msgid "Croatian"
-msgstr "Croată"
-
-#: src/Preferences.cpp
-msgid "Czech"
-msgstr "Cehă"
-
-#: src/Preferences.cpp
-msgid "Danish"
-msgstr "Daneză"
-
-#: src/Preferences.cpp
-msgid "Dutch"
-msgstr "Olandeză"
-
-#: src/Preferences.cpp
-msgid "English (U.K.)"
-msgstr "Englez (U.K.)"
-
-#: src/Preferences.cpp
-#, fuzzy
-msgid "English (U.S.)"
-msgstr "Englez (U.K.)"
-
-#: src/Preferences.cpp
-msgid "Estonian"
-msgstr "Estonă"
-
-#: src/Preferences.cpp
-msgid "Finnish"
-msgstr "Finlandeză"
-
-#: src/Preferences.cpp
-msgid "French"
-msgstr "Franceză"
-
-#: src/Preferences.cpp
-msgid "Galician"
-msgstr "Galiciană"
-
-#: src/Preferences.cpp
-msgid "German"
-msgstr "Germană"
-
-#: src/Preferences.cpp
-msgid "Greek"
-msgstr "Grecesc"
-
-#: src/Preferences.cpp
-msgid "Hebrew"
-msgstr "Ebraică"
-
-#: src/Preferences.cpp
-msgid "Hungarian"
-msgstr "Maghiară"
-
-#: src/Preferences.cpp
-msgid "Italian"
-msgstr "Italiană"
-
-#: src/Preferences.cpp
-msgid "Japanese"
-msgstr "Japoneză"
-
-#: src/Preferences.cpp
-msgid "Korean"
-msgstr "Koreană"
-
-#: src/Preferences.cpp
-msgid "Latvian"
-msgstr ""
-
-#: src/Preferences.cpp
-msgid "Lithuanian"
-msgstr "Lituaniană"
-
-#: src/Preferences.cpp
-msgid "Norwegian (Nynorsk)"
-msgstr "Norvegian"
-
-#: src/Preferences.cpp
-msgid "Polish"
-msgstr "Poloneză"
-
-#: src/Preferences.cpp
-msgid "Portuguese"
-msgstr "Portugheză"
-
-#: src/Preferences.cpp
-msgid "Portuguese (Brazilian)"
-msgstr "Portugheză (Brazilia)"
-
-#: src/Preferences.cpp
-msgid "Romanian"
-msgstr "Română"
-
-#: src/Preferences.cpp
-msgid "Russian"
-msgstr "Rusă"
-
-#: src/Preferences.cpp
-msgid "Slovenian"
-msgstr "Slovenă"
-
-#: src/Preferences.cpp
-msgid "Spanish"
-msgstr "Spaniolă"
-
-#: src/Preferences.cpp
-msgid "Swedish"
-msgstr "Suedeză"
-
-#: src/Preferences.cpp
-msgid "Turkish"
-msgstr "Turcă"
-
-#: src/Preferences.cpp
-msgid "Ukrainian"
-msgstr "Ucraineană"
-
-#: src/Preferences.cpp
-msgid "Change Language"
-msgstr "Schimbă limba"
-
-#: src/Preferences.cpp
-msgid "There are no translations installed for aMule"
-msgstr "Nu sunt instalate traduceri pentru aMule"
-
-#: src/Preferences.cpp
-msgid "No languages available"
-msgstr "Nu sunt limbi disponibile"
 
 #: src/Preferences.cpp
 msgid "no options available"
@@ -9432,6 +9420,15 @@ msgstr ""
 
 #~ msgid "ERROR: Could not listen to TCP port."
 #~ msgstr "EROARE: Nu se poate asculta portul TCP."
+
+#~ msgid "Change Language"
+#~ msgstr "Schimbă limba"
+
+#~ msgid "There are no translations installed for aMule"
+#~ msgstr "Nu sunt instalate traduceri pentru aMule"
+
+#~ msgid "No languages available"
+#~ msgstr "Nu sunt limbi disponibile"
 
 #~ msgid "User name"
 #~ msgstr "Nume utilizator"

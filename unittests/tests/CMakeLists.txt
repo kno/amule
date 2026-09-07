@@ -207,8 +207,6 @@ target_link_libraries (CUInt128Test
 add_executable (KadAICHHashListTest
 	KadAICHHashListTest.cpp
 	${CMAKE_SOURCE_DIR}/src/kademlia/kademlia/AICHHashList.cpp
-	${CMAKE_SOURCE_DIR}/src/libs/common/Format.cpp
-	${CMAKE_SOURCE_DIR}/src/libs/common/strerror_r.c
 )
 
 add_test (NAME KadAICHHashListTest
@@ -223,6 +221,7 @@ target_include_directories (KadAICHHashListTest
 
 target_link_libraries (KadAICHHashListTest
 	muleunit
+	mulecommon
 )
 
 # The adaptive Kad response-time ceiling. CFastKad takes "now" as a parameter
@@ -601,6 +600,33 @@ target_link_libraries (OtherFunctionsTest
 	mulecommon
 	CRYPTOPP::CRYPTOPP
 	${Boost_LIBRARIES}
+)
+
+add_executable (LanguageListTest
+	LanguageListTest.cpp
+	${CMAKE_SOURCE_DIR}/src/LanguageList.cpp
+	${CMAKE_SOURCE_DIR}/src/OtherFunctions.cpp
+)
+
+add_test (NAME LanguageListTest
+	COMMAND LanguageListTest
+)
+
+# The list names po/ basenames, so the test needs the catalogs to check against.
+target_compile_definitions (LanguageListTest
+	PRIVATE "PO_SRCDIR=${CMAKE_SOURCE_DIR}/po"
+)
+
+target_include_directories (LanguageListTest
+	PRIVATE ${CMAKE_BINARY_DIR}
+	PRIVATE ${CMAKE_SOURCE_DIR}/src
+	PRIVATE ${CMAKE_SOURCE_DIR}/src/include
+)
+
+target_link_libraries (LanguageListTest
+	muleunit
+	mulecommon
+	CRYPTOPP::CRYPTOPP
 )
 
 
