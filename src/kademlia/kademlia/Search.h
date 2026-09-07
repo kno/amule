@@ -202,6 +202,7 @@ private:
 
 	typedef std::map<CUInt128, bool> RespondedMap;
 
+#ifdef ENABLE_KAD_NODE_PROTECTION
 	// A request we have sent and not yet had an answer to, keyed by the
 	// contact's ClientID.  Two things need it: CFastKad wants the round-trip
 	// time of every answer, and JumpStart wants to know which contacts have
@@ -221,6 +222,7 @@ private:
 	// JumpStart compares against a derived ceiling that is expressed in
 	// milliseconds, and second granularity would quantise it to uselessness.
 	uint64_t m_lastResponseTick;
+#endif
 
 	ContactMap m_possible;
 	ContactMap m_tried;

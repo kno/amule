@@ -89,6 +89,17 @@ if (BUILD_MONOLITHIC OR BUILD_DAEMON)
 		# capability bit, which such a build never sets.
 		QuicProofValue.cpp
 	)
+
+	# Only compiled in when the switch is on. Every call site is behind the
+	# same guard, so with the switch off these two would be dead weight in
+	# the binary; the unit tests compile them directly, so gating them here
+	# costs no coverage.
+	if (ENABLE_KAD_NODE_PROTECTION)
+		list (APPEND CORE_SOURCES
+			kademlia/net/FastKad.cpp
+			kademlia/net/SafeKad.cpp
+		)
+	endif()
 endif()
 
 if (BUILD_MONOLITHIC OR BUILD_REMOTEGUI)

@@ -225,13 +225,13 @@ target_link_libraries (KadAICHHashListTest
 )
 
 # The adaptive Kad response-time ceiling. CFastKad takes "now" as a parameter
-# rather than reading a clock, which is what lets the cold start, the rising and
-# falling distributions and the window bound all be pinned without waiting.
+# rather than reading a clock, which is what lets the cold start, a known series
+# of samples, the eviction rule and the window bound all be pinned without
+# waiting. Compiled and run regardless of ENABLE_KAD_NODE_PROTECTION: the class
+# is self-contained, so gating the suite would only cost coverage.
 add_executable (FastKadTest
 	FastKadTest.cpp
 	${CMAKE_SOURCE_DIR}/src/kademlia/net/FastKad.cpp
-	${CMAKE_SOURCE_DIR}/src/libs/common/Format.cpp
-	${CMAKE_SOURCE_DIR}/src/libs/common/strerror_r.c
 )
 
 add_test (NAME FastKadTest
@@ -246,6 +246,7 @@ target_include_directories (FastKadTest
 
 target_link_libraries (FastKadTest
 	muleunit
+	mulecommon
 )
 
 # The Kad identity protections: the one-hour identity-change interval, the
@@ -256,8 +257,6 @@ add_executable (SafeKadTest
 	SafeKadTest.cpp
 	${CMAKE_SOURCE_DIR}/src/kademlia/net/SafeKad.cpp
 	${CMAKE_SOURCE_DIR}/src/kademlia/utils/UInt128.cpp
-	${CMAKE_SOURCE_DIR}/src/libs/common/Format.cpp
-	${CMAKE_SOURCE_DIR}/src/libs/common/strerror_r.c
 )
 
 add_test (NAME SafeKadTest
@@ -272,6 +271,7 @@ target_include_directories (SafeKadTest
 
 target_link_libraries (SafeKadTest
 	muleunit
+	mulecommon
 )
 
 add_executable (FileDataIOTest
