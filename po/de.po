@@ -13,8 +13,8 @@ msgid ""
 msgstr ""
 "Project-Id-Version: aMule\n"
 "Report-Msgid-Bugs-To: https://github.com/amule-org/amule/issues\n"
-"POT-Creation-Date: 2026-09-07 15:04+0200\n"
-"PO-Revision-Date: 2026-09-05 10:47+0000\n"
+"POT-Creation-Date: 2026-09-07 17:09+0200\n"
+"PO-Revision-Date: 2026-09-07 14:46+0000\n"
 "Last-Translator: Werner Mahr <werner@vollstreckernet.de>\n"
 "Language-Team: German <>\n"
 "Language: de\n"
@@ -4321,7 +4321,7 @@ msgstr "Verschleierung"
 
 #: src/muuli_wdr.cpp
 #, fuzzy
-msgid "Protocol extensions:"
+msgid "Protocol extensions"
 msgstr "Protokollverschleierung"
 
 #: src/muuli_wdr.cpp

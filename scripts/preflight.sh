@@ -6,7 +6,7 @@
 #
 # Usage:
 #   scripts/preflight.sh            # everything
-#   scripts/preflight.sh ec         # one check by name: ec | format | i18n
+#   scripts/preflight.sh ec         # one check by name: ec | format | i18n | tidy
 #
 # Exit status is the number of checks that failed, so a caller can gate on it.
 
@@ -285,8 +285,102 @@ check_i18n () {
 	fi
 }
 
+# --------------------------------------------------------------------------
+# clang-tidy, Tier-2 on changed lines
+#
+# The gate that has caught this project more often than any other, and always
+# the same three checks: modernize-use-nullptr, modernize-loop-convert and
+# modernize-use-emplace. Every one of those was avoidable and none of them was
+# caught locally, because until now nothing here ran clang-tidy at all: the
+# harness checked formatting and stopped.
+#
+# Deliberately the same invocation clang-tidy.yml uses -- clang-tidy-diff over
+# `git diff -U0 <base>...HEAD -- src/**`, with .clang-tidy-new-code, and
+# clang-diagnostic-* and wx headers filtered out. A local approximation would
+# be worse than nothing: it would pass on something CI rejects and teach us to
+# trust it.
+#
+# It needs a compile database, so it is skipped -- loudly -- when there is no
+# build/compile_commands.json rather than reporting a pass it did not earn.
+# --------------------------------------------------------------------------
+TIDY_IMAGE="${TIDY_IMAGE:-localhost/amule-tidy:llvm21}"
+check_tidy () {
+	echo "clang-tidy (changed lines, Tier-2)"
+	local cli
+	resolve_container_cli
+	cli="${CONTAINER_CLI}"
+	if [ -z "${cli}" ]; then
+		fail "no container CLI found (looked for docker, podman)"
+		return
+	fi
+	if ! "${cli}" image exists "${TIDY_IMAGE}" 2>/dev/null; then
+		fail "image ${TIDY_IMAGE} not present; build it or set TIDY_IMAGE"
+		return
+	fi
+	if [ ! -f build/compile_commands.json ]; then
+		fail "no build/compile_commands.json -- configure with -DCMAKE_EXPORT_COMPILE_COMMANDS=YES first"
+		echo "        this check cannot run without it, and reporting a pass would be a lie"
+		return
+	fi
+
+	local base
+	if git rev-parse --verify -q upstream/master >/dev/null; then
+		base="$(git merge-base HEAD upstream/master)"
+	else
+		base=HEAD
+	fi
+
+	# The diff is computed on the host and piped in, not produced inside the
+	# container. In a git worktree `.git` is a file pointing at the parent
+	# repository, which is not mounted, so `git diff` in there fails with
+	# "not a git repository" -- and clang-tidy-diff given an empty diff
+	# analyses nothing and reports no findings. That reads as a pass. It
+	# happened on the first version of this check, which is the whole reason
+	# the emptiness is now an error rather than a silence.
+	local diff
+	diff="$(git diff -U0 "${base}...HEAD" -- 'src/**')"
+	if [ -z "${diff}" ]; then
+		if [ -n "$(git diff --name-only "${base}...HEAD" -- 'src/**')" ]; then
+			fail "changed files under src/ but an empty -U0 diff; refusing to report a pass"
+			return
+		fi
+		pass "no changed lines under src/"
+		return
+	fi
+
+	local out
+	out="$(printf '%s\n' "${diff}" | "${cli}" run --rm -i \
+		-v "${REPO_ROOT}:/w" -w /w \
+		"${TIDY_IMAGE}" \
+		clang-tidy-diff-21.py \
+			-clang-tidy-binary clang-tidy-21 \
+			-p1 -path build -config-file .clang-tidy-new-code -quiet 2>&1)"
+
+	# A run that analysed nothing is not a clean run. clang-tidy-diff prints a
+	# per-file header for each translation unit it touches, so no header at all
+	# means the diff never reached it.
+	if ! printf '%s\n' "${out}" | grep -qE 'clang-tidy|Applying|^[0-9]+ warning|warnings generated|No relevant changes'; then
+		fail "clang-tidy produced no analysis output; treating as unverified, not clean"
+		printf '%s\n' "${out}" | head -5 | sed 's/^/        /'
+		return
+	fi
+
+	local hits
+	hits="$(printf '%s\n' "${out}" \
+		| grep -E ': (warning|error):' \
+		| grep -vE '/wx-[0-9]|clang-diagnostic-' \
+		| sort -u)"
+
+	if [ -n "${hits}" ]; then
+		fail "$(printf '%s\n' "${hits}" | wc -l | tr -d ' ') finding(s) on changed lines"
+		printf '%s\n' "${hits}" | sed 's|^/w/|        |'
+	else
+		pass "no findings on changed lines"
+	fi
+}
+
 usage () {
-	echo "usage: $0 [ec|format|i18n]" >&2
+	echo "usage: $0 [ec|format|i18n|tidy]" >&2
 	exit 2
 }
 
@@ -303,10 +397,11 @@ run_check () {
 }
 
 case "${1:-all}" in
-	all)    run_check check_ec; run_check check_format; run_check check_i18n ;;
+	all)    run_check check_ec; run_check check_format; run_check check_i18n; run_check check_tidy ;;
 	ec)     run_check check_ec ;;
 	format) run_check check_format ;;
 	i18n)   run_check check_i18n ;;
+	tidy)   run_check check_tidy ;;
 	-h|--help) usage ;;
 	*)      echo "unknown check '${1}'" >&2; usage ;;
 esac

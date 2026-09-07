@@ -9,8 +9,8 @@ msgid ""
 msgstr ""
 "Project-Id-Version: aMule\n"
 "Report-Msgid-Bugs-To: https://github.com/amule-org/amule/issues\n"
-"POT-Creation-Date: 2026-09-07 15:04+0200\n"
-"PO-Revision-Date: 2026-09-05 10:54+0000\n"
+"POT-Creation-Date: 2026-09-07 17:09+0200\n"
+"PO-Revision-Date: 2026-09-07 14:50+0000\n"
 "Last-Translator: \n"
 "Language-Team: Japanese\n"
 "Language: ja\n"
@@ -4315,7 +4315,7 @@ msgstr "難読化"
 
 #: src/muuli_wdr.cpp
 #, fuzzy
-msgid "Protocol extensions:"
+msgid "Protocol extensions"
 msgstr "プロトコルを難読化する"
 
 #: src/muuli_wdr.cpp
