@@ -672,16 +672,12 @@ void CClientList::Process()
 	if (m_dwLastBannCleanUp + BAN_CLEANUP_TIME < cur_tick) {
 		m_dwLastBannCleanUp = cur_tick;
 
-		ClientMap::iterator it = m_bannedList.begin();
-		while (it != m_bannedList.end()) {
-			if (it->second + CLIENTBANTIME < cur_tick) {
-				ClientMap::iterator tmp = it++;
-
-				m_bannedList.erase(tmp);
-				theStats::RemoveBannedClient();
-			} else {
-				++it;
-			}
+		// One decrement per entry the sweep actually dropped. The record
+		// counts them because it is the only thing that knows which were
+		// lapsed.
+		const std::size_t dropped = m_bannedList.DropLapsed(cur_tick);
+		for (std::size_t i = 0; i < dropped; ++i) {
+			theStats::RemoveBannedClient();
 		}
 	}
 
@@ -897,45 +893,48 @@ void CClientList::Process()
 
 void CClientList::AddBannedClient(const CNetworkAddress &address)
 {
+	// Refused here as well as in the record, and for a different reason: the
+	// record's guard keeps an address it cannot key out of the map, while this
+	// one is the only place that can say so. Ban() answers false both for an
+	// address it refused and for one already banned, so a client arriving here
+	// without a socket would otherwise be indistinguishable from a repeat ban.
 	if (!PeerAddressing::IsIndexable(address)) {
-		// Nothing to ban. Previously an absent address arrived here as the
-		// literal 0 and was banned as "0.0.0.0", banning a value no real peer
-		// has while telling theStats one more client was banned.
 		AddDebugLogLineN(logClient,
 			CFormat("AddBannedClient: no bannable address (%s), ignored") % address.ToString());
 		return;
 	}
-	// An IPv6 peer is bannable now: the key is the address, so there is no
-	// longer a family the ban list cannot express.
-	m_bannedList[PeerAddressing::IndexKey(address)] = ::GetTickCount64();
-	theStats::AddBannedClient();
+	// Counted only when the address was not already banned. Assigning the tick
+	// overwrote it on an address already present and counted it again, and
+	// CUpDownClient::SetSpammer(true) calls this with no IsBannedClient()
+	// check -- so a client banned for aggressiveness and later flagged as a
+	// spammer counted twice for one banned address, while the remove path gave
+	// back one.
+	if (m_bannedList.Ban(address, ::GetTickCount64())) {
+		theStats::AddBannedClient();
+	}
 }
 
 bool CClientList::IsBannedClient(const CNetworkAddress &address)
 {
-	if (!PeerAddressing::IsIndexable(address)) {
-		return false;
+	// A lapsed ban is dropped inside the lookup, so the decrement has to
+	// follow what the lookup did rather than the answer it gave. An address
+	// the record cannot key reads back as not banned, which is why this path
+	// needs no guard of its own.
+	bool dropped = false;
+	const bool banned = m_bannedList.IsBanned(address, ::GetTickCount64(), &dropped);
+	if (dropped) {
+		theStats::RemoveBannedClient();
 	}
-
-	ClientMap::iterator it = m_bannedList.find(PeerAddressing::IndexKey(address));
-
-	if (it != m_bannedList.end()) {
-		if (it->second + CLIENTBANTIME > ::GetTickCount64()) {
-			return true;
-		} else {
-			RemoveBannedClient(address);
-		}
-	}
-	return false;
+	return banned;
 }
 
 void CClientList::RemoveBannedClient(const CNetworkAddress &address)
 {
-	if (!PeerAddressing::IsIndexable(address)) {
-		return;
+	// The mirror of the add path: erasing removed nothing when the address was
+	// not banned, and the count followed the call anyway.
+	if (m_bannedList.Unban(address)) {
+		theStats::RemoveBannedClient();
 	}
-	m_bannedList.erase(PeerAddressing::IndexKey(address));
-	theStats::RemoveBannedClient();
 }
 
 void CClientList::FilterQueues()

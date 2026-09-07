@@ -180,6 +180,43 @@ target_link_libraries (CValueMapTest
 	mulecommon
 )
 
+# The banned-address record. Owns the map CClientList used to keep inline, and
+# reports whether each operation actually changed it -- which is the whole
+# reason it exists, since the caller increments a statistic on that answer.
+# Header-only and takes the tick as a parameter, so ban expiry is a call rather
+# than a wait, and no part of it needs theApp.
+add_executable (BanRecordTest
+	BanRecordTest.cpp
+	# CNetworkAddress::FromString/ToString live in NetworkAddress.cpp: they are
+	# the only part of the type that still compiles Boost.Asio, and keeping them
+	# out of the header is what stops asio reaching most of src/. Every target
+	# whose include closure touches NetworkAddress.h therefore has to link this
+	# TU -- the type is no longer header-only.
+	${CMAKE_SOURCE_DIR}/src/NetworkAddress.cpp
+)
+
+add_test (NAME BanRecordTest
+	COMMAND BanRecordTest
+)
+
+target_include_directories (BanRecordTest
+	PRIVATE ${CMAKE_BINARY_DIR}
+	PRIVATE ${CMAKE_SOURCE_DIR}/src
+	PRIVATE ${CMAKE_SOURCE_DIR}/src/include
+	# NetworkAddress.cpp, linked above, is the one TU that still compiles
+	# Boost.Asio for its address parsing and formatting.
+	PRIVATE ${Boost_INCLUDE_DIR}
+)
+
+target_link_libraries (BanRecordTest
+	muleunit
+	# muleunit compiles MuleDebug.cpp and StringFunctions.cpp, which use
+	# CFormat; without mulecommon the link fails on its symbols under gcc and
+	# lld even though the header alone needs nothing from it.
+	mulecommon
+	${Boost_LIBRARIES}
+)
+
 add_executable (CUInt128Test
 	CUInt128Test.cpp
 	${CMAKE_SOURCE_DIR}/src/kademlia/utils/UInt128.cpp
