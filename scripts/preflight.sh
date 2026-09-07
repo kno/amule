@@ -302,6 +302,14 @@ check_i18n () {
 #
 # It needs a compile database, so it is skipped -- loudly -- when there is no
 # build/compile_commands.json rather than reporting a pass it did not earn.
+#
+# src/extern is NOT excluded, deliberately, even though it holds vendored code
+# that src/extern/.clang-tidy exempts with `Checks: '-*'`. Passing
+# -config-file overrides per-directory discovery, so that exemption has no
+# effect under the Tier-2 invocation -- measured, not assumed: the same
+# vendored file reports three findings with the flag and none without it.
+# Excluding it here would make this check disagree with the gate it exists to
+# predict, which is worse than reporting findings we then have to explain.
 # --------------------------------------------------------------------------
 TIDY_IMAGE="${TIDY_IMAGE:-localhost/amule-tidy:llvm21}"
 check_tidy () {
