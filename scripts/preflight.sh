@@ -347,27 +347,56 @@ check_tidy () {
 	# the emptiness is now an error rather than a silence.
 	local diff
 	diff="$(git diff -U0 "${base}...HEAD" -- 'src/**')"
-	if [ -z "${diff}" ]; then
+
+	# A new file has no diff to feed clang-tidy-diff, and `git diff` never
+	# lists an untracked one, so the first version of this check reported "no
+	# changed lines under src/" while three new headers sat next to it
+	# unanalysed. A whole new file is exactly what wants analysing most, so
+	# those are passed to clang-tidy directly rather than through the diff.
+	local newfiles=()
+	local line
+	while IFS= read -r line; do
+		case "${line}" in
+			src/extern/*) ;;
+			src/*) [ -n "${line}" ] && newfiles+=("${line}") ;;
+		esac
+	done < <(git ls-files --others --exclude-standard -- 'src/*.h' 'src/*.cpp' 'src/*.c' \
+		&& git diff --name-only --diff-filter=A "${base}...HEAD" -- 'src/*.h' 'src/*.cpp' 'src/*.c')
+
+	if [ -z "${diff}" ] && [ "${#newfiles[@]}" -eq 0 ]; then
 		if [ -n "$(git diff --name-only "${base}...HEAD" -- 'src/**')" ]; then
-			fail "changed files under src/ but an empty -U0 diff; refusing to report a pass"
+			fail "changed files under src/ but an empty -U0 diff and no new files; refusing to report a pass"
 			return
 		fi
 		pass "no changed lines under src/"
 		return
 	fi
 
-	local out
-	out="$(printf '%s\n' "${diff}" | "${cli}" run --rm -i \
-		-v "${REPO_ROOT}:/w" -w /w \
-		"${TIDY_IMAGE}" \
-		clang-tidy-diff-21.py \
-			-clang-tidy-binary clang-tidy-21 \
-			-p1 -path build -config-file .clang-tidy-new-code -quiet 2>&1)"
+	local out=""
+	if [ -n "${diff}" ]; then
+		out="$(printf '%s\n' "${diff}" | "${cli}" run --rm -i \
+			-v "${REPO_ROOT}:/w" -w /w \
+			"${TIDY_IMAGE}" \
+			clang-tidy-diff-21.py \
+				-clang-tidy-binary clang-tidy-21 \
+				-p1 -path build -config-file .clang-tidy-new-code -quiet 2>&1)"
+	fi
+
+	if [ "${#newfiles[@]}" -gt 0 ]; then
+		local newout
+		newout="$("${cli}" run --rm \
+			-v "${REPO_ROOT}:/w" -w /w \
+			"${TIDY_IMAGE}" \
+			clang-tidy-21 -p build --config-file=.clang-tidy-new-code \
+				--quiet "${newfiles[@]}" 2>&1)"
+		out="${out}
+${newout}"
+	fi
 
 	# A run that analysed nothing is not a clean run. clang-tidy-diff prints a
 	# per-file header for each translation unit it touches, so no header at all
 	# means the diff never reached it.
-	if ! printf '%s\n' "${out}" | grep -qE 'clang-tidy|Applying|^[0-9]+ warning|warnings generated|No relevant changes'; then
+	if [ -z "$(printf '%s\n' "${out}" | tr -d '[:space:]')" ]; then
 		fail "clang-tidy produced no analysis output; treating as unverified, not clean"
 		printf '%s\n' "${out}" | head -5 | sed 's/^/        /'
 		return
