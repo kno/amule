@@ -17,18 +17,39 @@ cd "${REPO_ROOT}"
 
 CLANG_FORMAT_IMAGE="ghcr.io/jidicula/clang-format:18"
 
+# Every check must report; see the summary at the bottom for why these three
+# are counted rather than trusted.
 FAILED=0
+EXPECTED=0
+REPORTED=0
 
 # Resolve a container CLI. `docker` is frequently only a shell alias for
 # podman, which does not exist in this non-interactive bash.
+#
+# Being on PATH is not the same as working: a `docker` binary pointing at a
+# stopped daemon fails every run while a usable podman sits next to it. So the
+# CLI has to answer before it is chosen, and "present but not answering" is
+# reported as itself rather than as "not found".
+#
+# The answer comes back in a variable, not on stdout, because `$(...)` runs in
+# a subshell: everything the function recorded about *why* nothing was usable
+# would be discarded along with it, leaving the caller unable to tell a dead
+# daemon from a machine with no container runtime at all.
+CONTAINER_CLI=""
+CLI_PRESENT_BUT_DEAD=""
 resolve_container_cli () {
-	if command -v docker >/dev/null 2>&1; then
-		echo docker
-	elif command -v podman >/dev/null 2>&1; then
-		echo podman
-	else
-		echo ""
-	fi
+	local cli
+	CONTAINER_CLI=""
+	CLI_PRESENT_BUT_DEAD=""
+	for cli in docker podman; do
+		command -v "${cli}" >/dev/null 2>&1 || continue
+		if "${cli}" info >/dev/null 2>&1; then
+			CONTAINER_CLI="${cli}"
+			return 0
+		fi
+		CLI_PRESENT_BUT_DEAD="${CLI_PRESENT_BUT_DEAD}${CLI_PRESENT_BUT_DEAD:+, }${cli}"
+	done
+	return 1
 }
 
 # Files this working tree changes against its merge base with upstream, which
@@ -42,6 +63,11 @@ changed_files () {
 	else
 		git diff --name-only --diff-filter=ACMR HEAD -- "$@"
 	fi
+	# git diff never lists untracked files, so a source file created and not
+	# yet added is invisible to every check built on this -- and the empty
+	# result reads as health, which is the exact failure mode check_ec below
+	# exists to defeat. A new file is the most likely one to be unformatted.
+	git ls-files --others --exclude-standard -- "$@"
 }
 
 # --------------------------------------------------------------------------
@@ -125,9 +151,15 @@ PY
 check_format () {
 	echo "clang-format"
 	local cli
-	cli="$(resolve_container_cli)"
+	resolve_container_cli
+	cli="${CONTAINER_CLI}"
 	if [ -z "${cli}" ]; then
-		fail "no container CLI found (looked for docker, podman)"
+		if [ -n "${CLI_PRESENT_BUT_DEAD}" ]; then
+			fail "${CLI_PRESENT_BUT_DEAD} on PATH but not responding to \`info\`"
+			echo "        a stopped daemon or machine fails every file; start it first"
+		else
+			fail "no container CLI found (looked for docker, podman)"
+		fi
 		return
 	fi
 
@@ -153,25 +185,51 @@ check_format () {
 		return
 	fi
 
-	local bad=()
+	local present=()
 	local f
 	for f in "${files[@]}"; do
-		[ -f "${f}" ] || continue
-		# --Werror turns a diff into a non-zero status. Diagnostics go to
-		# stderr, so they are deliberately not discarded: silencing them
-		# turns a violation into a silent pass.
-		if ! "${cli}" run --rm -i \
-			-v "${REPO_ROOT}:/w" -w /w \
-			"${CLANG_FORMAT_IMAGE}" \
-			--style=file:/w/.clang-format --dry-run --Werror "${f}" 2>/dev/null; then
-			bad+=("${f}")
-		fi
+		[ -f "${f}" ] && present+=("${f}")
 	done
+	if [ "${#present[@]}" -eq 0 ]; then
+		pass "no C/C++ files present to check"
+		return
+	fi
+
+	# One container for the whole set, not one per file. clang-format takes
+	# many paths, and the image is a single-arch amd64 build, so on arm64
+	# every start also pays binary translation: it was ~0.4s of pure
+	# overhead multiplied by the size of the changeset.
+	#
+	# --Werror turns a diff into a non-zero status, and the per-file
+	# diagnostics go to stderr. They are captured rather than discarded
+	# because with a batched run the status alone no longer says *which*
+	# file is unformatted -- and a check that cannot name the file it
+	# rejects is not actionable.
+	local out
+	out="$("${cli}" run --rm \
+		-v "${REPO_ROOT}:/w" -w /w \
+		"${CLANG_FORMAT_IMAGE}" \
+		--style=file:/w/.clang-format --dry-run --Werror \
+		"${present[@]}" 2>&1)"
+
+	# Strip the ":line:col: error: ..." tail instead of cutting on the first
+	# colon, so a path containing one survives. The image's own platform
+	# WARNING has no such tail and is left out by the match.
+	local bad=()
+	local line
+	while IFS= read -r line; do
+		[ -n "${line}" ] && bad+=("${line}")
+	done < <(awk '/: (error|warning): code should be clang-formatted/ {
+			sub(/:[0-9]+:[0-9]+: (error|warning): code should be clang-formatted.*$/, "")
+			print
+		}' <<<"${out}" | sort -u)
+
+	files=("${present[@]}")
 
 	if [ "${#bad[@]}" -gt 0 ]; then
 		fail "${#bad[@]} of ${#files[@]} changed files are unformatted"
 		printf '        %s\n' "${bad[@]}"
-		echo "        fix: ${cli} run --rm -i -v ${REPO_ROOT}:/w -w /w ${CLANG_FORMAT_IMAGE} --style=file:/w/.clang-format -i <file>"
+		echo "        fix: ${cli} run --rm -v ${REPO_ROOT}:/w -w /w ${CLANG_FORMAT_IMAGE} --style=file:/w/.clang-format -i <file>"
 	else
 		pass "${#files[@]} changed files formatted"
 	fi
@@ -196,6 +254,9 @@ check_i18n () {
 
 	if [ -n "$(git status --porcelain -- po/)" ]; then
 		fail "po/ has uncommitted changes; commit or stash them first"
+		echo "        note: a previous failing run of this check leaves its"
+		echo "        regenerated catalogs in place on purpose -- they are the"
+		echo "        fix. If that is what these are, \`git add po/\` them."
 		return
 	fi
 
@@ -233,8 +294,6 @@ usage () {
 # this bash does not have -- reaches the summary having incremented nothing,
 # and silence then reads as success. Counting what was expected against what
 # reported makes that impossible: an aborted check is a failure, not a pass.
-EXPECTED=0
-REPORTED=0
 pass () { printf '  \033[32mOK\033[0m    %s\n' "$1"; REPORTED=$((REPORTED + 1)); }
 fail () { printf '  \033[31mFAIL\033[0m  %s\n' "$1"; FAILED=$((FAILED + 1)); REPORTED=$((REPORTED + 1)); }
 
