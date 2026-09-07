@@ -307,15 +307,15 @@ void CKademliaUDPListener::ProcessPacket(const uint8_t *data,
 		break;
 	case KADEMLIA_SEARCH_RES:
 		DebugRecv(KadSearchRes, ip, port);
-		ProcessSearchResponse(packetData, lenPacket);
+		ProcessSearchResponse(packetData, lenPacket, ip, port);
 		break;
 	case KADEMLIA_SEARCH_NOTES_RES:
 		DebugRecv(KadSearchNotesRes, ip, port);
-		ProcessSearchNotesResponse(packetData, lenPacket, ip);
+		ProcessSearchNotesResponse(packetData, lenPacket, ip, port);
 		break;
 	case KADEMLIA2_SEARCH_RES:
 		DebugRecv(Kad2SearchRes, ip, port);
-		Process2SearchResponse(packetData, lenPacket, senderKey);
+		Process2SearchResponse(packetData, lenPacket, ip, port, senderKey);
 		break;
 	case KADEMLIA2_PUBLISH_NOTES_REQ:
 		DebugRecv(Kad2PublishNotesReq, ip, port);
@@ -1133,7 +1133,7 @@ void CKademliaUDPListener::Process2SearchSourceRequest(const uint8_t *packetData
 	CKademlia::GetIndexed()->SendValidSourceResult(target, ip, port, startPosition, fileSize, senderKey);
 }
 
-void CKademliaUDPListener::ProcessSearchResponse(CMemFile &bio)
+void CKademliaUDPListener::ProcessSearchResponse(CMemFile &bio, uint32_t fromIP, uint16_t fromPort)
 {
 	// What search does this relate to
 	CUInt128 target = bio.ReadUInt128();
@@ -1152,33 +1152,37 @@ void CKademliaUDPListener::ProcessSearchResponse(CMemFile &bio)
 		// care has to be taken for any string conversion!
 		CScopedContainer<TagPtrList> tags;
 		bio.ReadTagPtrList(tags.get(), true /*bOptACP*/);
-		CSearchManager::ProcessResult(target, answer, tags.get());
+		CSearchManager::ProcessResult(target, answer, tags.get(), fromIP, fromPort);
 		count--;
 	}
 }
 
 // KADEMLIA_SEARCH_RES
 // Used in Kad1.0 only
-void CKademliaUDPListener::ProcessSearchResponse(const uint8_t *packetData, uint32_t lenPacket)
+void CKademliaUDPListener::ProcessSearchResponse(
+	const uint8_t *packetData, uint32_t lenPacket, uint32_t fromIP, uint16_t fromPort)
 {
 	// Verify packet is expected size
 	CHECK_PACKET_MIN_SIZE(37);
 
 	CMemFile bio(packetData, lenPacket);
-	ProcessSearchResponse(bio);
+	ProcessSearchResponse(bio, fromIP, fromPort);
 }
 
 // KADEMLIA2_SEARCH_RES
 // Used in Kad2.0 only
-void CKademliaUDPListener::Process2SearchResponse(
-	const uint8_t *packetData, uint32_t lenPacket, const CKadUDPKey &WXUNUSED(senderKey))
+void CKademliaUDPListener::Process2SearchResponse(const uint8_t *packetData,
+	uint32_t lenPacket,
+	uint32_t ip,
+	uint16_t port,
+	const CKadUDPKey &WXUNUSED(senderKey))
 {
 	CMemFile bio(packetData, lenPacket);
 
 	// Who sent this packet.
 	bio.ReadUInt128();
 
-	ProcessSearchResponse(bio);
+	ProcessSearchResponse(bio, ip, port);
 }
 
 // KADEMLIA2_PUBLISH_KEY_REQ
@@ -1246,9 +1250,45 @@ void CKademliaUDPListener::Process2PublishKeyRequest(const uint8_t *packetData,
 								   CFormat("  Size=%u") % entry->m_uSize;)
 						}
 						delete tag; // tag is no longer stored, but membervar is used
+#ifdef ENABLE_KAD_PROTOCOL_10
+					} else if (!tag->GetName().Cmp(TAG_KADAICHHASHPUB)) {
+						// AICH root hash of the published file (Kad
+						// protocol version 0x09).  Kept as a member
+						// rather than a tag: MergeIPsAndFilenames()
+						// attaches it to this publisher and maintains
+						// the popularity counts of the stored entry.
+						//
+						// Gated: upstream has no branch for this tag, so
+						// it falls through to AddTag() and is relayed
+						// verbatim in later search answers.  Consuming
+						// it here removes it from that answer, which is
+						// a different packet on the wire -- exactly what
+						// the switch being off has to rule out.
+						if (tag->IsBsob() &&
+							tag->GetBsobSize() == KAD_AICH_HASH_SIZE) {
+							if (entry->GetAICHHashCount() == 0) {
+								CKadAICHHash hash;
+								memcpy(hash.data(),
+									tag->GetBsob(),
+									hash.size());
+								entry->SetPublishedAICHHash(hash);
+							} else {
+								AddDebugLogLineN(logClientKadUDP,
+									"Multiple TAG_KADAICHHASHPUB tags "
+									"received for a single file "
+									"from " +
+										KadIPToString(ip));
+							}
+						} else {
+							AddDebugLogLineN(logClientKadUDP,
+								"Bad TAG_KADAICHHASHPUB received from " +
+									KadIPToString(ip));
+						}
+						delete tag; // tag is no longer stored, but membervar is used
+#endif
 					} else {
 						// TODO: Filter tags
-						entry->AddTag(tag);
+						entry->AddTag(tag, ip);
 					}
 				}
 				tags--;
@@ -1330,8 +1370,8 @@ void CKademliaUDPListener::Process2PublishSourceRequest(const uint8_t *packetDat
 			if (tag) {
 				if (!tag->GetName().Cmp(TAG_SOURCETYPE)) {
 					if (entry->m_bSource == false) {
-						entry->AddTag(new CTagVarInt(TAG_SOURCEIP, entry->m_uIP));
-						entry->AddTag(tag);
+						entry->AddTag(new CTagVarInt(TAG_SOURCEIP, entry->m_uIP), 0);
+						entry->AddTag(tag, ip);
 						entry->m_bSource = true;
 					} else {
 						// More than one sourcetype tag found.
@@ -1350,7 +1390,7 @@ void CKademliaUDPListener::Process2PublishSourceRequest(const uint8_t *packetDat
 				} else if (!tag->GetName().Cmp(TAG_SOURCEPORT)) {
 					if (entry->m_uTCPport == 0) {
 						entry->m_uTCPport = (uint16_t)tag->GetInt();
-						entry->AddTag(tag);
+						entry->AddTag(tag, ip);
 					} else {
 						// More than one port tag found
 						delete tag;
@@ -1358,7 +1398,7 @@ void CKademliaUDPListener::Process2PublishSourceRequest(const uint8_t *packetDat
 				} else if (!tag->GetName().Cmp(TAG_SOURCEUPORT)) {
 					if (addUDPPortTag && tag->IsInt() && tag->GetInt() != 0) {
 						entry->m_uUDPport = (uint16_t)tag->GetInt();
-						entry->AddTag(tag);
+						entry->AddTag(tag, ip);
 						addUDPPortTag = false;
 					} else {
 						// More than one udp port tag found
@@ -1366,13 +1406,13 @@ void CKademliaUDPListener::Process2PublishSourceRequest(const uint8_t *packetDat
 					}
 				} else {
 					// TODO: Filter tags
-					entry->AddTag(tag);
+					entry->AddTag(tag, ip);
 				}
 			}
 			tags--;
 		}
 		if (addUDPPortTag) {
-			entry->AddTag(new CTagVarInt(TAG_SOURCEUPORT, entry->m_uUDPport));
+			entry->AddTag(new CTagVarInt(TAG_SOURCEUPORT, entry->m_uUDPport), 0);
 		}
 #ifdef __DEBUG__
 		if (!strInfo.IsEmpty()) {
@@ -1472,7 +1512,7 @@ void CKademliaUDPListener::Process2SearchNotesRequest(const uint8_t *packetData,
 // KADEMLIA_SEARCH_NOTES_RES
 // Used only by Kad1.0
 void CKademliaUDPListener::ProcessSearchNotesResponse(
-	const uint8_t *packetData, uint32_t lenPacket, uint32_t ip)
+	const uint8_t *packetData, uint32_t lenPacket, uint32_t ip, uint16_t port)
 {
 	// Verify packet is expected size
 	CHECK_PACKET_MIN_SIZE(37);
@@ -1480,7 +1520,7 @@ void CKademliaUDPListener::ProcessSearchNotesResponse(
 
 	// What search does this relate to
 	CMemFile bio(packetData, lenPacket);
-	ProcessSearchResponse(bio);
+	ProcessSearchResponse(bio, ip, port);
 }
 
 // KADEMLIA2_PUBLISH_NOTES_REQ
@@ -1532,7 +1572,7 @@ void CKademliaUDPListener::Process2PublishNotesRequest(const uint8_t *packetData
 					delete tag;
 				} else {
 					// TODO: Filter tags
-					entry->AddTag(tag);
+					entry->AddTag(tag, ip);
 				}
 			}
 			tags--;

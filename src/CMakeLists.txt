@@ -764,6 +764,10 @@ if (NEED_LIB_MULEAPPCOMMON)
 		ED2KLink.cpp
 		Friend.cpp
 		GapList.cpp
+		# Here rather than in COMMON_SOURCES: nothing in the language table
+		# varies with the per-target defines, so amule, amuled and amulegui
+		# share one object instead of each compiling their own.
+		LanguageList.cpp
 		MagnetURI.cpp
 		MemFile.cpp
 		# Lives here rather than in muleappgui because InitCommon expands
@@ -862,6 +866,7 @@ if (NEED_LIB_MULEAPPCORE)
 		# another machine), and muleappcore is exactly the amule+amuled
 		# pair. Keeping it out of amulegui also keeps Crypto++ out of it.
 		AmuleApiCredentials.cpp
+		kademlia/kademlia/AICHHashList.cpp
 		kademlia/kademlia/Entry.cpp
 		kademlia/kademlia/Indexed.cpp
 		kademlia/kademlia/SearchManager.cpp
