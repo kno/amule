@@ -58,6 +58,7 @@
 #include "MemFile.h"           // Needed for CMemFile
 #include "Packet.h"            // Needed for CPacket
 #include "Friend.h"            // Needed for CFriend
+#include "PublicIPv6Corroboration.h"
 #include "ClientVersionString.h"
 #include "ClientList.h"       // Needed for CClientList
 #include "ChatSessionStore.h" // Needed for CChatSessionStore
@@ -361,6 +362,11 @@ void CUpDownClient::ClearHelloProperties()
 	m_modCapabilities.Reset();
 	m_utpTransport.Reset();
 	m_bUtpTcpAttempted = false;
+	// Both addresses are learned from the hello, so they are cleared with the
+	// rest of it. A CNetworkAddress carries its own validity, so going back to
+	// absent is the whole reset -- there is no companion flag to clear.
+	m_modIPv6 = CNetworkAddress::Absent();
+	m_servingBuddyIPv6 = CNetworkAddress::Absent();
 	m_fRequestsCryptLayer = 0;
 	m_fSupportsCryptLayer = 0;
 	m_fRequiresCryptLayer = 0;
@@ -672,7 +678,7 @@ bool CUpDownClient::ProcessHelloTypePacket(const CMemFile &data)
 				m_modCapabilities.SetFromWire((uint32)temptag.GetInt());
 				AddDebugLogLineN(logClient,
 					CFormat("Peer advertises vendor capabilities 0x%02X (%s)") %
-						m_modCapabilities.ToWire() %
+						m_modCapabilities.KnownBits() %
 						m_modCapabilities.GetDisplayText());
 			}
 			break;
@@ -693,9 +699,40 @@ bool CUpDownClient::ProcessHelloTypePacket(const CMemFile &data)
 			}
 			break;
 
-		case CT_MOD_SVR_IP_V6:
+		case CT_EMULE_SERVINGBUDDYIPV6:
+			// 16 bytes, big-endian: the v6 counterpart of
+			// CT_EMULE_BUDDYIP above. Recognition only -- nothing dials a
+			// buddy over v6 yet -- but held as an address rather than
+			// sixteen loose bytes, so the site that eventually dials it
+			// does not have to re-derive its family. Without it the
+			// buddy's v6 address arrives over Kad ("bi6") and is dropped
+			// in the hello.
 			if (temptag.IsHash()) {
-				m_modServerIPv6 = CNetworkAddress::FromIPv6Bytes(temptag.GetHash().GetHash());
+				m_servingBuddyIPv6 =
+					CNetworkAddress::FromIPv6Bytes(temptag.GetHash().GetHash());
+			}
+			break;
+
+		case CT_MOD_YOUR_IP:
+			// The address this peer says it saw us arrive from. Only the
+			// hash form is read: eMuleAI also accepts an integer form and
+			// sets its own public IPv4 from it, which lets a single
+			// unverified peer decide what this client believes its own
+			// address to be. emule-qt ignores the integer form, and this
+			// follows emule-qt.
+			//
+			// Even the hash form is not believed on one peer's word. It
+			// goes to a tracker that first checks the value is an address
+			// this machine actually holds -- so peers can never make us
+			// adopt a foreign one, only disambiguate between our own -- and
+			// then requires several distinct *observed* addresses to agree
+			// within a time window, keyed on where the packet actually came
+			// from rather than on the peer's self-declared user hash: a hash
+			// costs nothing to invent, a routable address does not. Nothing
+			// consumes the result yet; recognition only.
+			if (temptag.IsHash()) {
+				ObservedPublicIPv6().AddClaim(
+					GetConnectIP(), temptag.GetHash().GetHash(), ::GetTickCount64());
 			}
 			break;
 

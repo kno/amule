@@ -11,7 +11,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: aMule\n"
 "Report-Msgid-Bugs-To: https://github.com/amule-org/amule/issues\n"
-"POT-Creation-Date: 2026-09-07 13:08+0200\n"
+"POT-Creation-Date: 2026-09-07 15:04+0200\n"
 "PO-Revision-Date: 2026-09-05 10:50+0000\n"
 "Last-Translator: Tapio Rantala <tapio.rantala@iki.fi>\n"
 "Language-Team: aMule Team <https://github.com/amule-org/amule>\n"
@@ -2912,7 +2912,7 @@ msgstr "Jonossa: %u"
 msgid "Uploading"
 msgstr "Lähettää"
 
-#: src/GenericClientListCtrl.cpp src/PeerCapabilities.h
+#: src/GenericClientListCtrl.cpp
 msgid "None"
 msgstr "Ei yhtään"
 
@@ -6110,6 +6110,27 @@ msgstr "Riittämätön levytila"
 #, c-format
 msgid "ERROR: Failed to open partfile '%s'"
 msgstr "VIRHE: Ei voida avata osatiedostoa '%s'"
+
+#: src/PeerCapabilities.h
+#, fuzzy
+msgid "Extended source exchange"
+msgstr "Lähdevälitys"
+
+#: src/PeerCapabilities.h
+msgid "NAT traversal (uTP)"
+msgstr ""
+
+#: src/PeerCapabilities.h
+msgid "IPv6"
+msgstr ""
+
+#: src/PeerCapabilities.h
+msgid "Buddy info pull"
+msgstr ""
+
+#: src/PeerCapabilities.h
+msgid "NAT traversal (QUIC)"
+msgstr ""
 
 #: src/Preferences.cpp
 msgid "no options available"

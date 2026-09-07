@@ -797,9 +797,16 @@ public:
 	 */
 	const CNetworkAddress &GetModIPv6() const { return m_modIPv6; }
 	bool HasModIPv6() const { return m_modIPv6.IsPresent(); }
-	//! The peer's server IPv6 address from CT_MOD_SVR_IP_V6.
-	const CNetworkAddress &GetModServerIPv6() const { return m_modServerIPv6; }
-	bool HasModServerIPv6() const { return m_modServerIPv6.IsPresent(); }
+	/**
+	 * The peer's serving buddy's IPv6 address, from CT_EMULE_SERVINGBUDDYIPV6.
+	 *
+	 * The hello-side counterpart of the "bi6" Kad tag, and recognition only:
+	 * nothing dials a buddy over v6 yet. Held in the internal address type
+	 * for the same reason as the address above -- a buddy address is dialled
+	 * eventually, and sixteen loose bytes would have to be re-parsed there.
+	 */
+	const CNetworkAddress &GetServingBuddyIPv6() const { return m_servingBuddyIPv6; }
+	bool HasServingBuddyIPv6() const { return m_servingBuddyIPv6.IsPresent(); }
 	/**
 	 * The peer's 16-byte QUIC NAT-T identity value, from CT_MOD_QUIC_IDENT.
 	 *
@@ -1166,11 +1173,12 @@ private:
 
 	/* eMuleAI vendor capabilities, parsed from the CT_MOD_* hello tags */
 	CPeerCapabilities m_modCapabilities;
-	//! The peer's own IPv6 address and its server's, from the CT_MOD_IP_V6 and
-	//! CT_MOD_SERVER_IP_V6 tags. A CNetworkAddress carries its own validity, so
-	//! no separate "has" flag is needed and none should be reintroduced.
+	//! The peer's own IPv6 address and its serving buddy's, from the
+	//! CT_MOD_IP_V6 and CT_EMULE_SERVINGBUDDYIPV6 tags. A CNetworkAddress
+	//! carries its own validity, so no separate "has" flag is needed and none
+	//! should be reintroduced.
 	CNetworkAddress m_modIPv6;
-	CNetworkAddress m_modServerIPv6;
+	CNetworkAddress m_servingBuddyIPv6;
 	//! The peer's QUIC NAT-T identity value, from CT_MOD_QUIC_IDENT. Carries
 	//! its own presence flag, so no separate "has" bool is needed and none
 	//! should be reintroduced -- an absent value and sixteen zeroes must not

@@ -10,7 +10,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: aMule\n"
 "Report-Msgid-Bugs-To: https://github.com/amule-org/amule/issues\n"
-"POT-Creation-Date: 2026-09-07 13:08+0200\n"
+"POT-Creation-Date: 2026-09-07 15:04+0200\n"
 "PO-Revision-Date: 2026-09-05 10:56+0000\n"
 "Last-Translator: Hallvor Brunstad <Hallvor_1976@yahoo.com>\n"
 "Language-Team: <i18n-nn@lister.ping.uio.no>\n"
@@ -2928,7 +2928,7 @@ msgstr "I kø"
 msgid "Uploading"
 msgstr "Opplasting"
 
-#: src/GenericClientListCtrl.cpp src/PeerCapabilities.h
+#: src/GenericClientListCtrl.cpp
 #, fuzzy
 msgid "None"
 msgstr "Ingen"
@@ -6141,6 +6141,27 @@ msgstr "Ikkje nok diskplass"
 #, c-format
 msgid "ERROR: Failed to open partfile '%s'"
 msgstr "Feil: Greidde ikkje opne delfila '%s'"
+
+#: src/PeerCapabilities.h
+#, fuzzy
+msgid "Extended source exchange"
+msgstr "Kjeldeutveksling"
+
+#: src/PeerCapabilities.h
+msgid "NAT traversal (uTP)"
+msgstr ""
+
+#: src/PeerCapabilities.h
+msgid "IPv6"
+msgstr ""
+
+#: src/PeerCapabilities.h
+msgid "Buddy info pull"
+msgstr ""
+
+#: src/PeerCapabilities.h
+msgid "NAT traversal (QUIC)"
+msgstr ""
 
 #: src/Preferences.cpp
 msgid "no options available"

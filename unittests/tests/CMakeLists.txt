@@ -368,6 +368,12 @@ add_executable (NetworkFunctionsTest
 	NetworkFunctionsTest.cpp
 	${CMAKE_SOURCE_DIR}/src/NetworkFunctions.cpp
 	${CMAKE_SOURCE_DIR}/src/LibSocket.cpp
+	# LibSocket.cpp includes LibSocketAsio.cpp, which resolves a Windows
+	# adapter friendly name to an interface index through
+	# DetectNetworkInterfaces(). That definition lives in the mulesocket
+	# library this test does not link, so the translation unit has to be
+	# compiled in here or the Windows link fails on the undefined symbol.
+	${CMAKE_SOURCE_DIR}/src/NetworkInterfaces.cpp
 	${CMAKE_SOURCE_DIR}/src/libs/common/Format.cpp
 	${CMAKE_SOURCE_DIR}/src/libs/common/strerror_r.c
 	# CNetworkAddress::FromString/ToString live in NetworkAddress.cpp: they are
@@ -2054,7 +2060,31 @@ target_link_libraries (PartBarLegendTest
 	muleunit
 	mulecommon
 )
+# CT_MOD_YOUR_IP corroboration: that a claim for an address this machine does
+# not hold is never believed however many peers repeat it, and, among the
+# addresses it does hold, how many unrelated peers have to agree, what
+# "unrelated" is keyed on, and how long a voice keeps counting. eMuleAI
+# believes the first peer that answers; this follows emule-qt and does not.
+# Header-only for the same reason as PeerCapabilities: CUpDownClient reaches
+# theApp.
+add_executable (PublicIPv6CorroborationTest
+	PublicIPv6CorroborationTest.cpp
+)
 
+add_test (NAME PublicIPv6CorroborationTest
+	COMMAND PublicIPv6CorroborationTest
+)
+
+target_include_directories (PublicIPv6CorroborationTest
+	PRIVATE ${CMAKE_BINARY_DIR}
+	PRIVATE ${CMAKE_SOURCE_DIR}/src
+	PRIVATE ${CMAKE_SOURCE_DIR}/src/include
+)
+
+target_link_libraries (PublicIPv6CorroborationTest
+	muleunit
+	mulecommon
+)
 add_executable (PartIndexTest
 	PartIndexTest.cpp
 )

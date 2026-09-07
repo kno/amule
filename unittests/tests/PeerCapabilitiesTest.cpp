@@ -127,7 +127,7 @@ TEST(PeerCapabilities, RoundTripsEveryKnownBit)
 	for (uint32_t bits = 0; bits <= MOD_MISCOPT_KNOWN_MASK; ++bits) {
 		CPeerCapabilities caps;
 		caps.SetFromWire(bits);
-		ASSERT_EQUALS(bits, caps.ToWire());
+		ASSERT_EQUALS(bits, caps.KnownBits());
 	}
 }
 
@@ -140,7 +140,7 @@ TEST(PeerCapabilities, ReservedBitsAreMaskedOff)
 	caps.SetFromWire(0x00000080u); // bit 7
 
 	ASSERT_TRUE(caps.IsEmpty());
-	ASSERT_EQUALS(0x00000000u, caps.ToWire());
+	ASSERT_EQUALS(0x00000000u, caps.KnownBits());
 	ASSERT_FALSE(caps.SupportsExtendedSourceExchange());
 	ASSERT_FALSE(caps.SupportsNatTraversal());
 	ASSERT_FALSE(caps.SupportsIPv6());
@@ -150,7 +150,7 @@ TEST(PeerCapabilities, ReservedBitsAreMaskedOff)
 	// All reserved bits at once, plus every known bit: only the known five
 	// come back out.
 	caps.SetFromWire(0xFFFFFFFFu);
-	ASSERT_EQUALS(MOD_MISCOPT_KNOWN_MASK, caps.ToWire());
+	ASSERT_EQUALS(MOD_MISCOPT_KNOWN_MASK, caps.KnownBits());
 }
 
 // aMule reads all five capabilities and implements two of them, so the ceiling
@@ -270,13 +270,63 @@ TEST(PeerCapabilities, SetterAndDecoderAgree)
 
 	caps.Set(MOD_MISCOPT_IPV6, true);
 	caps.Set(MOD_MISCOPT_NAT_TRAVERSAL_QUIC, true);
-	ASSERT_EQUALS(0x00000014u, caps.ToWire());
+	ASSERT_EQUALS(0x00000014u, caps.KnownBits());
 
 	caps.Set(MOD_MISCOPT_IPV6, false);
-	ASSERT_EQUALS(0x00000010u, caps.ToWire());
+	ASSERT_EQUALS(0x00000010u, caps.KnownBits());
 
 	caps.Reset();
 	ASSERT_TRUE(caps.IsEmpty());
+}
+
+// A peer that claims nothing produces an empty string, not a word. That is
+// the contract the client details dialog hides its row on, so it is pinned
+// here rather than left to the dialog: a version of this that returned
+// "None" would put a permanent, meaningless row in front of nearly every
+// user, and the dialog could not tell that apart from a real claim.
+//
+// Reserved bits go the same way: they are masked off, so a peer setting only
+// bit 7 claims nothing and reads as nothing.
+TEST(PeerCapabilities, ClaimingNothingDisplaysAsEmpty)
+{
+	CPeerCapabilities caps;
+	ASSERT_TRUE(caps.GetDisplayText().IsEmpty());
+
+	caps.SetFromWire(0x00000000u);
+	ASSERT_TRUE(caps.GetDisplayText().IsEmpty());
+
+	caps.SetFromWire(0x00000080u); // reserved bit 7 only
+	ASSERT_TRUE(caps.GetDisplayText().IsEmpty());
+}
+
+// Each bit's name, one bit at a time, so the display table is pinned to the
+// positions rather than to the order it happens to be written in. The names
+// are marked for translation, so these are the msgids -- a test binary loads
+// no catalog, and it is the pairing that matters here, not the wording.
+TEST(PeerCapabilities, EachBitDisplaysItsOwnName)
+{
+	CPeerCapabilities caps;
+
+	caps.SetFromWire(MOD_MISCOPT_EXTENDED_XS);
+	ASSERT_EQUALS(wxString("Extended source exchange"), caps.GetDisplayText());
+
+	caps.SetFromWire(MOD_MISCOPT_NAT_TRAVERSAL);
+	ASSERT_EQUALS(wxString("NAT traversal (uTP)"), caps.GetDisplayText());
+
+	caps.SetFromWire(MOD_MISCOPT_IPV6);
+	ASSERT_EQUALS(wxString("IPv6"), caps.GetDisplayText());
+
+	caps.SetFromWire(MOD_MISCOPT_SERVING_BUDDY_PULL);
+	ASSERT_EQUALS(wxString("Buddy info pull"), caps.GetDisplayText());
+
+	caps.SetFromWire(MOD_MISCOPT_NAT_TRAVERSAL_QUIC);
+	ASSERT_EQUALS(wxString("NAT traversal (QUIC)"), caps.GetDisplayText());
+
+	// All five at once: comma-separated, in table order, no trailing comma.
+	caps.SetFromWire(MOD_MISCOPT_KNOWN_MASK);
+	ASSERT_EQUALS(wxString("Extended source exchange, NAT traversal (uTP), IPv6, "
+			       "Buddy info pull, NAT traversal (QUIC)"),
+		caps.GetDisplayText());
 }
 
 // The "ip6" / "bi6" Kad tags carry a 128-bit address as 32 hex characters,
@@ -384,9 +434,10 @@ TEST(PeerCapabilities, UnknownVendorTagDoesNotDesynchroniseTheStream)
 // The reference is eMuleAI's srchybrid/Opcodes.h and its Kad tag names.
 TEST(PeerCapabilities, VendorTagIdsAndKadTagNamesAreExact)
 {
+	ASSERT_EQUALS(0xA0, (int)CT_EMULE_SERVINGBUDDYIPV6);
 	ASSERT_EQUALS(0xAA, (int)CT_MOD_MISCOPTIONS);
+	ASSERT_EQUALS(0xAD, (int)CT_MOD_YOUR_IP);
 	ASSERT_EQUALS(0xAE, (int)CT_MOD_IP_V6);
-	ASSERT_EQUALS(0xAF, (int)CT_MOD_SVR_IP_V6);
 
 	ASSERT_EQUALS(wxString(wxT("ip6")), wxString(TAG_IPV6));
 	ASSERT_EQUALS(wxString(wxT("bi6")), wxString(TAG_SERVINGBUDDYIPV6));

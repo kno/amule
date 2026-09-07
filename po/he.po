@@ -9,7 +9,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: aMule\n"
 "Report-Msgid-Bugs-To: https://github.com/amule-org/amule/issues\n"
-"POT-Creation-Date: 2026-09-07 13:08+0200\n"
+"POT-Creation-Date: 2026-09-07 15:04+0200\n"
 "PO-Revision-Date: 2026-09-05 10:52+0000\n"
 "Last-Translator: Peace Kramer <kpeace1@gmail.com>\n"
 "Language-Team: Hebrew\n"
@@ -2884,7 +2884,7 @@ msgstr "על התור"
 msgid "Uploading"
 msgstr "ההעלאות"
 
-#: src/GenericClientListCtrl.cpp src/PeerCapabilities.h
+#: src/GenericClientListCtrl.cpp
 #, fuzzy
 msgid "None"
 msgstr "לא"
@@ -6083,6 +6083,27 @@ msgstr ""
 #: src/PartFile.cpp
 #, c-format
 msgid "ERROR: Failed to open partfile '%s'"
+msgstr ""
+
+#: src/PeerCapabilities.h
+#, fuzzy
+msgid "Extended source exchange"
+msgstr "החלפת מקורות"
+
+#: src/PeerCapabilities.h
+msgid "NAT traversal (uTP)"
+msgstr ""
+
+#: src/PeerCapabilities.h
+msgid "IPv6"
+msgstr ""
+
+#: src/PeerCapabilities.h
+msgid "Buddy info pull"
+msgstr ""
+
+#: src/PeerCapabilities.h
+msgid "NAT traversal (QUIC)"
 msgstr ""
 
 #: src/Preferences.cpp
