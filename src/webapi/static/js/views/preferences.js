@@ -18,6 +18,7 @@ import { api } from "../api.js";
 import { html, useState, useEffect } from "../dom.js";
 import { Placeholder, toast, Tabs } from "../components.js";
 import { Icon } from "../icons.js";
+import { SharedDirectories } from "./shared-dirs.js";
 import { t, terr } from "../i18n.js";
 
 // Field types: text (default), int, bool, select, password, textarea.
@@ -99,8 +100,11 @@ const TABS = [
   { id: "directories", labelKey: "prefs_directories", cat: "directories", groups: [
     { legendKey: "prefs_group_incoming", fields: [{ key: "incoming_path", type: "text" }] },
     { legendKey: "prefs_group_temp", fields: [{ key: "temp_path", type: "text" }] },
-    { legendKey: "prefs_group_shared", fields: [
-      { key: "shared_paths", type: "textarea" },
+    // Share roots are edited through /share_directories, not PATCH /preferences
+    // (the old `shared_paths` textarea lost the recursive flag and got
+    // reverted): a fields-less group whose panel the `after` hook renders.
+    { legendKey: "prefs_group_shared", after: "shared_directories", fields: [] },
+    { legendKey: "prefs_group_shared_options", fields: [
       { key: "share_hidden", type: "bool" },
       { key: "rescan_on_startup", type: "bool" },
       { key: "follow_symlinks", type: "bool" },
@@ -137,7 +141,7 @@ const TABS = [
   { id: "files", labelKey: "prefs_files", cat: "files", groups: [
     { legendKey: "prefs_group_downloads", fields: [
       { key: "add_new_downloads_paused", type: "bool" },
-      { key: "new_downloads_auto_priority", type: "bool" },
+      { key: "new_downloads_auto_priority_enabled", type: "bool" },
       { key: "prioritize_first_last_chunks", type: "bool" },
       { key: "on_finished_start_next_paused", type: "bool" },
       { key: "on_finished_start_next_in_same_category", type: "bool", sub: true, gatedBy: "on_finished_start_next_paused" },
@@ -150,7 +154,7 @@ const TABS = [
       { key: "save_sources_for_rare_files", type: "bool" },
     ] },
     { legendKey: "prefs_group_uploads", fields: [
-      { key: "new_shared_files_auto_priority", type: "bool" },
+      { key: "new_shared_files_auto_priority_enabled", type: "bool" },
     ] },
     { legendKey: "prefs_group_ich", fields: [
       { key: "ich_enabled", type: "bool" },
@@ -182,7 +186,7 @@ const TABS = [
         action: { path: "ipfilter/update", body: "url",
                   titleKey: "prefs_action_ipfilter_update",
                   toastKey: "prefs_action_ipfilter_update_toast" } },
-      { key: "ipfilter_auto_update", type: "bool" },
+      { key: "ipfilter_auto_update_enabled", type: "bool" },
       { key: "ipfilter_min_access_level", type: "int", min: 0, max: 255 },
       { key: "ipfilter_include_lan_ips", type: "bool" },
       { key: "reject_spoofed_source_ips", type: "bool" },
@@ -197,7 +201,7 @@ const TABS = [
       { key: "source", type: "select", options: GEOIP_SOURCES, sub: true, gatedBy: ["supported", "enabled"] },
       { key: "custom_update_url", type: "text", sub: 2, gatedBy: ["supported", "enabled"], gatedByEq: { key: "source", value: "custom" } },
       { key: "maxmind_license", type: "text", sub: 2, gatedBy: ["supported", "enabled"], gatedByEq: { key: "source", value: "maxmind" } },
-      { key: "auto_update", type: "bool", sub: true, gatedBy: ["supported", "enabled"] },
+      { key: "auto_update_enabled", type: "bool", sub: true, gatedBy: ["supported", "enabled"] },
     ] },
     { legendKey: "prefs_group_geoip_status", fields: [
       { key: "update_now", type: "button", gatedBy: ["supported", "enabled"],
@@ -586,6 +590,8 @@ export default function Preferences({ isGuest }) {
               <div class="form-grid">${grp.fields.map((f) => buildField(catOf(tab, f), f))}</div>
               ${grp.after === "amuleapi_credentials"
                 ? html`<${AmuleApiCredentials} isGuest=${isGuest} />` : null}
+              ${grp.after === "shared_directories"
+                ? html`<${SharedDirectories} isGuest=${isGuest} />` : null}
             </fieldset>`)}
         </div>
         ${isGuest

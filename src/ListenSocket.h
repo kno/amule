@@ -30,40 +30,11 @@
 #ifndef LISTENSOCKET_H
 #define LISTENSOCKET_H
 
-#include "DualStackListeners.h" // Needed for DualStack::EFamily
-#include "Proxy.h"              // Needed for CProxyData, CSocketServerProxy
+#include "Proxy.h" // Needed for CProxyData, CSocketServerProxy
 
-#include <memory>
 #include <set>
 
 class CClientTCPSocket;
-class CListenSocket;
-
-/**
- * The second acceptor of a dual-stack ed2k listener.
- *
- * Exists only where one socket cannot serve both families -- either because the
- * platform refuses a dual-stack socket, or because the two families were bound
- * separately on purpose. It owns no state of its own: accepted connections go
- * into the same socket list, count towards the same connection limits and are
- * reported in the same statistics, because as far as everything above the
- * socket layer is concerned there is one ed2k listener.
- *
- * That is also why this is a separate class rather than a second CListenSocket:
- * a second CListenSocket would mean a second socket list, a second connection
- * counter and a second set of statistics, and every one of the two dozen
- * `theApp->listensocket->...` call sites would have to learn which of the two it
- * meant.
- */
-class CListenSocketSecondary : public CSocketServerProxy
-{
-public:
-	CListenSocketSecondary(amuleIPV4Address &addr, CListenSocket *owner, const CProxyData *ProxyData);
-	void OnAccept();
-
-private:
-	CListenSocket *m_owner;
-};
 
 // CListenSocket command target
 class CListenSocket : public CSocketServerProxy
@@ -72,33 +43,6 @@ public:
 	CListenSocket(amuleIPV4Address &addr, const CProxyData *ProxyData = NULL);
 	~CListenSocket();
 	void OnAccept();
-
-	/**
-	 * Adds a second listening socket for the other address family.
-	 *
-	 * @return True when the second socket is listening. False leaves this
-	 *         object exactly as it was: the family that did bind keeps working,
-	 *         which is the whole point of falling back rather than failing.
-	 */
-	bool AddSecondaryListener(amuleIPV4Address &addr, const CProxyData *ProxyData = NULL);
-
-	/** Accepts everything pending on @a server. Shared by both acceptors. */
-	void AcceptFrom(CLibSocketServer &server);
-
-	//! The family this object's own (primary) socket was bound in.
-	DualStack::EFamily GetPrimaryFamily() const { return m_primaryFamily; }
-	//! Whether the primary socket serves both families by itself.
-	bool PrimaryServesBothFamilies() const { return m_primaryServesBoth; }
-	bool HasSecondaryListener() const { return m_secondary != NULL; }
-
-	/**
-	 * Stops the second family's acceptor. Called on shutdown alongside
-	 * Close(), which only closes this object's own socket -- an acceptor left
-	 * armed would keep completing handshakes into a listener that is being
-	 * torn down.
-	 */
-	void CloseSecondaryListener();
-
 	void Process();
 	void RemoveSocket(CClientTCPSocket *todel);
 	void AddSocket(CClientTCPSocket *toadd);
@@ -122,10 +66,6 @@ private:
 
 	bool shutdown;
 	bool m_pending;
-	//! The other family's acceptor, when one socket could not serve both.
-	std::unique_ptr<CListenSocketSecondary> m_secondary;
-	DualStack::EFamily m_primaryFamily;
-	bool m_primaryServesBoth;
 
 	uint16 m_OpenSocketsInterval;
 	uint16 m_ConnectionStates[3];

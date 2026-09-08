@@ -328,7 +328,7 @@ Downloads only, but it rides the `comments` channel, not `downloads` -- `?channe
 
 #### `shared_added` / `shared_updated`
 
-Identical to the REST [`/api/v0/shared`](REFERENCE.md#get-apiv0shared) list-item shape. `_updated` fires on any field-level change including `priority`, `priority_auto`, `uploaded_bytes_session`, `uploaded_bytes_total`, `requests.*`, `accepts.*` and `hashed_part_count` — clients see live upload counters (and priority changes, and a running hash) without polling.
+Identical to the REST [`/api/v0/shared`](REFERENCE.md#get-apiv0shared) list-item shape. `_updated` fires on any field-level change including `priority`, `priority_auto`, `uploaded_bytes_session`, `uploaded_bytes_total`, `request_count_*`, `accepted_request_count_*` and `hashed_part_count` — clients see live upload counters (and priority changes, and a running hash) without polling.
 
 ```json
 {
@@ -400,7 +400,7 @@ Identical to the REST [`/api/v0/servers`](REFERENCE.md#get-apiv0servers) list-it
 }
 ```
 
-A server announces its capabilities and publishing limits only after it answers a UDP status request, which is usually a tick or two after it is added. Until then it reports `0` / all-`false`, and the reply produces one `server_updated`. Every bit is documented in [`GET /api/v0/servers`](REFERENCE.md#get-apiv0servers).
+A server announces its capabilities and publishing limits only after it answers a UDP status request, which is usually a tick or two after it is added. Until then it reports `0` / all-`false` and a `null` `software_version`, and the reply produces one `server_updated`. Every bit is documented in [`GET /api/v0/servers`](REFERENCE.md#get-apiv0servers).
 
 #### `server_removed`
 
@@ -424,7 +424,7 @@ Identical to the REST [`/api/v0/friends`](REFERENCE.md#get-apiv0friends) list-it
   "ip":           "203.0.113.42",
   "port":         4662,
   "client_ecid":  4382,
-  "online":       true,
+  "connected":    true,
   "friend_slot":  false
 }
 ```
@@ -461,7 +461,7 @@ One event per message, **inbound and outbound alike**. An outbound one is how a 
 }
 ```
 
-`message` is identical to a `messages[]` entry on [`GET /api/v0/chats/{address}/messages`](REFERENCE.md#get-apiv0chatsaddressmessages), and `name` uses the same `"IP: <ip> Port: <port>"` fallback the REST list does.
+`message` is identical to a `messages[]` entry on [`GET /api/v0/chats/{address}/messages`](REFERENCE.md#get-apiv0chatsaddressmessages) - including `sent_at`, which is `null` rather than `0` for an unstamped message, exactly as the REST row spells it. `name` uses the same `"IP: <ip> Port: <port>"` fallback the REST list does.
 
 There is no separate "conversation started" event: a conversation that did not exist yet is implied by the first message carrying its `address`.
 

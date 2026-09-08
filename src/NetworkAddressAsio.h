@@ -27,24 +27,7 @@
 
 #include "NetworkAddress.h"
 
-// Boost.Asio's socket headers redeclare constexpr static members out of line
-// and give several classes a user-provided destructor alongside an implicit
-// copy constructor. Both are deprecated in C++17 and both are diagnosed by
-// Clang, so with the -Werror=deprecated gate in src/CMakeLists.txt they fail
-// the build -- in third-party code this tree does not own. Same pragma-wrap
-// convention as CryptoPP_Inc.h and the wx wraps from #341, and the same
-// reason: the headers are discovered without -isystem, so the gate reaches
-// them. Kept to exactly these two diagnostics rather than a blanket
-// -Wno-deprecated, so a genuine deprecation in aMule's own code still fails.
-#if defined(__clang__)
-#pragma clang diagnostic push
-#pragma clang diagnostic ignored "-Wdeprecated-copy-with-user-provided-dtor"
-#pragma clang diagnostic ignored "-Wdeprecated-redundant-constexpr-static-def"
-#endif
 #include <boost/asio/ip/address.hpp>
-#if defined(__clang__)
-#pragma clang diagnostic pop
-#endif
 
 /**
  * The one bridge between CNetworkAddress and Boost.Asio.
@@ -61,6 +44,17 @@
  * header: doing so re-establishes exactly the coupling this file exists to
  * confine, and nothing will warn you about it until macOS and mingw-w64 CI do.
  */
+
+/**
+ * Both conversions are namespaced rather than free at global scope. They take a
+ * boost::asio::ip::address, which makes an unqualified pair argument-dependent
+ * lookup candidates for every call in a translation unit that mentions an asio
+ * address -- and the call sites this type is for will include this header
+ * widely. Nothing collides today; the namespace is here because it is cheap
+ * now and awkward once those call sites exist.
+ */
+namespace NetworkAddressAsio
+{
 
 /**
  * Widens a CNetworkAddress into the asio value a socket call needs.
@@ -82,6 +76,8 @@ boost::asio::ip::address ToAsioAddress(const CNetworkAddress &address);
  * edge where it knows the overload applies.
  */
 CNetworkAddress FromAsioAddress(const boost::asio::ip::address &address);
+
+} // namespace NetworkAddressAsio
 
 #endif // NETWORKADDRESSASIO_H
 // File_checked_for_headers

@@ -153,7 +153,7 @@ once):
 is the architectural decision**:
 
 | list | condition | contents |
-|---|---|---|
+| --- | --- | --- |
 | `CORE_SOURCES` | monolithic or daemon | the P2P engine: `amule.cpp`, `BaseClient.cpp`, `DownloadQueue.cpp`, `ExternalConn.cpp`, `ECSpecialCoreTags.cpp`, all of `kademlia/` |
 | `GUI_SOURCES` | monolithic or remotegui | `amuleDlg.cpp`, `muuli_wdr.cpp`, `PrefsUnifiedDlg.cpp`, every `*Ctrl/*Wnd/*Dialog.cpp` |
 | `COMMON_SOURCES` | all three | `KnownFile.cpp`, `PartFile.cpp`, `Preferences.cpp`, `ECSpecialMuleTags.cpp`, `GuiEvents.cpp`, `Statistics.cpp` |
@@ -318,6 +318,7 @@ grep for `Failed to transfer data from Cfg to Widget` when a new preference "doe
 
 ## Conventions
 
+- Comments: prefer clear names, types, tests, and small structure; retain only non-obvious invariant, security, protocol, platform, or rationale comments; no narrative review comments unless asked.
 - Classes take a `C` prefix (`CPartFile`, `CKademlia`); apps are `Camule…`; remote mirrors end in
   `Rem`; EC tag classes are `CEC_Xxx_Tag`. Legacy exceptions exist
   (`UploadBandwidthThrottler`, `ExternalConn`) — do not imitate them, do not rename them either.

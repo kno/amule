@@ -28,9 +28,7 @@
 
 #include <wx/event.h> // Needed for wxEvent
 
-#include "IPFilterMatch.h"  // Needed for CIPv6FilterTable
-#include "NetworkAddress.h" // Needed for CNetworkAddress
-#include "Types.h"          // Needed for uint8, uint16 and uint32
+#include "Types.h" // Needed for uint8, uint16 and uint32
 
 class CIPFilterEvent;
 
@@ -64,24 +62,6 @@ public:
 	 * Note: IP2Test must be in anti-host order (BE on LE platform, LE on BE platform).
 	 */
 	bool IsFiltered(uint32 IP2test, bool isServer = false);
-
-	/**
-	 * Checks if an address is filtered with the current list and AccessLevel.
-	 *
-	 * The family-agnostic entry point, and now the one that can actually
-	 * decide: alongside the 32-bit range table there is a table of IPv6
-	 * prefixes, so an IPv6 peer gets a verdict instead of being blocked for
-	 * want of one.
-	 *
-	 * An IPv4-mapped IPv6 address is normalised to its IPv4 form before any
-	 * table is consulted, and a resulting block is attributed to the IPv4 rule
-	 * that caused it. That is not cosmetic: with an IPv6 socket bound, a
-	 * blocked IPv4 peer can reconnect as ::ffff:a.b.c.d, and a filter matching
-	 * on the address as received would wave it straight through.
-	 *
-	 * An absent address is not filtered: there is no connection to block.
-	 */
-	bool IsFiltered(const CNetworkAddress &address, bool isServer = false);
 
 	/**
 	 * Returns the number of banned ranges.
@@ -134,34 +114,14 @@ private:
 	/** Handles the result of loading the dat-files. */
 	void OnIPFilterEvent(CIPFilterEvent &);
 
-	/** Bumps the filtered-client or filtered-server statistic. */
-	void CountFiltered(bool isServer);
-
 	//! The URL from which the IP filter was downloaded
 	wxString m_URL;
 
-	/**
-	 * The IP ranges. Host (numeric) order, sorted ascending.
-	 *
-	 * Still 32-bit IPv4, and still the documented conversion boundary for the
-	 * filter: IsFiltered(const CNetworkAddress&) narrows to it explicitly and
-	 * never truncates. IPv6 rules live in their own table, m_ipv6Rules, rather
-	 * than in a widened version of this one.
-	 */
+	// The IP ranges
 	typedef std::vector<uint32> RangeIPs;
 	RangeIPs m_rangeIPs;
 	typedef std::vector<uint16> RangeLengths;
 	RangeLengths m_rangeLengths;
-
-	/**
-	 * The IPv6 prefix rules, read from the same .dat files.
-	 *
-	 * A second table rather than a widened first one: the 32-bit table encodes
-	 * a range as a start plus a 15-bit compressed length, which has no room for
-	 * a 128-bit address, and its binary search is on the hot connection path.
-	 * See IPFilterMatch.h.
-	 */
-	CIPv6FilterTable m_ipv6Rules;
 	// Name for each range. This usually stays empty for memory reasons,
 	// except if IP-Filter debugging is active.
 	typedef std::vector<std::string> RangeNames;

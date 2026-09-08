@@ -1,20 +1,8 @@
-# aMule — eMuleAI network-parity fork
+# aMule
 
 ![aMule](https://raw.githubusercontent.com/amule-org/amule/master/org.amule.aMule.svg)
 
 aMule is an eMule-like client for the eDonkey and Kademlia networks.
-
-**This is a fork of [amule-org/amule](https://github.com/amule-org/amule)**, not
-upstream aMule. It carries aMule 3.0.1 plus the wire-level extensions an
-**eMuleAI** peer expects, so the two implementations recognise each other's
-capabilities instead of falling back to the plain eD2k subset: peer capability
-negotiation, Kademlia protocol `0x0a`, family-agnostic addressing, IPv6 dual
-stack, the uTP transport, and NAT traversal. A QUIC NAT-T transport is present
-but **unvalidated on the wire** — see the release notes before relying on it.
-
-Everything else — the client, its features, its documentation — is upstream
-aMule's work. Bug reports for this fork's changes belong here; anything else
-belongs [upstream](https://github.com/amule-org/amule/issues).
 
 [Forum] | [Documentation] | [FAQ]
 
@@ -22,19 +10,9 @@ belongs [upstream](https://github.com/amule-org/amule/issues).
 [Documentation]: https://amule-org.github.io/docs "aMule Documentation"
 [FAQ]:           https://amule-org.github.io/docs/manual/faq "FAQ on aMule"
 
-## Where things live
+## Important Notice
 
-| | |
-| --- | --- |
-| **Releases and binaries of this fork** | [kno/amule/releases](https://github.com/kno/amule/releases/latest) |
-| **Container images of this fork** | [ghcr.io/kno/amule-emuleai](https://github.com/users/kno/packages/container/package/amule-emuleai) |
-| **Issues about this fork's changes** | [kno/amule/issues](https://github.com/kno/amule/issues) |
-| Upstream aMule | [amule-org/amule](https://github.com/amule-org/amule) |
-| Upstream documentation, FAQ and forum | linked throughout this file |
-
-Distribution packages named `amule` are **upstream aMule**, not this fork, and
-they lag badly: Debian 13 still ships 2.3.3 (2021), five years behind the 3.0.1
-this tree is built on. Use the releases or the container image above.
+The work in aMule will continue in the new [aMule-org repo](https://github.com/amule-org/amule). The reason we had to create a new organization is that Gonosztopi, who is the single owner of [aMule Project](https://github.com/amule-project), has been unreachable. As a result, in the **aMule-project** organization we became unable to update the infrastructure to the project's needs.
 
 ## Overview
 
@@ -51,16 +29,28 @@ generally adopted into aMule shortly after.
 
 ---
 
+| | Distributions | |
+| --- | --- | --- |
+| [![Arch Linux](https://repology.org/badge/version-for-repo/arch/amule.svg)](https://archlinux.org/packages/extra/x86_64/amule/) | [![AUR](https://repology.org/badge/version-for-repo/aur/amule.svg?allow_ignored=1)](https://aur.archlinux.org/packages/amule) | [![Debian 11](https://repology.org/badge/version-for-repo/debian_11/amule.svg)](https://repology.org/project/amule/versions) |
+| [![Debian 12](https://repology.org/badge/version-for-repo/debian_12/amule.svg)](https://repology.org/project/amule/versions) | [![Debian 13](https://repology.org/badge/version-for-repo/debian_13/amule.svg)](https://repology.org/project/amule/versions) | [![Debian 14](https://repology.org/badge/version-for-repo/debian_14/amule.svg)](https://repology.org/project/amule/versions) |
+| [![Debian Unstable](https://repology.org/badge/version-for-repo/debian_unstable/amule.svg)](https://repology.org/project/amule/versions) | [![Fedora 44 package](https://repology.org/badge/version-for-repo/fedora_44/amule.svg)](https://repology.org/project/amule/versions) | [![Fedora Rawhide package](https://repology.org/badge/version-for-repo/fedora_rawhide/amule.svg)](https://repology.org/project/amule/versions) |
+| [![FreeBSD](https://repology.org/badge/version-for-repo/freebsd/amule.svg)](https://www.freshports.org/net-p2p/amule/) | [![Gentoo](https://repology.org/badge/version-for-repo/gentoo/amule.svg)](https://packages.gentoo.org/packages/net-p2p/amule) | [![Kali Linux](https://repology.org/badge/version-for-repo/kali_rolling/amule.svg)](https://pkg.kali.org/pkg/amule) |
+| [![Manjaro](https://repology.org/badge/version-for-repo/manjaro_stable/amule.svg)](https://repology.org/project/amule/versions) | [![NixOS 25.05](https://repology.org/badge/version-for-repo/nix_stable_25_05/amule.svg)](https://search.nixos.org/packages?channel=25.05&query=amule) | [![OpenBSD](https://repology.org/badge/version-for-repo/openbsd/amule.svg)](https://openports.pl/path/net/amule) |
+| [![openSUSE Tumbleweed (Packman)](https://repology.org/badge/version-for-repo/packman_opensuse_tumbleweed/amule.svg)](http://packman.links2linux.org/package/aMule) | [![Slackware](https://repology.org/badge/version-for-repo/slackbuilds/amule.svg)](https://slackbuilds.org/result/?search=amule) | [![Solus](https://repology.org/badge/version-for-repo/solus/amule.svg)](https://repology.org/project/amule/versions) |
+| [![Ubuntu 22.04 LTS](https://repology.org/badge/version-for-repo/ubuntu_22_04/amule.svg)](https://repology.org/project/amule/versions) | [![Ubuntu 24.04 LTS](https://repology.org/badge/version-for-repo/ubuntu_24_04/amule.svg)](https://packages.ubuntu.com/noble/amule) | [![Ubuntu 25.04](https://repology.org/badge/version-for-repo/ubuntu_25_04/amule.svg)](https://packages.ubuntu.com/plucky/amule) |
+| [![Ubuntu 25.10](https://repology.org/badge/version-for-repo/ubuntu_25_10/amule.svg)](https://repology.org/project/amule/versions) | [![Ubuntu 26.04 LTS](https://repology.org/badge/version-for-repo/ubuntu_26_04/amule.svg)](https://repology.org/project/amule/versions) | [![Ubuntu 26.10](https://repology.org/badge/version-for-repo/ubuntu_26_10/amule.svg)](https://repology.org/project/amule/versions) |
+
+---
+
 ## Development Statistics
 
-| [kno/amule](https://github.com/kno/amule) (this fork) |
-| --- |
-| [![Open Pull Requests](https://img.shields.io/github/issues-pr/kno/amule)](https://github.com/kno/amule/pulls) |
-| [![Open Issues](https://img.shields.io/github/issues/kno/amule)](https://github.com/kno/amule/issues) |
-| [![Latest release](https://img.shields.io/github/v/release/kno/amule?include_prereleases)](https://github.com/kno/amule/releases/latest) |
-
-Upstream's own counters live at
-[amule-org/amule](https://github.com/amule-org/amule).
+| aMule-project (frozen) | [aMule-org](https://github.com/amule-org/amule) |
+| ---------------------- | --------- |
+| [![Open Pull Requests](https://img.shields.io/github/issues-pr/amule-project/amule)](https://github.com/amule-project/amule/pulls) | [![Open Pull Requests](https://img.shields.io/github/issues-pr/amule-org/amule)](https://github.com/amule-org/amule/pulls) |
+| [![Open Issues](https://img.shields.io/github/issues/amule-project/amule)](https://github.com/amule-project/amule/issues) | [![Open Issues](https://img.shields.io/github/issues/amule-org/amule)](https://github.com/amule-org/amule/issues) |
+| [![Bug](https://img.shields.io/github/issues/amule-project/amule/bug)](https://github.com/amule-project/amule/issues?q=is%3Aopen+is%3Aissue+label%3Abug) | [![Bug](https://img.shields.io/github/issues/amule-org/amule/bug)](https://github.com/amule-org/amule/issues?q=is%3Aopen+is%3Aissue+label%3Abug) |
+| [![Feature Request](https://img.shields.io/github/issues/amule-project/amule/feature%20request)](https://github.com/amule-project/amule/issues?labels=feature+request) | [![Feature Request](https://img.shields.io/github/issues/amule-org/amule/feature%20request)](https://github.com/amule-org/amule/issues?labels=feature+request) |
+| [![Enhancement](https://img.shields.io/github/issues/amule-project/amule/enhancement)](https://github.com/amule-project/amule/issues?labels=enhancement) | [![Enhancement](https://img.shields.io/github/issues/amule-org/amule/enhancement)](https://github.com/amule-org/amule/issues?labels=enhancement) |
 
 ## Features
 
@@ -88,32 +78,12 @@ Download the latest release for your platform from the
 * **macOS** — Universal2 `.dmg`: download, drag to `/Applications`.
 * **Windows** — choose either the **NSIS installer** `.exe` (Start-menu shortcuts, uninstaller, x64 / ARM64) or the **portable `.zip`** (no install, unzip and run).
 
-### Container image
-
-A runtime image of this fork (daemon + `amuleapi` + `amuleweb` + `amulecmd`) is
-published on every push to `master`:
-
-```sh
-docker pull ghcr.io/kno/amule-emuleai:latest    # QUIC compiled in
-docker pull ghcr.io/kno/amule-emuleai:noquic    # QUIC compiled out
-```
-
-Both variants are built from one checkout in one workflow run, so they can never
-come from different source, and switching between them is one line in a compose
-file. Version-pinned tags (`:3.0.1-emuleai.1`) and commit-pinned tags
-(`:sha-<commit>`) are published alongside, so a running binary always maps back
-to its exact GPL source revision.
-
-See [packaging/linux/docker/README.md](packaging/linux/docker/README.md) for the
-environment-variable contract, port list, IPv6 notes, and the warning about what
-the QUIC path has and has not been validated to do.
-
 See [docs/INSTALL_BINARIES.md](docs/INSTALL_BINARIES.md) for
 per-platform notes — including the macOS unsigned-binary
 workaround, the Windows SmartScreen prompt, and the Linux FUSE
 dependency for AppImage.
 
-[Releases page]: https://github.com/kno/amule/releases/latest
+[Releases page]: https://github.com/amule-org/amule/releases/latest
 
 ### Building from source
 
@@ -167,22 +137,13 @@ starving your own traffic. Values are in **kibibytes per second**
 
 ## Reporting Bugs
 
-Route the report by what it is about, because the two trackers have different
-owners:
+If you find a bug or miss a feature, please open an issue on
+[GitHub][5] (preferred) or report it on the [forum]. A good bug report
+includes the exact aMule version (`amuled --version`), the platform you're
+on, and steps to reproduce. See the [bug report guide][bug-report] for
+detailed instructions on attaching backtraces and reproducer steps.
 
-* **Something this fork changed** — peer capability negotiation, Kademlia `0x0a`,
-  addressing, IPv6 dual stack, uTP, NAT traversal, QUIC, or the container image:
-  open it on [this fork's tracker][5].
-* **Anything else in aMule** — open it [upstream][5-up], where the code and the
-  people who know it live. Do not file upstream bugs here; it only delays them.
-
-A good bug report includes the exact aMule version (`amuled --version` — a build
-of this fork reports `aMule v3.0.1-emuleai.1` or similar), the platform you're
-on, and steps to reproduce. See the [bug report guide][bug-report] for detailed
-instructions on attaching backtraces and reproducer steps.
-
-[5]:          https://github.com/kno/amule/issues "This fork's issues"
-[5-up]:       https://github.com/amule-org/amule/issues "Upstream aMule issues"
+[5]:          https://github.com/amule-org/amule/issues "aMule Issues"
 [bug-report]: https://amule-org.github.io/docs/contributing/bug-report "Bug Report Instructions"
 
 ## Contributing

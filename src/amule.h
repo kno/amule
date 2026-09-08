@@ -31,9 +31,8 @@
 #include <wx/intl.h>     // Needed for wxLocale
 #include <wx/timer.h>    // Needed for wxTimer (startup splash poll)
 
-#include "IPv6Reachability.h" // Needed for DualStack::CLocalReachability
-#include "Types.h"            // Needed for int32, uint16 and uint64
-#include <functional>         // Needed for std::function (DeferShutDownToOuterLoop)
+#include "Types.h"    // Needed for int32, uint16 and uint64
+#include <functional> // Needed for std::function (DeferShutDownToOuterLoop)
 #include <map>
 #ifndef __WINDOWS__
 #include <signal.h>
@@ -446,32 +445,6 @@ public:
 	// Check if we should callback this client
 	bool CanDoCallback(uint32 clientServerIP, uint16 clientServerPort);
 
-	// This client's own reachability per address family. Written by the
-	// listener setup (what is bound) and by the accept path (what has actually
-	// arrived); read by the handshake, which may only advertise IPv6 once an
-	// inbound IPv6 connection has verified it. See src/IPv6Reachability.h.
-	DualStack::CLocalReachability &GetReachability() { return m_reachability; }
-	const DualStack::CLocalReachability &GetReachability() const { return m_reachability; }
-
-	/**
-	 * The IPv6 address a verified inbound IPv6 connection actually arrived on,
-	 * or an absent address.
-	 *
-	 * This, and not the listener's bind address, is what goes in the handshake:
-	 * the listener is bound to the wildcard, and a machine routinely has
-	 * several IPv6 addresses of which only some are reachable from outside.
-	 * Recorded by the accept path; only a globally routable address is kept,
-	 * because a peer cannot do anything with a link-local one but waste a
-	 * connect attempt on it.
-	 */
-	const CNetworkAddress &GetVerifiedIPv6Address() const { return m_verifiedIPv6Address; }
-	void SetVerifiedIPv6Address(const CNetworkAddress &address)
-	{
-		if (address.IsGloballyRoutableIPv6()) {
-			m_verifiedIPv6Address = address;
-		}
-	}
-
 	// Misc functions
 	void OnlineSig(bool zero = false);
 	void Localize_mule();
@@ -514,24 +487,6 @@ public:
 	// ones. In-memory; emptied by a restart.
 	CChatSessionStore *chatsessions;
 	CClientUDPSocket *clientudp;
-	// The same ed2k UDP socket for the other address family, or NULL when only
-	// one family is bound. Separate object because both are bound to the same
-	// port and the IPv6 one is therefore IPV6_V6ONLY -- see ReinitializeNetwork().
-	CClientUDPSocket *clientudpV6;
-
-	/**
-	 * The ed2k UDP socket that can reach a given target.
-	 *
-	 * The two sockets are bound to the same port in different families and the
-	 * IPv6 one is IPV6_V6ONLY, so a datagram for a native IPv6 peer cannot go
-	 * out of the IPv4 socket. Picking by target family is what makes ed2k UDP
-	 * to an IPv6 peer work in both directions rather than only inbound.
-	 *
-	 * @return The socket, or NULL when this build has none bound for that
-	 *         family. A NULL result means the peer is unreachable over UDP, not
-	 *         that the caller should fall back to the other socket.
-	 */
-	CClientUDPSocket *GetClientUDPSocketFor(const CNetworkAddress &target) const;
 	CStatistics *m_statistics;
 	CIPFilter *ipfilter;
 	UploadBandwidthThrottler *uploadBandwidthThrottler;
@@ -752,24 +707,6 @@ private:
 #endif
 
 	uint32 m_localip;
-	//! Reachability per address family; see GetReachability().
-	DualStack::CLocalReachability m_reachability;
-	//! See GetVerifiedIPv6Address().
-	CNetworkAddress m_verifiedIPv6Address;
-	//! Which families bound, and the once-per-family-per-start failure latch.
-	DualStack::CListenerState m_listenerState;
-
-	/**
-	 * Reports a bind failure for @a family -- at most once per family per
-	 * start, however many sockets and retries hit it.
-	 *
-	 * A host with no IPv6 stack fails every IPv6 bind aMule attempts, and it
-	 * attempts several (TCP, UDP, and again after a reconfiguration). One line
-	 * per attempt turns a normal single-stack host into a log full of errors,
-	 * which is what the spec forbids; the per-attempt detail goes to the debug
-	 * log instead.
-	 */
-	void LogBindFailure(DualStack::EFamily family, uint16 port, const wxString &protocol);
 
 	// Set by ShowConnectionState(); see the GetED2KConnectedSince() /
 	// GetKadConnectedSince() accessors above.

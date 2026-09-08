@@ -96,29 +96,18 @@ bool CClientTCPSocket::InitNetworkData()
 {
 	wxASSERT(!m_remoteip);
 	wxASSERT(!m_client);
-	// The peer's address with its family intact, plus the 32-bit form the rest
-	// of this class still uses. For an IPv6 peer the latter is zero, and that
-	// is no longer a reason to drop the connection: the accept test is now
-	// "did we get an address", which the address type can answer without
-	// overloading zero to mean two different things.
-	const CNetworkAddress peer = GetPeerAddress();
 	m_remoteip = GetPeerInt();
 
-	MULE_CHECK(peer.IsPresent() && !peer.IsUnspecified(), false);
+	MULE_CHECK(m_remoteip, false);
 
-	// Filtered through the family-agnostic entry point, which normalises an
-	// IPv4-mapped address before matching: a blocked IPv4 peer reconnecting as
-	// ::ffff:a.b.c.d must still be blocked, by the IPv4 rule that blocks it.
-	if (theApp->ipfilter->IsFiltered(peer)) {
+	if (theApp->ipfilter->IsFiltered(m_remoteip)) {
 		AddDebugLogLineN(logClient, "Denied connection from " + GetPeer() + "(Filtered IP)");
 		return false;
-	} else if (theApp->clientlist->IsBannedClient(peer.Unmapped())) {
+	} else if (theApp->clientlist->IsBannedClient(m_remoteip)) {
 		AddDebugLogLineN(logClient, "Denied connection from " + GetPeer() + "(Banned IP)");
 		return false;
 	} else {
-		AddDebugLogLineN(logClient,
-			CFormat("Accepted %s connection from %s") %
-				(peer.IsIPv6() && !peer.IsIPv4Mapped() ? "IPv6" : "IPv4") % GetPeer());
+		AddDebugLogLineN(logClient, "Accepted connection from " + GetPeer());
 		return true;
 	}
 }
@@ -1827,12 +1816,8 @@ bool CClientTCPSocket::ProcessExtPacket(const uint8_t *buffer, uint32 size, uint
 		CKnownFile *reqfile = theApp->sharedfiles->GetFileByID(hash);
 
 		bool bSenderMultipleIpUnknown = false;
-		// destip is an ed2k wire field: 32-bit, zero for "unknown".
 		CUpDownClient *sender = theApp->uploadqueue->GetWaitingClientByIP_UDP(
-			CNetworkAddress::FromIPv4NetworkOrderOrAbsent(destip),
-			destport,
-			true,
-			&bSenderMultipleIpUnknown);
+			destip, destport, true, &bSenderMultipleIpUnknown);
 		if (!reqfile) {
 			AddDebugLogLineN(
 				logLocalClient, "Local Client: OP_FILENOTFOUND to " + m_client->GetFullIP());
@@ -2020,15 +2005,6 @@ bool CClientTCPSocket::ProcessED2Kv2Packet(const uint8_t *buffer, uint32 size, u
 void CClientTCPSocket::OnConnect(int nErrorCode)
 {
 	if (nErrorCode) {
-		// A connect-time failure against a peer that advertised more than one
-		// address family is not a verdict on the peer: the other family has not
-		// been tried yet, and the spec requires that the peer is not marked
-		// dead until it has. RetryNextAddressFamily() starts that attempt on a
-		// fresh socket and this one is on its way out either way, so nothing
-		// below runs for it.
-		if (m_client && m_client->RetryNextAddressFamily()) {
-			return;
-		}
 		OnError(nErrorCode);
 	} else if (!m_client) {
 		// and now? Disconnect? not?
@@ -2051,14 +2027,10 @@ void CClientTCPSocket::OnSend(int nErrorCode)
 void CClientTCPSocket::OnReceive(int nErrorCode)
 {
 	ResetTimeOutTimer();
-	// We might have updated ipfilter. Re-checked through the family-agnostic
-	// entry point, for the same reason InitNetworkData() uses it: a real IPv6
-	// peer has no 32-bit form, so the narrow m_remoteip is legitimately zero
-	// here. Handing that zero to the uint32 overload asks it about 0.0.0.0 and
-	// exempts the peer from a filter it may well be listed in -- and the
-	// wxASSERT(m_remoteip) that used to guard this line fired on every such
-	// peer, burying the log in backtraces for a state that is not an error.
-	if (theApp->ipfilter->IsFiltered(GetPeerAddress())) {
+	// We might have updated ipfilter
+	wxASSERT(m_remoteip);
+
+	if (theApp->ipfilter->IsFiltered(m_remoteip)) {
 		if (m_client) {
 			m_client->Safe_Delete();
 		}

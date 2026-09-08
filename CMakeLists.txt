@@ -1,14 +1,6 @@
 cmake_minimum_required (VERSION 3.10...3.31)
 project (amule)
 
-# The network-parity work (amule-address-widening onward) uses std::optional and
-# other C++17 library features. g++ defaults to gnu++17 so this was latent, but
-# AppleClang defaults to an older standard and the macOS CI build failed on
-# std::optional. Declare the requirement for every target rather than relying on
-# a compiler's default.
-set (CMAKE_CXX_STANDARD 17)
-set (CMAKE_CXX_STANDARD_REQUIRED ON)
-
 set (MIN_BOOST_VERSION 1.70)
 set (MIN_CRYPTOPP_VERSION 8.1)
 set (MIN_GDLIB_VERSION 2.0.0)
@@ -95,14 +87,6 @@ endif()
 
 if (ENABLE_UPNP)
 	include (cmake/upnp.cmake)
-endif()
-
-if (ENABLE_UTP)
-	include (cmake/libutp.cmake)
-endif()
-
-if (ENABLE_QUIC)
-	include (cmake/ngtcp2.cmake)
 endif()
 
 if (NEED_GLIB_CHECK)
@@ -634,8 +618,6 @@ message (STATUS "
 	Should aMule be compiled with i18n support?			${ENABLE_NLS}
 	Which mode should aMule be compiled in?				${CMAKE_BUILD_TYPE}
 	Should aMule be compiled with UPnP support?			${ENABLE_UPNP}
-	Should aMule be compiled with the uTP transport?		${ENABLE_UTP}
-	Should aMule be compiled with the QUIC NAT-T transport?		${ENABLE_QUIC}
 	Should aMule be compiled with IP2country support?		${ENABLE_IP2COUNTRY}
 	Should aMule monolithic application be built?			${BUILD_MONOLITHIC}
 	Should aMule daemon version be built?				${BUILD_DAEMON}
@@ -681,14 +663,6 @@ endif()
 
 if (ENABLE_UPNP)
 	message ("			libupnp				${LIBUPNP_VERSION}")
-endif()
-
-if (ENABLE_UTP)
-	message ("			libutp				${LIBUTP_VERSION}")
-endif()
-
-if (ENABLE_QUIC)
-	message ("			ngtcp2				${NGTCP2_VERSION_SUMMARY}")
 endif()
 
 message ("			libintl				${ENABLE_NLS}")

@@ -50,7 +50,7 @@ CNetworkAddress CNetworkAddress::FromString(const std::string &text)
 	if (ec) {
 		return Absent();
 	}
-	return FromAsioAddress(address);
+	return NetworkAddressAsio::FromAsioAddress(address);
 }
 
 std::string CNetworkAddress::ToString() const
@@ -58,8 +58,16 @@ std::string CNetworkAddress::ToString() const
 	if (IsAbsent()) {
 		return "<absent>";
 	}
-	return ToAsioAddress(*this).to_string();
+	return NetworkAddressAsio::ToAsioAddress(*this).to_string();
 }
+
+wxString CNetworkAddress::ToWxString() const
+{
+	return wxString::FromUTF8(ToString().c_str());
+}
+
+namespace NetworkAddressAsio
+{
 
 boost::asio::ip::address ToAsioAddress(const CNetworkAddress &address)
 {
@@ -104,4 +112,6 @@ CNetworkAddress FromAsioAddress(const boost::asio::ip::address &address)
 	// all-zero-means-absent rule belongs to the wire-tag edge, not here.
 	return CNetworkAddress::IPv6FromOctets(octets, v6.scope_id());
 }
+
+} // namespace NetworkAddressAsio
 // File_checked_for_headers
