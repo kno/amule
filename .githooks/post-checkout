@@ -1,0 +1,31 @@
+#!/bin/sh
+# Creates the clone-local guidance file when a worktree is checked out.
+
+worktree=$(git rev-parse --show-toplevel 2>/dev/null) || exit 0
+target=$worktree/CLAUDE.local.md
+
+# Do not replace files, including broken symbolic links.
+if [ -e "$target" ] || [ -L "$target" ]; then
+	exit 0
+fi
+
+umask 077
+temporary=$worktree/.CLAUDE.local.md.$$
+
+# Write a complete private temporary file before atomically claiming the target.
+( set -C; : > "$temporary" ) 2>/dev/null || exit 0
+if ! cat > "$temporary" <<'EOF'
+Prefer clear names, types, tests, and small structure; retain only non-obvious invariant, security, protocol, platform, or rationale comments; no narrative review comments unless asked.
+EOF
+then
+	rm -f "$temporary"
+	exit 0
+fi
+
+if ln "$temporary" "$target" 2>/dev/null; then
+	rm -f "$temporary"
+else
+	rm -f "$temporary"
+fi
+
+exit 0
