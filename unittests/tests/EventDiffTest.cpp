@@ -1871,7 +1871,7 @@ TEST(EventDiff, FriendEventReportsReachabilityNotClientObjectExistence)
 		f.ecid = 91;
 		f.name = "linked-but-unreachable";
 		// A live client object exists -- the daemon is trying -- but no
-		// socket is up. The old rule called this online.
+		// socket is up. The old rule called this connected.
 		f.client_ecid = 4242;
 		f.connected = false;
 		f.has_connected = true;
@@ -1888,14 +1888,17 @@ TEST(EventDiff, FriendEventReportsReachabilityNotClientObjectExistence)
 			payload = e.data;
 	}
 	ASSERT_TRUE(!payload.empty());
-	ASSERT_TRUE(payload.find("\"online\":false") != std::string::npos);
+	ASSERT_TRUE(payload.find("\"connected\":false") != std::string::npos);
+	// The retired spelling must be gone, not shadowed (R6: one key for the
+	// quantity /clients, /known_clients and /chats also carry).
+	ASSERT_TRUE(payload.find("\"online\"") == std::string::npos);
 	// The live peer is still reported, so a consumer can still join on it.
 	ASSERT_TRUE(payload.find("\"client_ecid\":4242") != std::string::npos);
 }
 
 // A daemon that does not report connectivity leaves it unknown: null, not a
 // guessed false. R10 -- an unknown value is null and never a sentinel.
-TEST(EventDiff, FriendEventNullsOnlineWhenTheDaemonNeverReportedIt)
+TEST(EventDiff, FriendEventNullsConnectedWhenTheDaemonNeverReportedIt)
 {
 	CState state;
 	state.MutateFriends([](std::map<std::uint32_t, FriendSnapshot> &friends) {
@@ -1917,7 +1920,8 @@ TEST(EventDiff, FriendEventNullsOnlineWhenTheDaemonNeverReportedIt)
 			payload = e.data;
 	}
 	ASSERT_TRUE(!payload.empty());
-	ASSERT_TRUE(payload.find("\"online\":null") != std::string::npos);
+	ASSERT_TRUE(payload.find("\"connected\":null") != std::string::npos);
+	ASSERT_TRUE(payload.find("\"online\"") == std::string::npos);
 }
 
 // The connected flag has to be in Equal too, or a peer that finishes
@@ -1949,4 +1953,93 @@ TEST(EventDiff, ClientConnectingFiresAnUpdateEvenThoughTheEcidIsUnchanged)
 	}
 	ASSERT_TRUE(!payload.empty());
 	ASSERT_TRUE(payload.find("\"connected\":true") != std::string::npos);
+}
+
+// `sent_at` on the chat_message payload has to spell an unstamped message the
+// way the REST row does -- null, not the 0 that renders as 1970 -- or a client
+// that hydrates history from GET /chats/{address}/messages and then live-updates
+// from the stream sees the same absent timestamp two ways.
+//
+// Unreachable through the daemon today: CChatSessionStore::Append stamps every
+// message it stores and the history reply carries the tag unconditionally, so
+// no live core produces the 0. That is exactly why it is pinned here rather
+// than in the curl suite, which cannot manufacture one.
+TEST(EventDiff, ChatMessageSentAtIsNullWhenUnstamped)
+{
+	CEventBus bus;
+	ChatSessionSnapshot session;
+	session.gui_id = 7;
+	session.ip = "203.0.113.42";
+	session.port = 4662;
+	ChatMessageSnapshot unstamped;
+	unstamped.id = 91;
+	unstamped.text = "no timestamp";
+	unstamped.timestamp = 0;
+	session.messages.push_back(unstamped);
+
+	PublishChatEvents(bus, { session }, {});
+
+	std::string payload;
+	for (const auto &e : DrainAll(bus)) {
+		if (e.name == "chat_message")
+			payload = e.data;
+	}
+	ASSERT_TRUE(!payload.empty());
+	ASSERT_TRUE(payload.find("\"sent_at\":null") != std::string::npos);
+	ASSERT_TRUE(payload.find("\"sent_at\":0") == std::string::npos);
+}
+
+// The stamped case still emits the number, so nulling the 0 did not turn every
+// timestamp into null.
+TEST(EventDiff, ChatMessageSentAtIsTheStampWhenPresent)
+{
+	CEventBus bus;
+	ChatSessionSnapshot session;
+	session.gui_id = 8;
+	session.ip = "203.0.113.43";
+	session.port = 4662;
+	ChatMessageSnapshot stamped;
+	stamped.id = 92;
+	stamped.text = "stamped";
+	stamped.timestamp = 1786652714;
+	session.messages.push_back(stamped);
+
+	PublishChatEvents(bus, { session }, {});
+
+	std::string payload;
+	for (const auto &e : DrainAll(bus)) {
+		if (e.name == "chat_message")
+			payload = e.data;
+	}
+	ASSERT_TRUE(!payload.empty());
+	ASSERT_TRUE(payload.find("\"sent_at\":1786652714") != std::string::npos);
+}
+
+// The server row's `software_version` is null when the server has reported
+// none, matching WriteServerObject on the REST side -- the two are promised to
+// be byte-identical, and a raw "" here would be the third spelling of "unknown"
+// beside the nulls /clients and /known_clients already emit.
+TEST(EventDiff, ServerSoftwareVersionIsNullWhenUnreported)
+{
+	CState state;
+	state.MutateServers([](std::map<std::uint32_t, ServerSnapshot> &servers) {
+		ServerSnapshot s;
+		s.ecid = 5;
+		s.address = "203.0.113.5:4242";
+		s.port = 4242;
+		s.version.clear();
+		servers.emplace(s.ecid, s);
+	});
+	CEventBus bus;
+	LastSeenState prev;
+	EmitDiffsAndUpdate(bus, prev, state);
+
+	std::string payload;
+	for (const auto &e : DrainAll(bus)) {
+		if (e.name == "server_added")
+			payload = e.data;
+	}
+	ASSERT_TRUE(!payload.empty());
+	ASSERT_TRUE(payload.find("\"software_version\":null") != std::string::npos);
+	ASSERT_TRUE(payload.find("\"software_version\":\"\"") == std::string::npos);
 }

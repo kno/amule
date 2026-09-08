@@ -80,16 +80,16 @@ function FriendsPane({ friends, isGuest, activePeer, onAdd }) {
     // A real <button>, not an <li> click handler, for keyboard/a11y.
     return html`
       <li class=${"friend-row" + (peer && peer === activePeer ? " active" : "")} key=${f.ecid}>
-        <button type="button" class=${"friend-open" + (f.online ? " online" : "")} disabled=${!peer}
-                title=${f.name + (peer ? " — " + peer : "") + " · " + (f.online ? t("messages_online") : t("messages_offline"))}
+        <button type="button" class=${"friend-open" + (f.connected ? " online" : "")} disabled=${!peer}
+                title=${f.name + (peer ? " — " + peer : "") + " · " + (f.connected ? t("messages_online") : t("messages_offline"))}
                 onClick=${() => chats.open({ peer, ip: f.ip, port: f.port, name: f.name, friendEcid: f.ecid, clientEcid: f.client_ecid || 0 })}>
-          <span class=${"friend-dot" + (f.online ? " online" : "")}></span>
+          <span class=${"friend-dot" + (f.connected ? " online" : "")}></span>
           <span class="friend-name">${f.name}</span>
         </button>
         ${isGuest ? null : html`
           <span class="row-actions admin-only">
             <button class=${"btn btn-icon btn-sm" + (f.friend_slot ? " active" : "")}
-                    title=${t("messages_friend_slot")} disabled=${!f.online}
+                    title=${t("messages_friend_slot")} disabled=${!f.connected}
                     onClick=${() => toggleSlot(f)}><${Icon} name="star" /></button>
             <button class="btn btn-icon btn-sm" title=${t("messages_view_files")}
                     onClick=${() => viewFiles(f)}><${Icon} name="search" /></button>
@@ -244,7 +244,10 @@ function ChatPane({ reg, active, isGuest }) {
 
 const two = (n) => (n < 10 ? "0" + n : String(n));
 // From the message's own core timestamp, not the wall clock the wx GUI stamps.
+// An unstamped message (sent_at null, or the legacy 0) has no time to show:
+// render a dash rather than a false 1970.
 function hhmmss(ts) {
+  if (!ts) return "—";
   const d = new Date(ts * 1000);
   return two(d.getHours()) + ":" + two(d.getMinutes()) + ":" + two(d.getSeconds());
 }

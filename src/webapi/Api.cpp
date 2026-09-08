@@ -2052,7 +2052,10 @@ CHttpServer::Response CApiDispatcher::HandleHealth(const CHttpServer::Request &)
 	w.ValueString(wxT("ok"));
 	w.Key("ec_connected");
 	w.ValueBool(m_state.EcConnected());
-	w.Key("snapshot");
+	// `snapshot_ready`, not `snapshot`: a bare noun reads as "here is a
+	// snapshot (object)" rather than as the readiness state it reports,
+	// and this is the first response most clients ever parse (R4).
+	w.Key("snapshot_ready");
 	w.ValueBool(m_state.HasFirstSnapshot());
 	w.EndObject();
 	FinalizeJsonBody(w, r);
@@ -3034,13 +3037,20 @@ void WriteDownloadObject(
 		// been hashed, and R10 spells an absent value null rather than an
 		// empty string a client has to know is a sentinel.
 		WriteStringOrNull(w, "aich_hash", !f.aich_hash.empty(), f.aich_hash);
-		w.Key("part_file_name");
-		// The ".part" control-file basename. Empty once the download
-		// completes: the daemon then reuses the _FILENAME tag to carry the
-		// directory path, so only surface it while still a partfile (#417).
-		w.ValueString(f.download.status == "completed"
-				      ? wxString()
-				      : wxString::FromUTF8(f.part_met_basename.c_str()));
+		// The ".part" control-file basename, omitted once the download
+		// completes. A completed file structurally has no partfile, which
+		// is the absent-key case rather than the `null` of "the daemon did
+		// not report it" -- the same distinction that keeps `result_count`
+		// off a /search row that has not started. It used to be a manufactured
+		// "" a client had to read as "completed", the one sentinel the
+		// aich_hash comment above exists to argue against.
+		//
+		// There is nothing to surface either way: on a completed file the
+		// daemon reuses the _FILENAME tag to carry the directory path (#417).
+		if (f.download.status != "completed") {
+			w.Key("part_file_name");
+			w.ValueString(wxString::FromUTF8(f.part_met_basename.c_str()));
+		}
 		w.Key("directory");
 		// The on-disk directory (Temp while downloading, destination once
 		// completed) — mirrors the `path` field on /shared/{hash} (#417).
@@ -3194,7 +3204,7 @@ void WriteClientObject(CJsonWriter &w, const webapi::ClientSnapshot &c)
 // Tag-absent means "the daemon has no such record for this peer", not "empty":
 // a record written before per-peer metadata existed carries only the hash, the
 // totals and a last-seen, and the fields below simply stay unset so the writer
-// can omit them. The numeric codes go through the same decoders the refresher
+// emits them as null. The numeric codes go through the same decoders the refresher
 // uses for live peers (ClientTagNames.h), so a consumer switching on "kad" or
 // "emule" gets the same token whichever endpoint produced it.
 webapi::KnownClientSnapshot DecodeKnownClient(const CECTag &entry)
@@ -3269,6 +3279,14 @@ void WriteKnownClientObject(CJsonWriter &w, const webapi::KnownClientSnapshot &c
 	w.ValueUInt(static_cast<uint64_t>(c.uploaded_bytes_total));
 	w.Key("downloaded_bytes_total");
 	w.ValueUInt(static_cast<uint64_t>(c.downloaded_bytes_total));
+	// Bare, not nulled like the two below, because 0 cannot reach here.
+	// `nLastSeen` predates the clients.met metadata trailer, so it is in
+	// the fixed credit record every accepted file version carries: written
+	// unconditionally, stamped by CClientCreditsList::GetCredit on both the
+	// create and the lookup branch, and any record loading with a value
+	// older than the 150-day expiry (0 included) is dropped rather than
+	// kept. The metadata-derived fields have no such guarantee, which is
+	// what first_seen_at gates on.
 	w.Key("last_seen_at");
 	w.ValueUInt(static_cast<uint64_t>(c.last_seen_at));
 	const bool has_first_seen = c.first_seen_at != 0;
@@ -3277,9 +3295,14 @@ void WriteKnownClientObject(CJsonWriter &w, const webapi::KnownClientSnapshot &c
 	// Correlate with /clients by user_hash to reach the live peer. The value
 	// is reachability, not presence in that list: the daemon holds a client
 	// object from the first contact ATTEMPT, so a peer it can never reach used
-	// to read "online" here. null when the core predates
+	// to read as reachable here. null when the core predates
 	// EC_TAG_CLIENT_CONNECTED -- unknown, not offline.
-	WriteBoolOrNull(w, "online", c.has_online, c.online);
+	//
+	// `connected`, the same key the live rows carry: this is the same
+	// EC_TAG_CLIENT_CONNECTED bit reaching a persisted row by correlation, and
+	// a client joining the two by user_hash should not meet it under a second
+	// name on the far side of the join (R6).
+	WriteBoolOrNull(w, "connected", c.has_connected, c.connected);
 	w.EndObject();
 }
 
@@ -5967,8 +5990,12 @@ void WriteServerObject(CJsonWriter &w, const webapi::ServerSnapshot &s)
 	// `daemon_version`, and `software_version` on the client and
 	// known-client rows), and a bare `version` beside them reads as the
 	// API's own.
-	w.Key("software_version");
-	w.ValueString(wxString::FromUTF8(s.version.c_str()));
+	//
+	// null, not "", for the same reason the two peer writers null it: a
+	// server that never reported a version is unknown, and a client
+	// normalizing `software_version` across /servers, /clients and
+	// /known_clients should not have to learn the rule twice (R10).
+	WriteStringOrNull(w, "software_version", !s.version.empty(), s.version);
 	w.Key("address");
 	w.ValueString(wxString::FromUTF8(s.address.c_str()));
 	// The bare IP beside the "ip:port" form. Every client needed it and had
@@ -6064,15 +6091,15 @@ void WriteFriendObject(CJsonWriter &w, const webapi::FriendSnapshot &f)
 	WriteIntOrNull(w, "port", !f.ip.empty(), static_cast<int64_t>(f.port));
 	// The live peer this friend is linked to, joinable against /clients. null
 	// when the friend is not connected, which is the common case and which
-	// `online` also reports. Deliberately not the 0 it used to be: the surface
+	// `connected` also reports. Deliberately not the 0 it used to be: the surface
 	// spells "no value" as null and never as 0 or -1, and a client joining
 	// naively on the raw value was building GET /clients/0 and taking a 404.
 	WriteIntOrNull(w, "client_ecid", f.client_ecid != 0, static_cast<int64_t>(f.client_ecid));
 	// Whether a socket to the peer is actually up, not whether the daemon
 	// holds a client object for it -- which it does from the first contact
-	// ATTEMPT, so this used to call an unroutable peer online. null when the
+	// ATTEMPT, so this used to call an unroutable peer reachable. null when the
 	// daemon predates EC_TAG_CLIENT_CONNECTED: unknown, not offline.
-	WriteBoolOrNull(w, "online", f.has_connected, f.connected);
+	WriteBoolOrNull(w, "connected", f.has_connected, f.connected);
 	w.Key("friend_slot");
 	w.ValueBool(f.friend_slot);
 	w.EndObject();
@@ -6334,7 +6361,7 @@ void WriteChatObject(CJsonWriter &w, const webapi::ChatSessionSnapshot &s)
 	WriteIntOrNull(w, "client_ecid", s.client_ecid != 0, static_cast<int64_t>(s.client_ecid));
 	WriteIntOrNull(w, "friend_ecid", s.friend_ecid != 0, static_cast<int64_t>(s.friend_ecid));
 	// Same rule as the /friends row: reachability, not object existence.
-	WriteBoolOrNull(w, "online", s.has_connected, s.connected);
+	WriteBoolOrNull(w, "connected", s.has_connected, s.connected);
 	w.Key("message_count");
 	w.ValueInt(static_cast<int64_t>(s.messages.size()));
 	w.Key("last_message_id");
@@ -6793,7 +6820,7 @@ CHttpServer::Response CApiDispatcher::HandleFriends(const CHttpServer::Request &
 		// cares about, not the order a UI table does.
 		{ "ecid", SORT_BY(ecid), ANCHOR_ON_NUM(ecid) },
 		{ "name", SORT_BY(name) },
-		{ "online",
+		{ "connected",
 			[](const webapi::FriendSnapshot &a, const webapi::FriendSnapshot &b) {
 				return (a.client_ecid != 0) < (b.client_ecid != 0);
 			} },
@@ -7674,7 +7701,7 @@ void WriteStatsValue(CJsonWriter &w, const webapi::StatsTreeValue &v)
 	}
 	// Additive, locale-independent token for well-known sentinel values
 	// ("never"/"not_available"); the English "value" above is kept so old
-	// clients keep working. Omitted when the value is not a sentinel.
+	// clients keep working.
 	// `token`, not `enum`: `enum` is a reserved word in C++, C#, Java, Rust,
 	// PHP and Swift, so a generated client cannot name a field after the key.
 	// null when the value is not a sentinel -- there is no token, which is a
