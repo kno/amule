@@ -10,7 +10,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: aMule\n"
 "Report-Msgid-Bugs-To: https://github.com/amule-org/amule/issues\n"
-"POT-Creation-Date: 2026-09-07 17:09+0200\n"
+"POT-Creation-Date: 2026-09-08 17:30+0200\n"
 "PO-Revision-Date: 2026-09-07 14:50+0000\n"
 "Last-Translator: Hyunju Kang <rexington@gmail.com>\n"
 "Language-Team: Korean <hoenny@daum.net>\n"
@@ -1086,8 +1086,8 @@ msgstr ""
 #: src/amule-remote-gui.cpp src/BaseClient.cpp src/ClientDetailDialog.cpp
 #: src/DataToText.cpp src/DownloadListCtrl.cpp src/ExternalConn.cpp
 #: src/FileDetailDialog.cpp src/GenericClientListCtrl.cpp src/HTTPDownload.cpp
-#: src/KnownFile.cpp src/MuleTrayIcon.cpp src/PartFile.cpp src/Server.cpp
-#: src/Statistics.cpp
+#: src/KnownFile.cpp src/MuleTrayIcon.cpp src/PartFile.cpp
+#: src/ServerListCtrl.cpp src/Statistics.cpp
 msgid "Unknown"
 msgstr "알수없는"
 
@@ -3061,13 +3061,6 @@ msgid "Loading IP filters 'ipfilter.dat' and 'ipfilter_static.dat'."
 msgstr "'ipfilter.dat' 와 'ipfilter_static.dat'의 IP 차단을 읽어옵니다."
 
 #: src/IPFilter.cpp
-#, fuzzy, c-format
-msgid "Loaded %u IPv6 prefix rule."
-msgid_plural "Loaded %u IPv6 prefix rules."
-msgstr[0] "%u 개의 IP 범위를 '%s'로부터 읽었습니다. %u 개의 잘못된 줄은 무시했습니다."
-msgstr[1] "%u 개의 IP 범위를 '%s'로부터 읽었습니다. %u 개의 잘못된 줄은 무시했습니다."
-
-#: src/IPFilter.cpp
 #, c-format
 msgid "Failed to load ipfilter.dat file '%s', unknown format encountered."
 msgstr "ipfilter.dat 파일 '%s'을 읽지 못했습니다. 알 수 없는 형식입니다."
@@ -3516,18 +3509,11 @@ msgid "Asio thread %d started"
 msgstr "동기화 스레드가 시작되었습니다."
 
 #: src/ListenSocket.cpp
-#, c-format
-msgid "ListenSocket: listening on %s (IPv6, also accepting IPv4 peers in mapped form)."
+msgid "ListenSocket: Ok."
 msgstr ""
 
 #: src/ListenSocket.cpp
-#, c-format
-msgid "ListenSocket: listening on %s (%s)."
-msgstr ""
-
-#: src/ListenSocket.cpp
-#, c-format
-msgid "Inbound IPv6 connection from %s on %s."
+msgid "ERROR: Could not listen to TCP port."
 msgstr ""
 
 #: src/Logger.cpp
@@ -7333,16 +7319,6 @@ msgid "Connected since:"
 msgstr "연결됨"
 
 #: src/ServerWnd.cpp
-#, fuzzy
-msgid "IPv4 reachability:"
-msgstr "유효성"
-
-#: src/ServerWnd.cpp
-#, fuzzy
-msgid "IPv6 reachability:"
-msgstr "유효성"
-
-#: src/ServerWnd.cpp
 msgid "Kademlia Status:"
 msgstr "카뎀리아 상태:"
 
@@ -9438,6 +9414,20 @@ msgstr ""
 #: packaging/windows/installer_strings.c
 msgid "Removing user data at $APPDATA\\aMule..."
 msgstr ""
+
+#, fuzzy, c-format
+#~ msgid "Loaded %u IPv6 prefix rule."
+#~ msgid_plural "Loaded %u IPv6 prefix rules."
+#~ msgstr[0] "%u 개의 IP 범위를 '%s'로부터 읽었습니다. %u 개의 잘못된 줄은 무시했습니다."
+#~ msgstr[1] "%u 개의 IP 범위를 '%s'로부터 읽었습니다. %u 개의 잘못된 줄은 무시했습니다."
+
+#, fuzzy
+#~ msgid "IPv4 reachability:"
+#~ msgstr "유효성"
+
+#, fuzzy
+#~ msgid "IPv6 reachability:"
+#~ msgstr "유효성"
 
 #, fuzzy
 #~ msgid "Change Language"

@@ -9,7 +9,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: aMule\n"
 "Report-Msgid-Bugs-To: https://github.com/amule-org/amule/issues\n"
-"POT-Creation-Date: 2026-09-07 17:09+0200\n"
+"POT-Creation-Date: 2026-09-08 17:30+0200\n"
 "PO-Revision-Date: 2026-09-07 14:45+0000\n"
 "Last-Translator: saleh alhathal <hathalsal@hotmail.com>\n"
 "Language-Team: \n"
@@ -1063,8 +1063,8 @@ msgstr ""
 #: src/amule-remote-gui.cpp src/BaseClient.cpp src/ClientDetailDialog.cpp
 #: src/DataToText.cpp src/DownloadListCtrl.cpp src/ExternalConn.cpp
 #: src/FileDetailDialog.cpp src/GenericClientListCtrl.cpp src/HTTPDownload.cpp
-#: src/KnownFile.cpp src/MuleTrayIcon.cpp src/PartFile.cpp src/Server.cpp
-#: src/Statistics.cpp
+#: src/KnownFile.cpp src/MuleTrayIcon.cpp src/PartFile.cpp
+#: src/ServerListCtrl.cpp src/Statistics.cpp
 msgid "Unknown"
 msgstr "غير معرف"
 
@@ -2996,13 +2996,6 @@ msgstr ""
 
 #: src/IPFilter.cpp
 #, c-format
-msgid "Loaded %u IPv6 prefix rule."
-msgid_plural "Loaded %u IPv6 prefix rules."
-msgstr[0] ""
-msgstr[1] ""
-
-#: src/IPFilter.cpp
-#, c-format
 msgid "Failed to load ipfilter.dat file '%s', unknown format encountered."
 msgstr ""
 
@@ -3446,18 +3439,11 @@ msgid "Asio thread %d started"
 msgstr ""
 
 #: src/ListenSocket.cpp
-#, c-format
-msgid "ListenSocket: listening on %s (IPv6, also accepting IPv4 peers in mapped form)."
+msgid "ListenSocket: Ok."
 msgstr ""
 
 #: src/ListenSocket.cpp
-#, c-format
-msgid "ListenSocket: listening on %s (%s)."
-msgstr ""
-
-#: src/ListenSocket.cpp
-#, c-format
-msgid "Inbound IPv6 connection from %s on %s."
+msgid "ERROR: Could not listen to TCP port."
 msgstr ""
 
 #: src/Logger.cpp
@@ -7209,14 +7195,6 @@ msgstr "اتصال"
 #, fuzzy
 msgid "Connected since:"
 msgstr "متصل"
-
-#: src/ServerWnd.cpp
-msgid "IPv4 reachability:"
-msgstr ""
-
-#: src/ServerWnd.cpp
-msgid "IPv6 reachability:"
-msgstr ""
 
 #: src/ServerWnd.cpp
 msgid "Kademlia Status:"

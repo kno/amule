@@ -9,7 +9,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: aMule\n"
 "Report-Msgid-Bugs-To: https://github.com/amule-org/amule/issues\n"
-"POT-Creation-Date: 2026-09-07 17:09+0200\n"
+"POT-Creation-Date: 2026-09-08 17:30+0200\n"
 "PO-Revision-Date: 2026-09-07 14:46+0000\n"
 "Last-Translator: David Watzke <david@watzke.cz>\n"
 "Language-Team: cs <cs@li.org>\n"
@@ -1080,8 +1080,8 @@ msgstr "Vzdálené jádro odeslalo nekonzistentní data pro \"%s\" (částečný
 #: src/amule-remote-gui.cpp src/BaseClient.cpp src/ClientDetailDialog.cpp
 #: src/DataToText.cpp src/DownloadListCtrl.cpp src/ExternalConn.cpp
 #: src/FileDetailDialog.cpp src/GenericClientListCtrl.cpp src/HTTPDownload.cpp
-#: src/KnownFile.cpp src/MuleTrayIcon.cpp src/PartFile.cpp src/Server.cpp
-#: src/Statistics.cpp
+#: src/KnownFile.cpp src/MuleTrayIcon.cpp src/PartFile.cpp
+#: src/ServerListCtrl.cpp src/Statistics.cpp
 msgid "Unknown"
 msgstr "Neznámý"
 
@@ -3050,14 +3050,6 @@ msgid "Loading IP filters 'ipfilter.dat' and 'ipfilter_static.dat'."
 msgstr "Načítání filtrů IP adres 'ipfilter.dat' a 'ipfilter_static.dat'."
 
 #: src/IPFilter.cpp
-#, fuzzy, c-format
-msgid "Loaded %u IPv6 prefix rule."
-msgid_plural "Loaded %u IPv6 prefix rules."
-msgstr[0] "Načten %u rozsah IP adres z '%s'."
-msgstr[1] "Načteny %u rozsahy IP adres z '%s'."
-msgstr[2] "Načteno %u rozsahů IP adres z '%s'."
-
-#: src/IPFilter.cpp
 #, c-format
 msgid "Failed to load ipfilter.dat file '%s', unknown format encountered."
 msgstr "Nemohu načíst ipfilter.dat (%s), neznámý formát."
@@ -3504,19 +3496,12 @@ msgid "Asio thread %d started"
 msgstr "Vlákno asio %d spuštěno"
 
 #: src/ListenSocket.cpp
-#, c-format
-msgid "ListenSocket: listening on %s (IPv6, also accepting IPv4 peers in mapped form)."
-msgstr ""
+msgid "ListenSocket: Ok."
+msgstr "Naslouchací socket: Ok."
 
 #: src/ListenSocket.cpp
-#, c-format
-msgid "ListenSocket: listening on %s (%s)."
-msgstr ""
-
-#: src/ListenSocket.cpp
-#, c-format
-msgid "Inbound IPv6 connection from %s on %s."
-msgstr ""
+msgid "ERROR: Could not listen to TCP port."
+msgstr "CHYBA: Nemohu naslouchat na TCP portu"
 
 #: src/Logger.cpp
 msgid "ERROR: "
@@ -7287,16 +7272,6 @@ msgid "Connected since:"
 msgstr "Připojen"
 
 #: src/ServerWnd.cpp
-#, fuzzy
-msgid "IPv4 reachability:"
-msgstr "Dostupnost"
-
-#: src/ServerWnd.cpp
-#, fuzzy
-msgid "IPv6 reachability:"
-msgstr "Dostupnost"
-
-#: src/ServerWnd.cpp
 msgid "Kademlia Status:"
 msgstr "Stav Kademlia:"
 
@@ -9376,11 +9351,20 @@ msgstr ""
 msgid "Removing user data at $APPDATA\\aMule..."
 msgstr ""
 
-#~ msgid "ListenSocket: Ok."
-#~ msgstr "Naslouchací socket: Ok."
+#, fuzzy, c-format
+#~ msgid "Loaded %u IPv6 prefix rule."
+#~ msgid_plural "Loaded %u IPv6 prefix rules."
+#~ msgstr[0] "Načten %u rozsah IP adres z '%s'."
+#~ msgstr[1] "Načteny %u rozsahy IP adres z '%s'."
+#~ msgstr[2] "Načteno %u rozsahů IP adres z '%s'."
 
-#~ msgid "ERROR: Could not listen to TCP port."
-#~ msgstr "CHYBA: Nemohu naslouchat na TCP portu"
+#, fuzzy
+#~ msgid "IPv4 reachability:"
+#~ msgstr "Dostupnost"
+
+#, fuzzy
+#~ msgid "IPv6 reachability:"
+#~ msgstr "Dostupnost"
 
 #~ msgid "Change Language"
 #~ msgstr "Změnit jazyk"

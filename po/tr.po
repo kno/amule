@@ -9,7 +9,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: aMule\n"
 "Report-Msgid-Bugs-To: https://github.com/amule-org/amule/issues\n"
-"POT-Creation-Date: 2026-09-07 17:09+0200\n"
+"POT-Creation-Date: 2026-09-08 17:30+0200\n"
 "PO-Revision-Date: 2026-09-07 14:54+0000\n"
 "Last-Translator: \n"
 "Language-Team: Turkish <li@li.org>\n"
@@ -1077,8 +1077,8 @@ msgstr "Uzaktaki çekirdek \"%s\" için tutarsız veri gönderdi (kısmi durum %
 #: src/amule-remote-gui.cpp src/BaseClient.cpp src/ClientDetailDialog.cpp
 #: src/DataToText.cpp src/DownloadListCtrl.cpp src/ExternalConn.cpp
 #: src/FileDetailDialog.cpp src/GenericClientListCtrl.cpp src/HTTPDownload.cpp
-#: src/KnownFile.cpp src/MuleTrayIcon.cpp src/PartFile.cpp src/Server.cpp
-#: src/Statistics.cpp
+#: src/KnownFile.cpp src/MuleTrayIcon.cpp src/PartFile.cpp
+#: src/ServerListCtrl.cpp src/Statistics.cpp
 msgid "Unknown"
 msgstr "Bilinmiyor"
 
@@ -3030,13 +3030,6 @@ msgid "Loading IP filters 'ipfilter.dat' and 'ipfilter_static.dat'."
 msgstr "IP süzgeçleri 'ipfilter.dat' ve 'ipfilter_static.dat' yükleniyor."
 
 #: src/IPFilter.cpp
-#, fuzzy, c-format
-msgid "Loaded %u IPv6 prefix rule."
-msgid_plural "Loaded %u IPv6 prefix rules."
-msgstr[0] "%u adet IP-aralığı '%s' unsurundan yüklendi."
-msgstr[1] "%u adet IP-aralığı '%s' unsurundan yüklendi."
-
-#: src/IPFilter.cpp
 #, c-format
 msgid "Failed to load ipfilter.dat file '%s', unknown format encountered."
 msgstr "ipfilter.dat dosyasını '%s' yükleme başarısız. bilinmeyen format algılandı."
@@ -3477,19 +3470,12 @@ msgid "Asio thread %d started"
 msgstr "Asio iş parçacığı %d başladı"
 
 #: src/ListenSocket.cpp
-#, c-format
-msgid "ListenSocket: listening on %s (IPv6, also accepting IPv4 peers in mapped form)."
-msgstr ""
+msgid "ListenSocket: Ok."
+msgstr "DinlemeSoketi: Tamam."
 
 #: src/ListenSocket.cpp
-#, c-format
-msgid "ListenSocket: listening on %s (%s)."
-msgstr ""
-
-#: src/ListenSocket.cpp
-#, c-format
-msgid "Inbound IPv6 connection from %s on %s."
-msgstr ""
+msgid "ERROR: Could not listen to TCP port."
+msgstr "HATA: TCP portu dinlenemiyor."
 
 #: src/Logger.cpp
 msgid "ERROR: "
@@ -7213,16 +7199,6 @@ msgid "Connected since:"
 msgstr "Bağlantı başlangıç tarihi:"
 
 #: src/ServerWnd.cpp
-#, fuzzy
-msgid "IPv4 reachability:"
-msgstr "Uygunluk"
-
-#: src/ServerWnd.cpp
-#, fuzzy
-msgid "IPv6 reachability:"
-msgstr "Uygunluk"
-
-#: src/ServerWnd.cpp
 msgid "Kademlia Status:"
 msgstr "Kademlia Durumu:"
 
@@ -9323,11 +9299,19 @@ msgstr "aMule çalışmakta gibi görünüyor. Lütfen onu kapatıp kurulum prog
 msgid "Removing user data at $APPDATA\\aMule..."
 msgstr "Kullanıcı verileri $APPDATA\\aMule konumunda kaldırılıyor…"
 
-#~ msgid "ListenSocket: Ok."
-#~ msgstr "DinlemeSoketi: Tamam."
+#, fuzzy, c-format
+#~ msgid "Loaded %u IPv6 prefix rule."
+#~ msgid_plural "Loaded %u IPv6 prefix rules."
+#~ msgstr[0] "%u adet IP-aralığı '%s' unsurundan yüklendi."
+#~ msgstr[1] "%u adet IP-aralığı '%s' unsurundan yüklendi."
 
-#~ msgid "ERROR: Could not listen to TCP port."
-#~ msgstr "HATA: TCP portu dinlenemiyor."
+#, fuzzy
+#~ msgid "IPv4 reachability:"
+#~ msgstr "Uygunluk"
+
+#, fuzzy
+#~ msgid "IPv6 reachability:"
+#~ msgstr "Uygunluk"
 
 #~ msgid "Change Language"
 #~ msgstr "Dili Değiştirin"

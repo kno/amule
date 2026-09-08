@@ -14,7 +14,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: aMule\n"
 "Report-Msgid-Bugs-To: https://github.com/amule-org/amule/issues\n"
-"POT-Creation-Date: 2026-09-07 17:09+0200\n"
+"POT-Creation-Date: 2026-09-08 17:30+0200\n"
 "PO-Revision-Date: 2026-09-07 14:56+0000\n"
 "Last-Translator: Wayne Su <mstarmstar@gmail.com>\n"
 "Language-Team: \n"
@@ -1082,8 +1082,8 @@ msgstr ""
 #: src/amule-remote-gui.cpp src/BaseClient.cpp src/ClientDetailDialog.cpp
 #: src/DataToText.cpp src/DownloadListCtrl.cpp src/ExternalConn.cpp
 #: src/FileDetailDialog.cpp src/GenericClientListCtrl.cpp src/HTTPDownload.cpp
-#: src/KnownFile.cpp src/MuleTrayIcon.cpp src/PartFile.cpp src/Server.cpp
-#: src/Statistics.cpp
+#: src/KnownFile.cpp src/MuleTrayIcon.cpp src/PartFile.cpp
+#: src/ServerListCtrl.cpp src/Statistics.cpp
 msgid "Unknown"
 msgstr "不明"
 
@@ -3034,12 +3034,6 @@ msgid "Loading IP filters 'ipfilter.dat' and 'ipfilter_static.dat'."
 msgstr "正在載入 IP 過濾檔 ipfilter.dat 與 ipfilter_static.dat 。"
 
 #: src/IPFilter.cpp
-#, fuzzy, c-format
-msgid "Loaded %u IPv6 prefix rule."
-msgid_plural "Loaded %u IPv6 prefix rules."
-msgstr[0] "已載入 %u 個 IP 區段 (從 %s )。"
-
-#: src/IPFilter.cpp
 #, c-format
 msgid "Failed to load ipfilter.dat file '%s', unknown format encountered."
 msgstr "無法載入 ipfilter.dat 檔案 %s，為不明格式。"
@@ -3479,19 +3473,12 @@ msgid "Asio thread %d started"
 msgstr "已開始 HTTP 下載執行緒"
 
 #: src/ListenSocket.cpp
-#, c-format
-msgid "ListenSocket: listening on %s (IPv6, also accepting IPv4 peers in mapped form)."
-msgstr ""
+msgid "ListenSocket: Ok."
+msgstr "監聽連接端點：OK。"
 
 #: src/ListenSocket.cpp
-#, c-format
-msgid "ListenSocket: listening on %s (%s)."
-msgstr ""
-
-#: src/ListenSocket.cpp
-#, c-format
-msgid "Inbound IPv6 connection from %s on %s."
-msgstr ""
+msgid "ERROR: Could not listen to TCP port."
+msgstr "錯誤：無法監聽 TCP 埠。"
 
 #: src/Logger.cpp
 msgid "ERROR: "
@@ -7265,16 +7252,6 @@ msgid "Connected since:"
 msgstr "已連線"
 
 #: src/ServerWnd.cpp
-#, fuzzy
-msgid "IPv4 reachability:"
-msgstr "最小來源數"
-
-#: src/ServerWnd.cpp
-#, fuzzy
-msgid "IPv6 reachability:"
-msgstr "最小來源數"
-
-#: src/ServerWnd.cpp
 msgid "Kademlia Status:"
 msgstr "Kad 狀態："
 
@@ -9344,11 +9321,18 @@ msgstr ""
 msgid "Removing user data at $APPDATA\\aMule..."
 msgstr ""
 
-#~ msgid "ListenSocket: Ok."
-#~ msgstr "監聽連接端點：OK。"
+#, fuzzy, c-format
+#~ msgid "Loaded %u IPv6 prefix rule."
+#~ msgid_plural "Loaded %u IPv6 prefix rules."
+#~ msgstr[0] "已載入 %u 個 IP 區段 (從 %s )。"
 
-#~ msgid "ERROR: Could not listen to TCP port."
-#~ msgstr "錯誤：無法監聽 TCP 埠。"
+#, fuzzy
+#~ msgid "IPv4 reachability:"
+#~ msgstr "最小來源數"
+
+#, fuzzy
+#~ msgid "IPv6 reachability:"
+#~ msgstr "最小來源數"
 
 #~ msgid "Change Language"
 #~ msgstr "變更語言"

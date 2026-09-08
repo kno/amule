@@ -11,7 +11,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: aMule\n"
 "Report-Msgid-Bugs-To: https://github.com/amule-org/amule/issues\n"
-"POT-Creation-Date: 2026-09-07 17:09+0200\n"
+"POT-Creation-Date: 2026-09-08 17:30+0200\n"
 "PO-Revision-Date: 2026-09-07 14:53+0000\n"
 "Last-Translator: Jure Repinc <jlp@holodeck1.com>\n"
 "Language-Team: Slovenian\n"
@@ -1084,8 +1084,8 @@ msgstr ""
 #: src/amule-remote-gui.cpp src/BaseClient.cpp src/ClientDetailDialog.cpp
 #: src/DataToText.cpp src/DownloadListCtrl.cpp src/ExternalConn.cpp
 #: src/FileDetailDialog.cpp src/GenericClientListCtrl.cpp src/HTTPDownload.cpp
-#: src/KnownFile.cpp src/MuleTrayIcon.cpp src/PartFile.cpp src/Server.cpp
-#: src/Statistics.cpp
+#: src/KnownFile.cpp src/MuleTrayIcon.cpp src/PartFile.cpp
+#: src/ServerListCtrl.cpp src/Statistics.cpp
 msgid "Unknown"
 msgstr "Neznano"
 
@@ -3072,15 +3072,6 @@ msgid "Loading IP filters 'ipfilter.dat' and 'ipfilter_static.dat'."
 msgstr "Nalaganje datotek filtrov IP »ipfilter.dat« in »ipfilter_static.dat«."
 
 #: src/IPFilter.cpp
-#, fuzzy, c-format
-msgid "Loaded %u IPv6 prefix rule."
-msgid_plural "Loaded %u IPv6 prefix rules."
-msgstr[0] "Naloženih %u nizov IP iz »%s«."
-msgstr[1] "Naložen %u niz IP iz '%s'."
-msgstr[2] "Naložena %u niza IP iz '%s'."
-msgstr[3] "Naloženi %u nizi IP iz '%s'."
-
-#: src/IPFilter.cpp
 #, c-format
 msgid "Failed to load ipfilter.dat file '%s', unknown format encountered."
 msgstr "Ni bilo mogoče naložiti datoteke ipfilter.dat »%s«, neznan format."
@@ -3535,19 +3526,12 @@ msgid "Asio thread %d started"
 msgstr "Asinhrona nit %d se je začela"
 
 #: src/ListenSocket.cpp
-#, c-format
-msgid "ListenSocket: listening on %s (IPv6, also accepting IPv4 peers in mapped form)."
-msgstr ""
+msgid "ListenSocket: Ok."
+msgstr "Vtičnica za poslušanje: v redu."
 
 #: src/ListenSocket.cpp
-#, c-format
-msgid "ListenSocket: listening on %s (%s)."
-msgstr ""
-
-#: src/ListenSocket.cpp
-#, c-format
-msgid "Inbound IPv6 connection from %s on %s."
-msgstr ""
+msgid "ERROR: Could not listen to TCP port."
+msgstr "NAPAKA: ni moč poslušati na vratih TCP."
 
 #: src/Logger.cpp
 msgid "ERROR: "
@@ -7376,16 +7360,6 @@ msgid "Connected since:"
 msgstr "Povezano"
 
 #: src/ServerWnd.cpp
-#, fuzzy
-msgid "IPv4 reachability:"
-msgstr "Razpoložljivost"
-
-#: src/ServerWnd.cpp
-#, fuzzy
-msgid "IPv6 reachability:"
-msgstr "Razpoložljivost"
-
-#: src/ServerWnd.cpp
 msgid "Kademlia Status:"
 msgstr "Stanje Kademlia:"
 
@@ -9495,11 +9469,21 @@ msgstr ""
 msgid "Removing user data at $APPDATA\\aMule..."
 msgstr ""
 
-#~ msgid "ListenSocket: Ok."
-#~ msgstr "Vtičnica za poslušanje: v redu."
+#, fuzzy, c-format
+#~ msgid "Loaded %u IPv6 prefix rule."
+#~ msgid_plural "Loaded %u IPv6 prefix rules."
+#~ msgstr[0] "Naloženih %u nizov IP iz »%s«."
+#~ msgstr[1] "Naložen %u niz IP iz '%s'."
+#~ msgstr[2] "Naložena %u niza IP iz '%s'."
+#~ msgstr[3] "Naloženi %u nizi IP iz '%s'."
 
-#~ msgid "ERROR: Could not listen to TCP port."
-#~ msgstr "NAPAKA: ni moč poslušati na vratih TCP."
+#, fuzzy
+#~ msgid "IPv4 reachability:"
+#~ msgstr "Razpoložljivost"
+
+#, fuzzy
+#~ msgid "IPv6 reachability:"
+#~ msgstr "Razpoložljivost"
 
 #~ msgid "Change Language"
 #~ msgstr "Spremeni jezik"

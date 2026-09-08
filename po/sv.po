@@ -9,7 +9,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: aMule\n"
 "Report-Msgid-Bugs-To: https://github.com/amule-org/amule/issues\n"
-"POT-Creation-Date: 2026-09-07 17:09+0200\n"
+"POT-Creation-Date: 2026-09-08 17:30+0200\n"
 "PO-Revision-Date: 2026-09-07 14:54+0000\n"
 "Last-Translator: raffe <raffe@localhost.se>\n"
 "Language-Team: Swedish <tp-sv@listor.tp-sv.se>\n"
@@ -1077,8 +1077,8 @@ msgstr ""
 #: src/amule-remote-gui.cpp src/BaseClient.cpp src/ClientDetailDialog.cpp
 #: src/DataToText.cpp src/DownloadListCtrl.cpp src/ExternalConn.cpp
 #: src/FileDetailDialog.cpp src/GenericClientListCtrl.cpp src/HTTPDownload.cpp
-#: src/KnownFile.cpp src/MuleTrayIcon.cpp src/PartFile.cpp src/Server.cpp
-#: src/Statistics.cpp
+#: src/KnownFile.cpp src/MuleTrayIcon.cpp src/PartFile.cpp
+#: src/ServerListCtrl.cpp src/Statistics.cpp
 msgid "Unknown"
 msgstr "Okänd"
 
@@ -3040,13 +3040,6 @@ msgid "Loading IP filters 'ipfilter.dat' and 'ipfilter_static.dat'."
 msgstr "Laddar IP filter 'ipfilter.dat' och 'ipfilter_static.dat'."
 
 #: src/IPFilter.cpp
-#, fuzzy, c-format
-msgid "Loaded %u IPv6 prefix rule."
-msgid_plural "Loaded %u IPv6 prefix rules."
-msgstr[0] "Laddade %u IP-range från '%s'."
-msgstr[1] "Laddade %u IP-ranges från '%s'."
-
-#: src/IPFilter.cpp
 #, c-format
 msgid "Failed to load ipfilter.dat file '%s', unknown format encountered."
 msgstr "Kunde inte ladda ipfilter.dat-fil '%s', okänt format upptäcktes."
@@ -3491,19 +3484,12 @@ msgid "Asio thread %d started"
 msgstr "Asio tråd %d startad"
 
 #: src/ListenSocket.cpp
-#, c-format
-msgid "ListenSocket: listening on %s (IPv6, also accepting IPv4 peers in mapped form)."
-msgstr ""
+msgid "ListenSocket: Ok."
+msgstr "ListenSocket: Ok."
 
 #: src/ListenSocket.cpp
-#, c-format
-msgid "ListenSocket: listening on %s (%s)."
-msgstr ""
-
-#: src/ListenSocket.cpp
-#, c-format
-msgid "Inbound IPv6 connection from %s on %s."
-msgstr ""
+msgid "ERROR: Could not listen to TCP port."
+msgstr "FEL: Det gick inte att lyssna på TCP-port."
 
 #: src/Logger.cpp
 msgid "ERROR: "
@@ -7292,16 +7278,6 @@ msgid "Connected since:"
 msgstr "Ansluten"
 
 #: src/ServerWnd.cpp
-#, fuzzy
-msgid "IPv4 reachability:"
-msgstr "Tillgänglighet"
-
-#: src/ServerWnd.cpp
-#, fuzzy
-msgid "IPv6 reachability:"
-msgstr "Tillgänglighet"
-
-#: src/ServerWnd.cpp
 msgid "Kademlia Status:"
 msgstr "Kademlia-status:"
 
@@ -9387,11 +9363,19 @@ msgstr ""
 msgid "Removing user data at $APPDATA\\aMule..."
 msgstr ""
 
-#~ msgid "ListenSocket: Ok."
-#~ msgstr "ListenSocket: Ok."
+#, fuzzy, c-format
+#~ msgid "Loaded %u IPv6 prefix rule."
+#~ msgid_plural "Loaded %u IPv6 prefix rules."
+#~ msgstr[0] "Laddade %u IP-range från '%s'."
+#~ msgstr[1] "Laddade %u IP-ranges från '%s'."
 
-#~ msgid "ERROR: Could not listen to TCP port."
-#~ msgstr "FEL: Det gick inte att lyssna på TCP-port."
+#, fuzzy
+#~ msgid "IPv4 reachability:"
+#~ msgstr "Tillgänglighet"
+
+#, fuzzy
+#~ msgid "IPv6 reachability:"
+#~ msgstr "Tillgänglighet"
 
 #~ msgid "Change Language"
 #~ msgstr "Byt språk"
