@@ -24,8 +24,8 @@ msgid ""
 msgstr ""
 "Project-Id-Version: aMule\n"
 "Report-Msgid-Bugs-To: https://github.com/amule-org/amule/issues\n"
-"POT-Creation-Date: 2026-09-09 13:17+0200\n"
-"PO-Revision-Date: 2026-09-07 14:49+0000\n"
+"POT-Creation-Date: 2026-09-09 19:53+0200\n"
+"PO-Revision-Date: 2026-09-09 10:54+0000\n"
 "Last-Translator: Pablo <parodper@gmail.com>\n"
 "Language-Team: http://forum.amule.org/index.php?topic=13883\n"
 "Language: gl\n"
@@ -1943,6 +1943,11 @@ msgstr "Copiar &ligazón eD2k ao portapapeis"
 #: src/DownloadListCtrl.cpp src/SharedFilesCtrl.cpp
 msgid "Copy feedback to clipboard"
 msgstr "Copiar comentarios ao portapapeis"
+
+#: src/DownloadListCtrl.cpp src/SearchListCtrl.cpp src/SharedFilesCtrl.cpp
+#, c-format
+msgid "Get %s for this file"
+msgstr "Obter %s para este ficheiro"
 
 #: src/DownloadListCtrl.cpp
 msgid "unassign"
@@ -4154,28 +4159,28 @@ msgstr ", Enviado: "
 msgid "Media Info"
 msgstr "Info. Kad"
 
-#: src/muuli_wdr.cpp src/SearchListCtrl.cpp
+#: src/muuli_wdr.cpp src/SearchListCtrl.cpp src/SharedFilesCtrl.cpp
 msgid "Length"
 msgstr ""
 
-#: src/muuli_wdr.cpp src/SearchListCtrl.cpp
+#: src/muuli_wdr.cpp src/SearchListCtrl.cpp src/SharedFilesCtrl.cpp
 #, fuzzy
 msgid "Bitrate"
 msgstr "Non evaluada"
 
-#: src/muuli_wdr.cpp src/SearchListCtrl.cpp
+#: src/muuli_wdr.cpp src/SearchListCtrl.cpp src/SharedFilesCtrl.cpp
 msgid "Codec"
 msgstr ""
 
-#: src/muuli_wdr.cpp
+#: src/muuli_wdr.cpp src/SearchListCtrl.cpp src/SharedFilesCtrl.cpp
 msgid "Artist"
 msgstr ""
 
-#: src/muuli_wdr.cpp
+#: src/muuli_wdr.cpp src/SearchListCtrl.cpp src/SharedFilesCtrl.cpp
 msgid "Album"
 msgstr ""
 
-#: src/muuli_wdr.cpp
+#: src/muuli_wdr.cpp src/SearchListCtrl.cpp src/SharedFilesCtrl.cpp
 msgid "Title"
 msgstr "Título"
 
@@ -6798,11 +6803,6 @@ msgid "Collapse all"
 msgstr "Pechar todas as lapelas"
 
 #: src/SearchListCtrl.cpp
-#, c-format
-msgid "Get %s for this file"
-msgstr "Obter %s para este ficheiro"
-
-#: src/SearchListCtrl.cpp
 msgid "Search related files (eD2k, local server)"
 msgstr "Procurar ficheiros relacionados (eD2k, busca local)"
 
@@ -7853,6 +7853,11 @@ msgstr "Filtrados: %s"
 #, c-format
 msgid "Banned: %s"
 msgstr "Vetados: %s"
+
+#: src/Statistics.cpp
+#, c-format
+msgid "Kad banned addresses: %s"
+msgstr ""
 
 #: src/Statistics.cpp
 #, c-format
@@ -9407,14 +9412,6 @@ msgstr ""
 
 #~ msgid "ERROR: Could not listen to TCP port."
 #~ msgstr "ERRO: Non se puido escoitar no porto TCP."
-
-#, fuzzy
-#~ msgid "IPv4 reachability:"
-#~ msgstr "Dispoñibilidade"
-
-#, fuzzy
-#~ msgid "IPv6 reachability:"
-#~ msgstr "Dispoñibilidade"
 
 #~ msgid "Change Language"
 #~ msgstr "Cambiar idioma"

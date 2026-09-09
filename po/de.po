@@ -13,8 +13,8 @@ msgid ""
 msgstr ""
 "Project-Id-Version: aMule\n"
 "Report-Msgid-Bugs-To: https://github.com/amule-org/amule/issues\n"
-"POT-Creation-Date: 2026-09-09 13:17+0200\n"
-"PO-Revision-Date: 2026-09-07 14:46+0000\n"
+"POT-Creation-Date: 2026-09-09 19:53+0200\n"
+"PO-Revision-Date: 2026-09-09 10:41+0000\n"
 "Last-Translator: Werner Mahr <werner@vollstreckernet.de>\n"
 "Language-Team: German <>\n"
 "Language: de\n"
@@ -1930,6 +1930,11 @@ msgstr "Kopiere eD2k &Link in die Zwischenablage"
 #: src/DownloadListCtrl.cpp src/SharedFilesCtrl.cpp
 msgid "Copy feedback to clipboard"
 msgstr "Feedback in die Zwischenablage kopieren"
+
+#: src/DownloadListCtrl.cpp src/SearchListCtrl.cpp src/SharedFilesCtrl.cpp
+#, c-format
+msgid "Get %s for this file"
+msgstr "%s für diese Datei erhalten"
 
 #: src/DownloadListCtrl.cpp
 msgid "unassign"
@@ -4141,28 +4146,28 @@ msgstr ", Upload: "
 msgid "Media Info"
 msgstr "Kad-Info"
 
-#: src/muuli_wdr.cpp src/SearchListCtrl.cpp
+#: src/muuli_wdr.cpp src/SearchListCtrl.cpp src/SharedFilesCtrl.cpp
 msgid "Length"
 msgstr ""
 
-#: src/muuli_wdr.cpp src/SearchListCtrl.cpp
+#: src/muuli_wdr.cpp src/SearchListCtrl.cpp src/SharedFilesCtrl.cpp
 #, fuzzy
 msgid "Bitrate"
 msgstr "Nicht bewertet"
 
-#: src/muuli_wdr.cpp src/SearchListCtrl.cpp
+#: src/muuli_wdr.cpp src/SearchListCtrl.cpp src/SharedFilesCtrl.cpp
 msgid "Codec"
 msgstr ""
 
-#: src/muuli_wdr.cpp
+#: src/muuli_wdr.cpp src/SearchListCtrl.cpp src/SharedFilesCtrl.cpp
 msgid "Artist"
 msgstr ""
 
-#: src/muuli_wdr.cpp
+#: src/muuli_wdr.cpp src/SearchListCtrl.cpp src/SharedFilesCtrl.cpp
 msgid "Album"
 msgstr ""
 
-#: src/muuli_wdr.cpp
+#: src/muuli_wdr.cpp src/SearchListCtrl.cpp src/SharedFilesCtrl.cpp
 msgid "Title"
 msgstr "Titel"
 
@@ -6784,11 +6789,6 @@ msgid "Collapse all"
 msgstr "Alle Reiter schließen"
 
 #: src/SearchListCtrl.cpp
-#, c-format
-msgid "Get %s for this file"
-msgstr "%s für diese Datei erhalten"
-
-#: src/SearchListCtrl.cpp
 msgid "Search related files (eD2k, local server)"
 msgstr "Suche verwandte Dateien (eD2k, lokale Server)"
 
@@ -7838,6 +7838,11 @@ msgstr "Gefiltert: %s"
 #, c-format
 msgid "Banned: %s"
 msgstr "Gebannt: %s"
+
+#: src/Statistics.cpp
+#, c-format
+msgid "Kad banned addresses: %s"
+msgstr ""
 
 #: src/Statistics.cpp
 #, c-format
@@ -9397,14 +9402,6 @@ msgstr "Entferne Benutzerdaten von $APPDATA\\aMule..."
 
 #~ msgid "ERROR: Could not listen to TCP port."
 #~ msgstr "FEHLER: Kann nicht auf TCP-Port lauschen."
-
-#, fuzzy
-#~ msgid "IPv4 reachability:"
-#~ msgstr "Verfügbarkeit"
-
-#, fuzzy
-#~ msgid "IPv6 reachability:"
-#~ msgstr "Verfügbarkeit"
 
 #~ msgid "Change Language"
 #~ msgstr "Sprache ändern"

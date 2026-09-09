@@ -11,8 +11,8 @@ msgid ""
 msgstr ""
 "Project-Id-Version: aMule\n"
 "Report-Msgid-Bugs-To: https://github.com/amule-org/amule/issues\n"
-"POT-Creation-Date: 2026-09-09 13:17+0200\n"
-"PO-Revision-Date: 2026-09-07 14:48+0000\n"
+"POT-Creation-Date: 2026-09-09 19:53+0200\n"
+"PO-Revision-Date: 2026-09-09 10:52+0000\n"
 "Last-Translator: Tapio Rantala <tapio.rantala@iki.fi>\n"
 "Language-Team: aMule Team <https://github.com/amule-org/amule>\n"
 "Language: fi\n"
@@ -1924,6 +1924,11 @@ msgstr "Kopioi eD2k-&linkki leikepöydälle"
 #: src/DownloadListCtrl.cpp src/SharedFilesCtrl.cpp
 msgid "Copy feedback to clipboard"
 msgstr "Kopioi palaute leikepöydälle"
+
+#: src/DownloadListCtrl.cpp src/SearchListCtrl.cpp src/SharedFilesCtrl.cpp
+#, c-format
+msgid "Get %s for this file"
+msgstr "Hanki %s tälle tiedostolle"
 
 #: src/DownloadListCtrl.cpp
 msgid "unassign"
@@ -4144,28 +4149,28 @@ msgstr ", Lähetetty: "
 msgid "Media Info"
 msgstr "Kad Info"
 
-#: src/muuli_wdr.cpp src/SearchListCtrl.cpp
+#: src/muuli_wdr.cpp src/SearchListCtrl.cpp src/SharedFilesCtrl.cpp
 msgid "Length"
 msgstr ""
 
-#: src/muuli_wdr.cpp src/SearchListCtrl.cpp
+#: src/muuli_wdr.cpp src/SearchListCtrl.cpp src/SharedFilesCtrl.cpp
 #, fuzzy
 msgid "Bitrate"
 msgstr "Ei luokitusta"
 
-#: src/muuli_wdr.cpp src/SearchListCtrl.cpp
+#: src/muuli_wdr.cpp src/SearchListCtrl.cpp src/SharedFilesCtrl.cpp
 msgid "Codec"
 msgstr ""
 
-#: src/muuli_wdr.cpp
+#: src/muuli_wdr.cpp src/SearchListCtrl.cpp src/SharedFilesCtrl.cpp
 msgid "Artist"
 msgstr ""
 
-#: src/muuli_wdr.cpp
+#: src/muuli_wdr.cpp src/SearchListCtrl.cpp src/SharedFilesCtrl.cpp
 msgid "Album"
 msgstr ""
 
-#: src/muuli_wdr.cpp
+#: src/muuli_wdr.cpp src/SearchListCtrl.cpp src/SharedFilesCtrl.cpp
 msgid "Title"
 msgstr "Otsikko"
 
@@ -6791,11 +6796,6 @@ msgid "Collapse all"
 msgstr "Sulje kaikki välilehdet"
 
 #: src/SearchListCtrl.cpp
-#, c-format
-msgid "Get %s for this file"
-msgstr "Hanki %s tälle tiedostolle"
-
-#: src/SearchListCtrl.cpp
 msgid "Search related files (eD2k, local server)"
 msgstr "Hae tähän liittyviä tiedostoja (eD2k, paikallinen palvelin)"
 
@@ -7848,6 +7848,11 @@ msgstr "Suodatettu: %s"
 #, c-format
 msgid "Banned: %s"
 msgstr "Estetty: %s"
+
+#: src/Statistics.cpp
+#, c-format
+msgid "Kad banned addresses: %s"
+msgstr ""
 
 #: src/Statistics.cpp
 #, c-format
@@ -9385,14 +9390,6 @@ msgstr ""
 
 #~ msgid "ERROR: Could not listen to TCP port."
 #~ msgstr "VIRHE: Ei voida kuunnella TCP-porttia."
-
-#, fuzzy
-#~ msgid "IPv4 reachability:"
-#~ msgstr "Saatavuus"
-
-#, fuzzy
-#~ msgid "IPv6 reachability:"
-#~ msgstr "Saatavuus"
 
 #~ msgid "Change Language"
 #~ msgstr "Vaihda kieli"

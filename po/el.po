@@ -9,8 +9,8 @@ msgid ""
 msgstr ""
 "Project-Id-Version: aMule\n"
 "Report-Msgid-Bugs-To: https://github.com/amule-org/amule/issues\n"
-"POT-Creation-Date: 2026-09-09 13:17+0200\n"
-"PO-Revision-Date: 2026-09-07 14:47+0000\n"
+"POT-Creation-Date: 2026-09-09 19:53+0200\n"
+"PO-Revision-Date: 2026-09-09 10:44+0000\n"
 "Last-Translator: Dimitris <dgalanak@yahoo.com>\n"
 "Language-Team: Greek\n"
 "Language: el\n"
@@ -1935,6 +1935,11 @@ msgstr "Αντιγραφή του συνδέσμου eD2k στο πρόχειρ�
 #: src/DownloadListCtrl.cpp src/SharedFilesCtrl.cpp
 msgid "Copy feedback to clipboard"
 msgstr "Αντιγραφή των συμβουλών στην πρόχειρη μνήμη"
+
+#: src/DownloadListCtrl.cpp src/SearchListCtrl.cpp src/SharedFilesCtrl.cpp
+#, fuzzy, c-format
+msgid "Get %s for this file"
+msgstr "Προσθήκη προαιρετικών URL για αυτό το αρχείο"
 
 #: src/DownloadListCtrl.cpp
 msgid "unassign"
@@ -4168,28 +4173,28 @@ msgstr ", Ανέβασμα: "
 msgid "Media Info"
 msgstr "Πληροφορίες Kad"
 
-#: src/muuli_wdr.cpp src/SearchListCtrl.cpp
+#: src/muuli_wdr.cpp src/SearchListCtrl.cpp src/SharedFilesCtrl.cpp
 msgid "Length"
 msgstr ""
 
-#: src/muuli_wdr.cpp src/SearchListCtrl.cpp
+#: src/muuli_wdr.cpp src/SearchListCtrl.cpp src/SharedFilesCtrl.cpp
 #, fuzzy
 msgid "Bitrate"
 msgstr "Μη αποτιμημένο"
 
-#: src/muuli_wdr.cpp src/SearchListCtrl.cpp
+#: src/muuli_wdr.cpp src/SearchListCtrl.cpp src/SharedFilesCtrl.cpp
 msgid "Codec"
 msgstr ""
 
-#: src/muuli_wdr.cpp
+#: src/muuli_wdr.cpp src/SearchListCtrl.cpp src/SharedFilesCtrl.cpp
 msgid "Artist"
 msgstr ""
 
-#: src/muuli_wdr.cpp
+#: src/muuli_wdr.cpp src/SearchListCtrl.cpp src/SharedFilesCtrl.cpp
 msgid "Album"
 msgstr ""
 
-#: src/muuli_wdr.cpp
+#: src/muuli_wdr.cpp src/SearchListCtrl.cpp src/SharedFilesCtrl.cpp
 msgid "Title"
 msgstr "Τίτλος"
 
@@ -6826,11 +6831,6 @@ msgid "Collapse all"
 msgstr "Κλείσιμο όλων των καρτελών"
 
 #: src/SearchListCtrl.cpp
-#, fuzzy, c-format
-msgid "Get %s for this file"
-msgstr "Προσθήκη προαιρετικών URL για αυτό το αρχείο"
-
-#: src/SearchListCtrl.cpp
 msgid "Search related files (eD2k, local server)"
 msgstr "Αναζήτηση παρόμοιων αρχείων (στο eD2k, τοπικός διακομιστής)"
 
@@ -7896,6 +7896,11 @@ msgstr "Φιλτραρισμένοι"
 #, fuzzy, c-format
 msgid "Banned: %s"
 msgstr "Απαγορευμένοι"
+
+#: src/Statistics.cpp
+#, c-format
+msgid "Kad banned addresses: %s"
+msgstr ""
 
 #: src/Statistics.cpp
 #, c-format
@@ -9450,14 +9455,6 @@ msgstr ""
 
 #~ msgid "ERROR: Could not listen to TCP port."
 #~ msgstr "ΣΦΑΛΜΑ: Δεν μπορώ να ακούσω την θύρα TCP."
-
-#, fuzzy
-#~ msgid "IPv4 reachability:"
-#~ msgstr "Διαθεσιμότητα"
-
-#, fuzzy
-#~ msgid "IPv6 reachability:"
-#~ msgstr "Διαθεσιμότητα"
 
 #, fuzzy
 #~ msgid "Change Language"

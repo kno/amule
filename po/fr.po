@@ -15,8 +15,8 @@ msgid ""
 msgstr ""
 "Project-Id-Version: aMule\n"
 "Report-Msgid-Bugs-To: https://github.com/amule-org/amule/issues\n"
-"POT-Creation-Date: 2026-09-09 13:17+0200\n"
-"PO-Revision-Date: 2026-09-07 14:48+0000\n"
+"POT-Creation-Date: 2026-09-09 19:53+0200\n"
+"PO-Revision-Date: 2026-09-09 10:52+0000\n"
 "Last-Translator: Dylan Aïssi <bob.dybian@gmail.com>\n"
 "Language-Team: Français\n"
 "Language: fr\n"
@@ -1917,6 +1917,11 @@ msgstr "Copier le &lien eD2k dans le presse-papiers"
 #: src/DownloadListCtrl.cpp src/SharedFilesCtrl.cpp
 msgid "Copy feedback to clipboard"
 msgstr "Copier le rapport dans le presse-papiers"
+
+#: src/DownloadListCtrl.cpp src/SearchListCtrl.cpp src/SharedFilesCtrl.cpp
+#, c-format
+msgid "Get %s for this file"
+msgstr "Obtenir %s pour ce fichier"
 
 #: src/DownloadListCtrl.cpp
 msgid "unassign"
@@ -4119,27 +4124,27 @@ msgstr "Dernier téléversement"
 msgid "Media Info"
 msgstr "Infos média"
 
-#: src/muuli_wdr.cpp src/SearchListCtrl.cpp
+#: src/muuli_wdr.cpp src/SearchListCtrl.cpp src/SharedFilesCtrl.cpp
 msgid "Length"
 msgstr "Durée"
 
-#: src/muuli_wdr.cpp src/SearchListCtrl.cpp
+#: src/muuli_wdr.cpp src/SearchListCtrl.cpp src/SharedFilesCtrl.cpp
 msgid "Bitrate"
 msgstr "Débit binaire"
 
-#: src/muuli_wdr.cpp src/SearchListCtrl.cpp
+#: src/muuli_wdr.cpp src/SearchListCtrl.cpp src/SharedFilesCtrl.cpp
 msgid "Codec"
 msgstr "Codec"
 
-#: src/muuli_wdr.cpp
+#: src/muuli_wdr.cpp src/SearchListCtrl.cpp src/SharedFilesCtrl.cpp
 msgid "Artist"
 msgstr "Artiste"
 
-#: src/muuli_wdr.cpp
+#: src/muuli_wdr.cpp src/SearchListCtrl.cpp src/SharedFilesCtrl.cpp
 msgid "Album"
 msgstr "Album"
 
-#: src/muuli_wdr.cpp
+#: src/muuli_wdr.cpp src/SearchListCtrl.cpp src/SharedFilesCtrl.cpp
 msgid "Title"
 msgstr "Titre"
 
@@ -4296,9 +4301,8 @@ msgid "Obfuscation"
 msgstr "Brouillage"
 
 #: src/muuli_wdr.cpp
-#, fuzzy
 msgid "Protocol extensions"
-msgstr "Brouillage de protocole"
+msgstr "Extensions de protocole"
 
 #: src/muuli_wdr.cpp
 msgid "Transfers to client"
@@ -6728,11 +6732,6 @@ msgid "Collapse all"
 msgstr "Tout réduire"
 
 #: src/SearchListCtrl.cpp
-#, c-format
-msgid "Get %s for this file"
-msgstr "Obtenir %s pour ce fichier"
-
-#: src/SearchListCtrl.cpp
 msgid "Search related files (eD2k, local server)"
 msgstr "Chercher les fichiers liés (eD2k, serveur local)"
 
@@ -7767,6 +7766,11 @@ msgstr "Filtré : %s"
 #, c-format
 msgid "Banned: %s"
 msgstr "Banni : %s"
+
+#: src/Statistics.cpp
+#, c-format
+msgid "Kad banned addresses: %s"
+msgstr "Adresses Kad bannies : %s"
 
 #: src/Statistics.cpp
 #, c-format
@@ -9325,14 +9329,6 @@ msgstr "Suppression des données d'utilisateur sur $APPDATA\\aMule…"
 
 #~ msgid "ERROR: Could not listen to TCP port."
 #~ msgstr "ERREUR : Le port TCP n'a pas pu être mis en écoute."
-
-#, fuzzy
-#~ msgid "IPv4 reachability:"
-#~ msgstr "Disponibilité"
-
-#, fuzzy
-#~ msgid "IPv6 reachability:"
-#~ msgstr "Disponibilité"
 
 #~ msgid "Change Language"
 #~ msgstr "Changer de langue"

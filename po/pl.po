@@ -12,8 +12,8 @@ msgid ""
 msgstr ""
 "Project-Id-Version: aMule\n"
 "Report-Msgid-Bugs-To: https://github.com/amule-org/amule/issues\n"
-"POT-Creation-Date: 2026-09-09 13:17+0200\n"
-"PO-Revision-Date: 2026-09-07 14:52+0000\n"
+"POT-Creation-Date: 2026-09-09 19:53+0200\n"
+"PO-Revision-Date: 2026-09-09 11:23+0000\n"
 "Last-Translator: Michał Trzebiatowski <hippie_1968@hotmail.com>\n"
 "Language-Team: translationproject.org/team/pl.html <translation-team-pl@lists.sourceforge.net>\n"
 "Language: pl\n"
@@ -1936,6 +1936,11 @@ msgstr "Kopiuj &link eD2k do schowka"
 #: src/DownloadListCtrl.cpp src/SharedFilesCtrl.cpp
 msgid "Copy feedback to clipboard"
 msgstr "Kopiuj informację zwrotną do schowka"
+
+#: src/DownloadListCtrl.cpp src/SearchListCtrl.cpp src/SharedFilesCtrl.cpp
+#, fuzzy, c-format
+msgid "Get %s for this file"
+msgstr "Dodaj opcjonalny URL dla tego pliku"
 
 #: src/DownloadListCtrl.cpp
 msgid "unassign"
@@ -4168,28 +4173,28 @@ msgstr ", Wysłanych: "
 msgid "Media Info"
 msgstr "Info Kad"
 
-#: src/muuli_wdr.cpp src/SearchListCtrl.cpp
+#: src/muuli_wdr.cpp src/SearchListCtrl.cpp src/SharedFilesCtrl.cpp
 msgid "Length"
 msgstr ""
 
-#: src/muuli_wdr.cpp src/SearchListCtrl.cpp
+#: src/muuli_wdr.cpp src/SearchListCtrl.cpp src/SharedFilesCtrl.cpp
 #, fuzzy
 msgid "Bitrate"
 msgstr "Nieoceniony"
 
-#: src/muuli_wdr.cpp src/SearchListCtrl.cpp
+#: src/muuli_wdr.cpp src/SearchListCtrl.cpp src/SharedFilesCtrl.cpp
 msgid "Codec"
 msgstr ""
 
-#: src/muuli_wdr.cpp
+#: src/muuli_wdr.cpp src/SearchListCtrl.cpp src/SharedFilesCtrl.cpp
 msgid "Artist"
 msgstr ""
 
-#: src/muuli_wdr.cpp
+#: src/muuli_wdr.cpp src/SearchListCtrl.cpp src/SharedFilesCtrl.cpp
 msgid "Album"
 msgstr ""
 
-#: src/muuli_wdr.cpp
+#: src/muuli_wdr.cpp src/SearchListCtrl.cpp src/SharedFilesCtrl.cpp
 msgid "Title"
 msgstr "Tytuł"
 
@@ -6833,11 +6838,6 @@ msgid "Collapse all"
 msgstr "Zamknij wszystkie karty"
 
 #: src/SearchListCtrl.cpp
-#, fuzzy, c-format
-msgid "Get %s for this file"
-msgstr "Dodaj opcjonalny URL dla tego pliku"
-
-#: src/SearchListCtrl.cpp
 msgid "Search related files (eD2k, local server)"
 msgstr "Szukaj powiązanych plików (eD2k, serwer lokalny)"
 
@@ -7914,6 +7914,11 @@ msgstr "Filtrowane: %s"
 #, c-format
 msgid "Banned: %s"
 msgstr "Zbanowane: %s"
+
+#: src/Statistics.cpp
+#, c-format
+msgid "Kad banned addresses: %s"
+msgstr ""
 
 #: src/Statistics.cpp
 #, c-format
@@ -9452,14 +9457,6 @@ msgstr ""
 
 #~ msgid "ERROR: Could not listen to TCP port."
 #~ msgstr "BŁĄD: nie można nasłuchiwać na porcie TCP."
-
-#, fuzzy
-#~ msgid "IPv4 reachability:"
-#~ msgstr "Dostępność"
-
-#, fuzzy
-#~ msgid "IPv6 reachability:"
-#~ msgstr "Dostępność"
 
 #~ msgid "Change Language"
 #~ msgstr "Zmień język"

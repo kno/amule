@@ -51,7 +51,8 @@
 #include "DownloadQueue.h"    // Needed for CDownloadQueue
 #include "TransferWnd.h"      // Needed for CTransferWnd
 #include "Logger.h"           // Needed for AddLogLine
-#include "OtherFunctions.h"   // Needed for FormatLocalDateTime, IsMediaProbeCandidate
+#include "OtherFunctions.h"   // Needed for FormatLocalDateTime, CastSecondsToHM, FormatMediaCodec
+#include <tags/FileTags.h>    // Needed for FT_MEDIA_LENGTH / _BITRATE / _CODEC
 
 namespace
 {
@@ -119,6 +120,7 @@ wxBEGIN_EVENT_TABLE(CSharedFilesCtrl, CMuleVirtualDataViewCtrl)
 	EVT_MENU(MP_EXPORTCOLLECTION, CSharedFilesCtrl::OnExportCollection)
 	EVT_MENU(MP_GETMAGNETLINK, CSharedFilesCtrl::OnCreateURI)
 	EVT_MENU(MP_GETED2KLINK, CSharedFilesCtrl::OnCreateURI)
+	EVT_MENU(MP_RAZORSTATS, CSharedFilesCtrl::OnRazorStatsCheck)
 	EVT_MENU(MP_GETSOURCEED2KLINK, CSharedFilesCtrl::OnCreateURI)
 	EVT_MENU(MP_GETCRYPTSOURCEDED2KLINK, CSharedFilesCtrl::OnCreateURI)
 	EVT_MENU(MP_GETHOSTNAMESOURCEED2KLINK, CSharedFilesCtrl::OnCreateURI)
@@ -166,6 +168,15 @@ CSharedFilesCtrl::CSharedFilesCtrl(wxWindow *parent, int id, const wxPoint &pos,
 	AddTextColumn(_("Shared since"), COLUMN_SHARED_SINCE, "H", 130, wxALIGN_LEFT, colFlags);
 	AddTextColumn(_("Last upload"), COLUMN_SHARED_LASTUP, "L", 130, wxALIGN_LEFT, colFlags);
 	AddTextColumn(_("Directory Path"), COLUMN_SHARED_PATH, "D", 430, wxALIGN_LEFT, colFlags);
+	// Media metadata, the same FT_MEDIA_* tags and wording the search list
+	// uses. Keys are lowercase because "L" and "C" are already taken above by
+	// Last upload and Complete Sources, and the store is case-sensitive.
+	AddTextColumn(_("Length"), COLUMN_SHARED_MEDIA_LENGTH, "l", 80, wxALIGN_LEFT, colFlags);
+	AddTextColumn(_("Bitrate"), COLUMN_SHARED_MEDIA_BITRATE, "b", 80, wxALIGN_LEFT, colFlags);
+	AddTextColumn(_("Codec"), COLUMN_SHARED_MEDIA_CODEC, "c", 80, wxALIGN_LEFT, colFlags);
+	AddTextColumn(_("Artist"), COLUMN_SHARED_MEDIA_ARTIST, "a", 120, wxALIGN_LEFT, colFlags);
+	AddTextColumn(_("Album"), COLUMN_SHARED_MEDIA_ALBUM, "m", 120, wxALIGN_LEFT, colFlags);
+	AddTextColumn(_("Title"), COLUMN_SHARED_MEDIA_TITLE, "i", 140, wxALIGN_LEFT, colFlags);
 
 	AppendSpacerColumn(COLUMN_SHARED_SPACER);
 
@@ -174,6 +185,20 @@ CSharedFilesCtrl::CSharedFilesCtrl(wxWindow *parent, int id, const wxPoint &pos,
 	// Default sort is by name, ascending; LoadColumnSettings() replaces it
 	// when the config has something saved.
 	ApplySorting(COLUMN_SHARED_NAME, 0);
+
+	// The media columns are only filled for files ffprobe has been run over,
+	// so a share that has never been probed would gain three empty columns
+	// for everyone. Listed in the header menu, hidden until asked for --
+	// widths above are what they get when enabled, which is why they are not
+	// registered as zero-width. Set before LoadColumnSettings() so anything
+	// the user saved wins, the same ordering CServerListCtrl uses for its
+	// wire-flag columns.
+	SetColumnHidden(COLUMN_SHARED_MEDIA_LENGTH, true, 0);
+	SetColumnHidden(COLUMN_SHARED_MEDIA_BITRATE, true, 0);
+	SetColumnHidden(COLUMN_SHARED_MEDIA_CODEC, true, 0);
+	SetColumnHidden(COLUMN_SHARED_MEDIA_ARTIST, true, 0);
+	SetColumnHidden(COLUMN_SHARED_MEDIA_ALBUM, true, 0);
+	SetColumnHidden(COLUMN_SHARED_MEDIA_TITLE, true, 0);
 
 	m_columnStore.SetTableName("Shared");
 	LoadColumnSettings();
@@ -260,6 +285,17 @@ void CSharedFilesCtrl::OnItemRightClicked(wxDataViewEvent &event)
 		m_menu->Append(MP_GETAICHED2KLINKSRC, _("Copy eD2k link to clipboard (&AICH info + Source)"));
 		m_menu->Append(MP_WS, _("Copy feedback to clipboard"));
 		m_menu->AppendSeparator();
+
+		// Same entry the search list offers, on the same gate. Every row here
+		// has a hash, partfiles included: a shared partfile is listed under the
+		// completed file's hash. Hidden, not greyed, when no stats server is
+		// configured, because an empty preference means the feature is off
+		// rather than unavailable for this row.
+		const wxString &statsServer = thePrefs::GetStatsServerName();
+		if (!statsServer.IsEmpty()) {
+			m_menu->Append(MP_RAZORSTATS, CFormat(_("Get %s for this file")) % statsServer);
+			m_menu->AppendSeparator();
+		}
 		m_menu->Append(MP_EXPORTCOLLECTION, _("Export selected files to an emulecollection"));
 
 		// The bar column is the only cell in this list whose colours need
@@ -370,6 +406,18 @@ void CSharedFilesCtrl::ShowFileDetailDialog(long focused)
 		files.push_back(FileAtRow(i));
 	}
 	CFileDetailDialog(this, files, index).ShowModal();
+}
+
+void CSharedFilesCtrl::OnRazorStatsCheck(wxCommandEvent &WXUNUSED(event))
+{
+	// Bound re-checked, for the reason OnOpenFile gives: PopupMenu runs a
+	// nested event loop, so the shared-dir watcher can drop the row while the
+	// menu is open.
+	if (m_menuItem == 0 || !HasItemData(m_menuItem)) {
+		return;
+	}
+	const CKnownFile *file = reinterpret_cast<CKnownFile *>(m_menuItem);
+	theApp->amuledlg->LaunchUrl(thePrefs::GetStatsServerURL() + file->GetFileHash().Encode());
 }
 
 void CSharedFilesCtrl::OnShowBarLegend(wxCommandEvent &WXUNUSED(event))
@@ -642,6 +690,33 @@ wxString CSharedFilesCtrl::GetItemColumnText(wxUIntPtr item, unsigned column) co
 		// destination once completed (EC_TAG_KNOWNFILE_PATH in
 		// the remote GUI).
 		return file->GetFilePath().GetPrintable();
+
+	// Media tags, rendered exactly as the search list renders them so the
+	// same file reads the same in both. Empty when never probed.
+	case COLUMN_SHARED_MEDIA_LENGTH: {
+		uint32 lenSec = file->GetIntTagValue(FT_MEDIA_LENGTH);
+		return lenSec ? CastSecondsToHM(lenSec) : wxString();
+	}
+
+	case COLUMN_SHARED_MEDIA_BITRATE: {
+		uint32 bitrate = file->GetIntTagValue(FT_MEDIA_BITRATE);
+		return bitrate ? wxString(CFormat(wxT("%u kbps")) % bitrate) : wxString();
+	}
+
+	case COLUMN_SHARED_MEDIA_CODEC: {
+		const wxString &codec = file->GetStrTagValue(FT_MEDIA_CODEC);
+		return codec.IsEmpty() ? wxString() : FormatMediaCodec(codec);
+	}
+
+	// Shown verbatim: unlike codec there is no vocabulary to normalise.
+	case COLUMN_SHARED_MEDIA_ARTIST:
+		return file->GetStrTagValue(FT_MEDIA_ARTIST);
+
+	case COLUMN_SHARED_MEDIA_ALBUM:
+		return file->GetStrTagValue(FT_MEDIA_ALBUM);
+
+	case COLUMN_SHARED_MEDIA_TITLE:
+		return file->GetStrTagValue(FT_MEDIA_TITLE);
 
 	default:
 		return wxEmptyString;
@@ -1151,6 +1226,39 @@ void CSharedFilesCtrl::OnEditComment(wxCommandEvent &WXUNUSED(event))
 	}
 }
 
+namespace
+{
+// Empty (never probed) sorts last whichever way the column is sorted, so the
+// rows that do have a value stay together at the top.
+int CompareMediaStr(const wxString &a, const wxString &b, int modifier)
+{
+	if (a.IsEmpty() && b.IsEmpty()) {
+		return 0;
+	}
+	if (a.IsEmpty()) {
+		return 1;
+	}
+	if (b.IsEmpty()) {
+		return -1;
+	}
+	return modifier * a.CmpNoCase(b);
+}
+
+int CompareMediaInt(uint32 v1, uint32 v2, int modifier)
+{
+	if (!v1 && !v2) {
+		return 0;
+	}
+	if (!v1) {
+		return 1;
+	}
+	if (!v2) {
+		return -1;
+	}
+	return modifier * CmpAny(v1, v2);
+}
+} // namespace
+
 int CSharedFilesCtrl::CompareItemData(
 	wxUIntPtr data1, wxUIntPtr data2, unsigned column, bool alt, int modifier) const
 {
@@ -1235,6 +1343,35 @@ int CSharedFilesCtrl::CompareItemData(
 	// Directory path asc (status-agnostic: the Temp dir for a partfile)
 	case COLUMN_SHARED_PATH:
 		return mod * CmpAny(file1->GetFilePath(), file2->GetFilePath());
+
+	// Media tags. Unprobed files sort last in both directions rather than
+	// counting as zero, which would bury the probed rows under them on an
+	// ascending sort -- the same rule the search list applies.
+	case COLUMN_SHARED_MEDIA_LENGTH:
+		return CompareMediaInt(
+			file1->GetIntTagValue(FT_MEDIA_LENGTH), file2->GetIntTagValue(FT_MEDIA_LENGTH), mod);
+
+	case COLUMN_SHARED_MEDIA_BITRATE:
+		return CompareMediaInt(file1->GetIntTagValue(FT_MEDIA_BITRATE),
+			file2->GetIntTagValue(FT_MEDIA_BITRATE),
+			mod);
+
+	case COLUMN_SHARED_MEDIA_CODEC:
+		return CompareMediaStr(FormatMediaCodec(file1->GetStrTagValue(FT_MEDIA_CODEC)),
+			FormatMediaCodec(file2->GetStrTagValue(FT_MEDIA_CODEC)),
+			mod);
+
+	case COLUMN_SHARED_MEDIA_ARTIST:
+		return CompareMediaStr(
+			file1->GetStrTagValue(FT_MEDIA_ARTIST), file2->GetStrTagValue(FT_MEDIA_ARTIST), mod);
+
+	case COLUMN_SHARED_MEDIA_ALBUM:
+		return CompareMediaStr(
+			file1->GetStrTagValue(FT_MEDIA_ALBUM), file2->GetStrTagValue(FT_MEDIA_ALBUM), mod);
+
+	case COLUMN_SHARED_MEDIA_TITLE:
+		return CompareMediaStr(
+			file1->GetStrTagValue(FT_MEDIA_TITLE), file2->GetStrTagValue(FT_MEDIA_TITLE), mod);
 
 	default:
 		return 0;

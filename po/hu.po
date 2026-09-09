@@ -7,8 +7,8 @@ msgid ""
 msgstr ""
 "Project-Id-Version: aMule\n"
 "Report-Msgid-Bugs-To: https://github.com/amule-org/amule/issues\n"
-"POT-Creation-Date: 2026-09-09 13:17+0200\n"
-"PO-Revision-Date: 2026-09-07 14:49+0000\n"
+"POT-Creation-Date: 2026-09-09 19:53+0200\n"
+"PO-Revision-Date: 2026-09-09 11:03+0000\n"
 "Last-Translator: Dévai Tamás <gonosztopi@amule.org>\n"
 "Language-Team: Hungarian <hu@li.org>\n"
 "Language: hu\n"
@@ -1914,6 +1914,11 @@ msgstr "eD2k hivatkozás másolása a vágólapra"
 #: src/DownloadListCtrl.cpp src/SharedFilesCtrl.cpp
 msgid "Copy feedback to clipboard"
 msgstr "Visszajelzés másolása a vágólapra"
+
+#: src/DownloadListCtrl.cpp src/SearchListCtrl.cpp src/SharedFilesCtrl.cpp
+#, c-format
+msgid "Get %s for this file"
+msgstr "%s lekérése ehez a fájlhoz"
 
 #: src/DownloadListCtrl.cpp
 msgid "unassign"
@@ -4113,28 +4118,28 @@ msgstr ", Feltöltés: "
 msgid "Media Info"
 msgstr "Kad infó"
 
-#: src/muuli_wdr.cpp src/SearchListCtrl.cpp
+#: src/muuli_wdr.cpp src/SearchListCtrl.cpp src/SharedFilesCtrl.cpp
 msgid "Length"
 msgstr ""
 
-#: src/muuli_wdr.cpp src/SearchListCtrl.cpp
+#: src/muuli_wdr.cpp src/SearchListCtrl.cpp src/SharedFilesCtrl.cpp
 #, fuzzy
 msgid "Bitrate"
 msgstr "Nincs értékelve"
 
-#: src/muuli_wdr.cpp src/SearchListCtrl.cpp
+#: src/muuli_wdr.cpp src/SearchListCtrl.cpp src/SharedFilesCtrl.cpp
 msgid "Codec"
 msgstr ""
 
-#: src/muuli_wdr.cpp
+#: src/muuli_wdr.cpp src/SearchListCtrl.cpp src/SharedFilesCtrl.cpp
 msgid "Artist"
 msgstr ""
 
-#: src/muuli_wdr.cpp
+#: src/muuli_wdr.cpp src/SearchListCtrl.cpp src/SharedFilesCtrl.cpp
 msgid "Album"
 msgstr ""
 
-#: src/muuli_wdr.cpp
+#: src/muuli_wdr.cpp src/SearchListCtrl.cpp src/SharedFilesCtrl.cpp
 msgid "Title"
 msgstr "Cím"
 
@@ -6754,11 +6759,6 @@ msgid "Collapse all"
 msgstr "Az összes fül bezárása"
 
 #: src/SearchListCtrl.cpp
-#, c-format
-msgid "Get %s for this file"
-msgstr "%s lekérése ehez a fájlhoz"
-
-#: src/SearchListCtrl.cpp
 msgid "Search related files (eD2k, local server)"
 msgstr "Kapcsolódó fájlok keresése (eD2k, helyi kiszolgáló)"
 
@@ -7791,6 +7791,11 @@ msgstr "Kiszűrve: %s"
 #, c-format
 msgid "Banned: %s"
 msgstr "Kitiltott: %s"
+
+#: src/Statistics.cpp
+#, c-format
+msgid "Kad banned addresses: %s"
+msgstr ""
 
 #: src/Statistics.cpp
 #, c-format
@@ -9333,14 +9338,6 @@ msgstr ""
 
 #~ msgid "ERROR: Could not listen to TCP port."
 #~ msgstr "HIBA: A TCP porton nem lehet hallgatni."
-
-#, fuzzy
-#~ msgid "IPv4 reachability:"
-#~ msgstr "Elérhetőség"
-
-#, fuzzy
-#~ msgid "IPv6 reachability:"
-#~ msgstr "Elérhetőség"
 
 #~ msgid "Change Language"
 #~ msgstr "Nyelv megváltoztatása"

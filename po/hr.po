@@ -9,8 +9,8 @@ msgid ""
 msgstr ""
 "Project-Id-Version: aMule\n"
 "Report-Msgid-Bugs-To: https://github.com/amule-org/amule/issues\n"
-"POT-Creation-Date: 2026-09-09 13:17+0200\n"
-"PO-Revision-Date: 2026-09-07 14:49+0000\n"
+"POT-Creation-Date: 2026-09-09 19:53+0200\n"
+"PO-Revision-Date: 2026-09-09 11:01+0000\n"
 "Last-Translator: Sebastiano Pistore <sebastiano.pistore.info@aol.com>\n"
 "Language-Team: https://github.com/amule-org/amule <forum@aMule.org>\n"
 "Language: hr\n"
@@ -1920,6 +1920,11 @@ msgstr ""
 #: src/DownloadListCtrl.cpp src/SharedFilesCtrl.cpp
 msgid "Copy feedback to clipboard"
 msgstr ""
+
+#: src/DownloadListCtrl.cpp src/SearchListCtrl.cpp src/SharedFilesCtrl.cpp
+#, fuzzy, c-format
+msgid "Get %s for this file"
+msgstr "Upitao za drugi fajl"
 
 #: src/DownloadListCtrl.cpp
 msgid "unassign"
@@ -4121,28 +4126,28 @@ msgstr "Aktivni uploadovi"
 msgid "Media Info"
 msgstr ""
 
-#: src/muuli_wdr.cpp src/SearchListCtrl.cpp
+#: src/muuli_wdr.cpp src/SearchListCtrl.cpp src/SharedFilesCtrl.cpp
 msgid "Length"
 msgstr ""
 
-#: src/muuli_wdr.cpp src/SearchListCtrl.cpp
+#: src/muuli_wdr.cpp src/SearchListCtrl.cpp src/SharedFilesCtrl.cpp
 #, fuzzy
 msgid "Bitrate"
 msgstr "Bez ocjene"
 
-#: src/muuli_wdr.cpp src/SearchListCtrl.cpp
+#: src/muuli_wdr.cpp src/SearchListCtrl.cpp src/SharedFilesCtrl.cpp
 msgid "Codec"
 msgstr ""
 
-#: src/muuli_wdr.cpp
+#: src/muuli_wdr.cpp src/SearchListCtrl.cpp src/SharedFilesCtrl.cpp
 msgid "Artist"
 msgstr ""
 
-#: src/muuli_wdr.cpp
+#: src/muuli_wdr.cpp src/SearchListCtrl.cpp src/SharedFilesCtrl.cpp
 msgid "Album"
 msgstr ""
 
-#: src/muuli_wdr.cpp
+#: src/muuli_wdr.cpp src/SearchListCtrl.cpp src/SharedFilesCtrl.cpp
 msgid "Title"
 msgstr "Naziv"
 
@@ -6755,11 +6760,6 @@ msgid "Collapse all"
 msgstr "Zatvori sve oznake"
 
 #: src/SearchListCtrl.cpp
-#, fuzzy, c-format
-msgid "Get %s for this file"
-msgstr "Upitao za drugi fajl"
-
-#: src/SearchListCtrl.cpp
 msgid "Search related files (eD2k, local server)"
 msgstr ""
 
@@ -7843,6 +7843,11 @@ msgstr "Filtrirani: %i"
 #, fuzzy, c-format
 msgid "Banned: %s"
 msgstr "Zabranjen"
+
+#: src/Statistics.cpp
+#, c-format
+msgid "Kad banned addresses: %s"
+msgstr ""
 
 #: src/Statistics.cpp
 #, c-format
@@ -9320,14 +9325,6 @@ msgstr ""
 #: packaging/windows/installer_strings.c
 msgid "Removing user data at $APPDATA\\aMule..."
 msgstr ""
-
-#, fuzzy
-#~ msgid "IPv4 reachability:"
-#~ msgstr "Dostupnost"
-
-#, fuzzy
-#~ msgid "IPv6 reachability:"
-#~ msgstr "Dostupnost"
 
 #~ msgid "Change Language"
 #~ msgstr "Promijeniti jezik"

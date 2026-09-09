@@ -43,9 +43,18 @@
 #define COLUMN_SHARED_SINCE 11
 #define COLUMN_SHARED_LASTUP 12
 #define COLUMN_SHARED_PATH 13
+//! Media metadata from FT_MEDIA_*, the same tags the search list shows.
+//! Populated only for files ffprobe has been run over, so these start
+//! hidden; see the SetColumnHidden() calls in the constructor.
+#define COLUMN_SHARED_MEDIA_LENGTH 14
+#define COLUMN_SHARED_MEDIA_BITRATE 15
+#define COLUMN_SHARED_MEDIA_CODEC 16
+#define COLUMN_SHARED_MEDIA_ARTIST 17
+#define COLUMN_SHARED_MEDIA_ALBUM 18
+#define COLUMN_SHARED_MEDIA_TITLE 19
 //! Always empty. Absorbs the macOS trailing-column sizing; see
 //! CMuleDataViewCtrl::AppendSpacerColumn().
-#define COLUMN_SHARED_SPACER 14
+#define COLUMN_SHARED_SPACER 20
 
 class CSharedFileList;
 class CKnownFile;
@@ -365,6 +374,7 @@ private:
 	 * (partbar::LegendForSharedFilesRow).
 	 */
 	void OnShowBarLegend(wxCommandEvent &event);
+	void OnRazorStatsCheck(wxCommandEvent &event);
 
 	/**
 	 * Double-click / Enter on a row also opens the file-details dialog, for

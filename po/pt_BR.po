@@ -15,8 +15,8 @@ msgid ""
 msgstr ""
 "Project-Id-Version: aMule\n"
 "Report-Msgid-Bugs-To: https://github.com/amule-org/amule/issues\n"
-"POT-Creation-Date: 2026-09-09 13:17+0200\n"
-"PO-Revision-Date: 2026-09-07 14:52+0000\n"
+"POT-Creation-Date: 2026-09-09 19:53+0200\n"
+"PO-Revision-Date: 2026-09-09 11:23+0000\n"
 "Last-Translator: Marcelo Jimenez <mroberto@users.sourceforge.com>\n"
 "Language-Team: Português (Brasileiro) <pt@li.org>\n"
 "Language: pt_BR\n"
@@ -1918,6 +1918,11 @@ msgstr "Copiar &link eD2k para área de transferência"
 #: src/DownloadListCtrl.cpp src/SharedFilesCtrl.cpp
 msgid "Copy feedback to clipboard"
 msgstr "Copiar retorno para a Área de Transferência"
+
+#: src/DownloadListCtrl.cpp src/SearchListCtrl.cpp src/SharedFilesCtrl.cpp
+#, c-format
+msgid "Get %s for this file"
+msgstr "Obtendo %s para este arquivo"
 
 #: src/DownloadListCtrl.cpp
 msgid "unassign"
@@ -4120,27 +4125,27 @@ msgstr "Ultimo upload"
 msgid "Media Info"
 msgstr "Informação da Mídia"
 
-#: src/muuli_wdr.cpp src/SearchListCtrl.cpp
+#: src/muuli_wdr.cpp src/SearchListCtrl.cpp src/SharedFilesCtrl.cpp
 msgid "Length"
 msgstr "Comprimento"
 
-#: src/muuli_wdr.cpp src/SearchListCtrl.cpp
+#: src/muuli_wdr.cpp src/SearchListCtrl.cpp src/SharedFilesCtrl.cpp
 msgid "Bitrate"
 msgstr "Taxa de Bits"
 
-#: src/muuli_wdr.cpp src/SearchListCtrl.cpp
+#: src/muuli_wdr.cpp src/SearchListCtrl.cpp src/SharedFilesCtrl.cpp
 msgid "Codec"
 msgstr "Codec"
 
-#: src/muuli_wdr.cpp
+#: src/muuli_wdr.cpp src/SearchListCtrl.cpp src/SharedFilesCtrl.cpp
 msgid "Artist"
 msgstr "Artista"
 
-#: src/muuli_wdr.cpp
+#: src/muuli_wdr.cpp src/SearchListCtrl.cpp src/SharedFilesCtrl.cpp
 msgid "Album"
 msgstr "Album"
 
-#: src/muuli_wdr.cpp
+#: src/muuli_wdr.cpp src/SearchListCtrl.cpp src/SharedFilesCtrl.cpp
 msgid "Title"
 msgstr "Título"
 
@@ -6734,11 +6739,6 @@ msgid "Collapse all"
 msgstr "Colapsar tudo"
 
 #: src/SearchListCtrl.cpp
-#, c-format
-msgid "Get %s for this file"
-msgstr "Obtendo %s para este arquivo"
-
-#: src/SearchListCtrl.cpp
 msgid "Search related files (eD2k, local server)"
 msgstr "Procurando arquivos relacionados (eD2k, servidor local)"
 
@@ -7774,6 +7774,11 @@ msgstr "Filtrado: %s"
 #, c-format
 msgid "Banned: %s"
 msgstr "Banido: %s"
+
+#: src/Statistics.cpp
+#, c-format
+msgid "Kad banned addresses: %s"
+msgstr ""
 
 #: src/Statistics.cpp
 #, c-format
@@ -9332,14 +9337,6 @@ msgstr "Removendo os dados do usuário em $APPDATA\\aMule..."
 
 #~ msgid "ERROR: Could not listen to TCP port."
 #~ msgstr "ERRO: Não pôde ouvir a porta TCP."
-
-#, fuzzy
-#~ msgid "IPv4 reachability:"
-#~ msgstr "Disponível"
-
-#, fuzzy
-#~ msgid "IPv6 reachability:"
-#~ msgstr "Disponível"
 
 #~ msgid "Change Language"
 #~ msgstr "Mudar Idioma"

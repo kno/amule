@@ -13,8 +13,8 @@ msgid ""
 msgstr ""
 "Project-Id-Version: aMule\n"
 "Report-Msgid-Bugs-To: https://github.com/amule-org/amule/issues\n"
-"POT-Creation-Date: 2026-09-09 13:17+0200\n"
-"PO-Revision-Date: 2026-09-07 14:55+0000\n"
+"POT-Creation-Date: 2026-09-09 19:53+0200\n"
+"PO-Revision-Date: 2026-09-09 11:41+0000\n"
 "Last-Translator: Mike Akiba <mike2718@gmail.com>\n"
 "Language-Team: Chinese Simplified <kde-i18n-doc@kde.org>\n"
 "Language: zh_CN\n"
@@ -1914,6 +1914,11 @@ msgstr "复制 eD2k 链接到剪贴板 (&L)"
 #: src/DownloadListCtrl.cpp src/SharedFilesCtrl.cpp
 msgid "Copy feedback to clipboard"
 msgstr "复制反馈信息到剪贴板"
+
+#: src/DownloadListCtrl.cpp src/SearchListCtrl.cpp src/SharedFilesCtrl.cpp
+#, c-format
+msgid "Get %s for this file"
+msgstr "获取此文件的 %s"
 
 #: src/DownloadListCtrl.cpp
 msgid "unassign"
@@ -4116,27 +4121,27 @@ msgstr "最后上传"
 msgid "Media Info"
 msgstr "媒体信息"
 
-#: src/muuli_wdr.cpp src/SearchListCtrl.cpp
+#: src/muuli_wdr.cpp src/SearchListCtrl.cpp src/SharedFilesCtrl.cpp
 msgid "Length"
 msgstr "长度"
 
-#: src/muuli_wdr.cpp src/SearchListCtrl.cpp
+#: src/muuli_wdr.cpp src/SearchListCtrl.cpp src/SharedFilesCtrl.cpp
 msgid "Bitrate"
 msgstr "比特率"
 
-#: src/muuli_wdr.cpp src/SearchListCtrl.cpp
+#: src/muuli_wdr.cpp src/SearchListCtrl.cpp src/SharedFilesCtrl.cpp
 msgid "Codec"
 msgstr "编解码器"
 
-#: src/muuli_wdr.cpp
+#: src/muuli_wdr.cpp src/SearchListCtrl.cpp src/SharedFilesCtrl.cpp
 msgid "Artist"
 msgstr "艺术家"
 
-#: src/muuli_wdr.cpp
+#: src/muuli_wdr.cpp src/SearchListCtrl.cpp src/SharedFilesCtrl.cpp
 msgid "Album"
 msgstr "专辑"
 
-#: src/muuli_wdr.cpp
+#: src/muuli_wdr.cpp src/SearchListCtrl.cpp src/SharedFilesCtrl.cpp
 msgid "Title"
 msgstr "标题"
 
@@ -4293,9 +4298,8 @@ msgid "Obfuscation"
 msgstr "模糊协议"
 
 #: src/muuli_wdr.cpp
-#, fuzzy
 msgid "Protocol extensions"
-msgstr "模糊协议"
+msgstr "协议扩展"
 
 #: src/muuli_wdr.cpp
 msgid "Transfers to client"
@@ -6077,7 +6081,7 @@ msgstr ""
 
 #: src/PeerCapabilities.h
 msgid "Buddy info pull"
-msgstr ""
+msgstr "好友信息拉取"
 
 #: src/PeerCapabilities.h
 msgid "NAT traversal (QUIC)"
@@ -6723,11 +6727,6 @@ msgstr "全部展开"
 #: src/SearchListCtrl.cpp
 msgid "Collapse all"
 msgstr "折叠所有"
-
-#: src/SearchListCtrl.cpp
-#, c-format
-msgid "Get %s for this file"
-msgstr "获取此文件的 %s"
 
 #: src/SearchListCtrl.cpp
 msgid "Search related files (eD2k, local server)"
@@ -7764,6 +7763,11 @@ msgstr "过滤: %s"
 #, c-format
 msgid "Banned: %s"
 msgstr "封杀: %s"
+
+#: src/Statistics.cpp
+#, c-format
+msgid "Kad banned addresses: %s"
+msgstr "Kad 封禁地址：%s"
 
 #: src/Statistics.cpp
 #, c-format
@@ -9319,14 +9323,6 @@ msgstr "正在删除 $APPDATA\\aMule 中的用户数据..."
 
 #~ msgid "ERROR: Could not listen to TCP port."
 #~ msgstr "错误: 无法监听 TCP 端口。"
-
-#, fuzzy
-#~ msgid "IPv4 reachability:"
-#~ msgstr "可用来源数"
-
-#, fuzzy
-#~ msgid "IPv6 reachability:"
-#~ msgstr "可用来源数"
 
 #~ msgid "Change Language"
 #~ msgstr "更改语言"
