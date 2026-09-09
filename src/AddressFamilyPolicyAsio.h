@@ -27,7 +27,7 @@
 
 #include "AddressFamilyPolicy.h"
 
-#include <optional>
+#include <boost/optional.hpp>
 
 // See NetworkAddressAsio.h for why this wrap is here and why it is scoped to
 // exactly these two diagnostics. ip/tcp.hpp is the heavier of the two asio
@@ -42,8 +42,6 @@
 #if defined(__clang__)
 #pragma clang diagnostic pop
 #endif
-
-#include <optional>
 
 /**
  * The half of AddressFamilyPolicy whose answers are Boost.Asio values.
@@ -67,10 +65,10 @@ namespace AddressFamilyPolicy
  *         v4 socket for a v6 target is how a truncated address turns into a
  *         connection to the wrong host.
  */
-inline std::optional<boost::asio::ip::tcp> TcpProtocolForTarget(const CNetworkAddress &target) noexcept
+inline boost::optional<boost::asio::ip::tcp> TcpProtocolForTarget(const CNetworkAddress &target) noexcept
 {
 	if (!Permits(target)) {
-		return std::nullopt;
+		return boost::none;
 	}
 	if (target.IsIPv4() || target.IsIPv4Mapped()) {
 		return boost::asio::ip::tcp::v4();
@@ -86,7 +84,7 @@ inline std::optional<boost::asio::ip::tcp> TcpProtocolForTarget(const CNetworkAd
  * family it wants. Under a dual-stack configuration there is nothing to state
  * and the caller should query unrestricted, hence the empty result.
  */
-inline std::optional<boost::asio::ip::tcp> TcpResolverProtocol() noexcept
+inline boost::optional<boost::asio::ip::tcp> TcpResolverProtocol() noexcept
 {
 	switch (Configured()) {
 	case Families::IPv4Only:
@@ -96,7 +94,7 @@ inline std::optional<boost::asio::ip::tcp> TcpResolverProtocol() noexcept
 	case Families::DualStack:
 		break;
 	}
-	return std::nullopt;
+	return boost::none;
 }
 
 /** The IPv4 wildcard, @c 0.0.0.0. */

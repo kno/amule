@@ -104,7 +104,7 @@ struct SNattPeerKey
 inline SNattPeerKey MakeNattPeerKey(const uint8_t *hash)
 {
 	SNattPeerKey key;
-	if (hash != NULL) {
+	if (hash != nullptr) {
 		for (size_t i = 0; i < NATT_PEER_HASH_LENGTH; ++i) {
 			key.bytes[i] = hash[i];
 		}
@@ -140,7 +140,7 @@ public:
 	 */
 	bool BeginRendezvous(const uint8_t *peerHash, const CNattCandidateSet &candidates, uint64_t nowMs)
 	{
-		if (peerHash == NULL || candidates.Count() == 0) {
+		if (peerHash == nullptr || candidates.Count() == 0) {
 			return false;
 		}
 
@@ -270,7 +270,7 @@ public:
 	bool OnHolePunchReceived(
 		const uint8_t *senderHash, const CNetworkAddress &source, uint16_t port, uint64_t nowMs)
 	{
-		if (senderHash == NULL || port == 0 || source.IsAbsent() || source.IsUnspecified()) {
+		if (senderHash == nullptr || port == 0 || source.IsAbsent() || source.IsUnspecified()) {
 			return false;
 		}
 
@@ -302,7 +302,7 @@ public:
 	 */
 	void OnConnectionEstablished(const uint8_t *peerHash)
 	{
-		if (peerHash == NULL) {
+		if (peerHash == nullptr) {
 			return;
 		}
 		const auto existing = m_entries.find(MakeNattPeerKey(peerHash));
@@ -354,7 +354,7 @@ public:
 	 */
 	bool IsBackoffActive(const uint8_t *peerHash, uint64_t nowMs) const
 	{
-		if (peerHash == NULL) {
+		if (peerHash == nullptr) {
 			return false;
 		}
 		const auto existing = m_entries.find(MakeNattPeerKey(peerHash));
@@ -375,7 +375,7 @@ public:
 	 */
 	bool ObservedEndpoint(const uint8_t *peerHash, CNetworkAddress &address, uint16_t &port) const
 	{
-		if (peerHash == NULL) {
+		if (peerHash == nullptr) {
 			return false;
 		}
 		const auto existing = m_entries.find(MakeNattPeerKey(peerHash));

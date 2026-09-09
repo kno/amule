@@ -376,9 +376,9 @@ public:
 		// because handing bytes over can complete or fail a connection and
 		// tear its transport down mid-loop.
 		const std::vector<IUtpTickable *> tickables = m_tickables;
-		for (std::size_t i = 0; i < tickables.size(); ++i) {
-			if (IsRegistered(tickables[i])) {
-				tickables[i]->OnUtpTick(nowMs);
+		for (IUtpTickable *tickable : tickables) {
+			if (IsRegistered(tickable)) {
+				tickable->OnUtpTick(nowMs);
 			}
 		}
 

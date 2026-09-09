@@ -38,13 +38,13 @@
 CQuicSocketTransport *CQuicInboundAcceptor::AcceptQuicConnection(
 	IQuicStreamWriter *writer, const CNetworkAddress &from, std::uint16_t port)
 {
-	if (writer == NULL) {
-		return NULL;
+	if (writer == nullptr) {
+		return nullptr;
 	}
 
-	if (theApp == NULL || !theApp->IsRunning() || theApp->listensocket == NULL ||
+	if (theApp == nullptr || !theApp->IsRunning() || theApp->listensocket == nullptr ||
 		theApp->listensocket->OnShutdown()) {
-		return NULL;
+		return nullptr;
 	}
 
 	// The same admission tests CListenSocket::AcceptFrom() and
@@ -58,28 +58,28 @@ CQuicSocketTransport *CQuicInboundAcceptor::AcceptQuicConnection(
 	// and the socket limit is about this end's resources rather than about the
 	// peer at all.
 	if (!from.IsPresent() || from.IsUnspecified()) {
-		return NULL;
+		return nullptr;
 	}
 
 	if (theApp->listensocket->TooManySockets()) {
 		theStats::AddMaxConnectionLimitReached();
-		return NULL;
+		return nullptr;
 	}
 
 	// Family-agnostic entry point, which normalises an IPv4-mapped address
 	// before matching, exactly as the TCP accept path does.
-	if (theApp->ipfilter != NULL && theApp->ipfilter->IsFiltered(from)) {
+	if (theApp->ipfilter != nullptr && theApp->ipfilter->IsFiltered(from)) {
 		AddDebugLogLineN(logClient,
 			CFormat("Denied inbound QUIC connection from %s (Filtered IP)") %
 				wxString(from.ToString()));
-		return NULL;
+		return nullptr;
 	}
 
-	if (theApp->clientlist != NULL && theApp->clientlist->IsBannedClient(from.Unmapped())) {
+	if (theApp->clientlist != nullptr && theApp->clientlist->IsBannedClient(from.Unmapped())) {
 		AddDebugLogLineN(logClient,
 			CFormat("Denied inbound QUIC connection from %s (Banned IP)") %
 				wxString(from.ToString()));
-		return NULL;
+		return nullptr;
 	}
 
 	// Past this point the connection is taken. The transport is handed to the

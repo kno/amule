@@ -372,7 +372,7 @@ CUpDownClient *CUploadQueue::GetWaitingClientByIP_UDP(
 		if (pbMultipleIPs) {
 			*pbMultipleIPs = false;
 		}
-		return NULL;
+		return nullptr;
 	}
 
 	CClientRefList::iterator it = m_waitinglist.begin();

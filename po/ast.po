@@ -9,7 +9,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: aMule\n"
 "Report-Msgid-Bugs-To: https://github.com/amule-org/amule/issues\n"
-"POT-Creation-Date: 2026-09-08 17:30+0200\n"
+"POT-Creation-Date: 2026-09-09 13:17+0200\n"
 "PO-Revision-Date: 2026-09-07 14:45+0000\n"
 "Last-Translator: astur <malditoastur@gmail.com>\n"
 "Language-Team: Language ast <malditoastur@gmail.com>\n"
@@ -3052,6 +3052,13 @@ msgid "Loading IP filters 'ipfilter.dat' and 'ipfilter_static.dat'."
 msgstr "Cargando fieltros IP 'ipfilter.dat' y 'ipfilter_static.dat'"
 
 #: src/IPFilter.cpp
+#, fuzzy, c-format
+msgid "Loaded %u IPv6 prefix rule."
+msgid_plural "Loaded %u IPv6 prefix rules."
+msgstr[0] "Cargáu %u rangu IP dende '%s'."
+msgstr[1] "Cargáu %u rangos IP dende '%s'."
+
+#: src/IPFilter.cpp
 #, c-format
 msgid "Failed to load ipfilter.dat file '%s', unknown format encountered."
 msgstr "Fallu al cargar ipfilter.dat '%s', alcontráu formatu desconocíu."
@@ -3497,12 +3504,19 @@ msgid "Asio thread %d started"
 msgstr "Descarga HTTP filu entamáu"
 
 #: src/ListenSocket.cpp
-msgid "ListenSocket: Ok."
-msgstr "Socket d'escucha: Ok"
+#, c-format
+msgid "ListenSocket: listening on %s (IPv6, also accepting IPv4 peers in mapped form)."
+msgstr ""
 
 #: src/ListenSocket.cpp
-msgid "ERROR: Could not listen to TCP port."
-msgstr "FALLU: Nun pue escuchase nel puertu TCP."
+#, c-format
+msgid "ListenSocket: listening on %s (%s)."
+msgstr ""
+
+#: src/ListenSocket.cpp
+#, c-format
+msgid "Inbound IPv6 connection from %s on %s."
+msgstr ""
 
 #: src/Logger.cpp
 msgid "ERROR: "
@@ -9416,11 +9430,11 @@ msgstr ""
 msgid "Removing user data at $APPDATA\\aMule..."
 msgstr ""
 
-#, fuzzy, c-format
-#~ msgid "Loaded %u IPv6 prefix rule."
-#~ msgid_plural "Loaded %u IPv6 prefix rules."
-#~ msgstr[0] "Cargáu %u rangu IP dende '%s'."
-#~ msgstr[1] "Cargáu %u rangos IP dende '%s'."
+#~ msgid "ListenSocket: Ok."
+#~ msgstr "Socket d'escucha: Ok"
+
+#~ msgid "ERROR: Could not listen to TCP port."
+#~ msgstr "FALLU: Nun pue escuchase nel puertu TCP."
 
 #, fuzzy
 #~ msgid "IPv4 reachability:"

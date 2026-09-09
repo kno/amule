@@ -77,7 +77,7 @@ public:
 	CUpDownClient *GetWaitingClientByIP_UDP(const CNetworkAddress &address,
 		uint16 nUDPPort,
 		bool bIgnorePortOnUniqueIP,
-		bool *pbMultipleIPs = NULL);
+		bool *pbMultipleIPs = nullptr);
 
 	uint16 SuspendUpload(const CMD4Hash &, bool terminate);
 	void ResumeUpload(const CMD4Hash &);

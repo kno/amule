@@ -41,7 +41,7 @@ CUtpSocketTransport *CUtpInboundAcceptor::AcceptUtpConnection(
 	// Every refusal below happens before anything takes ownership of the
 	// socket, so each one closes it here, exactly once. See the contract in
 	// the header: after the transport exists, this function cannot fail.
-	if (theApp == NULL || !theApp->IsRunning() || theApp->listensocket == NULL ||
+	if (theApp == nullptr || !theApp->IsRunning() || theApp->listensocket == nullptr ||
 		theApp->listensocket->OnShutdown()) {
 		context.CloseSocket(socket);
 		return nullptr;
@@ -65,7 +65,7 @@ CUtpSocketTransport *CUtpInboundAcceptor::AcceptUtpConnection(
 
 	// Family-agnostic entry point, which normalises an IPv4-mapped address
 	// before matching, exactly as the TCP accept path does.
-	if (theApp->ipfilter != NULL && theApp->ipfilter->IsFiltered(from)) {
+	if (theApp->ipfilter != nullptr && theApp->ipfilter->IsFiltered(from)) {
 		AddDebugLogLineN(logClient,
 			CFormat("Denied inbound uTP connection from %s (Filtered IP)") %
 				wxString(from.ToString()));
@@ -73,7 +73,7 @@ CUtpSocketTransport *CUtpInboundAcceptor::AcceptUtpConnection(
 		return nullptr;
 	}
 
-	if (theApp->clientlist != NULL && theApp->clientlist->IsBannedClient(from.Unmapped())) {
+	if (theApp->clientlist != nullptr && theApp->clientlist->IsBannedClient(from.Unmapped())) {
 		AddDebugLogLineN(logClient,
 			CFormat("Denied inbound uTP connection from %s (Banned IP)") %
 				wxString(from.ToString()));

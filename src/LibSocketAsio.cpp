@@ -548,7 +548,7 @@ public:
 				// protocol, and then no socket is opened -- opening a v4
 				// socket for it would be how a truncated address turns into
 				// a connection to the wrong host.
-				const std::optional<ip::tcp> protocol =
+				const boost::optional<ip::tcp> protocol =
 					AddressFamilyPolicy::TcpProtocolForTarget(
 						NetworkAddressAsio::FromAsioAddress(
 							adr.GetEndpoint().address()));
@@ -816,7 +816,7 @@ public:
 			// Socket is usually still closed when this is called. The family
 			// is the local address's own, via AddressFamilyPolicy.h, rather
 			// than a hardcoded v4().
-			const std::optional<ip::tcp> protocol = AddressFamilyPolicy::TcpProtocolForTarget(
+			const boost::optional<ip::tcp> protocol = AddressFamilyPolicy::TcpProtocolForTarget(
 				NetworkAddressAsio::FromAsioAddress(local.GetEndpoint().address()));
 			if (protocol) {
 				m_socket->open(*protocol, ec);
@@ -1433,7 +1433,7 @@ void CLibSocket::AttachUtpTransport(std::unique_ptr<CUtpSocketTransport> transpo
 	m_streamTransport = std::move(transport);
 	m_utpTransport = utp;
 	if (m_streamTransport) {
-		m_utpNotifier.reset(new CStreamTransportNotifier(this));
+		m_utpNotifier = std::make_unique<CStreamTransportNotifier>(this);
 		utp->SetEventSink(m_utpNotifier.get());
 	}
 }
@@ -1445,7 +1445,7 @@ void CLibSocket::AttachQuicTransport(std::unique_ptr<CQuicSocketTransport> trans
 	CQuicSocketTransport *quic = transport.get();
 	m_streamTransport = std::move(transport);
 	if (m_streamTransport) {
-		m_utpNotifier.reset(new CStreamTransportNotifier(this));
+		m_utpNotifier = std::make_unique<CStreamTransportNotifier>(this);
 		quic->SetEventSink(m_utpNotifier.get());
 	}
 }
@@ -2447,7 +2447,7 @@ bool amuleIPV4Address::Hostname(const wxString &name)
 	// AF_INET exactly as the previous hardcoded v4() did.
 	error_code ec2;
 	ip::tcp::resolver res(s_io_service);
-	const std::optional<ip::tcp> resolverProtocol = AddressFamilyPolicy::TcpResolverProtocol();
+	const boost::optional<ip::tcp> resolverProtocol = AddressFamilyPolicy::TcpResolverProtocol();
 	ip::tcp::resolver::results_type endpoint_iterator =
 		resolverProtocol ? res.resolve(*resolverProtocol, sname, "", ec2)
 				 : res.resolve(sname, "", ec2);

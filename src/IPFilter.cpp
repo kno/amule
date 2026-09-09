@@ -399,8 +399,8 @@ private:
 		// reads is the count that is returned. The lexer counted every IPv6
 		// line as malformed on its way past; they were not, they were read
 		// above.
-		if (yyip_Bad >= (unsigned)ipv6count) {
-			yyip_Bad -= (unsigned)ipv6count;
+		if (yyip_Bad >= ipv6count) {
+			yyip_Bad -= ipv6count;
 		}
 		filtercount += ipv6count;
 

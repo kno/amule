@@ -80,7 +80,7 @@ public:
 	 *         object exactly as it was: the family that did bind keeps working,
 	 *         which is the whole point of falling back rather than failing.
 	 */
-	bool AddSecondaryListener(amuleIPV4Address &addr, const CProxyData *ProxyData = NULL);
+	bool AddSecondaryListener(amuleIPV4Address &addr, const CProxyData *ProxyData = nullptr);
 
 	/** Accepts everything pending on @a server. Shared by both acceptors. */
 	void AcceptFrom(CLibSocketServer &server);
@@ -89,7 +89,7 @@ public:
 	DualStack::EFamily GetPrimaryFamily() const { return m_primaryFamily; }
 	//! Whether the primary socket serves both families by itself.
 	bool PrimaryServesBothFamilies() const { return m_primaryServesBoth; }
-	bool HasSecondaryListener() const { return m_secondary != NULL; }
+	bool HasSecondaryListener() const { return m_secondary != nullptr; }
 
 	/**
 	 * Stops the second family's acceptor. Called on shutdown alongside

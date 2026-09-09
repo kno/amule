@@ -955,7 +955,7 @@ CUpDownClient *CDownloadQueue::GetDownloadClientByIP_UDP(
 		// A source whose address is unknown is not the source an
 		// unidentifiable datagram came from. The 32-bit comparison this
 		// replaces could not tell those apart.
-		return NULL;
+		return nullptr;
 	}
 
 	wxMutexLocker lock(m_mutex);

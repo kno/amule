@@ -105,7 +105,7 @@ struct SFrameObfuscation
 	 * CMuleUDPSocket::SendPacket() md4cpy()s it into the queued item before
 	 * returning, so nothing outlives the client.
 	 */
-	const uint8_t *key = NULL;
+	const uint8_t *key = nullptr;
 };
 
 /**
@@ -145,8 +145,8 @@ SFrameObfuscation DecideFrameObfuscation(uint8_t frameType, const CNetworkAddres
 	// list is not paid for an answer that cannot change.
 	const CUpDownClient *peer = (frameType == OP_NATT_FRAME_UTP)
 					    ? theApp->clientlist->FindClientByUDPEndpoint(to, port)
-					    : NULL;
-	if (peer != NULL) {
+					    : nullptr;
+	if (peer != nullptr) {
 		inputs.peerIdentified = true;
 		inputs.peerHashKnown = peer->HasValidHash();
 		inputs.peerSupportsCryptLayer = peer->SupportsCryptLayer();
@@ -291,8 +291,12 @@ void CClientUDPSocket::OnPacketReceived(
 	uint32_t senderVerifyKey = 0;
 	int packetLen = static_cast<int>(length);
 	if (route == PeerAddressing::EUdpRoute::Ed2kAndKad) {
-		packetLen = CEncryptedDatagramSocket::DecryptReceivedClient(
-			buffer, length, &decryptedBuffer, ip, &receiverVerifyKey, &senderVerifyKey);
+		packetLen = CEncryptedDatagramSocket::DecryptReceivedClient(buffer,
+			static_cast<int>(length),
+			&decryptedBuffer,
+			ip,
+			&receiverVerifyKey,
+			&senderVerifyKey);
 	}
 	// Otherwise the datagram is left exactly as it arrived. The ed2k UDP
 	// obfuscation key is MD5 over our user hash, a 32-bit address and a magic
@@ -605,7 +609,7 @@ void CClientUDPSocket::SendNattControlMessage(
 	// while a punch that fails to deobfuscate is indistinguishable from a
 	// punch that never arrived, and the punch is the step everything else
 	// depends on. Never a Kad packet either.
-	SendPacket(packet, ip, port, false, NULL, false, 0);
+	SendPacket(packet, ip, port, false, nullptr, false, 0);
 }
 
 bool CClientUDPSocket::SendRendezvousRequest(const uint8_t *peerHash,
@@ -726,11 +730,9 @@ void CClientUDPSocket::ProcessNattControlFrame(
 			const CMD4Hash targetHash(decision.peerHash);
 			const CClientList::SourceList matches =
 				theApp->clientlist->GetClientsByHash(targetHash);
-			for (CClientList::SourceList::const_iterator it = matches.begin();
-				it != matches.end();
-				++it) {
-				const CUpDownClient *client = it->GetClient();
-				if (client != NULL) {
+			for (const CClientList::SourceList::value_type &match : matches) {
+				const CUpDownClient *client = match.GetClient();
+				if (client != nullptr) {
 					known.AddKnown(client->GetConnectAddress(), client->GetUserPort());
 				}
 			}
@@ -778,11 +780,9 @@ void CClientUDPSocket::ProcessNattControlFrame(
 				const CMD4Hash wanted(hash);
 				const CClientList::SourceList candidates =
 					theApp->clientlist->GetClientsByHash(wanted);
-				for (CClientList::SourceList::const_iterator it = candidates.begin();
-					it != candidates.end();
-					++it) {
-					const CUpDownClient *client = it->GetClient();
-					if (client == NULL) {
+				for (const CClientList::SourceList::value_type &candidateEntry : candidates) {
+					const CUpDownClient *client = candidateEntry.GetClient();
+					if (client == nullptr) {
 						continue;
 					}
 					const CNetworkAddress candidate = client->GetConnectAddress();
@@ -916,7 +916,7 @@ void CClientUDPSocket::ProcessPacket(
 		theStats::AddDownOverheadOther(size);
 		CUpDownClient *buddy = theApp->clientlist->GetBuddy();
 		if (buddy) {
-			if (size < 17 || buddy->GetSocket() == NULL) {
+			if (size < 17 || buddy->GetSocket() == nullptr) {
 				break;
 			}
 			if (!hasIPv4) {
@@ -975,7 +975,7 @@ void CClientUDPSocket::ProcessPacket(
 					false,
 					0);
 			} else {
-				SendPacket(response, host, port, false, NULL, false, 0);
+				SendPacket(response, host, port, false, nullptr, false, 0);
 			}
 
 			break;
@@ -1043,7 +1043,7 @@ void CClientUDPSocket::ProcessPacket(
 						host,
 						port,
 						false,
-						NULL,
+						nullptr,
 						false,
 						0); // we cannot answer this one encrypted since we dont know
 						    // this client
@@ -1088,7 +1088,7 @@ void CClientUDPSocket::ProcessPacket(
 		CUpDownClient *sender = theApp->downloadqueue->GetDownloadClientByIP_UDP(host, port);
 		if (sender) {
 			sender->UDPReaskFNF(); // may delete 'sender'!
-			sender = NULL;
+			sender = nullptr;
 		}
 		break;
 	}
@@ -1108,7 +1108,7 @@ void CClientUDPSocket::ProcessPacket(
 			uint16_t remoteTCPPort = data.ReadUInt16();
 			CMD4Hash userHash(data.ReadHash());
 			uint8_t connectOptions = data.ReadUInt8();
-			CUpDownClient *requester = NULL;
+			CUpDownClient *requester = nullptr;
 			CClientList::SourceList clients = theApp->clientlist->GetClientsByHash(userHash);
 			for (CClientList::SourceList::iterator it = clients.begin(); it != clients.end();
 				++it) {
@@ -1118,13 +1118,13 @@ void CClientUDPSocket::ProcessPacket(
 					break;
 				}
 			}
-			if (requester == NULL) {
+			if (requester == nullptr) {
 				// The ed2k id argument is the peer's 32-bit address, so a
 				// native IPv6 requester is created with none and given its
 				// real address immediately below. SetAddress() is what
 				// makes it findable afterwards, in either family.
 				requester =
-					new CUpDownClient(remoteTCPPort, hostIPv4, 0, 0, NULL, true, true);
+					new CUpDownClient(remoteTCPPort, hostIPv4, 0, 0, nullptr, true, true);
 				requester->SetUserHash(CMD4Hash(userHash));
 				theApp->clientlist->AddClient(requester);
 			}

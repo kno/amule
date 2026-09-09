@@ -519,7 +519,7 @@ bool CClientList::AttachToAlreadyKnown(CUpDownClient **client, CClientTCPSocket 
 CUpDownClient *CClientList::FindClientByIP(const CNetworkAddress &address, uint16 port)
 {
 	if (!PeerAddressing::IsIndexable(address)) {
-		return NULL;
+		return nullptr;
 	}
 
 	// Find all items with the specified address
@@ -534,13 +534,13 @@ CUpDownClient *CClientList::FindClientByIP(const CNetworkAddress &address, uint1
 		}
 	}
 
-	return NULL;
+	return nullptr;
 }
 
 CUpDownClient *CClientList::FindClientByUDPEndpoint(const CNetworkAddress &address, uint16 udpPort)
 {
 	if (!PeerAddressing::IsIndexable(address)) {
-		return NULL;
+		return nullptr;
 	}
 
 	// Find all items with the specified address
@@ -563,7 +563,7 @@ CUpDownClient *CClientList::FindClientByUDPEndpoint(const CNetworkAddress &addre
 CUpDownClient *CClientList::FindClientByIP(const CNetworkAddress &address)
 {
 	if (!PeerAddressing::IsIndexable(address)) {
-		return NULL;
+		return nullptr;
 	}
 
 	// Find all items with the specified address
@@ -1397,10 +1397,8 @@ bool CClientList::AllowCallbackRequest(const CNetworkAddress &address) const
 		return false;
 	}
 	uint64_t now = ::GetTickCount64();
-	for (ScopeAndTicksList::const_iterator it = m_directCallbackRequests.begin();
-		it != m_directCallbackRequests.end();
-		++it) {
-		if (it->scope == scope && now - it->inserted < MIN2MS(3)) {
+	for (const ScopeAndTicks &request : m_directCallbackRequests) {
+		if (request.scope == scope && now - request.inserted < MIN2MS(3)) {
 			return false;
 		}
 	}

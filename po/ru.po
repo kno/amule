@@ -14,7 +14,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: aMule\n"
 "Report-Msgid-Bugs-To: https://github.com/amule-org/amule/issues\n"
-"POT-Creation-Date: 2026-09-08 17:30+0200\n"
+"POT-Creation-Date: 2026-09-09 13:17+0200\n"
 "PO-Revision-Date: 2026-09-07 14:53+0000\n"
 "Last-Translator: Radist Morse <radist.morse@gmail.com>\n"
 "Language-Team: Russian <kde-russian@lists.kde.ru>\n"
@@ -3059,6 +3059,14 @@ msgid "Loading IP filters 'ipfilter.dat' and 'ipfilter_static.dat'."
 msgstr "Подгрузка IP-фильтров «ipfilter.dat» и «ipfilter_static.dat»."
 
 #: src/IPFilter.cpp
+#, fuzzy, c-format
+msgid "Loaded %u IPv6 prefix rule."
+msgid_plural "Loaded %u IPv6 prefix rules."
+msgstr[0] "Подгружен %u IP-диапазон из «%s»."
+msgstr[1] "Подгружены %u IP-диапазона из «%s»."
+msgstr[2] "Подгружено %u IP-диапазонов из «%s»."
+
+#: src/IPFilter.cpp
 #, c-format
 msgid "Failed to load ipfilter.dat file '%s', unknown format encountered."
 msgstr "Не удалось подгрузить файл ipfilter.dat «%s», неизвестный формат."
@@ -3505,12 +3513,19 @@ msgid "Asio thread %d started"
 msgstr "Поток Asio %d запущен"
 
 #: src/ListenSocket.cpp
-msgid "ListenSocket: Ok."
-msgstr "Сокет прослушивания: в порядке."
+#, c-format
+msgid "ListenSocket: listening on %s (IPv6, also accepting IPv4 peers in mapped form)."
+msgstr ""
 
 #: src/ListenSocket.cpp
-msgid "ERROR: Could not listen to TCP port."
-msgstr "ОШИБКА: не удалось прослушать порт TCP."
+#, c-format
+msgid "ListenSocket: listening on %s (%s)."
+msgstr ""
+
+#: src/ListenSocket.cpp
+#, c-format
+msgid "Inbound IPv6 connection from %s on %s."
+msgstr ""
 
 #: src/Logger.cpp
 msgid "ERROR: "
@@ -9392,12 +9407,11 @@ msgstr "Похоже, что aMule запущен. Закройте его и п
 msgid "Removing user data at $APPDATA\\aMule..."
 msgstr "Удаление пользовательских данных в $APPDATA\\aMule…"
 
-#, fuzzy, c-format
-#~ msgid "Loaded %u IPv6 prefix rule."
-#~ msgid_plural "Loaded %u IPv6 prefix rules."
-#~ msgstr[0] "Подгружен %u IP-диапазон из «%s»."
-#~ msgstr[1] "Подгружены %u IP-диапазона из «%s»."
-#~ msgstr[2] "Подгружено %u IP-диапазонов из «%s»."
+#~ msgid "ListenSocket: Ok."
+#~ msgstr "Сокет прослушивания: в порядке."
+
+#~ msgid "ERROR: Could not listen to TCP port."
+#~ msgstr "ОШИБКА: не удалось прослушать порт TCP."
 
 #, fuzzy
 #~ msgid "IPv4 reachability:"

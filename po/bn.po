@@ -7,7 +7,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: aMule GIT\n"
 "Report-Msgid-Bugs-To: https://github.com/amule-org/amule/issues\n"
-"POT-Creation-Date: 2026-09-08 17:30+0200\n"
+"POT-Creation-Date: 2026-09-09 13:17+0200\n"
 "PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
 "Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
 "Language-Team: none\n"
@@ -2945,6 +2945,13 @@ msgstr ""
 
 #: src/IPFilter.cpp
 #, c-format
+msgid "Loaded %u IPv6 prefix rule."
+msgid_plural "Loaded %u IPv6 prefix rules."
+msgstr[0] ""
+msgstr[1] ""
+
+#: src/IPFilter.cpp
+#, c-format
 msgid "Failed to load ipfilter.dat file '%s', unknown format encountered."
 msgstr ""
 
@@ -3384,11 +3391,18 @@ msgid "Asio thread %d started"
 msgstr ""
 
 #: src/ListenSocket.cpp
-msgid "ListenSocket: Ok."
+#, c-format
+msgid "ListenSocket: listening on %s (IPv6, also accepting IPv4 peers in mapped form)."
 msgstr ""
 
 #: src/ListenSocket.cpp
-msgid "ERROR: Could not listen to TCP port."
+#, c-format
+msgid "ListenSocket: listening on %s (%s)."
+msgstr ""
+
+#: src/ListenSocket.cpp
+#, c-format
+msgid "Inbound IPv6 connection from %s on %s."
 msgstr ""
 
 #: src/Logger.cpp

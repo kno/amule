@@ -149,7 +149,8 @@ CUpDownClient::CUpDownClient(uint16 in_port,
 	ReGetClientSoft();
 
 	if (checkfriend) {
-		if ((m_Friend = theApp->friendlist->FindFriend(CMD4Hash(), GetIP(), m_nUserPort)) != NULL) {
+		if ((m_Friend = theApp->friendlist->FindFriend(CMD4Hash(), GetIP(), m_nUserPort)) !=
+			nullptr) {
 			m_Friend->LinkClient(
 				CCLIENTREF(this, "CUpDownClient::CUpDownClient m_Friend->LinkClient"));
 		} else {
@@ -957,7 +958,7 @@ bool CUpDownClient::ProcessHelloTypePacket(const CMemFile &data)
  */
 void CUpDownClient::RegisterQuicExpectation(const CNetworkAddress &endpoint, uint16_t port)
 {
-	if (theApp == NULL || theApp->clientudp == NULL) {
+	if (theApp == nullptr || theApp->clientudp == nullptr) {
 		return;
 	}
 	if (!m_modCapabilities.SupportsNatTraversalQuic()) {
@@ -968,7 +969,7 @@ void CUpDownClient::RegisterQuicExpectation(const CNetworkAddress &endpoint, uin
 	}
 
 	CQuicContext *context = theApp->clientudp->GetQuicContext();
-	if (context == NULL || !context->IsAvailable()) {
+	if (context == nullptr || !context->IsAvailable()) {
 		return;
 	}
 
@@ -1307,8 +1308,8 @@ static const uint8_t *LocalQuicProofValue()
 		return value;
 	}
 
-	if (theApp == NULL || theApp->clientcredits == NULL) {
-		return NULL;
+	if (theApp == nullptr || theApp->clientcredits == nullptr) {
+		return nullptr;
 	}
 
 	// The public half only. See DeriveLocalQuicProofValue() in
@@ -1316,7 +1317,7 @@ static const uint8_t *LocalQuicProofValue()
 	// fingerprint of an already-public key discloses nothing.
 	if (!DeriveLocalQuicProofValue(
 		    theApp->clientcredits->GetPublicKey(), theApp->clientcredits->GetPubKeyLen(), value)) {
-		return NULL;
+		return nullptr;
 	}
 
 	derived = true;
@@ -1370,8 +1371,8 @@ void CUpDownClient::SendHelloTypePacket(CMemFile *data)
 	// the reader -- there must be no second expression able to disagree.
 	const uint32 uAdvertisedModMiscOptions =
 		AdvertisedModMiscOptions(
-			theApp->clientudp != NULL && theApp->clientudp->CanServeUtpConnections(),
-			theApp->clientudp != NULL && theApp->clientudp->CanServeQuicConnections()) |
+			theApp->clientudp != nullptr && theApp->clientudp->CanServeUtpConnections(),
+			theApp->clientudp != nullptr && theApp->clientudp->CanServeQuicConnections()) |
 		theApp->GetReachability().AdvertisedModMiscOptions();
 	const bool bModMiscOptionsTagCounted = uAdvertisedModMiscOptions != 0;
 
@@ -1438,7 +1439,7 @@ void CUpDownClient::SendHelloTypePacket(CMemFile *data)
 	const uint8_t *localQuicProofValue = LocalQuicProofValue();
 	const bool emitModQuicIdent = !m_modCapabilities.IsEmpty() &&
 				      (uAdvertisedModMiscOptions & MOD_MISCOPT_NAT_TRAVERSAL_QUIC) != 0 &&
-				      localQuicProofValue != NULL;
+				      localQuicProofValue != nullptr;
 
 	if (bModMiscOptionsTagCounted) {
 		tagcount++;
@@ -2227,7 +2228,7 @@ bool CUpDownClient::ConnectOverUtp()
 					 : CNetworkAddress::FromIPv4NetworkOrderOrAbsent(GetConnectIP());
 	uint16_t targetPort = GetUserPort();
 
-	CUtpContext *context = theApp->clientudp != NULL ? theApp->clientudp->GetUtpContext() : NULL;
+	CUtpContext *context = theApp->clientudp != nullptr ? theApp->clientudp->GetUtpContext() : nullptr;
 
 	// A hole punch that landed is worth more than any address either side
 	// advertised: the mapping that delivered a packet is the mapping that is
@@ -2238,7 +2239,7 @@ bool CUpDownClient::ConnectOverUtp()
 	// it works because uTP shares the ed2k UDP port and therefore shares the
 	// hole. Only the uTP dial is redirected; the TCP fallback below keeps the
 	// advertised address, because a punched UDP mapping says nothing about TCP.
-	if (HasValidHash() && theApp->clientudp != NULL) {
+	if (HasValidHash() && theApp->clientudp != nullptr) {
 		CNetworkAddress punched;
 		uint16_t punchedPort = 0;
 		if (theApp->clientudp->GetNatRendezvousManager()->ObservedEndpoint(
@@ -2268,7 +2269,7 @@ bool CUpDownClient::ConnectOverUtp()
 	// that matters is the ordinary ed2k peer, which must come out of here with
 	// both flags clear so its connection is byte-for-byte the pre-uTP one.
 	const SUtpDialDecision decision = DecideUtpDial(m_modCapabilities.SupportsNatTraversal(),
-		context != NULL && context->IsAvailable(),
+		context != nullptr && context->IsAvailable(),
 		m_socket->GetUseProxy(),
 		target);
 
@@ -2478,7 +2479,7 @@ void CUpDownClient::ConnectionEstablished()
 	// including on the callback or buddy path, since the requirement is that no
 	// further hole-punch packets are sent for the pair and not that the punch
 	// is what succeeded. A no-op for the ordinary peer, which has no entry.
-	if (HasValidHash() && theApp->clientudp != NULL) {
+	if (HasValidHash() && theApp->clientudp != nullptr) {
 		theApp->clientudp->GetNatRendezvousManager()->OnConnectionEstablished(
 			GetUserHash().GetHash());
 	}

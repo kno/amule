@@ -241,7 +241,7 @@ CamuleApp::CamuleApp()
 	sharedfiles = NULL;
 	listensocket = NULL;
 	clientudp = NULL;
-	clientudpV6 = NULL;
+	clientudpV6 = nullptr;
 	clientcredits = NULL;
 	friendlist = NULL;
 	downloadqueue = NULL;
@@ -429,7 +429,7 @@ int CamuleApp::OnExit()
 	clientudp = NULL;
 
 	delete clientudpV6;
-	clientudpV6 = NULL;
+	clientudpV6 = nullptr;
 
 	delete knownfiles;
 	knownfiles = NULL;
@@ -1627,7 +1627,7 @@ bool CamuleApp::ReinitializeNetwork(wxString *msg)
 		LogBindFailure(attempt.family, thePrefs::GetPort(), "TCP");
 		m_listenerState.RecordFailure(attempt.family);
 		delete listensocket;
-		listensocket = NULL;
+		listensocket = nullptr;
 	}
 
 	if (!m_listenerState.IsAnyListening()) {
@@ -1638,7 +1638,7 @@ bool CamuleApp::ReinitializeNetwork(wxString *msg)
 				listenAddr.SetV6Only(attempt.v6Only);
 			}
 			listenAddr.Service(thePrefs::GetPort());
-			if (listensocket == NULL) {
+			if (listensocket == nullptr) {
 				listensocket = new CListenSocket(listenAddr);
 				if (listensocket->IsOk()) {
 					m_listenerState.RecordBound(
@@ -1648,7 +1648,7 @@ bool CamuleApp::ReinitializeNetwork(wxString *msg)
 				LogBindFailure(attempt.family, thePrefs::GetPort(), "TCP");
 				m_listenerState.RecordFailure(attempt.family);
 				delete listensocket;
-				listensocket = NULL;
+				listensocket = nullptr;
 			} else if (listensocket->AddSecondaryListener(listenAddr)) {
 				m_listenerState.RecordBound(attempt.family, attempt.servesBothFamilies);
 			} else {
@@ -1720,7 +1720,7 @@ bool CamuleApp::ReinitializeNetwork(wxString *msg)
 		} else {
 			LogBindFailure(DualStack::EFamily::IPv6, thePrefs::GetUDPPort(), "UDP");
 			delete clientudpV6;
-			clientudpV6 = NULL;
+			clientudpV6 = nullptr;
 		}
 	}
 

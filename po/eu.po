@@ -10,7 +10,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: aMule\n"
 "Report-Msgid-Bugs-To: https://github.com/amule-org/amule/issues\n"
-"POT-Creation-Date: 2026-09-08 17:30+0200\n"
+"POT-Creation-Date: 2026-09-09 13:17+0200\n"
 "PO-Revision-Date: 2026-09-07 14:48+0000\n"
 "Last-Translator: Piarres Beobide <pi@beobide.net>\n"
 "Language-Team: Euskara <librezale@librezale.org>\n"
@@ -3042,6 +3042,13 @@ msgid "Loading IP filters 'ipfilter.dat' and 'ipfilter_static.dat'."
 msgstr "'ipfilter.dat' eta 'ipfilter_static.dat' IP iragazkiak kargatzen."
 
 #: src/IPFilter.cpp
+#, fuzzy, c-format
+msgid "Loaded %u IPv6 prefix rule."
+msgid_plural "Loaded %u IPv6 prefix rules."
+msgstr[0] "IP-eremu %u kargaturik'%s'-tik."
+msgstr[1] "%u IP-eremu kargaturik'%s'-tik."
+
+#: src/IPFilter.cpp
 #, c-format
 msgid "Failed to load ipfilter.dat file '%s', unknown format encountered."
 msgstr "Huts egin du ipfilter.dat '%s' fitxategia kargatzerakoan, formatu ezezagunak aurkitu dira."
@@ -3486,12 +3493,19 @@ msgid "Asio thread %d started"
 msgstr "HTTP deskarga haria hasia"
 
 #: src/ListenSocket.cpp
-msgid "ListenSocket: Ok."
-msgstr "ListenSocket: Ondo."
+#, c-format
+msgid "ListenSocket: listening on %s (IPv6, also accepting IPv4 peers in mapped form)."
+msgstr ""
 
 #: src/ListenSocket.cpp
-msgid "ERROR: Could not listen to TCP port."
-msgstr "ERROREA: Ezin da TCP ataka entzun."
+#, c-format
+msgid "ListenSocket: listening on %s (%s)."
+msgstr ""
+
+#: src/ListenSocket.cpp
+#, c-format
+msgid "Inbound IPv6 connection from %s on %s."
+msgstr ""
 
 #: src/Logger.cpp
 msgid "ERROR: "
@@ -9366,11 +9380,11 @@ msgstr ""
 msgid "Removing user data at $APPDATA\\aMule..."
 msgstr ""
 
-#, fuzzy, c-format
-#~ msgid "Loaded %u IPv6 prefix rule."
-#~ msgid_plural "Loaded %u IPv6 prefix rules."
-#~ msgstr[0] "IP-eremu %u kargaturik'%s'-tik."
-#~ msgstr[1] "%u IP-eremu kargaturik'%s'-tik."
+#~ msgid "ListenSocket: Ok."
+#~ msgstr "ListenSocket: Ondo."
+
+#~ msgid "ERROR: Could not listen to TCP port."
+#~ msgstr "ERROREA: Ezin da TCP ataka entzun."
 
 #, fuzzy
 #~ msgid "IPv4 reachability:"
