@@ -27,6 +27,8 @@
 
 #include "AddressFamilyPolicy.h"
 
+#include <optional>
+
 // See NetworkAddressAsio.h for why this wrap is here and why it is scoped to
 // exactly these two diagnostics. ip/tcp.hpp is the heavier of the two asio
 // headers this tree includes: it reaches boost/asio/execution/*.hpp, which is
