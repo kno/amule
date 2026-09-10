@@ -270,7 +270,8 @@ void CClientUDPSocket::OnPacketReceived(
 {
 	wxCHECK_RET(length >= 2, "Invalid packet.");
 
-	const PeerAddressing::EUdpRoute route = PeerAddressing::ClassifyUdpPeer(peer);
+	const PeerAddressing::EUdpRoute route =
+		PeerAddressing::ClassifyUdpPeer(PeerAddressing::UdpEndpoint{ peer, port });
 	if (route == PeerAddressing::EUdpRoute::Reject) {
 		// The receive path already rejects an absent or unspecified peer, so
 		// reaching this is a caller bug rather than hostile traffic.

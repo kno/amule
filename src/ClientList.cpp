@@ -552,7 +552,9 @@ CUpDownClient *CClientList::FindClientByUDPEndpoint(const CNetworkAddress &addre
 		// Same walk as FindClientByIP(), and deliberately the only difference:
 		// the client's UDP port is compared, not the ed2k TCP port it also
 		// advertised. Sharing an address is not enough to be the sender.
-		if (PeerAddressing::MatchesUdpSourcePort(cur_client->GetUDPPort(), udpPort)) {
+		if (PeerAddressing::MatchesUdpSource(
+			    PeerAddressing::UdpEndpoint{ cur_client->GetAddress(), cur_client->GetUDPPort() },
+			    PeerAddressing::UdpEndpoint{ address, udpPort })) {
 			return cur_client;
 		}
 	}
