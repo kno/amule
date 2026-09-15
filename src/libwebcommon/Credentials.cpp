@@ -27,21 +27,11 @@
 #include "AtomicFile.h"
 #include "ConstantTime.h"
 
-// cryptopp headers pull in deprecated implicit copy ctors + throw()
-// specs (P0806 + C++17). Same wrap as Jwt.cpp; see CryptoPP_Inc.h for
-// the full rationale.
-#if defined(__clang__)
-#pragma clang diagnostic push
-#pragma clang diagnostic ignored "-Wdeprecated-copy-with-user-provided-dtor"
-#pragma clang diagnostic ignored "-Wdeprecated-copy-with-user-provided-copy"
-#pragma clang diagnostic ignored "-Wdeprecated-dynamic-exception-spec"
-#endif
+#include "../WarningsPush_CryptoPP.h"
 #include <cryptopp/osrng.h>
 #include <cryptopp/pwdbased.h>
 #include <cryptopp/sha.h>
-#if defined(__clang__)
-#pragma clang diagnostic pop
-#endif
+#include "../WarningsPop.h"
 
 #include <cctype>
 #include <cstdio>
@@ -123,9 +113,8 @@ bool IsMd5Hex(const std::string &s)
 	return true;
 }
 
-// Lowercase a copy; stored digests are compared case-insensitively
-// because aMule's preferences dialog and the EC path have historically
-// disagreed about case.
+// Lowercase a copy; stored digests are compared case-insensitively because aMule's preferences
+// dialog and the EC path have historically disagreed about case.
 std::string ToLower(const std::string &s)
 {
 	std::string out(s);
@@ -202,9 +191,9 @@ std::string TrimAscii(const std::string &s)
 	return s.substr(b, e - b);
 }
 
-// True when `record` is something Verify could ever accept: a PHC record
-// in a form this build understands, or a legacy bare MD5. An empty string
-// is NOT valid — that is the separate "role unset" state.
+// True when `record` is something Verify could ever accept: a PHC record in a form this build
+// understands, or a legacy bare MD5. An empty string is NOT valid -- that is the separate "role
+// unset" state.
 bool IsValidRecord(const std::string &record)
 {
 	if (record.empty()) {
@@ -251,9 +240,9 @@ bool VerifyMd5Hex(const std::string &md5_hex, const std::string &stored, bool *n
 		return false;
 	}
 
-	// Legacy: the record is the unsalted MD5 itself. Still accepted so a
-	// developer config from before the KDF keeps working, and flagged so
-	// the caller rewrites it after a successful login.
+	// Legacy: the record is the unsalted MD5 itself. Still accepted so a developer config from
+	// before the KDF keeps working, and flagged so the caller rewrites it after a successful
+	// login.
 	if (IsLegacyMd5Record(stored)) {
 		if (!ConstantTimeEquals(ToLower(md5_hex), ToLower(stored))) {
 			return false;
@@ -336,16 +325,16 @@ bool ReadAndConsumeEcToken(const std::string &path, std::string &out)
 	buf << f.rdbuf();
 	f.close();
 
-	// Unlink regardless of what we just read: a file that failed to parse
-	// is still not something to leave lying around, and the caller has no
-	// later moment at which removing it would be safer.
+	// Unlink regardless of what we just read: a file that failed to parse is still not
+	// something to leave lying around, and the caller has no later moment at which removing it
+	// would be safer.
 	::remove(path.c_str());
 
 	const std::string token = TrimAscii(buf.str());
 	if (!IsMd5Hex(token)) {
-		// Same 32-hex-char shape as an MD5 digest -- see GenerateEcToken
-		// for why that width. Reject anything else rather than attempt a
-		// connection with a truncated or tampered value.
+		// Same 32-hex-char shape as an MD5 digest -- see GenerateEcToken for why that
+		// width. Reject anything else rather than attempt a connection with a truncated or
+		// tampered value.
 		return false;
 	}
 	out = ToLower(token);
@@ -421,9 +410,9 @@ bool SaveCredentialsFile(const std::string &config_dir, const Credentials &in, s
 	     << "guest=" << in.guest << "\n";
 	const std::string text = body.str();
 
-	// Crash-safe and owner-only; see WriteFileAtomic0600. This file holds
-	// the only credentials the daemon has, so a partial write or a crash
-	// mid-write must leave the previous contents intact.
+	// Crash-safe and owner-only; see WriteFileAtomic0600. This file holds the only credentials
+	// the daemon has, so a partial write or a crash mid-write must leave the previous contents
+	// intact.
 	if (!WriteFileAtomic0600(path, text)) {
 		error = "could not write " + path;
 		return false;
@@ -466,12 +455,11 @@ bool ApplyCredentialChange(const std::string &config_dir, const CredentialChange
 		return false;
 	}
 
-	// Write only when something actually changed. This is not just an
-	// optimisation: the file's modification time is what tells amuleapi a
-	// password was rotated, and rotation ends every session opened before
-	// it. A no-op rewrite would therefore sign everyone out — and aMule
-	// calls this after *every* preferences change, most of which have
-	// nothing to do with credentials.
+	// Write only when something actually changed. Not just an optimisation: the file's
+	// modification time is what tells amuleapi a password was rotated, and rotation ends every
+	// session opened before it. A no-op rewrite would therefore sign everyone out -- and aMule
+	// calls this after *every* preferences change, most of which have nothing to do with
+	// credentials.
 	if (next.admin == current.admin && next.guest == current.guest) {
 		return true;
 	}

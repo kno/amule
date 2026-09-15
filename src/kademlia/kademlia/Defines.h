@@ -36,8 +36,8 @@ Any mod that changes anything within the Kademlia side will not be allowed to ad
 there client on the eMule forum..
 */
 
-#ifndef __KAD_DEFINES_H__
-#define __KAD_DEFINES_H__
+#ifndef DEFINES_H
+#define DEFINES_H
 
 ////////////////////////////////////////
 namespace Kademlia
@@ -48,21 +48,19 @@ namespace Kademlia
 const unsigned int K = 10;
 #define KBASE 4
 #define KK 5
-// Maxmimum number of in-flight queries during a Kad search.  At each step the
-// initiator sends FIND_VALUE to up to ALPHA_QUERY closest unqueried nodes and
-// uses the responses to expand the search frontier.  The Kademlia paper (MIT
-// 2002) uses 3-10 as the typical range; eMule's historical value of 3 is at
-// the low end and slow-converges searches for unpopular keywords.  5 keeps
-// network load modest while letting CSearch::ProcessResponse's existing
-// "in top ALPHA_QUERY closer than current" cascade maintain more parallelism.
+// Maximum number of in-flight queries during a Kad search. At each step the initiator sends
+// FIND_VALUE to up to ALPHA_QUERY closest unqueried nodes and uses the responses to expand the
+// search frontier. The Kademlia paper (MIT 2002) uses 3-10 as the typical range; eMule's historical
+// value of 3 is at the low end and slow-converges searches for unpopular keywords. 5 keeps network
+// load modest while letting CSearch::ProcessResponse's existing "in top ALPHA_QUERY closer than
+// current" cascade maintain more parallelism.
 #define ALPHA_QUERY 5
 
-// Cap on user-triggered widening reasks (CSearch::RequestMoreResults).
-// Each reask asks an already-responded peer for KADEMLIA_FIND_VALUE_MORE
-// (= 11) closer contacts instead of the default 2, exposing a wider slice
-// of the routing-table neighbourhood.  Past 4 reasks the local
-// neighbourhood for a given keyword is typically exhausted (responses
-// dedupe against m_results) and additional reasks are wasted UDP traffic.
+// Cap on user-triggered widening reasks (CSearch::RequestMoreResults). Each reask asks an already-
+// responded peer for KADEMLIA_FIND_VALUE_MORE (= 11) closer contacts instead of the default 2,
+// exposing a wider slice of the routing-table neighbourhood. Past 4 reasks the local neighbourhood
+// for a keyword is typically exhausted (responses dedupe against m_results) and further reasks are
+// wasted UDP traffic.
 #define KADEMLIA_FIND_VALUE_MORE_REASKS 4
 #define LOG_BASE_EXPONENT 5
 #define HELLO_TIMEOUT 20
@@ -90,5 +88,5 @@ const unsigned int K = 10;
 
 } // namespace Kademlia
 
-#endif // __KAD_DEFINES_H__
+#endif // DEFINES_H
 // File_checked_for_headers

@@ -23,8 +23,8 @@
 // Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301, USA
 //
 
-#ifndef __RC4ENCRYPT_H__
-#define __RC4ENCRYPT_H__
+#ifndef RC4ENCRYPT_H
+#define RC4ENCRYPT_H
 
 #include <vector>
 
@@ -58,9 +58,9 @@ public:
 	// Sets the encryption key
 	void SetKey(const MD5Sum &keyhash, bool bSkipDiscard = false);
 
-	// RC4 encrypts the internal buffer. Marks it as encrypted, any other further call
-	// to add data, as Append(), must assert if the inner data is encrypted.
-	// Make sure to check SetKey has been called!
+	// RC4 encrypts the internal buffer and marks it encrypted; any further call adding data,
+	// such as Append(), must assert if the inner data is encrypted. Make sure SetKey has been
+	// called.
 	void Encrypt();
 
 	// RC4 encrypts an external buffer with the current key.
@@ -83,4 +83,4 @@ private:
 	void RC4CreateKey(const uint8 *pachKeyData, uint32 nLen, bool bSkipDiscard);
 };
 
-#endif // __RC4ENCRYPT_H__
+#endif // RC4ENCRYPT_H

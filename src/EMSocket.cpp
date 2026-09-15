@@ -48,9 +48,8 @@ CEMSocket::CEMSocket(const CProxyData *ProxyData)
 	if (!thePrefs::GetAddress().IsEmpty()) {
 		amuleIPV4Address host;
 
-		// No need to warn here, in case of failure to
-		// assign the hostname. That is already done
-		// in amule.cpp when starting ...
+		// No need to warn on a failure to assign the hostname; amule.cpp already does at
+		// startup.
 		if (host.Hostname(thePrefs::GetAddress())) {
 			SetLocal(host);
 		}
@@ -59,9 +58,8 @@ CEMSocket::CEMSocket(const CProxyData *ProxyData)
 	byConnected = ES_NOTCONNECTED;
 	m_uTimeOut = CONNECTION_TIMEOUT; // default timeout for ed2k sockets
 
-	// Download rate control: bucket is global
-	// (CDownloadBandwidthThrottler); only the per-socket pause flag
-	// lives here.
+	// Download rate control: the bucket is global (CDownloadBandwidthThrottler); only the per-
+	// socket pause flag lives here.
 	pendingOnReceive = false;
 
 	// Download partial header
@@ -175,7 +173,6 @@ void CEMSocket::OnReceive(int nErrorCode)
 		}
 	}
 
-	// Check current connection state
 	if (byConnected == ES_DISCONNECTED) {
 		return;
 	} else {
@@ -206,16 +203,12 @@ void CEMSocket::OnReceive(int nErrorCode)
 			readMax = CPacket::GetPacketSizeFromHeader(pendingHeader) - pendingPacketSize;
 		}
 
-		// Reserve from the global download budget only when we actually
-		// intend to read something. readMax can legitimately be 0 here
-		// for empty-payload packets (some ED2K control packets carry no
-		// payload past the header) -- the do-while iteration still has
-		// to fall through to the packet-processing block below to
-		// finalise the packet, so don't let Reserve(0) -> 0 -> early
-		// return short-circuit that path. Sockets that opt out of the
-		// download throttler via IsDownloadThrottled() (server control
-		// sockets) skip the reservation entirely and read whatever's
-		// available; their traffic doesn't count against the cap.
+		// Reserve from the global download budget only when we actually intend to read
+		// something. readMax can legitimately be 0 here for empty-payload packets, and the
+		// do-while iteration still has to fall through to the packet-processing block
+		// below, so Reserve(0) must not short-circuit that path. Sockets that opt out via
+		// IsDownloadThrottled() (server control sockets) skip the reservation and do not
+		// count against the cap.
 		const bool throttled = IsDownloadThrottled();
 		uint32 grantedBytes = 0;
 		ret = 0;
@@ -223,11 +216,10 @@ void CEMSocket::OnReceive(int nErrorCode)
 			if (throttled) {
 				grantedBytes = CDownloadBandwidthThrottler::Get().Reserve(readMax);
 				if (grantedBytes == 0) {
-					// Bucket exhausted; resume on next tick refill.
+					// Bucket exhausted; resume on the next tick refill.
 					// Register for that wake-up rather than relying on
-					// something else to tick this socket: a socket we
-					// are only browsing belongs to no download, so
-					// nothing else would.
+					// something else to tick this socket: a socket we are only
+					// browsing belongs to no download, so nothing else would.
 					pendingOnReceive = true;
 					CDownloadBandwidthThrottler::Get().PauseUntilRefill(this);
 					return;
@@ -284,7 +276,6 @@ void CEMSocket::OnReceive(int nErrorCode)
 					return;
 				}
 
-				// Process packet
 				PacketReceived(packet.get());
 			}
 		} else {
@@ -296,42 +287,30 @@ void CEMSocket::OnReceive(int nErrorCode)
 void CEMSocket::WakeIfPaused()
 {
 	if (pendingOnReceive) {
-		// Re-enter the read loop. OnReceive() will consult the global
-		// CDownloadBandwidthThrottler for fresh budget; if the bucket
-		// is still empty, pendingOnReceive stays set and we'll retry
-		// next tick.
+		// Re-enter the read loop. OnReceive() consults the global
+		// CDownloadBandwidthThrottler for fresh budget; if the bucket is still empty,
+		// pendingOnReceive stays set and we retry next tick.
 		OnReceive(0);
 	}
 }
 
 /**
- * Queues up the packet to be sent. Another thread will actually send the packet.
+ * Queues the packet up to be sent; another thread does the sending.
  *
- * If the packet is not a control packet, and if the socket decides that its queue is
- * full and forceAdd is false, then the socket is allowed to refuse to add the packet
- * to its queue. It will then return false and it is up to the calling thread to try
- * to call SendPacket for that packet again at a later time.
+ * A non-control packet may be refused when the socket decides its queue is full and @a forceAdd is
+ * false; the caller then has to try again later.
  *
- * @param packet address to the packet that should be added to the queue
- *
- * @param delpacket if true, the responsibility for deleting the packet after it has been sent
- *                  has been transferred to this object. If false, don't delete the packet after it
- *                  has been sent.
- *
- * @param controlpacket the packet is a controlpacket
- *
- * @param forceAdd this packet must be added to the queue, even if it is full. If this flag is true
- *                 then the method can not refuse to add the packet, and therefore not return false.
- *
- * @return true if the packet was added to the queue, false otherwise
+ * @param packet the packet to add to the queue.
+ * @param delpacket true transfers responsibility for deleting the packet once sent.
+ * @param controlpacket the packet is a control packet.
+ * @param forceAdd add the packet even if the queue is full, so the call cannot refuse.
+ * @return true if the packet was added to the queue.
  */
 void CEMSocket::SendPacket(CPacket *packet, bool delpacket, bool controlpacket, uint32 actualPayloadSize)
 {
-	// printf("* SendPacket called on socket %p\n", this);
 	std::lock_guard<std::mutex> lock(m_sendLocker);
 
 	if (byConnected == ES_DISCONNECTED) {
-		// printf("* Disconnected, drop packet\n");
 		if (delpacket) {
 			delete packet;
 		}
@@ -341,13 +320,11 @@ void CEMSocket::SendPacket(CPacket *packet, bool delpacket, bool controlpacket, 
 		}
 
 		if (controlpacket) {
-			// printf("* Adding a control packet\n");
 			m_control_queue.push_back(packet);
 
 			// queue up for controlpacket
 			theApp->uploadBandwidthThrottler->QueueForSendingControlPacket(this, HasSent());
 		} else {
-			// printf("* Adding a normal packet to the queue\n");
 			bool first = !((sendbuffer && !m_currentPacket_is_controlpacket) ||
 				       !m_standard_queue.empty());
 			StandardPacketQueueEntry queueEntry = { actualPayloadSize, packet };
@@ -402,10 +379,9 @@ uint64 CEMSocket::GetSentPayloadSinceLastCallAndReset()
 	return sentBytes;
 }
 
-// Non-resetting peek at bytes sent since the last GetSentPayloadSinceLastCallAndReset() call.
-// Used by the disk I/O thread to get a fresh view of sent bytes without consuming the counter
-// that SendBlockData() drains every CORE_TIMER_PERIOD ms.
-// Lock order: must not be called while m_sendLocker is already held by the caller.
+// Non-resetting peek at bytes sent since the last GetSentPayloadSinceLastCallAndReset(). Used by
+// the disk I/O thread for a fresh view without consuming the counter SendBlockData() drains every
+// CORE_TIMER_PERIOD. Must not be called with m_sendLocker already held.
 uint64 CEMSocket::PeekSentPayload()
 {
 	std::lock_guard<std::mutex> lock(m_sendLocker);
@@ -441,49 +417,41 @@ void CEMSocket::OnSend(int nErrorCode)
 }
 
 /**
- * Try to put queued up data on the socket.
+ * Try to put queued-up data on the socket.
  *
- * Control packets have higher priority, and will be sent first, if possible.
- * Standard packets can be split up in several package containers. In that case
- * all the parts of a split package must be sent in a row, without any control packet
- * in between.
+ * Control packets have higher priority and are sent first where possible. A standard packet can be
+ * split across several containers; all parts of a split packet must then be sent in a row, with no
+ * control packet in between.
  *
- * @param maxNumberOfBytesToSend This is the maximum number of bytes that is allowed to be put on the socket
- *                               this call. The actual number of sent bytes will be returned from the method.
- *
- * @param onlyAllowedToSendControlPacket This call we only try to put control packets on the sockets.
- *                                       If there's a standard packet "in the way", and we think that this
- * socket is no longer an upload slot, then it is ok to send the standard packet to get it out of the way. But
- * it is not allowed to pick a new standard packet from the queue during this call. Several split packets are
- * counted as one standard packet though, so it is ok to finish them all off if necessary.
- *
- * @return the actual number of bytes that were put on the socket.
+ * @param maxNumberOfBytesToSend the most bytes this call may put on the socket.
+ * @param onlyAllowedToSendControlPacket only try control packets. If a standard packet is in the
+ * way and this socket is thought to be no longer an upload slot, it may be sent to clear the way,
+ * but no new standard packet may be picked from the queue. Several split packets count as one, so
+ * they can all be finished off if necessary.
+ * @return the number of bytes actually put on the socket.
  */
 SocketSentBytes CEMSocket::Send(
 	uint32 maxNumberOfBytesToSend, uint32 minFragSize, bool onlyAllowedToSendControlPacket)
 {
 	std::lock_guard<std::mutex> lock(m_sendLocker);
 
-	// printf("* Attempt to send a packet on socket %p\n", this);
-
 	if (byConnected == ES_DISCONNECTED) {
-		// printf("* Disconnected socket %p\n", this);
 		SocketSentBytes returnVal = { false, 0, 0 };
 		return returnVal;
 	} else if (m_bBusy && onlyAllowedToSendControlPacket) {
-		// printf("* Busy socket %p\n", this);
 		SocketSentBytes returnVal = { true, 0, 0 };
 		return returnVal;
 	}
 
 	bool anErrorHasOccured = false;
+	// A stream that ended cleanly. Stops the loops like an error does, but is
+	// not one: the socket's own lost notification drives the disconnect.
+	bool streamIsGone = false;
 	uint32 sentStandardPacketBytesThisCall = 0;
 	uint32 sentControlPacketBytesThisCall = 0;
 
 	if (byConnected == ES_CONNECTED && IsEncryptionLayerReady() &&
 		(!m_bBusy || onlyAllowedToSendControlPacket)) {
-
-		// printf("* Internal attemptto send on %p\n", this);
 
 		if (minFragSize < 1) {
 			minFragSize = 1;
@@ -500,6 +468,7 @@ SocketSentBytes CEMSocket::Send(
 				maxNumberOfBytesToSend &&
 			anErrorHasOccured == false && // don't send more than allowed. Also, there should have
 						      // been no error in earlier loop
+			streamIsGone == false &&
 			(!m_control_queue.empty() || !m_standard_queue.empty() ||
 				sendbuffer != NULL) &&              // there must exist something to send
 			(onlyAllowedToSendControlPacket == false || // this means we are allowed to send both
@@ -522,9 +491,9 @@ SocketSentBytes CEMSocket::Send(
 					m_standard_queue.empty() &&
 					(sentStandardPacketBytesThisCall + sentControlPacketBytesThisCall) <
 						minFragSize) // We have waited to long to clean the current
-							     // packet (which may be a standard packet that is
-							     // in the way). Proceed no matter what the value
-							     // of onlyAllowedToSendControlPacket.
+							     // packet (which may be a standard packet in the
+							     // way). Proceed whatever
+							     // onlyAllowedToSendControlPacket says.
 				)) {
 
 			// If we are currently not in the progress of sending a packet, we will need to find
@@ -532,13 +501,11 @@ SocketSentBytes CEMSocket::Send(
 			if (sendbuffer == NULL) {
 				CPacket *curPacket = NULL;
 				if (!m_control_queue.empty()) {
-					// There's a control packet to send
 					m_currentPacket_is_controlpacket = true;
 					curPacket = m_control_queue.front();
 					m_control_queue.pop_front();
 				} else if (!m_standard_queue
 						    .empty() /*&& onlyAllowedToSendControlPacket == false*/) {
-					// There's a standard packet to send
 					m_currentPacket_is_controlpacket = false;
 					StandardPacketQueueEntry queueEntry = m_standard_queue.front();
 					m_standard_queue.pop_front();
@@ -548,9 +515,8 @@ SocketSentBytes CEMSocket::Send(
 					// remember this for statistics purposes.
 					m_currentPackageIsFromPartFile = curPacket->IsFromPF();
 				} else {
-					// Just to be safe. Shouldn't happen?
-					// if we reach this point, then there's something wrong with the while
-					// condition above!
+					// Just to be safe; should not happen. Reaching this point
+					// means something is wrong with the while condition above.
 					wxFAIL;
 					AddDebugLogLineC(logGeneral,
 						"EMSocket: Couldn't get a new packet! There's an error in "
@@ -572,10 +538,10 @@ SocketSentBytes CEMSocket::Send(
 				CryptPrepareSendData((uint8_t *)sendbuffer, sendblen);
 			}
 
-			// At this point we've got a packet to send in sendbuffer. Try to send it. Loop until
-			// entire packet is sent, or until we reach maximum bytes to send for this call, or
-			// until we get an error. NOTE! If send would block (returns WOULDBLOCK), we will
-			// return from this method INSIDE this loop.
+			// At this point sendbuffer holds a packet to send. Loop until the whole
+			// packet is sent, the maximum bytes for this call is reached, or an error
+			// occurs. NOTE: if a send would block (WOULDBLOCK), we return from this
+			// method INSIDE the loop.
 			while (sent < sendblen &&
 				sentStandardPacketBytesThisCall + sentControlPacketBytesThisCall <
 					maxNumberOfBytesToSend &&
@@ -589,7 +555,7 @@ SocketSentBytes CEMSocket::Send(
 					(sentStandardPacketBytesThisCall + sentControlPacketBytesThisCall) %
 							minFragSize !=
 						0) &&
-				anErrorHasOccured == false) {
+				anErrorHasOccured == false && streamIsGone == false) {
 				uint32 tosend = sendblen - sent;
 				if (!onlyAllowedToSendControlPacket || m_currentPacket_is_controlpacket) {
 					if (maxNumberOfBytesToSend >=
@@ -633,13 +599,11 @@ SocketSentBytes CEMSocket::Send(
 
 				uint32 result = CEncryptedStreamSocket::Write(sendbuffer + sent, tosend);
 
-				// Advance 'sent' before checking BlocksWrite().  BlocksWrite()
-				// reflects "any async_write currently in flight", not "did
-				// this Write() succeed".  A previous iteration's pending
-				// write may still be in flight when the current Write()
-				// succeeds, so BlocksWrite() returns true even though we
-				// just dispatched more data.  Advancing first prevents
-				// 'sent' from lagging and the same bytes being re-sent.
+				// Advance 'sent' before checking BlocksWrite(), which reflects "any
+				// async_write currently in flight" rather than "did this Write()
+				// succeed": a previous iteration's pending write may still be in
+				// flight when the current one succeeds, so advancing first keeps
+				// 'sent' from lagging and the same bytes from being re-sent.
 				if (result > 0) {
 					m_hasSent = true;
 					sent += result;
@@ -666,6 +630,32 @@ SocketSentBytes CEMSocket::Send(
 				} else if (LastError()) {
 					// Send() gave an error
 					anErrorHasOccured = true;
+				} else if (!IsOk()) {
+					// The stream is gone. A transport whose stream can end
+					// cleanly returns 0 here while blocked and error are both
+					// clear, and nothing in this loop advances on a retry, so
+					// without this arm it spins at full speed on the upload
+					// thread while holding m_sendLocker. Asked rather than
+					// inferred from that triple, because a healthy asio socket
+					// can show it for an instant if its send completion lands
+					// between Write() returning and BlocksWrite() being read.
+					// A clean end is not an error, so leave without claiming
+					// one and let the lost notification tear the socket down.
+					//
+					// Inert until the acceptor routes this call. IsOk() is not
+					// virtual anywhere in CLibSocket, CEncryptedStreamSocket or
+					// here, so it resolves statically to CLibSocket::IsOk(),
+					// whose m_OK is true for the whole life of a connected
+					// socket: this arm cannot fire for CClientTCPSocket or
+					// CServerSocket, which is why adding it changes nothing
+					// today. The uTP transport answers the same question on
+					// IStreamTransport, a separate hierarchy, so whatever wires
+					// a transport into CEMSocket must route IsOk() to it as
+					// well. Miss that and the arm stays dead after wiring, and
+					// the spin it exists to stop comes back silently.
+					m_bBusy = false;
+					streamIsGone = true;
+					break;
 				} else {
 					m_bBusy = false;
 				}
@@ -693,15 +683,10 @@ SocketSentBytes CEMSocket::Send(
 
 	if (onlyAllowedToSendControlPacket &&
 		(!m_control_queue.empty() || (sendbuffer != NULL && m_currentPacket_is_controlpacket))) {
-		// enter control packet send queue
-		// we might enter control packet queue several times for the same package,
-		// but that costs very little overhead. Less overhead than trying to make sure
-		// that we only enter the queue once.
-		// printf("* Requeueing control packet on %p\n", this);
+		// Enter the control packet send queue. We may enter it several times for the same
+		// package, but that costs less overhead than ensuring we enter it only once.
 		theApp->uploadBandwidthThrottler->QueueForSendingControlPacket(this, HasSent());
 	}
-
-	// printf("* Finishing send debug on %p\n",this);
 
 	SocketSentBytes returnVal = {
 		!anErrorHasOccured, sentStandardPacketBytesThisCall, sentControlPacketBytesThisCall
@@ -720,9 +705,7 @@ uint32 CEMSocket::GetNextFragSize(uint32 current, uint32 minFragSize)
 }
 
 /**
- * Decides the (minimum) amount the socket needs to send to prevent timeout.
- *
- * @author SlugFiller
+ * Decides the minimum amount the socket needs to send to prevent a timeout. @author SlugFiller
  */
 uint32 CEMSocket::GetNeededBytes()
 {
@@ -782,15 +765,12 @@ uint32 CEMSocket::GetNeededBytes()
 }
 
 /**
- * Removes all packets from the standard queue that don't have to be sent for the socket to be able to send a
+ * Removes every packet from the standard queue that need not be sent before the socket can send a
  * control packet.
  *
- * Before a socket can send a new packet, the current packet has to be finished. If the current packet is part
- * of a split packet, then all parts of that split packet must be sent before the socket can send a control
- * packet.
- *
- * This method keeps in standard queue only those packets that must be sent (rest of split packet), and
- * removes everything after it. The method doesn't touch the control packet queue.
+ * The current packet has to be finished first, and if it is part of a split packet then every part
+ * of that packet must go out before a control packet can. So this keeps only the rest of a split
+ * packet and removes everything after it. The control packet queue is untouched.
  */
 void CEMSocket::TruncateQueues()
 {

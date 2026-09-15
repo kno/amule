@@ -24,8 +24,8 @@ msgid ""
 msgstr ""
 "Project-Id-Version: aMule\n"
 "Report-Msgid-Bugs-To: https://github.com/amule-org/amule/issues\n"
-"POT-Creation-Date: 2026-09-07 16:21+0200\n"
-"PO-Revision-Date: 2026-09-08 11:08+0000\n"
+"POT-Creation-Date: 2026-09-14 11:03+0200\n"
+"PO-Revision-Date: 2026-09-14 11:39+0000\n"
 "Last-Translator: Pablo <parodper@gmail.com>\n"
 "Language-Team: http://forum.amule.org/index.php?topic=13883\n"
 "Language: gl\n"
@@ -222,6 +222,29 @@ msgstr "Non se puido abrir o ficheiro con ligazóns eD2k."
 #: src/amuleAppCommon.cpp
 msgid "WARNING: You can't add yourself as a source for an eD2k link while having a lowid."
 msgstr "AVISO: Non podes engadirte a ti mesmo como unha fonte para un enlace eD2k tendo ID baixa."
+
+#: src/amuleAppCommon.cpp
+#, c-format
+msgid ""
+"Another program is holding aMule's lock file:\n"
+"\n"
+"%s\n"
+"\n"
+"That is not a running copy of aMule, so there is nothing to bring to the front. Close the other program, or delete the lock file while aMule is not running."
+msgstr ""
+
+#: src/amuleAppCommon.cpp
+#, c-format
+msgid ""
+"The aMule daemon (amuled) is already running as process %d and is using this configuration.\n"
+"\n"
+"It has no window to bring to the front. Connect to it with amuleGUI, or stop the daemon before starting aMule."
+msgstr ""
+
+#: src/amuleAppCommon.cpp
+#, fuzzy
+msgid "aMule cannot start"
+msgstr "Instalouse aMule"
 
 #: src/amuleAppCommon.cpp
 #, c-format
@@ -1087,8 +1110,8 @@ msgstr ""
 #: src/amule-remote-gui.cpp src/BaseClient.cpp src/ClientDetailDialog.cpp
 #: src/DataToText.cpp src/DownloadListCtrl.cpp src/ExternalConn.cpp
 #: src/FileDetailDialog.cpp src/GenericClientListCtrl.cpp src/HTTPDownload.cpp
-#: src/KnownFile.cpp src/MuleTrayIcon.cpp src/PartFile.cpp src/Server.cpp
-#: src/Statistics.cpp
+#: src/KnownFile.cpp src/MuleTrayIcon.cpp src/PartFile.cpp
+#: src/ServerListCtrl.cpp src/Statistics.cpp
 msgid "Unknown"
 msgstr "Descoñecido"
 
@@ -1931,6 +1954,11 @@ msgstr "Copiar &ligazón eD2k ao portapapeis"
 msgid "Copy feedback to clipboard"
 msgstr "Copiar comentarios ao portapapeis"
 
+#: src/DownloadListCtrl.cpp src/SearchListCtrl.cpp src/SharedFilesCtrl.cpp
+#, c-format
+msgid "Get %s for this file"
+msgstr "Obter %s para este ficheiro"
+
 #: src/DownloadListCtrl.cpp
 msgid "unassign"
 msgstr "anular a asignación"
@@ -2604,7 +2632,7 @@ msgstr "Previsualizar ficheiro"
 
 #: src/FileLaunch.cpp
 #, c-format
-msgid "ERROR: Failed to execute external media-player! Command: `%s'"
+msgid "ERROR: Failed to execute external media-player! Command: '%s'"
 msgstr "ERRO: Non se puido executar o reprodutor multimedia externo! Orde: «%s»"
 
 #: src/FileLaunch.cpp
@@ -4127,28 +4155,28 @@ msgstr ", Enviado: "
 msgid "Media Info"
 msgstr "Info. Kad"
 
-#: src/muuli_wdr.cpp src/SearchListCtrl.cpp
+#: src/muuli_wdr.cpp src/SearchListCtrl.cpp src/SharedFilesCtrl.cpp
 msgid "Length"
 msgstr ""
 
-#: src/muuli_wdr.cpp src/SearchListCtrl.cpp
+#: src/muuli_wdr.cpp src/SearchListCtrl.cpp src/SharedFilesCtrl.cpp
 #, fuzzy
 msgid "Bitrate"
 msgstr "Non evaluada"
 
-#: src/muuli_wdr.cpp src/SearchListCtrl.cpp
+#: src/muuli_wdr.cpp src/SearchListCtrl.cpp src/SharedFilesCtrl.cpp
 msgid "Codec"
 msgstr ""
 
-#: src/muuli_wdr.cpp
+#: src/muuli_wdr.cpp src/SearchListCtrl.cpp src/SharedFilesCtrl.cpp
 msgid "Artist"
 msgstr ""
 
-#: src/muuli_wdr.cpp
+#: src/muuli_wdr.cpp src/SearchListCtrl.cpp src/SharedFilesCtrl.cpp
 msgid "Album"
 msgstr ""
 
-#: src/muuli_wdr.cpp
+#: src/muuli_wdr.cpp src/SearchListCtrl.cpp src/SharedFilesCtrl.cpp
 msgid "Title"
 msgstr "Título"
 
@@ -6771,11 +6799,6 @@ msgid "Collapse all"
 msgstr "Pechar todas as lapelas"
 
 #: src/SearchListCtrl.cpp
-#, c-format
-msgid "Get %s for this file"
-msgstr "Obter %s para este ficheiro"
-
-#: src/SearchListCtrl.cpp
 msgid "Search related files (eD2k, local server)"
 msgstr "Procurar ficheiros relacionados (eD2k, busca local)"
 
@@ -7829,6 +7852,11 @@ msgstr "Vetados: %s"
 
 #: src/Statistics.cpp
 #, c-format
+msgid "Kad banned addresses: %s"
+msgstr ""
+
+#: src/Statistics.cpp
+#, c-format
 msgid "Total: %i Known: %i"
 msgstr "Total:%i Coñecidos: %i"
 
@@ -8614,7 +8642,7 @@ msgstr "Interrompendo o envío do ficheiro: %s"
 
 #: src/UserEvents.cpp
 #, c-format
-msgid "Failed to execute command `%s' on `%s' event."
+msgid "Failed to execute command '%s' on '%s' event."
 msgstr "Non se puido executar a orde `%s» no evento `%s»."
 
 #: src/UserEvents.h

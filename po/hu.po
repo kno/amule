@@ -7,8 +7,8 @@ msgid ""
 msgstr ""
 "Project-Id-Version: aMule\n"
 "Report-Msgid-Bugs-To: https://github.com/amule-org/amule/issues\n"
-"POT-Creation-Date: 2026-09-07 16:21+0200\n"
-"PO-Revision-Date: 2026-09-08 11:09+0000\n"
+"POT-Creation-Date: 2026-09-14 11:03+0200\n"
+"PO-Revision-Date: 2026-09-14 11:51+0000\n"
 "Last-Translator: Dévai Tamás <gonosztopi@amule.org>\n"
 "Language-Team: Hungarian <hu@li.org>\n"
 "Language: hu\n"
@@ -205,6 +205,29 @@ msgstr "ED2KLinks fájl megnyitása sikertelen."
 #: src/amuleAppCommon.cpp
 msgid "WARNING: You can't add yourself as a source for an eD2k link while having a lowid."
 msgstr "FIGYELEM: Nem adhatod magad forrásként egy eD2k hivatkozáshoz amíg alacsony azonosítód (lowid) van."
+
+#: src/amuleAppCommon.cpp
+#, c-format
+msgid ""
+"Another program is holding aMule's lock file:\n"
+"\n"
+"%s\n"
+"\n"
+"That is not a running copy of aMule, so there is nothing to bring to the front. Close the other program, or delete the lock file while aMule is not running."
+msgstr ""
+
+#: src/amuleAppCommon.cpp
+#, c-format
+msgid ""
+"The aMule daemon (amuled) is already running as process %d and is using this configuration.\n"
+"\n"
+"It has no window to bring to the front. Connect to it with amuleGUI, or stop the daemon before starting aMule."
+msgstr ""
+
+#: src/amuleAppCommon.cpp
+#, fuzzy
+msgid "aMule cannot start"
+msgstr "aMule telepítve"
 
 #: src/amuleAppCommon.cpp
 #, c-format
@@ -1068,8 +1091,8 @@ msgstr ""
 #: src/amule-remote-gui.cpp src/BaseClient.cpp src/ClientDetailDialog.cpp
 #: src/DataToText.cpp src/DownloadListCtrl.cpp src/ExternalConn.cpp
 #: src/FileDetailDialog.cpp src/GenericClientListCtrl.cpp src/HTTPDownload.cpp
-#: src/KnownFile.cpp src/MuleTrayIcon.cpp src/PartFile.cpp src/Server.cpp
-#: src/Statistics.cpp
+#: src/KnownFile.cpp src/MuleTrayIcon.cpp src/PartFile.cpp
+#: src/ServerListCtrl.cpp src/Statistics.cpp
 msgid "Unknown"
 msgstr "Ismeretlen"
 
@@ -1902,6 +1925,11 @@ msgstr "eD2k hivatkozás másolása a vágólapra"
 msgid "Copy feedback to clipboard"
 msgstr "Visszajelzés másolása a vágólapra"
 
+#: src/DownloadListCtrl.cpp src/SearchListCtrl.cpp src/SharedFilesCtrl.cpp
+#, c-format
+msgid "Get %s for this file"
+msgstr "%s lekérése ehez a fájlhoz"
+
 #: src/DownloadListCtrl.cpp
 msgid "unassign"
 msgstr "hozzárendelés megszüntetése"
@@ -2573,8 +2601,8 @@ msgstr "Fájl előnézet"
 
 #: src/FileLaunch.cpp
 #, c-format
-msgid "ERROR: Failed to execute external media-player! Command: `%s'"
-msgstr "HIBA: Külső média-lejátszó indítása sikertelen! Parancs: `%s'"
+msgid "ERROR: Failed to execute external media-player! Command: '%s'"
+msgstr "HIBA: Külső média-lejátszó indítása sikertelen! Parancs: '%s'"
 
 #: src/FileLaunch.cpp
 #, c-format
@@ -4087,28 +4115,28 @@ msgstr ", Feltöltés: "
 msgid "Media Info"
 msgstr "Kad infó"
 
-#: src/muuli_wdr.cpp src/SearchListCtrl.cpp
+#: src/muuli_wdr.cpp src/SearchListCtrl.cpp src/SharedFilesCtrl.cpp
 msgid "Length"
 msgstr ""
 
-#: src/muuli_wdr.cpp src/SearchListCtrl.cpp
+#: src/muuli_wdr.cpp src/SearchListCtrl.cpp src/SharedFilesCtrl.cpp
 #, fuzzy
 msgid "Bitrate"
 msgstr "Nincs értékelve"
 
-#: src/muuli_wdr.cpp src/SearchListCtrl.cpp
+#: src/muuli_wdr.cpp src/SearchListCtrl.cpp src/SharedFilesCtrl.cpp
 msgid "Codec"
 msgstr ""
 
-#: src/muuli_wdr.cpp
+#: src/muuli_wdr.cpp src/SearchListCtrl.cpp src/SharedFilesCtrl.cpp
 msgid "Artist"
 msgstr ""
 
-#: src/muuli_wdr.cpp
+#: src/muuli_wdr.cpp src/SearchListCtrl.cpp src/SharedFilesCtrl.cpp
 msgid "Album"
 msgstr ""
 
-#: src/muuli_wdr.cpp
+#: src/muuli_wdr.cpp src/SearchListCtrl.cpp src/SharedFilesCtrl.cpp
 msgid "Title"
 msgstr "Cím"
 
@@ -6728,11 +6756,6 @@ msgid "Collapse all"
 msgstr "Az összes fül bezárása"
 
 #: src/SearchListCtrl.cpp
-#, c-format
-msgid "Get %s for this file"
-msgstr "%s lekérése ehez a fájlhoz"
-
-#: src/SearchListCtrl.cpp
 msgid "Search related files (eD2k, local server)"
 msgstr "Kapcsolódó fájlok keresése (eD2k, helyi kiszolgáló)"
 
@@ -7768,6 +7791,11 @@ msgstr "Kitiltott: %s"
 
 #: src/Statistics.cpp
 #, c-format
+msgid "Kad banned addresses: %s"
+msgstr ""
+
+#: src/Statistics.cpp
+#, c-format
 msgid "Total: %i Known: %i"
 msgstr "Összesen: %i Ismert: %i"
 
@@ -8542,7 +8570,7 @@ msgstr "Fájl feltöltés felfüggesztése: %s"
 
 #: src/UserEvents.cpp
 #, c-format
-msgid "Failed to execute command `%s' on `%s' event."
+msgid "Failed to execute command '%s' on '%s' event."
 msgstr "A(z) '%s' parancsot a(z) '%s' esemény kapcsán nem sikerült végrehajtani."
 
 #: src/UserEvents.h

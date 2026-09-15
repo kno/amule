@@ -1,3 +1,140 @@
+# The buffering between libutp and the eD2k stack: the would-block contract
+# CEMSocket depends on, and the close that must happen exactly once. Header-only
+# and free of libutp, so it is compiled and run in every build rather than only
+# where ENABLE_UTP is on -- the contract is the same either way.
+add_executable (UtpStreamTest
+	UtpStreamTest.cpp
+	${CMAKE_SOURCE_DIR}/src/libs/common/Format.cpp
+	${CMAKE_SOURCE_DIR}/src/libs/common/strerror_r.c
+)
+
+add_test (NAME UtpStreamTest
+	COMMAND UtpStreamTest
+)
+
+target_include_directories (UtpStreamTest
+	PRIVATE ${CMAKE_BINARY_DIR}
+	PRIVATE ${CMAKE_SOURCE_DIR}/src
+	PRIVATE ${CMAKE_SOURCE_DIR}/src/include
+)
+
+target_link_libraries (UtpStreamTest
+	muleunit
+)
+
+# One libutp socket behind IStreamTransport: the partial write whose refused
+# tail must stay queued, and the close that must happen exactly once. The
+# library is a seam here, so this runs in every build like UtpStreamTest.
+add_executable (UtpSocketTransportTest
+	UtpSocketTransportTest.cpp
+	${CMAKE_SOURCE_DIR}/src/NetworkAddress.cpp
+	${CMAKE_SOURCE_DIR}/src/libs/common/Format.cpp
+	${CMAKE_SOURCE_DIR}/src/libs/common/strerror_r.c
+)
+
+add_test (NAME UtpSocketTransportTest
+	COMMAND UtpSocketTransportTest
+)
+
+target_include_directories (UtpSocketTransportTest
+	PRIVATE ${CMAKE_BINARY_DIR}
+	PRIVATE ${CMAKE_SOURCE_DIR}/src
+	PRIVATE ${CMAKE_SOURCE_DIR}/src/include
+	PRIVATE ${Boost_INCLUDE_DIR}
+)
+
+target_link_libraries (UtpSocketTransportTest
+	muleunit
+	${Boost_LIBRARIES}
+)
+
+add_executable (LibSocketTransportTest
+	LibSocketTransportTest.cpp
+	${CMAKE_SOURCE_DIR}/src/LibSocket.cpp
+	# Same reason NetworkFunctionsTest compiles it: LibSocket.cpp includes
+	# LibSocketAsio.cpp, whose Windows interface-resolution path calls
+	# DetectNetworkInterfaces(), and this target does not link mulesocket.
+	${CMAKE_SOURCE_DIR}/src/NetworkInterfaces.cpp
+	${CMAKE_SOURCE_DIR}/src/NetworkAddress.cpp
+	${CMAKE_SOURCE_DIR}/src/libs/common/Format.cpp
+	${CMAKE_SOURCE_DIR}/src/libs/common/strerror_r.c
+)
+
+add_test (NAME LibSocketTransportTest
+	COMMAND LibSocketTransportTest
+)
+
+target_include_directories (LibSocketTransportTest
+	PRIVATE ${CMAKE_BINARY_DIR}
+	PRIVATE ${CMAKE_SOURCE_DIR}/src
+	PRIVATE ${CMAKE_SOURCE_DIR}/src/include
+	PRIVATE ${Boost_INCLUDE_DIR}
+)
+
+target_link_libraries (LibSocketTransportTest
+	muleunit
+	${Boost_LIBRARIES}
+)
+
+if (WIN32)
+	# Compiles NetworkInterfaces.cpp rather than linking the library that holds
+	# it, so it needs iphlpapi for GetAdaptersAddresses() itself.
+	target_link_libraries (LibSocketTransportTest iphlpapi)
+endif()
+
+if (ENABLE_UTP)
+	add_executable (UtpContextTest
+		UtpContextTest.cpp
+		${CMAKE_SOURCE_DIR}/src/Packet.cpp
+		${CMAKE_SOURCE_DIR}/src/Tag.cpp
+		${CMAKE_SOURCE_DIR}/src/MemFile.cpp
+		${CMAKE_SOURCE_DIR}/src/SafeFile.cpp
+		${CMAKE_SOURCE_DIR}/src/libs/common/Format.cpp
+		${CMAKE_SOURCE_DIR}/src/libs/common/strerror_r.c
+	)
+	target_include_directories (UtpContextTest PRIVATE
+		${CMAKE_BINARY_DIR}
+		${CMAKE_SOURCE_DIR}/src
+		${CMAKE_SOURCE_DIR}/src/include
+	)
+	target_link_libraries (UtpContextTest muleunit ZLIB::ZLIB)
+	add_test (NAME UtpContextTest COMMAND UtpContextTest)
+
+	# Drives the adapter through real libutp: the callbacks it registers cannot
+	# be exercised by a double, because what is under test is libutp's own
+	# dispatch and state machine reaching them.
+	add_executable (UtpLibraryAdapterTest
+		UtpLibraryAdapterTest.cpp
+		${CMAKE_SOURCE_DIR}/src/UtpLibraryAdapter.cpp
+		${CMAKE_SOURCE_DIR}/src/NetworkAddress.cpp
+		${CMAKE_SOURCE_DIR}/src/libs/common/Format.cpp
+		${CMAKE_SOURCE_DIR}/src/libs/common/strerror_r.c
+	)
+	target_include_directories (UtpLibraryAdapterTest PRIVATE
+		${CMAKE_BINARY_DIR}
+		${CMAKE_SOURCE_DIR}/src
+		${CMAKE_SOURCE_DIR}/src/include
+		${Boost_INCLUDE_DIR}
+	)
+	target_link_libraries (UtpLibraryAdapterTest muleunit Utp::Utp ${Boost_LIBRARIES})
+	add_test (NAME UtpLibraryAdapterTest COMMAND UtpLibraryAdapterTest)
+
+	# The admission decision only. Gathering its inputs needs the application;
+	# deciding on them does not, which is why they are separated.
+	add_executable (UtpAdmissionTest
+		UtpAdmissionTest.cpp
+		${CMAKE_SOURCE_DIR}/src/libs/common/Format.cpp
+		${CMAKE_SOURCE_DIR}/src/libs/common/strerror_r.c
+	)
+	target_include_directories (UtpAdmissionTest PRIVATE
+		${CMAKE_BINARY_DIR}
+		${CMAKE_SOURCE_DIR}/src
+		${CMAKE_SOURCE_DIR}/src/include
+	)
+	target_link_libraries (UtpAdmissionTest muleunit)
+	add_test (NAME UtpAdmissionTest COMMAND UtpAdmissionTest)
+endif()
+
 add_executable (CTagTest
 	CTagTest.cpp
 	${CMAKE_SOURCE_DIR}/src/SafeFile.cpp
@@ -205,6 +342,10 @@ target_link_libraries (BanRecordTest
 # compiles Boost.Asio.
 add_executable (NetworkAddressTest
 	NetworkAddressTest.cpp
+	# A second unit including NetworkAddress.h, so the linkage of the exclusion
+	# table is observable: without `inline` the table is internal to each unit
+	# and the two addresses differ.
+	NetworkAddressTableLinkage.cpp
 	${CMAKE_SOURCE_DIR}/src/libs/common/Format.cpp
 	${CMAKE_SOURCE_DIR}/src/libs/common/strerror_r.c
 	# CNetworkAddress::FromString/ToString live in NetworkAddress.cpp: they are
@@ -227,6 +368,66 @@ target_include_directories (NetworkAddressTest
 )
 
 target_link_libraries (NetworkAddressTest
+	muleunit
+	${Boost_LIBRARIES}
+)
+
+# Peer identity: what makes two peers the same peer once a peer can be IPv6, how
+# much of an IPv6 address a rate limit counts against, and how far an inbound
+# datagram can be routed. All decision logic over CNetworkAddress, so it is
+# testable without an app -- which is why it lives in a header of its own rather
+# than inside CClientList.
+add_executable (PeerAddressingTest
+	PeerAddressingTest.cpp
+	${CMAKE_SOURCE_DIR}/src/libs/common/Format.cpp
+	${CMAKE_SOURCE_DIR}/src/libs/common/strerror_r.c
+	# CNetworkAddress::FromString/ToString live in NetworkAddress.cpp: they are
+	# the only part of the type that still compiles Boost.Asio, and keeping them
+	# out of the header is what stops asio reaching most of src/. Every target
+	# whose include closure touches NetworkAddress.h therefore has to link this
+	# TU -- the type is no longer header-only.
+	${CMAKE_SOURCE_DIR}/src/NetworkAddress.cpp
+)
+
+add_test (NAME PeerAddressingTest
+	COMMAND PeerAddressingTest
+)
+
+target_include_directories (PeerAddressingTest
+	PRIVATE ${CMAKE_BINARY_DIR}
+	PRIVATE ${CMAKE_SOURCE_DIR}/src
+	PRIVATE ${CMAKE_SOURCE_DIR}/src/include
+	PRIVATE ${Boost_INCLUDE_DIR}
+)
+
+target_link_libraries (PeerAddressingTest
+	muleunit
+	${Boost_LIBRARIES}
+)
+
+# Address families: which families sockets are opened in, and the refusal that
+# never falls back to the other family. Header-only policy over CNetworkAddress,
+# so it is testable without an app; NetworkAddress.cpp is linked for
+# FromString/ToString exactly as the two suites above do.
+add_executable (AddressFamilyPolicyTest
+	AddressFamilyPolicyTest.cpp
+	${CMAKE_SOURCE_DIR}/src/libs/common/Format.cpp
+	${CMAKE_SOURCE_DIR}/src/libs/common/strerror_r.c
+	${CMAKE_SOURCE_DIR}/src/NetworkAddress.cpp
+)
+
+add_test (NAME AddressFamilyPolicyTest
+	COMMAND AddressFamilyPolicyTest
+)
+
+target_include_directories (AddressFamilyPolicyTest
+	PRIVATE ${CMAKE_BINARY_DIR}
+	PRIVATE ${CMAKE_SOURCE_DIR}/src
+	PRIVATE ${CMAKE_SOURCE_DIR}/src/include
+	PRIVATE ${Boost_INCLUDE_DIR}
+)
+
+target_link_libraries (AddressFamilyPolicyTest
 	muleunit
 	${Boost_LIBRARIES}
 )
@@ -271,6 +472,38 @@ target_include_directories (KadAICHHashListTest
 )
 
 target_link_libraries (KadAICHHashListTest
+	muleunit
+	mulecommon
+)
+
+# The single-byte tag count in a Kad search answer. CEntry/CKeyEntry pull in
+# nothing from the Kad core at link time -- every CIndexed reference in Entry.cpp
+# is in a comment -- so the writer can be driven directly and the answer parsed
+# back with the same CFileDataIO the receiver uses.
+add_executable (KadEntryTagListTest
+	KadEntryTagListTest.cpp
+	${CMAKE_SOURCE_DIR}/src/kademlia/kademlia/Entry.cpp
+	${CMAKE_SOURCE_DIR}/src/kademlia/kademlia/AICHHashList.cpp
+	${CMAKE_SOURCE_DIR}/src/SafeFile.cpp
+	${CMAKE_SOURCE_DIR}/src/MemFile.cpp
+	${CMAKE_SOURCE_DIR}/src/Tag.cpp
+	${CMAKE_SOURCE_DIR}/src/GetTickCount.cpp
+	# As for CValueMapTest: the no-op DoECLogLine / theLogger definitions, which
+	# Entry.cpp's AddDebugLogLine* calls resolve against in a Debug build.
+	${CMAKE_SOURCE_DIR}/src/LoggerConsole.cpp
+)
+
+add_test (NAME KadEntryTagListTest
+	COMMAND KadEntryTagListTest
+)
+
+target_include_directories (KadEntryTagListTest
+	PRIVATE ${CMAKE_BINARY_DIR}
+	PRIVATE ${CMAKE_SOURCE_DIR}/src
+	PRIVATE ${CMAKE_SOURCE_DIR}/src/include
+)
+
+target_link_libraries (KadEntryTagListTest
 	muleunit
 	mulecommon
 )
@@ -405,6 +638,9 @@ add_executable (NetworkFunctionsTest
 	# library this test does not link, so the translation unit has to be
 	# compiled in here or the Windows link fails on the undefined symbol.
 	${CMAKE_SOURCE_DIR}/src/NetworkInterfaces.cpp
+	# LibSocketAsio.cpp reports an attached transport's peer, which is a
+	# CNetworkAddress, so its out-of-line members have to be here too.
+	${CMAKE_SOURCE_DIR}/src/NetworkAddress.cpp
 	${CMAKE_SOURCE_DIR}/src/libs/common/Format.cpp
 	${CMAKE_SOURCE_DIR}/src/libs/common/strerror_r.c
 )
@@ -769,6 +1005,17 @@ add_test (NAME EtagTest COMMAND EtagTest)
 target_link_libraries (EtagTest
 	muleunit
 	webcommon
+	mulecommon
+)
+
+# The SIGABRT reporting path. Forks and corrupts the heap for real, so it covers the case the
+# handler exists for rather than only the easy raise(SIGABRT) one. mulecommon carries MuleDebug.
+add_executable (FatalAbortBacktraceTest
+	FatalAbortBacktraceTest.cpp
+)
+add_test (NAME FatalAbortBacktraceTest COMMAND FatalAbortBacktraceTest)
+target_link_libraries (FatalAbortBacktraceTest
+	muleunit
 	mulecommon
 )
 

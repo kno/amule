@@ -23,8 +23,8 @@
 // Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301, USA
 //
 
-#ifndef __KAD_FASTKAD_H__
-#define __KAD_FASTKAD_H__
+#ifndef FASTKAD_H
+#define FASTKAD_H
 
 #include <cstddef>
 #include <map>
@@ -36,43 +36,31 @@ namespace Kademlia
 {
 ////////////////////////////////////////
 
-// Derives the Kad request timeout from observed response times instead of a
-// fixed constant.
+// Derives the Kad request timeout from observed response times instead of a fixed constant.
 //
-// A fixed timeout is wrong in both directions: on a fast link it wastes seconds
-// waiting for a node that was never going to answer, and on a slow or congested
-// one it discards contacts that would have answered just after the deadline.
-// This keeps a bounded window of the most recent per-address response times and
-// estimates the ceiling as mean + 2 standard deviations (about the 95th
-// percentile of a normal distribution), plus a small margin.
+// A fixed timeout is wrong in both directions: on a fast link it wastes seconds waiting for a node
+// that was never going to answer, and on a slow one it discards contacts that would have answered
+// just after the deadline. This keeps a bounded window of the most recent per-address response
+// times and estimates the ceiling as mean + 2 standard deviations, plus a small margin.
 //
-// Two deliberate biases keep a cold or lucky window from producing an
-// aggressively short timeout:
+// Two deliberate biases keep a cold or lucky window from producing an aggressively short timeout:
 //
-//  - The mean and variance are always divided by the *full* window size, with
-//    every unfilled slot counted as the default response time. A handful of
-//    fast samples therefore cannot pull the estimate far below the default;
-//    it takes a full window of fast samples to earn a short timeout.
-//  - Entries younger than MIN_EVICTION_AGE_MS are never evicted to make room,
-//    so a burst of new addresses cannot churn the whole window at once.
+//  - The mean and variance are always divided by the FULL window size, with every unfilled slot
+// counted as the default response time, so it takes a full window of fast samples to earn a short
+// timeout.
+//  - Entries younger than MIN_EVICTION_AGE_MS are never evicted to make room, so a burst of new
+// addresses cannot churn the whole window at once.
 //
-// All time values are in milliseconds and "now" is always passed in, which is
-// what lets the estimator be tested without waiting on a real clock.
+// All times are in milliseconds and "now" is always passed in, which is what lets the estimator be
+// tested without a real clock.
 //
-// Two places where this deliberately does not match eMuleAI, so that the next
-// person holding the two side by side reads them as decisions rather than as
-// transcription slips:
+// Two deliberate divergences from eMuleAI:
 //
-//  - eMuleAI accumulates `missing * CLOCKS_PER_SEC` into its sum of squares,
-//    which adds a raw time to a sum of squared times: the units do not agree,
-//    and the unfilled-slot term is then far too small to hold the estimate up.
-//    Here the squared deviation is added, so an unfilled slot biases the
-//    variance the way the comment above says it does. emule-qt reached the
-//    same correction independently.
-//  - eMuleAI reads the clock with clock(), which on POSIX is CPU time, not
-//    wall time: a mostly-idle client barely advances it, so response times
-//    measured against it are far too short. Passing the tick in avoids the
-//    question entirely, and is what makes the estimator testable.
+//  - eMuleAI accumulates `missing * CLOCKS_PER_SEC` into its sum of squares, adding a raw time to a
+// sum of squared times: the units disagree, and the unfilled-slot term is then far too small to
+// hold the estimate up. Here the squared deviation is added. emule-qt reached the same correction.
+//  - eMuleAI reads the clock with clock(), which on POSIX is CPU time, not wall time, so a mostly-
+// idle client barely advances it and response times measured against it are far too short.
 class CFastKad
 {
 public:
@@ -81,9 +69,9 @@ public:
 	// Response time assumed for every unfilled slot in the window, and the
 	// answer while the window is empty.
 	static const uint32_t DEFAULT_RESPONSE_TIME_MS = 1000;
-	// Absolute ceiling on the derived timeout. A node that has not answered
-	// within this is treated as gone no matter how bad the samples look;
-	// without a cap, one pathological sample would stall every search.
+	// Absolute ceiling on the derived timeout. A node that has not answered within this is
+	// treated as gone however bad the samples look; without a cap, one pathological sample
+	// would stall every search.
 	static const uint32_t MAX_RESPONSE_TIME_MS = 3000;
 	// Safety margin added to the estimate, for the jitter between the
 	// estimator's clock and the actual send/receive path.
@@ -120,11 +108,10 @@ private:
 	uint32_t m_estResponseTimeMs;
 };
 
-// The single estimator shared by every Kad search. Kad is driven from
-// CamuleApp::OnCoreTimer on the main thread, like the rest of the Kad
-// singletons reached through CKademlia.
+// The single estimator shared by every Kad search. Kad is driven from CamuleApp::OnCoreTimer on the
+// main thread, like the rest of the Kad singletons reached through CKademlia.
 extern CFastKad fastKad;
 
 } // namespace Kademlia
 
-#endif // __KAD_FASTKAD_H__
+#endif // FASTKAD_H

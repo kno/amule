@@ -175,7 +175,7 @@ run_phase() {
 	local i
 	for i in 1 2 3 4 5 6 7 8 9 10 11 12; do
 		if curl -s -o /dev/null --max-time 1 \
-		    http://localhost:4713/api/v0/health 2>/dev/null; then
+		    http://localhost:4713/api/v1/health 2>/dev/null; then
 			break
 		fi
 		sleep 0.5
@@ -205,7 +205,7 @@ run_phase() {
 		local probe=$(curl -s -X POST -H "Content-Type: application/json" \
 			-o /dev/null -w "%{http_code}" \
 			-d "{\"password\":\"adminpass\"}" \
-			http://localhost:4713/api/v0/auth/login 2>/dev/null)
+			http://localhost:4713/api/v1/auth/login 2>/dev/null)
 		if [ "$probe" = "429" ]; then
 			echo "TIP: amuleapi is currently rate-limiting login (HTTP 429)." \
 			     "If you ran 02-auth.sh right before this, that's the 7-bad-pass" \
@@ -221,7 +221,16 @@ run_phase() {
 # before later read tests that rely on the consolidated tick shape,
 # CORS / static-frontend after the API surface tests so failures in
 # the new transports don't mask earlier regressions.
+#
+# 00-peer-fixture and 99-peer-fixture-teardown bracket the run: the first
+# promotes a real search hit into the transfer queue so the source-dependent
+# checks (04, 33, 43) have a download a peer will actually connect to, the
+# last removes it again. Neither asserts anything, and 00 is non-fatal -- with
+# no network it prints a banner and those checks skip as they always did.
+# A subset run (`./run-all.sh 04-...`) replaces this list wholesale, so it gets
+# no fixture and no teardown; name 00 and 99 explicitly to exercise that path.
 PHASES=(
+	00-peer-fixture.sh
 	01-version-and-errors.sh
 	02-auth.sh
 	02b-auth-lockout-isolation.sh
@@ -266,6 +275,7 @@ PHASES=(
 	41-shared-content.sh
 	42-path-and-body-contracts.sh
 	43-client-protocol-extensions.sh
+	99-peer-fixture-teardown.sh
 )
 
 # Override list from the command line if given.

@@ -15,8 +15,8 @@ msgid ""
 msgstr ""
 "Project-Id-Version: aMule\n"
 "Report-Msgid-Bugs-To: https://github.com/amule-org/amule/issues\n"
-"POT-Creation-Date: 2026-09-07 16:21+0200\n"
-"PO-Revision-Date: 2026-09-08 11:07+0000\n"
+"POT-Creation-Date: 2026-09-14 11:03+0200\n"
+"PO-Revision-Date: 2026-09-14 11:36+0000\n"
 "Last-Translator: Dylan Aïssi <bob.dybian@gmail.com>\n"
 "Language-Team: Français\n"
 "Language: fr\n"
@@ -209,6 +209,36 @@ msgstr "Échec de l'ouverture du fichier ED2KLinks."
 #: src/amuleAppCommon.cpp
 msgid "WARNING: You can't add yourself as a source for an eD2k link while having a lowid."
 msgstr "AVERTISSEMENT : Vous ne pouvez pas vous ajouter vous-même en tant que source pour un lien eD2k alors que vous avez un LowID."
+
+#: src/amuleAppCommon.cpp
+#, c-format
+msgid ""
+"Another program is holding aMule's lock file:\n"
+"\n"
+"%s\n"
+"\n"
+"That is not a running copy of aMule, so there is nothing to bring to the front. Close the other program, or delete the lock file while aMule is not running."
+msgstr ""
+"Un autre programme détient le fichier de verrou d'aMule : \n"
+"\n"
+"%s\n"
+"\n"
+"Ce n'est pas une instance en cours d'exécution d'aMule, donc il n'y a rien à apporter au premier plan. Fermez l'autre programme, ou effacez le fichier de verrou sans qu'aMule soit en cours d'exécution."
+
+#: src/amuleAppCommon.cpp
+#, c-format
+msgid ""
+"The aMule daemon (amuled) is already running as process %d and is using this configuration.\n"
+"\n"
+"It has no window to bring to the front. Connect to it with amuleGUI, or stop the daemon before starting aMule."
+msgstr ""
+"Le démon aMule (amuled) est déjà en cours d'exécution en tant que processus %d et utilise cette configuration.\n"
+"\n"
+"Il n'a aucune fenêtre à ramener au premier plan. Connectez-vous au démon avec amuleGUI, ou bien arrêtez le démon avant de démarrer aMule."
+
+#: src/amuleAppCommon.cpp
+msgid "aMule cannot start"
+msgstr "aMule ne peut démarrer"
 
 #: src/amuleAppCommon.cpp
 #, c-format
@@ -1070,8 +1100,8 @@ msgstr "Le serveur distant a envoyé des données incohérentes pour « %s » (�
 #: src/amule-remote-gui.cpp src/BaseClient.cpp src/ClientDetailDialog.cpp
 #: src/DataToText.cpp src/DownloadListCtrl.cpp src/ExternalConn.cpp
 #: src/FileDetailDialog.cpp src/GenericClientListCtrl.cpp src/HTTPDownload.cpp
-#: src/KnownFile.cpp src/MuleTrayIcon.cpp src/PartFile.cpp src/Server.cpp
-#: src/Statistics.cpp
+#: src/KnownFile.cpp src/MuleTrayIcon.cpp src/PartFile.cpp
+#: src/ServerListCtrl.cpp src/Statistics.cpp
 msgid "Unknown"
 msgstr "Inconnu"
 
@@ -1904,6 +1934,11 @@ msgstr "Copier le &lien eD2k dans le presse-papiers"
 msgid "Copy feedback to clipboard"
 msgstr "Copier le rapport dans le presse-papiers"
 
+#: src/DownloadListCtrl.cpp src/SearchListCtrl.cpp src/SharedFilesCtrl.cpp
+#, c-format
+msgid "Get %s for this file"
+msgstr "Obtenir %s pour ce fichier"
+
 #: src/DownloadListCtrl.cpp
 msgid "unassign"
 msgstr "dissocier"
@@ -2572,7 +2607,7 @@ msgstr "Aperçu"
 
 #: src/FileLaunch.cpp
 #, c-format
-msgid "ERROR: Failed to execute external media-player! Command: `%s'"
+msgid "ERROR: Failed to execute external media-player! Command: '%s'"
 msgstr "ERREUR : Échec de l'exécution du lecteur multimédia externe ! Commande : '%s'"
 
 #: src/FileLaunch.cpp
@@ -4091,27 +4126,27 @@ msgstr "Dernier téléversement"
 msgid "Media Info"
 msgstr "Infos média"
 
-#: src/muuli_wdr.cpp src/SearchListCtrl.cpp
+#: src/muuli_wdr.cpp src/SearchListCtrl.cpp src/SharedFilesCtrl.cpp
 msgid "Length"
 msgstr "Durée"
 
-#: src/muuli_wdr.cpp src/SearchListCtrl.cpp
+#: src/muuli_wdr.cpp src/SearchListCtrl.cpp src/SharedFilesCtrl.cpp
 msgid "Bitrate"
 msgstr "Débit binaire"
 
-#: src/muuli_wdr.cpp src/SearchListCtrl.cpp
+#: src/muuli_wdr.cpp src/SearchListCtrl.cpp src/SharedFilesCtrl.cpp
 msgid "Codec"
 msgstr "Codec"
 
-#: src/muuli_wdr.cpp
+#: src/muuli_wdr.cpp src/SearchListCtrl.cpp src/SharedFilesCtrl.cpp
 msgid "Artist"
 msgstr "Artiste"
 
-#: src/muuli_wdr.cpp
+#: src/muuli_wdr.cpp src/SearchListCtrl.cpp src/SharedFilesCtrl.cpp
 msgid "Album"
 msgstr "Album"
 
-#: src/muuli_wdr.cpp
+#: src/muuli_wdr.cpp src/SearchListCtrl.cpp src/SharedFilesCtrl.cpp
 msgid "Title"
 msgstr "Titre"
 
@@ -6699,11 +6734,6 @@ msgid "Collapse all"
 msgstr "Tout réduire"
 
 #: src/SearchListCtrl.cpp
-#, c-format
-msgid "Get %s for this file"
-msgstr "Obtenir %s pour ce fichier"
-
-#: src/SearchListCtrl.cpp
 msgid "Search related files (eD2k, local server)"
 msgstr "Chercher les fichiers liés (eD2k, serveur local)"
 
@@ -7741,6 +7771,11 @@ msgstr "Banni : %s"
 
 #: src/Statistics.cpp
 #, c-format
+msgid "Kad banned addresses: %s"
+msgstr "Adresses Kad bannies : %s"
+
+#: src/Statistics.cpp
+#, c-format
 msgid "Total: %i Known: %i"
 msgstr "Total : %i Connus : %i"
 
@@ -8527,8 +8562,8 @@ msgstr "Pause des envois du fichier : %s"
 
 #: src/UserEvents.cpp
 #, c-format
-msgid "Failed to execute command `%s' on `%s' event."
-msgstr "Échec de l'exécution de la commande `%s' lors de l'événement `%s'."
+msgid "Failed to execute command '%s' on '%s' event."
+msgstr "Échec de l'exécution de la commande '%s' lors de l'événement '%s'."
 
 #: src/UserEvents.h
 msgid "Download completed"

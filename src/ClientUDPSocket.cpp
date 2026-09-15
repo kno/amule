@@ -49,6 +49,10 @@
 #include "kademlia/utils/KadUDPKey.h"
 #include <zlib.h>
 #include "EncryptedDatagramSocket.h"
+#ifdef AMULE_UTP_TRANSPORT
+#include "UtpLibraryAdapter.h"
+#include "UtpStreamAcceptor.h"
+#endif
 
 //
 // CClientUDPSocket -- Extended eMule UDP socket
@@ -56,11 +60,65 @@
 
 CClientUDPSocket::CClientUDPSocket(const amuleIPV4Address &address, const CProxyData *ProxyData)
 : CMuleUDPSocket("Client UDP-Socket", ID_CLIENTUDPSOCKET_EVENT, address, ProxyData)
+#ifdef AMULE_UTP_TRANSPORT
+, m_utp(CreateUtpLibrary(), *this)
+#endif
 {
 	if (!thePrefs::IsUDPDisabled()) {
 		Open();
 	}
+#ifdef AMULE_UTP_TRANSPORT
+	// Installed here rather than lazily: without an acceptor every inbound SYN
+	// is refused, so a socket that answered frames before this ran would look
+	// like a peer that changed its mind.
+	m_utp.SetAcceptor(&m_utpAcceptor);
+#endif
 }
+
+#ifdef AMULE_UTP_TRANSPORT
+void CClientUDPSocket::Close()
+{
+	wxASSERT(wxIsMainThread());
+	m_utp.Destroy();
+	CMuleUDPSocket::Close();
+}
+
+void CClientUDPSocket::TickUtp()
+{
+	wxASSERT(wxIsMainThread());
+	m_utp.Tick();
+}
+
+void CClientUDPSocket::SendUtpDatagram(const uint8_t *payload,
+	size_t length,
+	uint32_t ip,
+	uint16_t port,
+	bool encrypt,
+	const uint8_t *userHash)
+{
+	wxASSERT(wxIsMainThread());
+	// The crypt parameters arrive with the datagram, carried down from the
+	// socket that produced it.
+	//
+	// They are not derived here, and deriving them here is what the removed
+	// FindClientByIP(ip, port) did wrong: it matched GetUserPort(), the ed2k
+	// TCP port, against the peer's UDP port, so with the aMule defaults of 4662
+	// and 4672 it never matched and the answer was "no encryption" by accident.
+	// Worse, it could match a different peer at the same address that happened
+	// to listen on a TCP port equal to the UDP port being dialled, keying the
+	// datagram on that client's hash so the real recipient could not decrypt.
+	//
+	// Counted here rather than inside QueueUtpDatagram(), which is deliberately
+	// free of the application's headers. The figure is the datagram that
+	// leaves: the payload, the two-byte 0xB2 envelope, and the crypt header
+	// when there is one. OnPacketReceived() counts the raw datagram before
+	// decryption, so without that last term aMule would under-report its own
+	// upload by eight bytes for every obfuscated datagram.
+	const std::uint64_t overhead = length + kUtpEnvelopeBytes + (encrypt ? kUtpCryptHeaderBytes : 0);
+	theStats::AddUpOverheadOther(overhead);
+	QueueUtpDatagram<CPacket>(*this, payload, length, ip, port, encrypt, userHash);
+}
+#endif
 
 void CClientUDPSocket::OnReceive(int errorCode)
 {
@@ -140,17 +198,20 @@ void CClientUDPSocket::OnPacketReceived(uint32 ip, uint16 port, uint8_t *buffer,
 				break;
 
 			case OP_UDPRESERVEDPROT2:
-				// eMuleAI NAT traversal. Not an eD2k opcode: the byte
-				// after the protocol byte is a frame type. Dispatched
-				// here rather than through ProcessPacket() above, whose
-				// second argument is an opcode.
+				// eMuleAI NAT traversal. Not an eD2k opcode: the byte after the
+				// protocol byte is a frame type, so it is dispatched here rather
+				// than through ProcessPacket(), whose second argument is an opcode.
 				//
-				// This branch reaches no packet accounting at all, which
-				// is what keeps a dropped frame from feeding a ban:
-				// CPacketTracking is only entered from the Kad listener
-				// (kademlia/net/KademliaUDPListener.cpp:263), and an
-				// eMuleAI peer's NAT-T traffic would otherwise arrive
-				// here as an unknown protocol and read as malformed.
+				// Counted as overhead like every sibling branch: these bytes cross
+				// the wire whether or not we can serve the frame, and leaving them
+				// out makes aMule's own figures disagree with what the link shows.
+				//
+				// This branch still reaches no *packet* accounting, which is what
+				// keeps a dropped frame from feeding a ban: CPacketTracking is only
+				// entered from the Kad listener, and an eMuleAI peer's NAT-T
+				// traffic would otherwise read as malformed. Statistics and bans are
+				// separate subsystems; only the second one must stay out of reach.
+				theStats::AddDownOverheadOther(length);
 				ProcessReservedProt2Frame(decryptedBuffer + 1, packetLen - 1, ip, port);
 				break;
 
@@ -176,18 +237,21 @@ void CClientUDPSocket::ProcessReservedProt2Frame(
 
 	switch (classified.disposition) {
 	case RP2_TRUNCATED:
-		// Nothing but the protocol byte arrived, so there is no type byte
-		// to read. Dropped without reading the window -- the guard is the
-		// point, this is the shortest datagram that can reach here.
-		AddDebugLogLineN(logClientUDP,
-			CFormat("Dropping truncated NAT-T datagram from %s:%u") % Uint32toStringIP(ip) %
-				port);
+		// Nothing but the protocol byte arrived, so there is no type byte to read. Dropped
+		// without reading the window -- the guard is the point, this being the shortest
+		// datagram that can reach here.
+		if (m_truncatedFrameLog.ShouldLog(::GetTickCount64())) {
+			AddDebugLogLineN(logClientUDP,
+				CFormat("Dropping truncated NAT-T datagram from %s:%u (%u further "
+					"occurrences suppressed)") %
+					Uint32toStringIP(ip) % port %
+					m_truncatedFrameLog.TakeSuppressedCount());
+		}
 		return;
 
 	case RP2_UNKNOWN_TYPE:
-		// A frame type this protocol does not define. Dropped, and
-		// deliberately not counted anywhere: see the OP_UDPRESERVEDPROT2
-		// comment in OnPacketReceived().
+		// A frame type this protocol does not define. Dropped, and deliberately not counted
+		// anywhere: see the OP_UDPRESERVEDPROT2 comment in OnPacketReceived().
 		if (m_unknownFrameLog.ShouldLog(::GetTickCount64())) {
 			AddDebugLogLineN(logClientUDP,
 				CFormat("Dropping NAT-T frame of unknown type 0x%02X from %s:%u (%u further "
@@ -201,44 +265,98 @@ void CClientUDPSocket::ProcessReservedProt2Frame(
 		break;
 	}
 
-	// The five registered types. Every one of them belongs to a transport
-	// this build does not have, so each is dropped here rather than in a
-	// shared fallthrough: the change that ships a transport replaces its own
-	// case and nothing else, and until then a peer's NAT-T attempt is a
-	// recognised frame aMule cannot serve rather than malformed traffic.
+	// The registered types. Each is dropped in its own case rather than in a shared
+	// fallthrough, so the change that ships a transport replaces its own case and nothing else
+	// -- which is what the uTP case below now is. The other four belong to transports this
+	// build does not have, so a peer's attempt at one is a recognised frame aMule cannot serve
+	// rather than malformed traffic.
 	switch (classified.type) {
-	case OP_NATT_FRAME_UTP:
-		AddDebugLogLineN(logClientUDP,
-			CFormat("Ignoring uTP NAT-T frame from %s:%u: no uTP transport in this build") %
-				Uint32toStringIP(ip) % port);
+	case OP_NATT_FRAME_UTP: {
+#ifdef AMULE_UTP_TRANSPORT
+		wxASSERT(wxIsMainThread());
+		// Classified before libutp sees it, because libutp answers a non-SYN frame
+		// that matches no connection with an unsolicited RST to whatever source
+		// address the datagram claimed (utp_internal.cpp, the flags != ST_SYN
+		// branch). That makes this host a reflector for a forged source, and tells
+		// a stranger who never connected that a uTP peer lives here. A SYN is the
+		// one kind that may arrive from someone we do not know; everything else has
+		// to come from an endpoint that already holds a socket.
+		const EUtpFrameKind kind = ClassifyUtpFrame(classified.payload, classified.payloadLength);
+		const bool fromKnownPeer = m_utp.HasRegisteredPeer(ip, port);
+		if (kind != EUtpFrameKind::Malformed && (kind == EUtpFrameKind::Syn || fromKnownPeer)) {
+			if (ProcessUtpFrame(m_utp, classified, ip, port)) {
+				return;
+			}
+		} else if (kind == EUtpFrameKind::Existing) {
+			// The genuinely unmatched case, which used to leave as an RST with no
+			// line anywhere because libutp had already reported it handled.
+			if (m_utpUnmatchedFrameLog.ShouldLog(::GetTickCount64())) {
+				AddDebugLogLineN(logClientUDP,
+					CFormat("Dropping uTP frame from %s:%u: no uTP socket for that "
+						"peer (%u further occurrences suppressed)") %
+						Uint32toStringIP(ip) % port %
+						m_utpUnmatchedFrameLog.TakeSuppressedCount());
+			}
+			break;
+		}
+		// Reached only for a frame libutp would not even look at: shorter than a uTP
+		// header, or a version it does not implement.
+		if (m_utpMalformedFrameLog.ShouldLog(::GetTickCount64())) {
+			AddDebugLogLineN(logClientUDP,
+				CFormat("Dropping malformed uTP frame from %s:%u: too short or an "
+					"unsupported version (%u further occurrences suppressed)") %
+					Uint32toStringIP(ip) % port %
+					m_utpMalformedFrameLog.TakeSuppressedCount());
+		}
+#else
+		if (m_unservedFrameLog.ShouldLog(::GetTickCount64())) {
+			AddDebugLogLineN(logClientUDP,
+				CFormat("Ignoring uTP NAT-T frame from %s:%u: no uTP transport in this "
+					"build (%u further occurrences suppressed)") %
+					Uint32toStringIP(ip) % port %
+					m_unservedFrameLog.TakeSuppressedCount());
+		}
+#endif
 		break;
+	}
 
 	case OP_NATT_FRAME_QUIC:
-		AddDebugLogLineN(logClientUDP,
-			CFormat("Ignoring QUIC NAT-T frame from %s:%u: no QUIC transport in this build") %
-				Uint32toStringIP(ip) % port);
+		if (m_unservedFrameLog.ShouldLog(::GetTickCount64())) {
+			AddDebugLogLineN(logClientUDP,
+				CFormat("Ignoring QUIC NAT-T frame from %s:%u: no QUIC transport in this "
+					"build (%u further occurrences suppressed)") %
+					Uint32toStringIP(ip) % port %
+					m_unservedFrameLog.TakeSuppressedCount());
+		}
 		break;
 
 	case OP_NATT_FRAME_CAPS:
 	case OP_NATT_FRAME_CAPS_ACK:
 		// Answering the capability negotiation would claim a transport
 		// aMule does not have. Silence is the correct answer here.
-		AddDebugLogLineN(logClientUDP,
-			CFormat("Ignoring NAT-T capability frame 0x%02X from %s:%u: nothing to negotiate") %
-				classified.type % Uint32toStringIP(ip) % port);
+		if (m_unservedFrameLog.ShouldLog(::GetTickCount64())) {
+			AddDebugLogLineN(logClientUDP,
+				CFormat("Ignoring NAT-T capability frame 0x%02X from %s:%u: nothing to "
+					"negotiate (%u further occurrences suppressed)") %
+					classified.type % Uint32toStringIP(ip) % port %
+					m_unservedFrameLog.TakeSuppressedCount());
+		}
 		break;
 
 	case OP_NATT_FRAME_KEY:
-		AddDebugLogLineN(logClientUDP,
-			CFormat("Ignoring NAT-T key frame from %s:%u: no NAT traversal in this build") %
-				Uint32toStringIP(ip) % port);
+		if (m_unservedFrameLog.ShouldLog(::GetTickCount64())) {
+			AddDebugLogLineN(logClientUDP,
+				CFormat("Ignoring NAT-T key frame from %s:%u: no NAT traversal in this "
+					"build (%u further occurrences suppressed)") %
+					Uint32toStringIP(ip) % port %
+					m_unservedFrameLog.TakeSuppressedCount());
+		}
 		break;
 
 	default:
-		// Unreachable: ClassifyReservedProt2Frame only reports
-		// RP2_KNOWN_TYPE for the five cases above. Kept so that adding a
-		// type there without a case here fails loudly rather than
-		// silently taking the drop path.
+		// Unreachable: ClassifyReservedProt2Frame only reports RP2_KNOWN_TYPE for the five
+		// cases above. Kept so that adding a type there without a case here fails loudly
+		// rather than silently taking the drop path.
 		wxFAIL;
 		break;
 	}
@@ -256,12 +374,9 @@ void CClientUDPSocket::ProcessPacket(uint8_t *packet, int16 size, int8 opcode, u
 				break;
 			}
 			if (!md4cmp(packet, buddy->GetBuddyID())) {
-				/*
-					The packet has an initial 16 bytes key for the buddy.
-					This is currently unused, so to make the transformation
-					we discard the first 10 bytes below and then overwrite
-					the other 6 with ip/port.
-				*/
+				/* The packet starts with a 16-byte key for the buddy. It is currently
+				   unused, so the transformation discards the first 10 bytes below and
+				   overwrites the other 6 with ip/port. */
 				CMemFile mem_packet(packet + 10, size - 10);
 				// Change the ip and port while leaving the rest untouched
 				mem_packet.Seek(0, wxFromStart);
@@ -308,11 +423,10 @@ void CClientUDPSocket::ProcessPacket(uint8_t *packet, int16 size, int8 opcode, u
 		if (sender) {
 			sender->CheckForAggressive();
 			if (sender->IsBanned()) {
-				// CheckForAggressive can call Ban() on score >= 10.
-				// Mirror the TCP file-request path at
-				// ClientTCPSocket.cpp:539 and short-circuit so a
-				// freshly-banned client cannot keep the seeder
-				// processing UDP file-info packets.
+				// CheckForAggressive can call Ban() on score >= 10. Mirror the TCP
+				// file-request path at ClientTCPSocket.cpp:539 and short-circuit,
+				// so a freshly banned client cannot keep the seeder processing UDP
+				// file-info packets.
 				break;
 			}
 

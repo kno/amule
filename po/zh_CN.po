@@ -13,8 +13,8 @@ msgid ""
 msgstr ""
 "Project-Id-Version: aMule\n"
 "Report-Msgid-Bugs-To: https://github.com/amule-org/amule/issues\n"
-"POT-Creation-Date: 2026-09-07 16:21+0200\n"
-"PO-Revision-Date: 2026-09-08 11:16+0000\n"
+"POT-Creation-Date: 2026-09-14 11:03+0200\n"
+"PO-Revision-Date: 2026-09-14 12:29+0000\n"
 "Last-Translator: Mike Akiba <mike2718@gmail.com>\n"
 "Language-Team: Chinese Simplified <kde-i18n-doc@kde.org>\n"
 "Language: zh_CN\n"
@@ -207,6 +207,36 @@ msgstr "打开 ED2K 链接文件失败。"
 #: src/amuleAppCommon.cpp
 msgid "WARNING: You can't add yourself as a source for an eD2k link while having a lowid."
 msgstr "警告：在 Low ID 的情况下，你不能添加自己作为 ed2k 链接的源。"
+
+#: src/amuleAppCommon.cpp
+#, c-format
+msgid ""
+"Another program is holding aMule's lock file:\n"
+"\n"
+"%s\n"
+"\n"
+"That is not a running copy of aMule, so there is nothing to bring to the front. Close the other program, or delete the lock file while aMule is not running."
+msgstr ""
+"另一个程序扣住了 aMule 的锁定文件：\n"
+"\n"
+"%s\n"
+"\n"
+"这不是 aMule 的运行副本, 因此没有可以带到前台的东西。关闭其他应用，或在 aMule 未运行时删除该锁定文件。"
+
+#: src/amuleAppCommon.cpp
+#, c-format
+msgid ""
+"The aMule daemon (amuled) is already running as process %d and is using this configuration.\n"
+"\n"
+"It has no window to bring to the front. Connect to it with amuleGUI, or stop the daemon before starting aMule."
+msgstr ""
+"aMule 守护进程 (amuled) 已经在作为 %d 进程运行并在使用此配置。\n"
+"\n"
+"它没有可以带到前台的窗口。用 amuleGUI 连接它，或在启动 amule 前停止该守护进程。"
+
+#: src/amuleAppCommon.cpp
+msgid "aMule cannot start"
+msgstr "aMule 无法启动"
 
 #: src/amuleAppCommon.cpp
 #, c-format
@@ -1067,8 +1097,8 @@ msgstr "远程核心发送了不一致的 \"%s\" 数据（part 状态 %d，预�
 #: src/amule-remote-gui.cpp src/BaseClient.cpp src/ClientDetailDialog.cpp
 #: src/DataToText.cpp src/DownloadListCtrl.cpp src/ExternalConn.cpp
 #: src/FileDetailDialog.cpp src/GenericClientListCtrl.cpp src/HTTPDownload.cpp
-#: src/KnownFile.cpp src/MuleTrayIcon.cpp src/PartFile.cpp src/Server.cpp
-#: src/Statistics.cpp
+#: src/KnownFile.cpp src/MuleTrayIcon.cpp src/PartFile.cpp
+#: src/ServerListCtrl.cpp src/Statistics.cpp
 msgid "Unknown"
 msgstr "未知"
 
@@ -1901,6 +1931,11 @@ msgstr "复制 eD2k 链接到剪贴板 (&L)"
 msgid "Copy feedback to clipboard"
 msgstr "复制反馈信息到剪贴板"
 
+#: src/DownloadListCtrl.cpp src/SearchListCtrl.cpp src/SharedFilesCtrl.cpp
+#, c-format
+msgid "Get %s for this file"
+msgstr "获取此文件的 %s"
+
 #: src/DownloadListCtrl.cpp
 msgid "unassign"
 msgstr "取消分类"
@@ -2569,8 +2604,8 @@ msgstr "文件预览"
 
 #: src/FileLaunch.cpp
 #, c-format
-msgid "ERROR: Failed to execute external media-player! Command: `%s'"
-msgstr "错误: 无法运行外部媒体播放器！ 命令: `%s'"
+msgid "ERROR: Failed to execute external media-player! Command: '%s'"
+msgstr "错误: 无法运行外部媒体播放器！ 命令: '%s'"
 
 #: src/FileLaunch.cpp
 #, c-format
@@ -3990,7 +4025,7 @@ msgstr ".met 文件"
 
 #: src/muuli_wdr.cpp
 msgid "Hash"
-msgstr "eD2k 文件哈希"
+msgstr "哈希值"
 
 #: src/muuli_wdr.cpp
 msgid "Filesize"
@@ -4088,27 +4123,27 @@ msgstr "最后上传"
 msgid "Media Info"
 msgstr "媒体信息"
 
-#: src/muuli_wdr.cpp src/SearchListCtrl.cpp
+#: src/muuli_wdr.cpp src/SearchListCtrl.cpp src/SharedFilesCtrl.cpp
 msgid "Length"
 msgstr "长度"
 
-#: src/muuli_wdr.cpp src/SearchListCtrl.cpp
+#: src/muuli_wdr.cpp src/SearchListCtrl.cpp src/SharedFilesCtrl.cpp
 msgid "Bitrate"
 msgstr "比特率"
 
-#: src/muuli_wdr.cpp src/SearchListCtrl.cpp
+#: src/muuli_wdr.cpp src/SearchListCtrl.cpp src/SharedFilesCtrl.cpp
 msgid "Codec"
 msgstr "编解码器"
 
-#: src/muuli_wdr.cpp
+#: src/muuli_wdr.cpp src/SearchListCtrl.cpp src/SharedFilesCtrl.cpp
 msgid "Artist"
 msgstr "艺术家"
 
-#: src/muuli_wdr.cpp
+#: src/muuli_wdr.cpp src/SearchListCtrl.cpp src/SharedFilesCtrl.cpp
 msgid "Album"
 msgstr "专辑"
 
-#: src/muuli_wdr.cpp
+#: src/muuli_wdr.cpp src/SearchListCtrl.cpp src/SharedFilesCtrl.cpp
 msgid "Title"
 msgstr "标题"
 
@@ -6044,7 +6079,7 @@ msgstr "NAT穿透（uTP）"
 
 #: src/PeerCapabilities.h
 msgid "IPv6"
-msgstr ""
+msgstr "IPv6"
 
 #: src/PeerCapabilities.h
 msgid "Buddy info pull"
@@ -6694,11 +6729,6 @@ msgstr "全部展开"
 #: src/SearchListCtrl.cpp
 msgid "Collapse all"
 msgstr "折叠所有"
-
-#: src/SearchListCtrl.cpp
-#, c-format
-msgid "Get %s for this file"
-msgstr "获取此文件的 %s"
 
 #: src/SearchListCtrl.cpp
 msgid "Search related files (eD2k, local server)"
@@ -7738,6 +7768,11 @@ msgstr "封杀: %s"
 
 #: src/Statistics.cpp
 #, c-format
+msgid "Kad banned addresses: %s"
+msgstr "Kad 封禁地址：%s"
+
+#: src/Statistics.cpp
+#, c-format
 msgid "Total: %i Known: %i"
 msgstr "总数：%i　已知：%i"
 
@@ -8521,8 +8556,8 @@ msgstr "暂停上传此文件: %s"
 
 #: src/UserEvents.cpp
 #, c-format
-msgid "Failed to execute command `%s' on `%s' event."
-msgstr "无法执行命令 `%s' 于 `%s' 事件。"
+msgid "Failed to execute command '%s' on '%s' event."
+msgstr "无法执行命令 '%s' 于 '%s' 事件。"
 
 #: src/UserEvents.h
 msgid "Download completed"

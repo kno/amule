@@ -33,16 +33,13 @@
 #include <common/StringFunctions.h> /* for unicode2char */
 #include "GuiEvents.h"
 
-// Define it to 1 to debug proxy communication and state machine design. If
-// enabled messages sent to and received from proxies will be dumped to stdout.
-// Has effect only in debug-enabled builds.
+// Define as 1 to debug proxy communication and state machine design: messages sent to and received
+// from proxies are dumped to stdout. Debug-enabled builds only.
 #ifndef DEBUG_DUMP_PROXY_MSG
 #define DEBUG_DUMP_PROXY_MSG 0
 #endif
 
-//------------------------------------------------------------------------------
 // CProxyData
-//------------------------------------------------------------------------------
 
 CProxyData::CProxyData()
 {
@@ -81,18 +78,14 @@ void CProxyData::Clear()
 
 #include <typeinfo> // Do_not_auto_remove (NetBSD, older gccs)
 
-//
 // In Asio mode the event handler is:
-//
 void CProxySocket::OnProxyEvent(int evt)
 {
 	m_proxyStateMachine->Schedule(evt);
 	m_proxyStateMachine->Clock();
 }
 
-//------------------------------------------------------------------------------
 // CProxyStateMachine
-//------------------------------------------------------------------------------
 
 CProxyStateMachine::CProxyStateMachine(
 	wxString name, const unsigned int max_states, const CProxyData &proxyData, CProxyCommand proxyCommand)
@@ -145,15 +138,6 @@ bool CProxyStateMachine::Start(const amuleIPV4Address &peerAddress, CLibSocket *
 {
 	m_proxyClientSocket = proxyClientSocket;
 	m_peerAddress = new amuleIPV4Address(peerAddress);
-	// try {
-	//	const wxIPV4address &peer = dynamic_cast<const wxIPV4address &>(peerAddress);
-	//	m_peerAddress = new amuleIPV4Address(peer);
-	// } catch (const std::bad_cast& WXUNUSED(e)) {
-	//	// Should process other types of wxIPAddress before quitting
-	//	AddDebugLogLineN(logProxy, "(1)bad_cast exception!");
-	//	wxFAIL;
-	//	return false;
-	// }
 
 	// To run the state machine, return and just let the events start to happen.
 	return true;
@@ -197,9 +181,7 @@ t_sm_state CProxyStateMachine::HandleEvent(t_sm_event event)
 		break;
 	}
 
-	// Aborting conditions:
-	// - MULE_SOCKET_LOST event
-	// - More than 10 times on the same state
+	// Aborting conditions: a MULE_SOCKET_LOST event, or more than 10 clocks in the same state.
 	if (m_isLost || GetClocksInCurrentState() > 10) {
 		ret = PROXY_STATE_END;
 	}
@@ -217,12 +199,10 @@ void CProxyStateMachine::AddDummyEvent()
 
 void CProxyStateMachine::ReactivateSocket()
 {
-	/*    If proxy is being used, then the TCP socket handlers
-	 * (CServerSocketHandler and CClientTCPSocketHandler) will not
-	 * receive a wxSOCKET_CONNECTION event, because the connection has
-	 * already started with the proxy. So we must add a wxSOCKET_CONNECTION
-	 * event to make things go undetected. A wxSOCKET_OUTPUT event is also
-	 * necessary to start sending data to the server. */
+	/* With a proxy in use the TCP socket handlers (CServerSocketHandler and CClientTCPSocketHandler)
+	 * receive no wxSOCKET_CONNECTION event, the connection having already started with the proxy. So
+	 * add one to make things go undetected, plus a wxSOCKET_OUTPUT event to start sending data to
+	 * the server. */
 	CProxySocket *s = dynamic_cast<CProxySocket *>(m_proxyClientSocket);
 	// If that is not true, we are in serious trouble...
 	wxASSERT(s);
@@ -297,15 +277,12 @@ bool CProxyStateMachine::CanSend() const
 	return m_canSend;
 }
 
-//------------------------------------------------------------------------------
 // CSocks5StateMachine
-//------------------------------------------------------------------------------
 
 /**
- * The state machine constructor must initialize the array of pointer to member
- * functions. Don't waste you time trying to statically initialize this, pointer
- * to member functions require an object to operate on, so this array must be
- * initialized at run time.
+ * The constructor must initialise the array of pointers to member functions. Do not try to
+ * initialise it statically: pointers to member functions need an object to operate on, so this
+ * array has to be built at run time.
  */
 CSocks5StateMachine::CSocks5StateMachine(const CProxyData &proxyData, CProxyCommand proxyCommand)
 : CProxyStateMachine(wxString("Socks5"), SOCKS5_MAX_STATES, proxyData, proxyCommand)
@@ -386,10 +363,8 @@ void CSocks5StateMachine::process_state(t_sm_state state, bool entry)
 }
 
 /**
- * Code this such that the next state is only entered when it is able to
- * perform the operation (read or write). State processing will assume
- * that it can read or write upon entry of the state. This is done using
- * CanSend() and CanReceive().
+ * Code this so the next state is only entered when it can perform its operation (read or write).
+ * State processing assumes it can read or write on entry, via CanSend() and CanReceive().
  */
 t_sm_state CSocks5StateMachine::next_state(t_sm_event event)
 {
@@ -507,19 +482,15 @@ t_sm_state CSocks5StateMachine::next_state(t_sm_event event)
 }
 
 /**
- *	So, this is how you do it: the state machine is clocked by the events
- * that happen inside the event handler. You can add a dummy event whenever
- * you see that the system will not generate an event. But don't add dummy
- * events before reads, reads should only be performed after input events.
+ * The state machine is clocked by the events that happen inside the event handler. Add a dummy
+ * event whenever the system will not generate one, but not before a read: reads should only follow
+ * input events. It may make sense to add a dummy event before a read where there is no state change
+ * (a wait state).
  *
- *	Maybe it makes sense to add a dummy event before a read if there is no
- * state change (wait state).
- *
- *	The event system will generate at least 2 events, one wxSOCKET_CONNECTION,
- * one wxSOCKET_OUTPUT, so we will have 2 clocks in our state machine. Plus, each
- * time there is unread data in the receive buffer of the socket, a wxSOCKET_INPUT
- * event will be generated. If you feel you will need more clocks than these, use
- * AddDummyEvent(), but I suggest you review your state machine design first.
+ * The event system generates at least two events, one wxSOCKET_CONNECTION and one wxSOCKET_OUTPUT,
+ * so the state machine gets two clocks. A wxSOCKET_INPUT event follows each time there is unread
+ * data in the socket's receive buffer. If you need more clocks than that, use AddDummyEvent() --
+ * but review your state machine design first.
  */
 void CSocks5StateMachine::process_start(bool) {}
 
@@ -556,12 +527,9 @@ void CSocks5StateMachine::process_receive_authentication_method(bool entry)
 		m_packetLength = 2;
 		ProxyRead(*m_proxyClientSocket, m_buffer);
 	}
-	/* This is added because there will be no more input events. If the
-	 * world was a nice place, we could think about joining the
-	 * process_receive and the process_process states here, but some day
-	 * we might have to deal with the fact that the i/o operation has been
-	 * incomplete, and that we must finish our job the next time we enter
-	 * this state. */
+	/* Added because there will be no more input events. In a nicer world process_receive and
+	 * process_process could be joined here, but some day we may have to deal with an incomplete i/o
+	 * operation and finish the job on the next entry to this state. */
 	AddDummyEvent();
 }
 
@@ -571,15 +539,13 @@ void CSocks5StateMachine::process_process_authentication_method(bool entry)
 		m_lastReply = m_buffer[1];
 		m_ok = m_ok && m_buffer[0] == SOCKS5_VERSION;
 	}
-	/* Ok, this one is here because wxSOCKET_OUTPUT events only happen
-	 * once when you connect the socket, and after that, only after a
-	 * wxSOCKET_WOULDBLOCK error happens. */
+	/* Here because wxSOCKET_OUTPUT events only happen once, when the socket connects, and after
+	 * that only following a wxSOCKET_WOULDBLOCK error. */
 	AddDummyEvent();
 }
 
 void CSocks5StateMachine::process_send_authentication_gssapi(bool)
 {
-	// TODO or not TODO? That is the question...
 	m_ok = false;
 }
 
@@ -683,7 +649,6 @@ void CSocks5StateMachine::process_process_command_reply(bool entry)
 		// Process the server's reply
 		m_ok = m_ok && m_buffer[0] == SOCKS5_VERSION && m_buffer[1] == SOCKS5_REPLY_SUCCEED;
 		if (m_ok) {
-			// Read BND.ADDR
 			unsigned int portOffset = 0;
 			switch (addressType) {
 			case SOCKS5_ATYP_IPV4_ADDRESS: {
@@ -706,27 +671,20 @@ void CSocks5StateMachine::process_process_command_reply(bool entry)
 			}
 			case SOCKS5_ATYP_IPV6_ADDRESS: {
 				portOffset = 20;
-				// TODO
-				// IPV6 not yet implemented in wx
-				// m_proxyBoundAddress.Hostname(Uint128toStringIP(
-				//	*((uint128 *)(m_buffer+addrOffset)) ));
-				// m_proxyBoundAddress = &m_proxyBoundAddressIPV6;
+				// TODO: IPv6 is not yet implemented in wx.
 				m_ok = false;
 				break;
 			}
 			}
 			// Set the packet length at last
 			m_packetLength = portOffset + 2;
-			// Read BND.PORT
 			m_proxyBoundAddress->Service(ENDIAN_NTOHS(RawPeekUInt16(m_buffer + portOffset)));
 		}
 	}
 	AddDummyEvent();
 }
 
-//------------------------------------------------------------------------------
 // CSocks4StateMachine
-//------------------------------------------------------------------------------
 
 CSocks4StateMachine::CSocks4StateMachine(const CProxyData &proxyData, CProxyCommand proxyCommand)
 : CProxyStateMachine(wxString("Socks4"), SOCKS4_MAX_STATES, proxyData, proxyCommand)
@@ -900,11 +858,9 @@ void CSocks4StateMachine::process_process_command_reply(bool entry)
 		// Process the server's reply
 		m_ok = m_ok && m_buffer[0] == SOCKS4_REPLY_CODE && m_buffer[1] == SOCKS4_REPLY_GRANTED;
 		if (m_ok) {
-			// Read BND.PORT
 			const unsigned int portOffset = 2;
 			m_ok = m_proxyBoundAddressIPV4.Service(
 				ENDIAN_NTOHS(RawPeekUInt16(m_buffer + portOffset)));
-			// Read BND.ADDR
 			const unsigned int addrOffset = 4;
 			m_ok = m_ok && m_proxyBoundAddressIPV4.Hostname(PeekUInt32(m_buffer + addrOffset));
 			m_proxyBoundAddress = &m_proxyBoundAddressIPV4;
@@ -913,9 +869,7 @@ void CSocks4StateMachine::process_process_command_reply(bool entry)
 	AddDummyEvent();
 }
 
-//------------------------------------------------------------------------------
 // CHttpStateMachine
-//------------------------------------------------------------------------------
 
 CHttpStateMachine::CHttpStateMachine(const CProxyData &proxyData, CProxyCommand proxyCommand)
 : CProxyStateMachine(wxString("Http"), HTTP_MAX_STATES, proxyData, proxyCommand)
@@ -1062,10 +1016,8 @@ void CHttpStateMachine::process_receive_command_reply(bool entry)
 }
 
 /*
- * HTTP Proxy server response should be something like:
- * "HTTP/1.1 200 Connection established\r\n\r\n"
- * but that may vary. The important thing is the "200"
- * code, that means success.
+ * An HTTP proxy server response should be something like "HTTP/1.1 200 Connection established\r\n"
+ * but that varies. What matters is the "200" code, meaning success.
  */
 static const char HTTP_AUTH_RESPONSE[] = "HTTP/";
 static const int HTTP_AUTH_RESPONSE_LENGHT = strlen(HTTP_AUTH_RESPONSE);
@@ -1084,9 +1036,7 @@ void CHttpStateMachine::process_process_command_reply(bool entry)
 	AddDummyEvent();
 }
 
-//------------------------------------------------------------------------------
 // CProxySocket
-//------------------------------------------------------------------------------
 
 CProxySocket::CProxySocket(muleSocketFlags flags,
 	const CProxyData *proxyData,
@@ -1173,9 +1123,7 @@ bool CProxySocket::ProxyIsCapableOf(CProxyCommand proxyCommand) const
 	return ret;
 }
 
-//------------------------------------------------------------------------------
 // CSocketClientProxy
-//------------------------------------------------------------------------------
 
 CSocketClientProxy::CSocketClientProxy(muleSocketFlags flags, const CProxyData *proxyData)
 : CProxySocket(flags, proxyData, PROXY_CMD_CONNECT)
@@ -1208,9 +1156,7 @@ uint32 CSocketClientProxy::Write(const void *buffer, wxUint32 nbytes)
 	return CProxySocket::Write(buffer, nbytes);
 }
 
-//------------------------------------------------------------------------------
 // CSocketServerProxy
-//------------------------------------------------------------------------------
 
 CSocketServerProxy::CSocketServerProxy(amuleIPV4Address &address, muleSocketFlags flags, const CProxyData *)
 : CLibSocketServer(address, flags)
@@ -1218,9 +1164,7 @@ CSocketServerProxy::CSocketServerProxy(amuleIPV4Address &address, muleSocketFlag
 	/* Maybe some day when socks6 is out... :) */
 }
 
-//------------------------------------------------------------------------------
 // CDatagramSocketProxy
-//------------------------------------------------------------------------------
 
 CDatagramSocketProxy::CDatagramSocketProxy(
 	amuleIPV4Address &address, muleSocketFlags flags, const CProxyData *proxyData)
@@ -1237,9 +1181,8 @@ CDatagramSocketProxy::CDatagramSocketProxy(
 
 CDatagramSocketProxy::~CDatagramSocketProxy()
 {
-	// From RFC-1928:
-	// "A UDP association terminates when the TCP connection that the
-	// UDP ASSOCIATE request arrived terminates."
+	// From RFC-1928: "A UDP association terminates when the TCP connection that the UDP ASSOCIATE
+	// request arrived terminates."
 }
 
 uint32 CDatagramSocketProxy::RecvFrom(amuleIPV4Address &addr, void *buf, uint32 nBytes)
@@ -1287,20 +1230,15 @@ uint32 CDatagramSocketProxy::RecvFrom(amuleIPV4Address &addr, void *buf, uint32 
 				break;
 			}
 			memcpy(buf, bufUDP + offset, nBytes);
-			// Uncomment here to see the buffer contents on console
-			// DumpMem(bufUDP, wxDatagramSocket::LastCount(), "RecvFrom", 3);
 
 			/* Only delete buffer if it was dynamically created */
 			if (bufUDP != m_proxyTCPSocket.GetBuffer()) {
-				/* We should use a fixed buffer to avoid
-				 * new/delete it all the time.
-				 * I need an upper bound */
+				/* A fixed buffer would avoid new/delete
+				 * every time, but needs an upper bound. */
 				delete[] bufUDP;
 			}
-			/* There is still one problem pending, fragmentation.
-			 * Either we support it or we have to drop fragmented
-			 * messages. I vote for drop :)
-			 */
+			/* Fragmentation is still pending: either support it
+			 * or drop fragmented messages. Drop. */
 		}
 	} else {
 		read = CLibUDPSocket::RecvFrom(addr, buf, nBytes);
@@ -1317,12 +1255,10 @@ uint32 CDatagramSocketProxy::SendTo(const amuleIPV4Address &addr, const void *bu
 	m_lastUDPOverhead = PROXY_UDP_OVERHEAD_IPV4;
 	if (m_proxyTCPSocket.GetUseProxy()) {
 		if (m_udpSocketOk) {
-			// Mirror RecvFrom's dynamic-buffer fallback: the fixed
-			// PROXY_BUFFER_SIZE (5120) m_buffer can't hold the 10-byte
-			// SOCKS5 UDP request header plus a payload larger than
-			// PROXY_BUFFER_SIZE - PROXY_UDP_OVERHEAD_IPV4 (5110 B).
-			// Without this the memcpy below ran past the end of
-			// m_buffer for any oversized outbound datagram (#881).
+			// Mirror RecvFrom's dynamic-buffer fallback: the fixed PROXY_BUFFER_SIZE
+			// m_buffer cannot hold the 10-byte SOCKS5 UDP request header plus a payload
+			// larger than PROXY_BUFFER_SIZE - PROXY_UDP_OVERHEAD_IPV4, so the memcpy
+			// below ran past the end of m_buffer for any oversized datagram (#881).
 			char *bufUDP = NULL;
 			if (nBytes + PROXY_UDP_OVERHEAD_IPV4 > PROXY_BUFFER_SIZE) {
 				bufUDP = new char[nBytes + PROXY_UDP_OVERHEAD_IPV4];
@@ -1338,8 +1274,6 @@ uint32 CDatagramSocketProxy::SendTo(const amuleIPV4Address &addr, const void *bu
 			memcpy(bufUDP + PROXY_UDP_OVERHEAD_IPV4, buf, nBytes);
 			nBytes += PROXY_UDP_OVERHEAD_IPV4;
 			sent = CLibUDPSocket::SendTo(m_proxyTCPSocket.GetProxyBoundAddress(), bufUDP, nBytes);
-			// Uncomment here to see the buffer contents on console
-			// DumpMem(bufUDP, nBytes, "SendTo", 3);
 
 			/* Only delete buffer if it was dynamically created */
 			if (bufUDP != m_proxyTCPSocket.GetBuffer()) {

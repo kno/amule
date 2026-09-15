@@ -27,33 +27,68 @@
 #define CLIENTUDPSOCKET_H
 
 #include "MuleUDPSocket.h"
-#include "ReservedProtocolFrames.h" // Needed for CUnknownFrameLogThrottle
+#include "ReservedProtocolFrames.h" // Needed for CFrameLogThrottle
+
+#ifdef AMULE_UTP_TRANSPORT
+#include "UtpContext.h"
+#include "UtpStreamAcceptor.h"
+#endif
 
 class CClientUDPSocket : public CMuleUDPSocket
+#ifdef AMULE_UTP_TRANSPORT
+,
+			 private IUtpDatagramSink
+#endif
 {
 public:
 	CClientUDPSocket(const amuleIPV4Address &address, const CProxyData *ProxyData = NULL);
+#ifdef AMULE_UTP_TRANSPORT
+	void Close() override;
+	void TickUtp();
+#endif
 
 protected:
-	void OnReceive(int errorCode);
+	void OnReceive(int errorCode) override;
 
 private:
-	void OnPacketReceived(uint32 ip, uint16 port, uint8_t *buffer, size_t length);
+#ifdef AMULE_UTP_TRANSPORT
+	void SendUtpDatagram(const uint8_t *payload,
+		size_t length,
+		uint32_t ip,
+		uint16_t port,
+		bool encrypt,
+		const uint8_t *userHash) override;
+	CUtpContext m_utp;
+	CUtpStreamAcceptor m_utpAcceptor;
+#endif
+	void OnPacketReceived(uint32 ip, uint16 port, uint8_t *buffer, size_t length) override;
 	void ProcessPacket(uint8_t *packet, int16 size, int8 opcode, uint32 host, uint16 port);
 
 	/**
 	 * OP_UDPRESERVEDPROT2: no opcode, a frame type byte instead.
 	 *
 	 * @param frame  points at the frame type byte.
-	 * @param frameLength  bytes available from there. Zero is a datagram
-	 *                     that carried nothing but the protocol byte.
+	 * @param frameLength  bytes available from there. Zero is a datagram that carried nothing
+	 * but the
+	 *                     protocol byte.
 	 */
 	void ProcessReservedProt2Frame(const uint8_t *frame, size_t frameLength, uint32 ip, uint16 port);
 
-	//! One unknown-frame line per minute, with a suppressed count. A peer
-	//! speaking a frame type this build does not know retries, so the useful
-	//! information is that it happened plus how often.
-	CUnknownFrameLogThrottle m_unknownFrameLog{ 60 * 1000 };
+	//! One unknown-frame line per minute, with a suppressed count. A peer speaking a frame type
+	//! this build does not know retries, so the useful information is that it happened plus how
+	//! often.
+	// One throttle per reason rather than one for the branch: a peer flooding
+	// any single kind of frame must not be able to silence the diagnostics for
+	// the others. The uTP case keeps its own because it is the line a developer
+	// is usually looking for, meaning libutp saw the datagram and disclaimed it.
+	CFrameLogThrottle m_truncatedFrameLog{ 60 * 1000 };
+	CFrameLogThrottle m_unknownFrameLog{ 60 * 1000 };
+	CFrameLogThrottle m_unservedFrameLog{ 60 * 1000 };
+	CFrameLogThrottle m_utpUnmatchedFrameLog{ 60 * 1000 };
+	// Separate from the unmatched one: a frame nobody can parse and a frame from
+	// a peer we have no socket for are different problems, and sharing a
+	// throttle would let a flood of one hide the other entirely.
+	CFrameLogThrottle m_utpMalformedFrameLog{ 60 * 1000 };
 };
 
 #endif // CLIENTUDPSOCKET_H

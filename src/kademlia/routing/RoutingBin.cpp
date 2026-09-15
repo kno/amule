@@ -68,7 +68,6 @@ bool CRoutingBin::AddContact(CContact *contact)
 	wxASSERT(contact != NULL);
 
 	uint32_t sameSubnets = 0;
-	// Check if we already have a contact with this ID in the list.
 	for (ContactList::const_iterator it = m_entries.begin(); it != m_entries.end(); ++it) {
 		if (contact->GetClientID() == (*it)->GetClientID()) {
 			return false;
@@ -77,10 +76,9 @@ bool CRoutingBin::AddContact(CContact *contact)
 			sameSubnets++;
 		}
 	}
-	// Several checks to make sure that we don't store multiple contacts from the same IP or too many
-	// contacts from the same subnet This is supposed to add a bit of protection against several attacks
-	// and raise the resource needs (IPs) for a successful contact on the attacker side Such IPs are not
-	// banned from Kad, they still can index, search, etc so multiple KAD clients behind one IP still work
+	// Several checks so we do not store multiple contacts from the same IP, or too many from
+	// the same subnet. This raises the resource needs (IPs) for a successful attack; such IPs
+	// are not banned from Kad, so several clients behind one IP still index, search and so on.
 
 	if (!CheckGlobalIPLimits(contact->GetIPAddress(), contact->GetUDPPort())) {
 		return false;
@@ -96,7 +94,6 @@ bool CRoutingBin::AddContact(CContact *contact)
 		return false;
 	}
 
-	// If not full, add to the end of list
 	if (m_entries.size() < K) {
 		m_entries.push_back(contact);
 		AdjustGlobalTracking(contact->GetIPAddress(), true);
@@ -108,27 +105,21 @@ bool CRoutingBin::AddContact(CContact *contact)
 void CRoutingBin::SetAlive(CContact *contact)
 {
 	wxASSERT(contact != NULL);
-	// Check if we already have a contact with this ID in the list.
 	CContact *test = GetContact(contact->GetClientID());
 	wxASSERT(contact == test);
 	if (test) {
-		// Mark contact as being alive.
 		test->UpdateType();
-		// Move to the end of the list
 		PushToBottom(test);
 	}
 }
 
 void CRoutingBin::SetTCPPort(uint32_t ip, uint16_t port, uint16_t tcpPort)
 {
-	// Find contact with IP/Port
 	for (ContactList::iterator it = m_entries.begin(); it != m_entries.end(); ++it) {
 		CContact *c = *it;
 		if ((ip == c->GetIPAddress()) && (port == c->GetUDPPort())) {
-			// Set TCPPort and mark as alive.
 			c->SetTCPPort(tcpPort);
 			c->UpdateType();
-			// Move to the end of the list
 			PushToBottom(c);
 			break;
 		}
@@ -173,12 +164,10 @@ void CRoutingBin::GetNumContacts(
 
 void CRoutingBin::GetEntries(ContactList *result, bool emptyFirst) const
 {
-	// Clear results if requested first.
 	if (emptyFirst) {
 		result->clear();
 	}
 
-	// Append all entries to the results.
 	if (!m_entries.empty()) {
 		result->insert(result->end(), m_entries.begin(), m_entries.end());
 	}
@@ -191,12 +180,10 @@ void CRoutingBin::GetClosestTo(uint32_t maxType,
 	bool emptyFirst,
 	bool inUse) const
 {
-	// Empty list if requested.
 	if (emptyFirst) {
 		result->clear();
 	}
 
-	// No entries, no closest.
 	if (m_entries.empty()) {
 		return;
 	}
@@ -286,11 +273,10 @@ void CRoutingBin::AdjustGlobalTracking(uint32_t ip, bool increase)
 
 bool CRoutingBin::ChangeContactIPAddress(CContact *contact, uint32_t newIP)
 {
-	// Called if we want to update an indexed contact with a new IP. We have to check if we actually allow
-	// such a change and if adjust our tracking. Rejecting a change will in the worst case lead a node
-	// contact to become invalid and purged later, but it also protects against a flood of malicious
-	// update requests from one IP which would be able to "reroute" all contacts to itself and by that
-	// making them useless
+	// Called to update an indexed contact with a new IP. Check whether we allow such a change,
+	// and adjust our tracking. Rejecting one can at worst leave a node contact invalid and
+	// purged later, but it also blocks a flood of malicious update requests from one IP, which
+	// could otherwise "reroute" every contact to itself and make them useless.
 	if (contact->GetIPAddress() == newIP) {
 		return true;
 	}

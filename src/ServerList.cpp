@@ -63,20 +63,17 @@ CServerList::CServerList()
 
 bool CServerList::Init()
 {
-	// Load Metfile
 	bool bRes = LoadServerMet(CPath(thePrefs::GetConfigDir() + "server.met"));
 
 	// insert static servers from textfile
 	m_staticServersConfig = thePrefs::GetConfigDir() + "staticservers.dat";
 	LoadStaticServers();
 
-	// The HTTP auto-update of server.met used to be kicked from here, but
-	// that fires the libcurl request before the heavy local I/O (partfile
-	// load + shared-file scan) — the wxWebSession worker thread then
-	// competes with the saturated main thread for CPU, libcurl state
-	// machine advances less, and the DNS resolution can time out on
-	// slower setups. The kick now lives in CamuleApp::OnInit() after
-	// sharedfiles->Reload() finishes. See StartAutoUpdate() / #714.
+	// The HTTP auto-update of server.met used to be kicked from here, but that fires the
+	// libcurl request before the heavy local I/O (partfile load + shared-file scan): the
+	// wxWebSession worker then competes with the saturated main thread, the curl state machine
+	// advances less, and DNS can time out on slower setups. The kick now lives in
+	// CamuleApp::OnInit() after sharedfiles->Reload() finishes (#714).
 
 	m_initialized = true;
 	return bRes;
@@ -99,7 +96,6 @@ bool CServerList::LoadServerMet(const CPath &path)
 		return false;
 	}
 
-	// Try to unpack the file, might be an archive
 	const char *mets[] = { "server.met", NULL };
 	// Try to unpack the file, might be an archive
 	if (UnpackArchive(path, mets).second != EFT_Met) {
@@ -140,20 +136,17 @@ bool CServerList::LoadServerMet(const CPath &path)
 
 			CServer *newserver = new CServer(&sbuffer);
 
-			// Load tags
 			for (uint32 i = 0; i < sbuffer.tagcount; ++i) {
 				newserver->AddTagFromFile(&servermet);
 			}
 
-			// Server priorities are not in sorted order
-			// High = 1, Low = 2, Normal = 0, so we have to check
-			// in a less logical fashion.
+			// Server priorities are not in sorted order -- High = 1, Low = 2, Normal =
+			// 0 -- so the check reads less logically than it might.
 			int priority = newserver->GetPreferences();
 			if (priority < SRV_PR_MIN || priority > SRV_PR_MAX) {
 				newserver->SetPreference(SRV_PR_NORMAL);
 			}
 
-			// set listname for server
 			if (newserver->GetListName().IsEmpty()) {
 				newserver->SetListName("Server " + newserver->GetAddress());
 			}
@@ -224,9 +217,8 @@ bool CServerList::AddServer(CServer *in_server, bool fromUser)
 	}
 
 	CServer *test_server = GetServerByAddress(in_server->GetAddress(), in_server->GetPort());
-	// Avoid duplicate (dynIP) servers: If the server which is to be added, is a dynIP-server
-	// but we don't know yet it's DN, we need to search for an already available server with
-	// that IP.
+	// Avoid duplicate (dynIP) servers: if the server to add is a dynIP server whose DN we do
+	// not know yet, search for an already available server with that IP.
 	if (test_server == NULL && in_server->GetIP() != 0) {
 		test_server = GetServerByIPTCP(in_server->GetIP(), in_server->GetPort());
 	}
@@ -291,9 +283,8 @@ void CServerList::ServerStats()
 			(!ping_server->GetLastPingedTime() ||
 				currentTime >= (ping_server->GetLastPingedTime() + UDPSERVSTATREASKTIME)) &&
 			theApp->GetPublicIP() && thePrefs::IsServerCryptLayerUDPEnabled()) {
-			// We try a obfsucation ping first and wait 20 seconds for an answer
-			// if it doesn't get responded to, we don't count it as error but continue with a
-			// normal ping
+			// Try an obfuscation ping first and wait 20 seconds for an answer. No
+			// answer is not counted as an error; we continue with a normal ping.
 			ping_server->SetCryptPingReplyPending(true);
 			uint32 nPacketLen = 4 + (uint8)(rand() % 16); // max padding 16 bytes
 			CScopedArray<uint8_t> pRawPacket(nPacketLen);
@@ -501,14 +492,12 @@ void CServerList::LoadStaticServers()
 			name = addy;
 		}
 
-		// create server object and add it to the list
 		CServer *server = new CServer(StrToLong(port), host);
 
 		server->SetListName(name);
 		server->SetIsStaticMember(true);
 		server->SetPreference(priority);
 
-		// Try to add the server to the list
 		if (!theApp->AddServer(server)) {
 			delete server;
 			CServer *existing = GetServerByAddress(host, StrToULong(port));
@@ -568,10 +557,9 @@ struct ServerPriorityComparator
 void CServerList::Sort()
 {
 	m_servers.sort(ServerPriorityComparator());
-	// Once the list has been sorted, it doesn't really make sense to continue
-	// traversing the new order from the old position.  Plus, there's a bug in
-	// version of libstdc++ before gcc4 such that iterators that were equal to
-	// end() were left dangling.
+	// Once the list has been sorted, continuing to traverse the new order from the old position
+	// makes no sense -- and in libstdc++ before gcc4, iterators equal to end() were left
+	// dangling.
 	m_serverpos = m_servers.begin();
 	m_statserverpos = m_servers.begin();
 }
@@ -862,11 +850,9 @@ bool CServerList::DownloadFinished(uint32 result)
 	if (result == HTTP_Success) {
 		const CPath tempFilename = CPath(thePrefs::GetConfigDir() + "server.met.download");
 
-		// curl succeeded. proceed with server.met loading
 		LoadServerMet(tempFilename);
 		SaveServerMet();
 
-		// So, file is loaded and merged, and also saved
 		CPath::RemoveFile(tempFilename);
 		AddLogLineN(CFormat(_("Finished downloading the server list from %s")) % m_URLUpdate);
 		ret = true;
@@ -893,15 +879,13 @@ void CServerList::AutoUpdate()
 	// Do current URL. Callback function will take care of the others.
 	while (current_url_index < url_count) {
 		wxString URI = theApp->glob_prefs->addresses_list[current_url_index];
-		// wxURL only registers protocol handlers for http and ftp, so
-		// any https URL would come back as wxURL_NOPROTO and be rejected
-		// here — but the download itself goes through wxWebRequest,
-		// which handles https fine (#714). Validate with wxURI (RFC
-		// 3986 parser) + an explicit scheme check instead.
+		// wxURL only registers protocol handlers for http and ftp, so any https URL would
+		// come back as wxURL_NOPROTO and be rejected -- while the download itself goes
+		// through wxWebRequest, which handles https fine (#714). Validate with wxURI plus
+		// an explicit scheme check instead.
 		wxURI uri(URI);
 		const wxString scheme = uri.HasScheme() ? uri.GetScheme().Lower() : wxString();
 		if (uri.HasServer() && (scheme == "http" || scheme == "https")) {
-			// Ok, got a valid URI
 			m_URLUpdate = URI;
 			wxString strTempFilename = thePrefs::GetConfigDir() + "server_auto.met";
 			AddLogLineC(CFormat(_("Start downloading server list from %s")) % URI);
@@ -931,11 +915,9 @@ void CServerList::AutoDownloadFinished(uint32 result)
 	if (result == HTTP_Success) {
 		CPath tempFilename = CPath(thePrefs::GetConfigDir() + "server_auto.met");
 
-		// curl succeeded. proceed with server.met loading
 		LoadServerMet(tempFilename);
 		SaveServerMet();
 
-		// So, file is loaded and merged, and also saved
 		CPath::RemoveFile(tempFilename);
 	} else {
 		AddLogLineC(CFormat(_("Failed to download the server list from %s")) % m_URLUpdate);
@@ -944,7 +926,6 @@ void CServerList::AutoDownloadFinished(uint32 result)
 	++current_url_index;
 
 	if (current_url_index < theApp->glob_prefs->addresses_list.GetCount()) {
-		// Next!
 		AutoUpdate();
 	}
 }
@@ -962,9 +943,8 @@ void CServerList::ObserverAdded(ObserverType *o)
 
 uint32 CServerList::GetAvgFile() const
 {
-	// Since there is no real way to know how many files are in the kad network,
-	// I figure to try to use the ED2K network stats to find how many files the
-	// average user shares..
+	// There is no real way to know how many files are in the Kad network, so use the ED2K
+	// network stats to find how many files the average user shares.
 	uint32 totaluser = 0;
 	uint32 totalfile = 0;
 	for (CInternalList::const_iterator it = m_servers.begin(); it != m_servers.end(); ++it) {
@@ -976,11 +956,9 @@ uint32 CServerList::GetAvgFile() const
 			totalfile += curr->GetFiles();
 		}
 	}
-	// If the user count is a little low, don't send back a average..
-	// I added 50 to the count as many servers do not allow a large amount of files to be shared..
-	// Therefore the estimate here will be lower then the actual.
-	// I would love to add a way for the client to send some statistics back so we could see the real
-	// values here..
+	// If the user count is a little low, do not send back an average. 50 is added to the count
+	// because many servers do not allow a large number of files to be shared, so the estimate
+	// is lower than the actual.
 	if (totaluser > 500000) {
 		return (totalfile / totaluser) + 50;
 	} else {

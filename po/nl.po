@@ -12,8 +12,8 @@ msgid ""
 msgstr ""
 "Project-Id-Version: aMule\n"
 "Report-Msgid-Bugs-To: https://github.com/amule-org/amule/issues\n"
-"POT-Creation-Date: 2026-09-07 16:21+0200\n"
-"PO-Revision-Date: 2026-09-08 11:11+0000\n"
+"POT-Creation-Date: 2026-09-14 11:03+0200\n"
+"PO-Revision-Date: 2026-09-14 12:08+0000\n"
 "Last-Translator: Marcel Pol <marcel@timelord.nl>\n"
 "Language-Team: Dutch <nl@li.org>\n"
 "Language: nl\n"
@@ -206,6 +206,36 @@ msgstr "Kon bestand ED2KLinks niet openen."
 #: src/amuleAppCommon.cpp
 msgid "WARNING: You can't add yourself as a source for an eD2k link while having a lowid."
 msgstr "WAARSCHUWING: U kunt uzelf niet toevoegen als bron voor een eD2k-link terwijl u een laag id hebt."
+
+#: src/amuleAppCommon.cpp
+#, c-format
+msgid ""
+"Another program is holding aMule's lock file:\n"
+"\n"
+"%s\n"
+"\n"
+"That is not a running copy of aMule, so there is nothing to bring to the front. Close the other program, or delete the lock file while aMule is not running."
+msgstr ""
+"Een ander programma gebruikt aMule's vergrendelingsbestand:\n"
+"\n"
+"%s\n"
+"\n"
+"Dat is geen lopende kopie van aMule dus er is verder niets om naar voren te brengen. Sluit het andere programma of verwijder het vergrendelingsbestand terwijl aMule niet wordt uitgevoerd."
+
+#: src/amuleAppCommon.cpp
+#, c-format
+msgid ""
+"The aMule daemon (amuled) is already running as process %d and is using this configuration.\n"
+"\n"
+"It has no window to bring to the front. Connect to it with amuleGUI, or stop the daemon before starting aMule."
+msgstr ""
+"De aMule daemon (amuled) wordt al uitgevoerd als proces %d en gebruikt deze instellingen.\n"
+"\n"
+"Het heeft geen venster om naar voren te brengen. Verbindt het met amuleGUI of stop de daemon voor u aMule start."
+
+#: src/amuleAppCommon.cpp
+msgid "aMule cannot start"
+msgstr "aMule kan niet starten"
 
 #: src/amuleAppCommon.cpp
 #, c-format
@@ -1066,8 +1096,8 @@ msgstr "De externe kern stuurde inconsistente data voor \"%s\" (deel status %d, 
 #: src/amule-remote-gui.cpp src/BaseClient.cpp src/ClientDetailDialog.cpp
 #: src/DataToText.cpp src/DownloadListCtrl.cpp src/ExternalConn.cpp
 #: src/FileDetailDialog.cpp src/GenericClientListCtrl.cpp src/HTTPDownload.cpp
-#: src/KnownFile.cpp src/MuleTrayIcon.cpp src/PartFile.cpp src/Server.cpp
-#: src/Statistics.cpp
+#: src/KnownFile.cpp src/MuleTrayIcon.cpp src/PartFile.cpp
+#: src/ServerListCtrl.cpp src/Statistics.cpp
 msgid "Unknown"
 msgstr "Onbekend"
 
@@ -1900,6 +1930,11 @@ msgstr "Kopieer eD2k &link naar klembord"
 msgid "Copy feedback to clipboard"
 msgstr "Kopieer feedback naar klembord"
 
+#: src/DownloadListCtrl.cpp src/SearchListCtrl.cpp src/SharedFilesCtrl.cpp
+#, c-format
+msgid "Get %s for this file"
+msgstr "Verkrijg %s voor dit bestand"
+
 #: src/DownloadListCtrl.cpp
 msgid "unassign"
 msgstr "verwijder toewijzing"
@@ -2569,7 +2604,7 @@ msgstr "Voorbeeld"
 
 #: src/FileLaunch.cpp
 #, c-format
-msgid "ERROR: Failed to execute external media-player! Command: `%s'"
+msgid "ERROR: Failed to execute external media-player! Command: '%s'"
 msgstr "FOUT: Opstarten externe mediaspeler mislukt! Commando: '%s'"
 
 #: src/FileLaunch.cpp
@@ -4089,27 +4124,27 @@ msgstr "Laatste upload"
 msgid "Media Info"
 msgstr "Media-informatie"
 
-#: src/muuli_wdr.cpp src/SearchListCtrl.cpp
+#: src/muuli_wdr.cpp src/SearchListCtrl.cpp src/SharedFilesCtrl.cpp
 msgid "Length"
 msgstr "Lengte"
 
-#: src/muuli_wdr.cpp src/SearchListCtrl.cpp
+#: src/muuli_wdr.cpp src/SearchListCtrl.cpp src/SharedFilesCtrl.cpp
 msgid "Bitrate"
 msgstr "Bitrate"
 
-#: src/muuli_wdr.cpp src/SearchListCtrl.cpp
+#: src/muuli_wdr.cpp src/SearchListCtrl.cpp src/SharedFilesCtrl.cpp
 msgid "Codec"
 msgstr "Codec"
 
-#: src/muuli_wdr.cpp
+#: src/muuli_wdr.cpp src/SearchListCtrl.cpp src/SharedFilesCtrl.cpp
 msgid "Artist"
 msgstr "Artiest"
 
-#: src/muuli_wdr.cpp
+#: src/muuli_wdr.cpp src/SearchListCtrl.cpp src/SharedFilesCtrl.cpp
 msgid "Album"
 msgstr "Album"
 
-#: src/muuli_wdr.cpp
+#: src/muuli_wdr.cpp src/SearchListCtrl.cpp src/SharedFilesCtrl.cpp
 msgid "Title"
 msgstr "Titel"
 
@@ -6697,11 +6732,6 @@ msgid "Collapse all"
 msgstr "Vouw alles in"
 
 #: src/SearchListCtrl.cpp
-#, c-format
-msgid "Get %s for this file"
-msgstr "Verkrijg %s voor dit bestand"
-
-#: src/SearchListCtrl.cpp
 msgid "Search related files (eD2k, local server)"
 msgstr "Zoek gelijkwaardige bestanden (eD2k, lokale server)"
 
@@ -7739,6 +7769,11 @@ msgstr "Geband: %s"
 
 #: src/Statistics.cpp
 #, c-format
+msgid "Kad banned addresses: %s"
+msgstr "Verbannen Kad-adressen: %s"
+
+#: src/Statistics.cpp
+#, c-format
 msgid "Total: %i Known: %i"
 msgstr "Totaal: %i Bekend: %i"
 
@@ -8526,8 +8561,8 @@ msgstr "Stoppen van upload van bestand: %s"
 
 #: src/UserEvents.cpp
 #, c-format
-msgid "Failed to execute command `%s' on `%s' event."
-msgstr "Kon commando `%s' niet uitvoeren bij gebeurtenis `%s'."
+msgid "Failed to execute command '%s' on '%s' event."
+msgstr "Kon commando '%s' niet uitvoeren bij gebeurtenis '%s'."
 
 #: src/UserEvents.h
 msgid "Download completed"

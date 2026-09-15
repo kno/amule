@@ -30,9 +30,7 @@ using namespace web_api_path;
 
 DECLARE_SIMPLE(PathPatterns)
 
-// ----------------------------------------------------------------------
 // SplitPath
-// ----------------------------------------------------------------------
 
 TEST(PathPatterns, SplitPath_Empty)
 {
@@ -42,7 +40,7 @@ TEST(PathPatterns, SplitPath_Empty)
 
 TEST(PathPatterns, SplitPath_Root)
 {
-	// "/" parses to a single empty segment — distinguishable from "".
+	// "/" parses to a single empty segment -- distinguishable from "".
 	auto s = SplitPath("/");
 	ASSERT_EQUALS(static_cast<size_t>(1), s.size());
 	ASSERT_EQUALS(std::string(""), s[0]);
@@ -83,9 +81,7 @@ TEST(PathPatterns, SplitPath_NoLeadingSlash)
 	ASSERT_EQUALS(std::string("b"), s[1]);
 }
 
-// ----------------------------------------------------------------------
 // ParseQuery
-// ----------------------------------------------------------------------
 
 TEST(PathPatterns, ParseQuery_Empty)
 {
@@ -138,9 +134,8 @@ TEST(PathPatterns, ParseQuery_PercentDecode)
 
 TEST(PathPatterns, ParseQuery_MalformedPercentPassThrough)
 {
-	// A stray `%` with no two hex digits behind it passes through
-	// verbatim — we don't drop the character (would silently shift
-	// downstream parsing).
+	// A stray `%` with no two hex digits behind it passes through verbatim -- dropping the
+	// character would silently shift downstream parsing.
 	auto m = ParseQuery("k=ab%cz");
 	ASSERT_EQUALS(std::string("ab%cz"), m["k"]);
 	auto m2 = ParseQuery("k=trailing%");
@@ -155,9 +150,7 @@ TEST(PathPatterns, ParseQuery_PercentCaseInsensitive)
 	ASSERT_EQUALS(std::string("foo/bar"), m["b"]);
 }
 
-// ----------------------------------------------------------------------
 // ParsePattern
-// ----------------------------------------------------------------------
 
 TEST(PathPatterns, ParsePattern_LiteralOnly)
 {
@@ -185,9 +178,7 @@ TEST(PathPatterns, ParsePattern_CaptureMidPath)
 	ASSERT_EQUALS(std::string(""), p.capture_names[2]);
 }
 
-// ----------------------------------------------------------------------
 // Match
-// ----------------------------------------------------------------------
 
 TEST(PathPatterns, Match_Literal_OK)
 {
@@ -236,9 +227,7 @@ TEST(PathPatterns, Match_Capture_LengthMismatch)
 	ASSERT_FALSE(Match(p, SplitPath("/downloads/abc/pause/extra"), caps));
 }
 
-// ----------------------------------------------------------------------
 // ShapeEqual
-// ----------------------------------------------------------------------
 
 TEST(PathPatterns, ShapeEqual_SamePattern)
 {
@@ -276,24 +265,21 @@ TEST(PathPatterns, ShapeEqual_DifferentLengths)
 	ASSERT_FALSE(ShapeEqual(a, b));
 }
 
-// ----------------------------------------------------------------------
 // StripTrailingSlash
-// ----------------------------------------------------------------------
 
-// `/x/` and `/x` name the same resource. Without this the two spellings
-// disagree by route kind: a literal route misses outright, a capture route
-// matches with an empty capture.
+// `/x/` and `/x` name the same resource. Without this the two spellings disagree by route kind: a
+// literal route misses outright, a capture route matches with an empty capture.
 TEST(PathPatterns, StripTrailingSlash_RemovesOne)
 {
-	ASSERT_EQUALS(std::string("/api/v0/status"), StripTrailingSlash("/api/v0/status/"));
-	ASSERT_EQUALS(std::string("/api/v0/clients"), StripTrailingSlash("/api/v0/clients/"));
+	ASSERT_EQUALS(std::string("/api/v1/status"), StripTrailingSlash("/api/v1/status/"));
+	ASSERT_EQUALS(std::string("/api/v1/clients"), StripTrailingSlash("/api/v1/clients/"));
 }
 
 // Already-bare paths are returned unchanged, and the root is not a spelling
 // of the empty string.
 TEST(PathPatterns, StripTrailingSlash_LeavesBareAndRootAlone)
 {
-	ASSERT_EQUALS(std::string("/api/v0/status"), StripTrailingSlash("/api/v0/status"));
+	ASSERT_EQUALS(std::string("/api/v1/status"), StripTrailingSlash("/api/v1/status"));
 	ASSERT_EQUALS(std::string("/"), StripTrailingSlash("/"));
 	ASSERT_EQUALS(std::string(""), StripTrailingSlash(""));
 }
@@ -305,23 +291,20 @@ TEST(PathPatterns, StripTrailingSlash_StripsOnlyOne)
 	ASSERT_EQUALS(std::string("/a/"), StripTrailingSlash("/a//"));
 }
 
-// ----------------------------------------------------------------------
 // Match: empty captures
-// ----------------------------------------------------------------------
 
-// Every capture on the surface names a resource -- a hash, an ecid, an
-// index, an address -- and none of them can be the empty string. Binding
-// one used to hand the handler a URL that names nothing and leave it to
-// pick a status code, which is why an empty {ecid} was a 400 while an empty
-// {hash} was a 404.
+// Every capture on the surface names a resource -- a hash, an ecid, an index, an address -- and
+// none can be the empty string. Binding one used to hand the handler a URL that names nothing and
+// leave it to pick a status code, which is why an empty {ecid} was a 400 while an empty {hash} was
+// a 404.
 TEST(PathPatterns, Match_RejectsAnEmptyCapture)
 {
-	const auto pat = ParsePattern("/api/v0/clients/{ecid}");
+	const auto pat = ParsePattern("/api/v1/clients/{ecid}");
 	std::map<std::string, std::string> caps;
-	ASSERT_TRUE(!Match(pat, SplitPath("/api/v0/clients/"), caps));
+	ASSERT_TRUE(!Match(pat, SplitPath("/api/v1/clients/"), caps));
 	// The non-empty case still matches, so the guard is not just refusing
 	// everything.
-	ASSERT_TRUE(Match(pat, SplitPath("/api/v0/clients/42"), caps));
+	ASSERT_TRUE(Match(pat, SplitPath("/api/v1/clients/42"), caps));
 	ASSERT_EQUALS(std::string("42"), caps["ecid"]);
 }
 
@@ -331,19 +314,16 @@ TEST(PathPatterns, Match_StillRejectsAMissegmentedLiteral)
 {
 	// Same segment count, so the rejection has to come from the literal
 	// comparison rather than from the length check.
-	const auto pat = ParsePattern("/api/v0/version/check");
+	const auto pat = ParsePattern("/api/v1/version/check");
 	std::map<std::string, std::string> caps;
-	ASSERT_TRUE(!Match(pat, SplitPath("/api/v0/version/"), caps));
+	ASSERT_TRUE(!Match(pat, SplitPath("/api/v1/version/"), caps));
 }
 
-// ----------------------------------------------------------------------
 // ParseBoundedUint / ParseBoolValue
-// ----------------------------------------------------------------------
 
-// Seven hand-written count parsers disagreed about the two questions that
-// decide what a client sees: what an unparseable value does, and what an
-// out-of-range one does. A typo was a hard error on `interval` and a silent
-// behaviour change on `width` -- on the same endpoint.
+// Seven hand-written count parsers disagreed about the two questions that decide what a client
+// sees: what an unparseable value does, and what an out-of-range one does. A typo was a hard error
+// on `interval` and a silent behaviour change on `width` -- on the same endpoint.
 TEST(PathPatterns, ParseBoundedUint_AcceptsInRange)
 {
 	std::uint64_t v = 999;
@@ -380,11 +360,10 @@ TEST(PathPatterns, ParseBoundedUint_DoesNotWrapOnLongInput)
 	ASSERT_EQUALS(static_cast<std::uint64_t>(7), v);
 }
 
-// Every boolean parameter goes through here so the vocabulary cannot drift
-// per call site: `include_completed` (since replaced by `status=`) read every
-// unrecognised value as false while its neighbour `include_parts` answered
-// 400, so one typo was silent and the next was fatal. One vocabulary, and
-// anything outside it is answerable.
+// Every boolean parameter goes through here so the vocabulary cannot drift per call site:
+// `include_completed`, since replaced by `status=`, read every unrecognised value as false while
+// its neighbour `include_parts` answered 400, so one typo was silent and the next fatal. One
+// vocabulary, and anything outside it is answerable.
 TEST(PathPatterns, ParseBoolValue_AcceptsTheThreeSpellings)
 {
 	bool b = false;

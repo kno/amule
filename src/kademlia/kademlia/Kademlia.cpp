@@ -46,6 +46,7 @@ there client on the eMule forum..
 #ifdef ENABLE_KAD_NODE_PROTECTION
 #include "../net/FastKad.h"
 #include "../net/SafeKad.h"
+#include "../../Statistics.h" // Needed for theStats::SetKadBannedAddresses
 #endif
 #include "../routing/RoutingZone.h"
 #include "../utils/KadUDPKey.h"
@@ -98,34 +99,24 @@ void CKademlia::Start(CPrefs *prefs)
 
 	AddDebugLogLineN(logKadMain, "Starting Kademlia");
 
-	// Init jump start timer.
 	m_nextSearchJumpStart = time(NULL);
-	// Force a FindNodeComplete within the first 3 minutes.
 	m_nextSelfLookup = time(NULL) + MIN2S(3);
-	// Init status timer.
 	m_statusUpdate = time(NULL);
-	// Init big timer for Zones
 	m_bigTimer = time(NULL);
 	// First Firewall check is done on connect, init next check.
 	m_nextFirewallCheck = time(NULL) + (HR2S(1));
 	// Find a buddy after the first 5mins of starting the client.
 	// We wait just in case it takes a bit for the client to determine firewall status..
 	m_nextFindBuddy = time(NULL) + (MIN2S(5));
-	// Init contact consolidate timer;
 	m_consolidate = time(NULL) + (MIN2S(45));
-	// Look up our extern port
 	m_externPortLookup = time(NULL);
-	// Init bootstrap time.
 	m_bootstrap = 0;
-	// Init our random seed.
 	srand((uint32_t)time(NULL));
-	// Create our Kad objects.
 	instance = new CKademlia();
 	instance->m_prefs = prefs;
 	instance->m_indexed = new CIndexed();
 	instance->m_routingZone = new CRoutingZone();
 	instance->m_udpListener = new CKademliaUDPListener();
-	// Mark Kad as running state.
 	m_running = true;
 }
 
@@ -138,16 +129,12 @@ void CKademlia::Stop()
 
 	AddDebugLogLineN(logKadMain, "Stopping Kademlia");
 
-	// Mark Kad as being in the stop state to make sure nothing else is used.
 	m_running = false;
 
-	// Reset Firewallstate
 	CUDPFirewallTester::Reset();
 
-	// Remove all active searches.
 	CSearchManager::StopAllSearches();
 
-	// Delete all Kad Objects.
 	delete instance->m_udpListener;
 	instance->m_udpListener = NULL;
 
@@ -168,19 +155,15 @@ void CKademlia::Stop()
 	}
 	s_bootstrapList.clear();
 
-	// Make sure all zones are removed.
 	m_events.clear();
 
 #ifdef ENABLE_KAD_NODE_PROTECTION
-	// The protection tables and the response-time window are keyed on
-	// addresses from a Kad session that has just ended; carrying them into
-	// the next one would judge fresh contacts on stale evidence, and Kad is
-	// restarted on every reconnect.
+	// The protection tables and the response-time window are keyed on addresses from a Kad
+	// session that has just ended; carrying them into the next one would judge fresh contacts
+	// on stale evidence, and Kad restarts on every reconnect.
 	safeKad.Clear();
 	fastKad.Clear();
 #endif
-
-	//	theApp->ShowConnectionState();
 }
 
 void CKademlia::Process()
@@ -244,9 +227,9 @@ void CKademlia::Process()
 	for (EventMap::const_iterator it = m_events.begin(); it != m_events.end(); ++it) {
 		CRoutingZone *zone = it->first;
 		if (updateUserFile) {
-			// The EstimateCount function is not made for really small networks, if we are in LAN
-			// mode, it is actually better to assume that all users of the network are in our
-			// routing table and use the real count function
+			// EstimateCount is not made for really small networks. In LAN mode it is
+			// better to assume every user of the network is in our routing table and
+			// use the real count function.
 			if (IsRunningInLANMode()) {
 				tempUsers = zone->GetNumContacts();
 			} else {
@@ -285,7 +268,13 @@ void CKademlia::Process()
 		m_nextSearchJumpStart = SEARCH_JUMPSTART + now;
 	}
 
-	// Try to consolidate any zones that are close to empty.
+#ifdef ENABLE_KAD_NODE_PROTECTION
+	// Published as a gauge rather than counted at the ban: these bans lapse inside an aged map,
+	// and entries are also evicted when it is full, so there is no event to hang a decrement
+	// on.
+	theStats::SetKadBannedAddresses((uint32)safeKad.GetBannedAddressCount());
+#endif
+
 	if (m_consolidate <= now) {
 		uint32_t mergedCount = instance->m_routingZone->Consolidate();
 		if (mergedCount) {
@@ -294,7 +283,6 @@ void CKademlia::Process()
 		m_consolidate = MIN2S(45) + now;
 	}
 
-	// Update user count only if changed.
 	if (updateUserFile) {
 		if (maxUsers != instance->m_prefs->GetKademliaUsers()) {
 			instance->m_prefs->SetKademliaUsers(maxUsers);
@@ -356,9 +344,8 @@ void CKademlia::ProcessPacket(const uint8_t *data,
 void CKademlia::RecheckFirewalled()
 {
 	if (instance && instance->m_prefs && !IsRunningInLANMode()) {
-		// Something is forcing a new firewall check
-		// Stop any new buddy requests, and tell the client
-		// to recheck it's IP which in turns rechecks firewall.
+		// Something is forcing a new firewall check. Stop new buddy requests and tell the
+		// client to recheck its IP, which in turn rechecks the firewall.
 		instance->m_prefs->SetFindBuddy(false);
 		instance->m_prefs->SetRecheckIP();
 		// also UDP check
@@ -376,7 +363,6 @@ bool CKademlia::FindNodeIDByIP(CKadClientSearcher& requester, uint32_t ip, uint1
 {
 	wxCHECK(IsRunning() && instance && GetUDPListener() && GetRoutingZone(), false);
 
-	// first search our known contacts if we can deliver a result without asking, otherwise forward the request
 	CContact* contact;
 	if ((contact = GetRoutingZone()->GetContact(wxUINT32_SWAP_ALWAYS(ip), tcpPort, true)) != NULL) {
 		uint8_t nodeID[16];
@@ -437,18 +423,16 @@ void CKademlia::StatsAddClosestDistance(const CUInt128 &distance)
 
 uint32_t CKademlia::CalculateKadUsersNew()
 {
-	// the idea of calculating the user count with this method is simple:
-	// whenever we do a search for any NodeID (except in certain cases where the result is not usable),
-	// we remember the distance of the closest node we found. Because we assume all NodeIDs are
-	// distributed equally, we can calculate based on this distance how "filled" the possible NodesID room
-	// is and by this calculate how many users there are. Of course this only works if we have enough
-	// samples, because each single sample will be wrong, but the average of them should produce a usable
-	// number. To avoid drifts caused by a a single (or more) really close or really far away hits, we do
-	// use median-average instead through
+	// Estimating the user count: on every search for a NodeID (except where the result is
+	// unusable) we remember the distance of the closest node found. NodeIDs are assumed to be
+	// distributed equally, so that distance says how "filled" the NodeID room is, and from that
+	// how many users there are. Each single sample is wrong, but their average is usable.
+	// Median-average rather than mean, so a few really close or really far hits cannot drift
+	// the result.
 
-	// doesn't work well if we have no files to index and nothing to download and the numbers seems to be
-	// a bit too low compared to our other method. So let's stay with the old one for now, but keep this
-	// here as an alternative
+	// Does not work well with no files to index and nothing to download, and the numbers look a
+	// bit low against our other method. Stay with the old one for now, but keep this as an
+	// alternative.
 
 	if (m_statsEstUsersProbes.size() < 10) {
 		return 0;
@@ -485,11 +469,9 @@ uint32_t CKademlia::CalculateKadUsersNew()
 	}
 	median = (uint32_t)(average / medianList.size());
 
-	// LowIDModififier
-	// Modify count by assuming 20% of the users are firewalled and can't be a contact for < 0.49b nodes
-	// Modify count by actual statistics of Firewalled ratio for >= 0.49b if we are not firewalled ourself
-	// Modify count by 40% for >= 0.49b if we are firewalled ourself (the actual Firewalled count at this
-	// date on kad is 35-55%)
+	// LowIDModififier. Assume 20% of users are firewalled and cannot be a contact, for < 0.49b
+	// nodes. For >= 0.49b use the actual firewalled ratio if we are not firewalled ourselves,
+	// or 40% if we are (the real Kad figure at this date is 35-55%).
 	const float firewalledModifyOld = 1.20f;
 	float firewalledModifyNew = 0.0;
 	if (CUDPFirewallTester::IsFirewalledUDP(true)) {
@@ -525,9 +507,9 @@ bool CKademlia::IsRunningInLANMode()
 	if (m_lanModeCheck + 10 <= now) {
 		m_lanModeCheck = now;
 		uint32_t count = GetRoutingZone()->GetNumContacts();
-		// Limit to 256 nodes, if we have more we don't want to use the LAN mode which is assuming we
-		// use a small home LAN (otherwise we might need to do firewallcheck, external port requests
-		// etc after all)
+		// Cap at 256 nodes: above that this is not the small home LAN that LAN mode
+		// assumes, and we would still need a firewall check, external port requests and so
+		// on.
 		if (count == 0 || count > 256) {
 			m_lanMode = false;
 		} else {

@@ -276,6 +276,11 @@ if (NEED_LIB_MULEAPPCOMMON OR BUILD_WEBSERVER)
 	option (ENABLE_UPNP "enable UPnP support in aMule" ON)
 endif()
 
+# Experimental IPv4 uTP datagram framing in amule/amuled only. No stream
+# acceptance, dialing, or capability advertisement. Requires CMake 3.12;
+# see cmake/libutp.cmake.
+option (ENABLE_UTP "enable experimental uTP datagram framing (no stream transport)" OFF)
+
 # Master switch for the in-app "check for a new aMule version" feature: the
 # startup notification, the "Check for new version at startup" preference, and
 # the About dialog's "Check for updates" button. When OFF the whole feature
@@ -336,6 +341,7 @@ option (ENABLE_KAD_NODE_PROTECTION "enable the local Kad node-protection heurist
 set (AMULE_EXPERIMENTAL_OPTIONS
 	ENABLE_KAD_PROTOCOL_10
 	ENABLE_KAD_NODE_PROTECTION
+	ENABLE_UTP
 )
 
 option (ENABLE_ALL_EXPERIMENTAL "turn on every switch in AMULE_EXPERIMENTAL_OPTIONS at once" OFF)

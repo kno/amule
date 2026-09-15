@@ -58,36 +58,26 @@ typedef struct HistoryRecord
 } HR;
 
 /**
- * Returned by the free-space getters when the figure isn't available.
+ * Returned by the free-space getters when the figure is not available.
  *
- * A distinct value rather than 0: an unreachable mount and a genuinely
- * full disk are different states, and the second one is exactly what the
- * Downloads panel warns about. Callers must not render or compare this as
- * a size.
+ * A distinct value rather than 0: an unreachable mount and a genuinely full disk are different
+ * states, and the second is exactly what the Downloads panel warns about. Callers must not render
+ * or compare this as a size.
  */
 const sint64 FREE_SPACE_UNKNOWN = -1;
 
-// CPreciseRateCounter is the only history-bookkeeping primitive that
-// CLIENT_GUI needs (for the runAvg trend on remote stats graphs), so
-// it lives outside the #ifndef CLIENT_GUI gate even though the
+// CPreciseRateCounter is the only history-bookkeeping primitive CLIENT_GUI needs (the runAvg trend
+// on remote stats graphs), so it sits outside the #ifndef CLIENT_GUI gate even though the
 // CStatTree* derivatives below are monolithic-only.
 
-/**
- * Counts precise rate/average on added bytes/values.
- *
- * @note This class is MT-safe.
- */
+/// Counts precise rate/average on added bytes/values. MT-safe.
 class CPreciseRateCounter
 {
 	friend class CStatistics; // for playing dirty tricks to compute running average :P
 
 public:
-	/**
-	 * Constructor
-	 *
-	 * @param timespan Desired timespan for rate calculations.
-	 * @param count_average Counts average instead of rate.
-	 */
+	/// @param timespan Timespan for rate calculations.
+	/// @param count_average Count an average instead of a rate.
 	CPreciseRateCounter(uint32_t timespan, bool count_average = false)
 	: m_timespan(timespan)
 	, m_total(0)
@@ -108,56 +98,34 @@ public:
 		}
 	}
 
-	/**
-	 * Calculate current rate.
-	 *
-	 * This function should be called reasonably often, to
-	 * keep rates up-to-date, and prevent history growing
-	 * to the skies.
-	 */
+	/// Calculate the current rate. Call reasonably often, to keep rates up to date and stop the
+	/// history growing without bound.
 	void CalculateRate(uint64_t now);
 
-	/**
-	 * Get current rate.
-	 *
-	 * @return Current rate in bytes/second.
-	 */
+	/// Current rate, in bytes/second.
 	double GetRate()
 	{
 		wxMutexLocker lock(m_mutex);
 		return m_rate;
 	};
 
-	/**
-	 * Gets ever seen maximal rate.
-	 *
-	 * @return The maximal rate which occurred.
-	 */
+	/// The highest rate ever seen.
 	double GetMaxRate()
 	{
 		wxMutexLocker lock(m_mutex);
 		return m_max_rate;
 	}
 
-	/**
-	 * Sets desired timespan for rate calculations.
-	 *
-	 * If new timespan is greater than the old was, then the change
-	 * takes effect with time. The exact time needed for the change
-	 * to take effect is new minus old value of the timespan.
-	 *
-	 * If the new timespan is lower than the old, the change takes
-	 * effect immediately at the next call to CalculateRate().
-	 */
+	/// Sets the timespan for rate calculations. A longer timespan takes effect gradually, over
+	/// the difference between the new and old values; a shorter one takes effect at the next
+	/// CalculateRate().
 	void SetTimespan(uint32_t timespan)
 	{
 		wxMutexLocker lock(m_mutex);
 		m_timespan = timespan;
 	}
 
-	/**
-	 * Add bytes to be tracked for rate-counting.
-	 */
+	/// Add bytes to be tracked for rate-counting.
 	void operator+=(uint32_t bytes)
 	{
 		wxMutexLocker lock(m_mutex);
@@ -168,14 +136,11 @@ protected:
 	std::deque<uint32> m_byte_history;
 	std::deque<uint64> m_tick_history;
 	uint32_t m_timespan;
-	// Sum of every sample currently inside the window. Wide because the
-	// sum is not a byte count: with count_average the samples are rates,
-	// and the graphs' running average holds a 5 minute window of them --
-	// 100 samples at the default 3 s spacing, which passes 2^32 once the
-	// mean rate reaches about 41 MB/s. Past that it wrapped, the
-	// subtraction below drove it further under, and the trend collapsed
-	// to nothing and climbed back over a full window. The individual
-	// samples in m_byte_history are fine at 32 bits; only their sum is not.
+	// Sum of every sample currently inside the window. Wide because the sum is not a byte
+	// count: with count_average the samples are rates, and the graphs' running average holds a
+	// 5 minute window of them -- 100 samples at the default 3 s spacing, which passes 2^32 once
+	// the mean rate reaches about 41 MB/s. Past that it wrapped and the trend collapsed. The
+	// samples themselves are fine at 32 bits; only their sum is not.
 	uint64_t m_total;
 	double m_rate;
 	double m_max_rate;
@@ -188,17 +153,12 @@ protected:
 
 class CECTag;
 
-/**
- * Stat tree item for rates/averages.
- */
+/// Stat tree item for rates/averages.
 class CStatTreeItemRateCounter : public CStatTreeItemBase, public CPreciseRateCounter
 {
 public:
-	/**
-	 * @see CStatTreeItemBase::CStatTreeItemBase, CPreciseRateCounter::CPreciseRateCounter
-	 *
-	 * @param show_maxrate If true, shows max rate instead of current rate.
-	 */
+	/// @see CStatTreeItemBase::CStatTreeItemBase, CPreciseRateCounter::CPreciseRateCounter
+	/// @param show_maxrate Show the max rate instead of the current rate.
 	CStatTreeItemRateCounter(
 		const wxString &label, bool show_maxrate, uint32_t timespan, bool count_average = false)
 	: CStatTreeItemBase(label, stNone)
@@ -208,55 +168,35 @@ public:
 	}
 
 #ifndef AMULE_DAEMON
-	/**
-	 * @see CStatTreeItemBase::GetDisplayString()
-	 */
+	/// @see CStatTreeItemBase::GetDisplayString()
 	virtual wxString GetDisplayString() const;
 #endif
 
 protected:
-	/**
-	 * Add values to EC tag being generated.
-	 *
-	 * @param tag The tag to which values should be added.
-	 *
-	 * @see CStatTreeItemBase::AddECValues
-	 */
+	/// @see CStatTreeItemBase::AddECValues
 	virtual void AddECValues(CECTag *tag) const;
 
 	//! Whether to show max rate instead of actual rate.
 	bool m_show_maxrate;
 };
 
-/**
- * Stat tree item for Peak Connections.
- */
+/// Stat tree item for Peak Connections.
 class CStatTreeItemPeakConnections : public CStatTreeItemBase
 {
 public:
-	/**
-	 * @see CStatTreeItemBase::CStatTreeItemBase
-	 */
+	/// @see CStatTreeItemBase::CStatTreeItemBase
 	CStatTreeItemPeakConnections(const wxString &label)
 	: CStatTreeItemBase(label)
 	{
 	}
 
 #ifndef AMULE_DAEMON
-	/**
-	 * @see CStatTreeItemBase::GetDisplayString()
-	 */
+	/// @see CStatTreeItemBase::GetDisplayString()
 	virtual wxString GetDisplayString() const;
 #endif
 
 protected:
-	/**
-	 * Add values to EC tag being generated.
-	 *
-	 * @param tag The tag to which values should be added.
-	 *
-	 * @see CStatTreeItemBase::AddECValues
-	 */
+	/// @see CStatTreeItemBase::AddECValues
 	virtual void AddECValues(CECTag *tag) const;
 };
 
@@ -277,11 +217,10 @@ public:
 
 	void RecordHistory();
 	unsigned GetHistoryForWeb(unsigned cntPoints, double sStep, double *sStart, uint32 **graphData);
-	// EC_OP_STATSGRAPHS variant that also fills per-point active-up /
-	// active-down counters and the latest session totals, so amulegui
-	// can render the same 3-line Connections scope and true
-	// kBytesReceived/sTimestamp session average as monolithic amule.
-	// connData is freshly new[]'d on success (caller owns / deletes).
+	// EC_OP_STATSGRAPHS variant that also fills per-point active-up / active-down counters and
+	// the latest session totals, so amulegui can render the same 3-line Connections scope and
+	// true session average as monolithic amule. connData is new[]'d on success and owned by the
+	// caller.
 	unsigned GetHistoryForGui(unsigned cntPoints,
 		double sStep,
 		double *sStart,
@@ -413,6 +352,22 @@ public:
 	static void AddBannedClient() { ++(*s_banned); }
 	static void RemoveBannedClient() { --(*s_banned); }
 
+	/**
+	 * Addresses Kad is currently refusing to talk to (CSafeKad).
+	 *
+	 * Set rather than incremented, because these bans lapse inside an aged map with no event to
+	 * hang a decrement on: the count is read back from the record on the Kad timer. That also
+	 * makes it immune to the add/remove drift CBanRecord had to be extracted to fix.
+	 *
+	 * Kept apart from the banned-client figure above on purpose. That one counts CClientList
+	 * bans, which block TCP connections; this one covers Kad addresses only, and conflating
+	 * them would report a peer as barred from uploads when it is merely unwelcome in the
+	 * routing table.
+	 */
+#ifdef ENABLE_KAD_NODE_PROTECTION
+	static void SetKadBannedAddresses(uint32 value) { s_kadBanned->SetValue(value); }
+#endif
+
 	// Servers
 	static void AddServer() { ++(*s_totalServers); }
 	static void DeleteServer()
@@ -450,21 +405,16 @@ public:
 	static void RemoveKadNode() { --s_kadNodesCur; }
 	static uint16_t GetKadNodes() { return s_kadNodesCur; }
 
-	/**
-	 * Free space on the filesystem holding the part files, in bytes, or
-	 * FREE_SPACE_UNKNOWN until CFreeSpaceThread has published a figure --
-	 * which is also what an unreachable mount leaves here.
-	 *
-	 * A plain atomic read that never touches the filesystem. The probe
-	 * itself blocks, sometimes for as long as a dead NFS mount takes to
-	 * give up, so it lives on its own thread; both callers here (the GUI
-	 * timer and the EC stats reply) are on latency-critical loops.
-	 */
+	/// Free space on the filesystem holding the part files, in bytes, or FREE_SPACE_UNKNOWN
+	/// until CFreeSpaceThread has published a figure -- which is also what an unreachable mount
+	/// leaves here. A plain atomic read that never touches the filesystem: the probe itself
+	/// blocks, sometimes for as long as a dead NFS mount takes to give up, so it lives on its
+	/// own thread, and both callers here (the GUI timer and the EC stats reply) are on latency-
+	/// critical loops.
 	static sint64 GetTempFreeSpace() { return s_tempFreeSpace.load(std::memory_order_relaxed); }
 
-	//! Free space where finished downloads land. See GetTempFreeSpace();
-	//! this is the default category's incoming directory, the one the
-	//! Shared Files panel reports.
+	//! Free space where finished downloads land. See GetTempFreeSpace(); this is the default
+	//! category's incoming directory, the one the Shared Files panel reports.
 	static sint64 GetIncomingFreeSpace() { return s_incomingFreeSpace.load(std::memory_order_relaxed); }
 
 	//! Called by CFreeSpaceThread with a fresh sample. Nothing else writes
@@ -516,21 +466,18 @@ public:
 
 	void SetAverageMinutes(uint8 minutes) { average_minutes = minutes; }
 
-	// Records held per resolution range. The list is nHistRanges of these,
-	// each range at twice the spacing of the one before, so this sets both
-	// how far back the graphs can reach and how much of that reach is at
-	// fine resolution: at a 3 s update delay the two finest ranges are the
-	// ones a graph can plot from, giving 3 x this many seconds of history.
+	// Records held per resolution range. The list is nHistRanges of these, each range at twice
+	// the spacing of the one before, so this sets both how far back the graphs can reach and
+	// how much of that reach is at fine resolution: at a 3 s update delay the two finest ranges
+	// are the ones a graph can plot from.
 	//
-	// Was (1280 / 2) - 80 = 560, once derived from a GUI width. That put
-	// the finest usable reach at 28 minutes, which a remote GUI could
-	// exhaust in a window barely wider than half a screen. At 64 bytes a
-	// record the whole list costs 7 x this x 64 bytes -- 787 KB here,
+	// Was (1280 / 2) - 80 = 560, once derived from a GUI width, which put the finest usable
+	// reach at 28 minutes -- exhaustible by a remote GUI in a window barely wider than half a
+	// screen. At 64 bytes a record the whole list costs 7 x this x 64 bytes, so 787 KB here
 	// against 245 KB at the old value.
 	//
-	// Public because it is reported to remote GUIs over EC: a client that
-	// asked for more points than a range holds would be answered with the
-	// same record repeated, and would have no way to tell.
+	// Public because it is reported to remote GUIs over EC: a client asking for more points
+	// than a range holds would be answered with the same record repeated.
 	static int GetPointsPerRange() { return 1800; }
 
 private:
@@ -575,7 +522,6 @@ private:
 
 	/* Tree-related vars */
 
-	// the tree
 	static CStatTreeItemBase *s_statTree;
 
 	// Uptime
@@ -617,13 +563,14 @@ private:
 	// Clients
 	static CStatTreeItemHiddenCounter *s_clients;
 	static CStatTreeItemCounter *s_unknown;
-	// static	CStatTreeItem			s_lowID;
-	// static	CStatTreeItem			s_secIdentOnOff;
 #ifdef __DEBUG__
 	static CStatTreeItemNativeCounter *s_hasSocket;
 #endif
 	static CStatTreeItemNativeCounter *s_filtered;
 	static CStatTreeItemNativeCounter *s_banned;
+#ifdef ENABLE_KAD_NODE_PROTECTION
+	static CStatTreeItemNativeCounter *s_kadBanned;
+#endif
 
 	// Servers
 	static CStatTreeItemSimple *s_workingServers;
@@ -649,9 +596,8 @@ private:
 	static uint64_t s_totalSent;
 	static uint64_t s_totalReceived;
 
-	// Written by CFreeSpaceThread, read by the main and EC threads. Atomic
-	// for that reason alone: they are the only cross-thread state in this
-	// class, everything else here belongs to the main thread.
+	// Written by CFreeSpaceThread, read by the main and EC threads. Atomic for that reason
+	// alone: they are the only cross-thread state in this class.
 	static std::atomic<sint64> s_tempFreeSpace;
 	static std::atomic<sint64> s_incomingFreeSpace;
 
@@ -706,10 +652,10 @@ private:
 	static uint64 s_statData[sdTotalItems];
 	uint8 average_minutes;
 
-	// History ring for the Statistics + Network->Kad graphs. Filled by
-	// CStatGraphRem::HandlePacket (one HR per decoded point) so the
-	// shared COScopeCtrl::PlotHistory path can replay across tab
-	// switches and auto-rescale events without a daemon round-trip.
+	// History ring for the Statistics and Network->Kad graphs. Filled by
+	// CStatGraphRem::HandlePacket, one HR per decoded point, so the shared
+	// COScopeCtrl::PlotHistory path can replay across tab switches and auto-rescale events
+	// without a daemon round-trip.
 	std::list<HR> listHR;
 	typedef std::list<HR>::iterator listPOS;
 	typedef std::list<HR>::reverse_iterator listRPOS;
@@ -722,35 +668,29 @@ public:
 	CStatistics(CRemoteConnect &conn);
 	~CStatistics();
 
-	// Shared with the monolithic build (definitions outside any
-	// CLIENT_GUI gate in Statistics.cpp): assemble a contiguous arrays
-	// of sample points from listHR for the requested graph_type, and
-	// fold the per-trend running averages on top.
+	// Shared with the monolithic build (definitions outside any CLIENT_GUI gate in
+	// Statistics.cpp): assemble contiguous arrays of sample points from listHR for the
+	// requested graph_type, and fold the per-trend running averages on top.
 	unsigned GetHistory(unsigned cntPoints,
 		double sStep,
 		double sFinal,
 		const std::vector<float *> &ppf,
 		StatsGraphType which_graph);
 
-	// CLIENT_GUI-only producer (no analogue on monolithic, where
-	// RecordHistory() does the equivalent push from local counters).
-	// Appends one HR record to listHR and caps the ring at
-	// kHistoryCap so memory stays bounded across long sessions.
-	// minSpacing is the seconds-per-point the graphs are drawing at, and
-	// records closer together than that are dropped: keeping finer data
-	// than is ever plotted just spends the ring on points no axis asks for.
+	// CLIENT_GUI-only producer, with no analogue on monolithic, where RecordHistory() does the
+	// equivalent push from local counters. Appends one HR record to listHR and caps the ring at
+	// kHistoryCap. minSpacing is the seconds-per-point the graphs are drawing at, and records
+	// closer together than that are dropped: finer data than is ever plotted just spends the
+	// ring.
 	void AddHistoryRecord(const HR &hr, double minSpacing);
 	// Drops everything. Used when the sample spacing changes, which
 	// invalidates the resolution the stored points were kept at.
 	void ClearHistory() { listHR.clear(); }
-	// Records, not seconds. One is kept per plotted point, so the useful
-	// way to read this is as a plot width: a graph draws one point per
-	// pixel, and cannot show more than this many however wide its window
-	// is. The span that covers depends on the "Update delay" preference
-	// the points were fetched at -- 3 h at a 1 s delay, a day at 8 s --
-	// but the pixel bound is the same either way, which is what matters
-	// because the Kad graph spans the whole window. At 64 bytes a record
-	// the whole ring is about 225 KB.
+	// Records, not seconds. One is kept per plotted point, so the useful way to read this is as
+	// a plot width: a graph draws one point per pixel and cannot show more than this many
+	// however wide its window. The span that covers depends on the "Update delay" preference
+	// the points were fetched at -- 3 h at 1 s, a day at 8 s -- but the pixel bound is the same
+	// either way. At 64 bytes a record the ring is about 225 KB.
 	static const size_t kHistoryCap = 3600;
 
 	static uint64 GetUptimeMillis();
@@ -769,12 +709,10 @@ public:
 
 	static uint32 GetSharedFileCount() { return s_statData[sdSharedFileCount]; }
 
-	// Free space on the daemon's filesystems, as it reported them. The
-	// figures are necessarily the core's view: the machine running the GUI
-	// may not have those directories at all, and where it does have them
-	// mounted it can see a different size, quota or share. Stored as the
-	// unsigned slot the array is made of; FREE_SPACE_UNKNOWN survives the
-	// round trip because it is the all-ones pattern either way.
+	// Free space on the daemon's filesystems, as it reported them. Necessarily the core's view:
+	// the machine running the GUI may not have those directories at all, and where it does it
+	// can see a different size, quota or share. Stored as the unsigned slot the array is made
+	// of; FREE_SPACE_UNKNOWN survives the round trip, being the all-ones pattern either way.
 	static sint64 GetTempFreeSpace() { return (sint64)s_statData[sdTempFreeSpace]; }
 	static sint64 GetIncomingFreeSpace() { return (sint64)s_statData[sdIncomingFreeSpace]; }
 
@@ -815,9 +753,7 @@ private:
 
 #endif /* !CLIENT_GUI / CLIENT_GUI */
 
-/**
- * Shortcut for CStatistics
- */
+/// Shortcut for CStatistics.
 typedef CStatistics theStats;
 
 #endif // STATISTICS_H

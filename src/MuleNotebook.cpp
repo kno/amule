@@ -61,7 +61,6 @@ CMuleNotebook::CMuleNotebook(wxWindow *parent,
 
 CMuleNotebook::~CMuleNotebook()
 {
-	// Ensure that all notifications gets sent
 	DeleteAllPages();
 }
 
@@ -71,22 +70,19 @@ bool CMuleNotebook::DeletePage(int nPage)
 		false,
 		"Trying to delete invalid page-index in CMuleNotebook::DeletePage");
 
-	// Send out close event
 	wxNotebookEvent evt(wxEVT_COMMAND_MULENOTEBOOK_PAGE_CLOSING, GetId(), nPage);
 	evt.SetEventObject(this);
 	ProcessEvent(evt);
 
-	// and finally remove the actual page
 	bool result = wxNotebook::DeletePage(nPage);
 
-	// Ensure a valid selection
 	if (GetPageCount() && (int)GetSelection() >= (int)GetPageCount()) {
 		SetSelection(GetPageCount() - 1);
 	}
 
-	// Send a page change event to work around wx problem when newly selected page
-	// is identical with deleted page (wx sends a page change event during deletion,
-	// but the control is still the one to be deleted at that moment).
+	// Send a page change event to work around a wx problem when the newly selected page is
+	// identical with the deleted page: wx sends a page change event during deletion, but the
+	// control is still the one to be deleted at that moment.
 	if (GetPageCount()) {
 		// Select the tab that took the place of the one we just deleted.
 		size_t page = nPage;
@@ -98,7 +94,6 @@ bool CMuleNotebook::DeletePage(int nPage)
 		event.SetEventObject(this);
 		ProcessEvent(event);
 	} else {
-		// Send an event when no pages are left open
 		wxNotebookEvent event(wxEVT_COMMAND_MULENOTEBOOK_ALL_PAGES_CLOSED, GetId());
 		event.SetEventObject(this);
 		ProcessEvent(event);
@@ -134,7 +129,6 @@ void CMuleNotebook::SetPopupHandler(wxWindow *widget)
 // #warning wxMac does not support selection by right-clicking on tabs!
 void CMuleNotebook::OnRMButton(wxMouseEvent &event)
 {
-	// Cases where we shouldn't be showing a popup-menu.
 	if (!GetPageCount() || !m_popup_enable) {
 		event.Skip();
 		return;
@@ -151,11 +145,9 @@ void CMuleNotebook::OnRMButton(wxMouseEvent &event)
 		return;
 	}
 
-	// Should we send the event to a specific widget?
 	if (m_popup_widget) {
 		wxMouseEvent evt = event;
 
-		// Map the coordinates onto the parent
 		wxPoint point = evt.GetPosition();
 		point = ClientToScreen(point);
 		point = m_popup_widget->ScreenToClient(point);
@@ -163,17 +155,14 @@ void CMuleNotebook::OnRMButton(wxMouseEvent &event)
 		evt.m_x = point.x;
 		evt.m_y = point.y;
 
-		// Synchronous dispatch: the parent's handler is expected to
-		// call PopupMenu(), which on wxGTK relies on the pointer
-		// grab from the current right-button-down event still being
-		// active. AddPendingEvent queues the event for delivery on
-		// the next event-loop cycle, and in amulegui the 1 Hz EC
-		// poll-timer adds enough latency between the queue insert
-		// and dispatch that the user's button-up arrives first
-		// ~80 % of the time -- PopupMenu then opens and is
-		// immediately dismissed by the late button-up, looking
-		// like the menu "doesn't latch".  ProcessEvent runs the
-		// handler inline while the grab is fresh (#680).
+		// Synchronous dispatch: the parent's handler is expected to call PopupMenu(), which
+		// on wxGTK relies on the pointer grab from the current right-button-down event
+		// still being active. AddPendingEvent queues the event for the next event-loop
+		// cycle, and in amulegui the 1 Hz EC poll timer adds enough latency between the
+		// queue insert and dispatch that the user's button-up arrives first ~80 % of the
+		// time -- PopupMenu then opens and is immediately dismissed, looking like the menu
+		// "does not latch". ProcessEvent runs the handler inline while the grab is fresh
+		// (#680).
 		m_popup_widget->GetEventHandler()->ProcessEvent(evt);
 	} else {
 		wxMenu menu(_("Close"));
@@ -181,10 +170,10 @@ void CMuleNotebook::OnRMButton(wxMouseEvent &event)
 		menu.Append(MP_CLOSE_ALL_TABS, wxString(_("Close all tabs")));
 		menu.Append(MP_CLOSE_OTHER_TABS, wxString(_("Close other tabs")));
 
-		// Pop up at the pointer. On wxGTK the right-click lands on the tab
-		// strip, which sits outside the client area PopupMenu() positions
-		// against, so event.GetPosition() offset the menu upward by the
-		// tab-strip height. The default position uses the cursor instead.
+		// Pop up at the pointer. On wxGTK the right-click lands on the tab strip, which
+		// sits outside the client area PopupMenu() positions against, so
+		// event.GetPosition() offset the menu upward by the tab-strip height. The default
+		// position uses the cursor instead.
 		PopupMenu(&menu);
 	}
 }
@@ -259,12 +248,11 @@ void CMuleNotebook::OnMouseMotion(wxMouseEvent &event)
 	int tab = HitTest(wxPoint(event.m_x, event.m_y), &flags);
 	const bool onIcon = (tab != -1) && (flags == wxNB_HITTEST_ONICON);
 
-	// Write only the images that actually change. SetPageImage() is a
-	// TCM_SETITEM on MSW, which invalidates the tab it names, so setting
-	// every page on every motion event kept the whole tab bar repainting
-	// for as long as the pointer moved over it -- with enough tabs open
-	// that reads as flicker (issue #951). The highlight itself changes at
-	// most twice per crossing of a close icon.
+	// Write only the images that actually change. SetPageImage() is a TCM_SETITEM on MSW, which
+	// invalidates the tab it names, so setting every page on every motion event kept the whole
+	// tab bar repainting for as long as the pointer moved over it -- with enough tabs open that
+	// reads as flicker (issue #951). The highlight itself changes at most twice per crossing of
+	// a close icon.
 	for (int i = 0; i < (int)GetPageCount(); ++i) {
 		const int image = (onIcon && i == tab) ? 1 : 0;
 		if (GetPageImage(i) != image) {

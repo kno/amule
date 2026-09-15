@@ -9,8 +9,8 @@ msgid ""
 msgstr ""
 "Project-Id-Version: aMule\n"
 "Report-Msgid-Bugs-To: https://github.com/amule-org/amule/issues\n"
-"POT-Creation-Date: 2026-09-07 16:21+0200\n"
-"PO-Revision-Date: 2026-09-08 11:15+0000\n"
+"POT-Creation-Date: 2026-09-14 11:03+0200\n"
+"PO-Revision-Date: 2026-09-14 12:27+0000\n"
 "Last-Translator: \n"
 "Language-Team: Turkish <li@li.org>\n"
 "Language: tr\n"
@@ -203,6 +203,36 @@ msgstr "ED2KBağlantı dosyası açılamadı."
 #: src/amuleAppCommon.cpp
 msgid "WARNING: You can't add yourself as a source for an eD2k link while having a lowid."
 msgstr "UYARI: DüşükID olduğunuz sürece kendinizi bir kaynak olarak eD2k bağlantılarına ekleyemezsiniz."
+
+#: src/amuleAppCommon.cpp
+#, c-format
+msgid ""
+"Another program is holding aMule's lock file:\n"
+"\n"
+"%s\n"
+"\n"
+"That is not a running copy of aMule, so there is nothing to bring to the front. Close the other program, or delete the lock file while aMule is not running."
+msgstr ""
+"Başka bir program aMule kilit dosyasına sahiptir:\n"
+"\n"
+"%s\n"
+"\n"
+"Bu, çalışmakta olan bir aMule örneklemesi değildir, yani ön plana getirilecek hiçbir şey yoktur. Diğer programı kapatın veya kilit dosyasını aMule çalışmazken silin."
+
+#: src/amuleAppCommon.cpp
+#, c-format
+msgid ""
+"The aMule daemon (amuled) is already running as process %d and is using this configuration.\n"
+"\n"
+"It has no window to bring to the front. Connect to it with amuleGUI, or stop the daemon before starting aMule."
+msgstr ""
+"aMule daemon'u (amuled) zaten %d süreci olarak çalışmaktadır ve bu yapılandırmayı kullanmaktadır.\n"
+"\n"
+"Ön plana getirilecek hiçbir penceresi yoktur. Ona amuleGUI ile bağlanın veya daemon'u aMule'ü başlatmadan önce durdurun."
+
+#: src/amuleAppCommon.cpp
+msgid "aMule cannot start"
+msgstr "aMule başlatılamaz"
 
 #: src/amuleAppCommon.cpp
 #, c-format
@@ -1063,8 +1093,8 @@ msgstr "Uzaktaki çekirdek \"%s\" için tutarsız veri gönderdi (kısmi durum %
 #: src/amule-remote-gui.cpp src/BaseClient.cpp src/ClientDetailDialog.cpp
 #: src/DataToText.cpp src/DownloadListCtrl.cpp src/ExternalConn.cpp
 #: src/FileDetailDialog.cpp src/GenericClientListCtrl.cpp src/HTTPDownload.cpp
-#: src/KnownFile.cpp src/MuleTrayIcon.cpp src/PartFile.cpp src/Server.cpp
-#: src/Statistics.cpp
+#: src/KnownFile.cpp src/MuleTrayIcon.cpp src/PartFile.cpp
+#: src/ServerListCtrl.cpp src/Statistics.cpp
 msgid "Unknown"
 msgstr "Bilinmiyor"
 
@@ -1897,6 +1927,11 @@ msgstr "eD2k bağlantısını panoya kopya&la"
 msgid "Copy feedback to clipboard"
 msgstr "Geri beslemeyi panoya kopyala"
 
+#: src/DownloadListCtrl.cpp src/SearchListCtrl.cpp src/SharedFilesCtrl.cpp
+#, c-format
+msgid "Get %s for this file"
+msgstr "Bu dosya için %s iste"
+
 #: src/DownloadListCtrl.cpp
 msgid "unassign"
 msgstr "atamayı kaldır"
@@ -2565,8 +2600,8 @@ msgstr "Dosya ön izlemesi"
 
 #: src/FileLaunch.cpp
 #, c-format
-msgid "ERROR: Failed to execute external media-player! Command: `%s'"
-msgstr "Hata: Ortam oynatıcısını çalıştırma başarısız! Komut : `%s'"
+msgid "ERROR: Failed to execute external media-player! Command: '%s'"
+msgstr "Hata: Ortam oynatıcısını çalıştırma başarısız! Komut : '%s'"
 
 #: src/FileLaunch.cpp
 #, c-format
@@ -4084,27 +4119,27 @@ msgstr "Son gönderme"
 msgid "Media Info"
 msgstr "Ortam Bilgileri"
 
-#: src/muuli_wdr.cpp src/SearchListCtrl.cpp
+#: src/muuli_wdr.cpp src/SearchListCtrl.cpp src/SharedFilesCtrl.cpp
 msgid "Length"
 msgstr "Süre"
 
-#: src/muuli_wdr.cpp src/SearchListCtrl.cpp
+#: src/muuli_wdr.cpp src/SearchListCtrl.cpp src/SharedFilesCtrl.cpp
 msgid "Bitrate"
 msgstr "Akış hızı"
 
-#: src/muuli_wdr.cpp src/SearchListCtrl.cpp
+#: src/muuli_wdr.cpp src/SearchListCtrl.cpp src/SharedFilesCtrl.cpp
 msgid "Codec"
 msgstr "Kodlama"
 
-#: src/muuli_wdr.cpp
+#: src/muuli_wdr.cpp src/SearchListCtrl.cpp src/SharedFilesCtrl.cpp
 msgid "Artist"
 msgstr "Sanatçı"
 
-#: src/muuli_wdr.cpp
+#: src/muuli_wdr.cpp src/SearchListCtrl.cpp src/SharedFilesCtrl.cpp
 msgid "Album"
 msgstr "Albüm"
 
-#: src/muuli_wdr.cpp
+#: src/muuli_wdr.cpp src/SearchListCtrl.cpp src/SharedFilesCtrl.cpp
 msgid "Title"
 msgstr "Başlık"
 
@@ -6692,11 +6727,6 @@ msgid "Collapse all"
 msgstr "Tümünü daralt"
 
 #: src/SearchListCtrl.cpp
-#, c-format
-msgid "Get %s for this file"
-msgstr "Bu dosya için %s iste"
-
-#: src/SearchListCtrl.cpp
 msgid "Search related files (eD2k, local server)"
 msgstr "İlgili dosyaları ara (eD2k, yerel sunucu)"
 
@@ -7734,6 +7764,11 @@ msgstr "Engellenen: %s"
 
 #: src/Statistics.cpp
 #, c-format
+msgid "Kad banned addresses: %s"
+msgstr "Yasaklanmış Kad adresleri: %s"
+
+#: src/Statistics.cpp
+#, c-format
 msgid "Total: %i Known: %i"
 msgstr "Toplam: %i Bilinen: %i"
 
@@ -8520,7 +8555,7 @@ msgstr "Şu dosya için gönderimler bekletiliyor: %s"
 
 #: src/UserEvents.cpp
 #, c-format
-msgid "Failed to execute command `%s' on `%s' event."
+msgid "Failed to execute command '%s' on '%s' event."
 msgstr "%s komutunun %s olayında çalıştırılması başarısız oldu."
 
 #: src/UserEvents.h

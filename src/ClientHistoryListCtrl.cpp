@@ -141,12 +141,10 @@ size_t CClientHistoryListCtrl::AppendLiveRow(const CMD4Hash &hash, const LiveCli
 	row.clientSoft = live.clientSoft;
 	row.sourceFrom = live.sourceFrom;
 	row.nameCell = live.nameCell;
-	// The core wrote this peer's metadata when it said hello -- CClientCredits
-	// ::UpdateMeta() from ProcessHelloTypePacket(), which stamps first-seen the
-	// first time a peer gets a record. The history snapshot predates that, so
-	// the value is not in our rows; it is simply "now", which is what the core
-	// recorded a moment ago. hasMeta stays false because the *store* did not
-	// hold this peer when we loaded, and the columns key on the values.
+	// The core wrote this peer's metadata when it said hello, stamping first-seen the first
+	// time a peer gets a record. The history snapshot predates that, so the value is not in our
+	// rows; it is simply "now". hasMeta stays false because the STORE did not hold this peer
+	// when we loaded, and the columns key on the values.
 	row.firstSeen = static_cast<uint32>(wxDateTime::GetTimeNow());
 	row.sessions = 1;
 	row.hasMeta = false;
@@ -199,19 +197,15 @@ void CClientHistoryListCtrl::ReconcileLive(const std::unordered_map<CMD4Hash, Li
 		row.upSpeed = entry.second.upSpeed;
 		row.downSpeed = entry.second.downSpeed;
 
-		// Identity, when the peer in front of us knows more than the record
-		// does. A record only gains a name when the core writes its metadata
-		// at disconnect, so a peer we have never finished a session with shows
-		// as its hash -- which used to resolve on the next load and now would
-		// never resolve at all, since the tab loads once. A connected peer can
-		// simply say who it is.
+		// Identity, when the peer in front of us knows more than the record does. A record
+		// only gains a name when the core writes its metadata at disconnect, so a peer we
+		// have never finished a session with shows as its hash -- which used to resolve on
+		// the next load and now never would, the tab loading once.
 		//
-		// Guarded on the live name being known: a peer whose handshake has not
-		// completed yet has none, and an empty one must not overwrite a stored
-		// name we already have. Beyond that the test covers every field the
-		// body copies -- the badges in particular move while the name and
-		// address stay put, so a narrower test would freeze them for the life
-		// of the session.
+		// Guarded on the live name being known: a peer whose handshake has not completed
+		// has none, and an empty one must not overwrite a stored name. Beyond that the test
+		// covers every field the body copies -- the badges move while the name and address
+		// stay put, so a narrower test would freeze them.
 		if (!entry.second.name.IsEmpty() &&
 			(row.name != entry.second.name || row.version != entry.second.version ||
 				row.ip != entry.second.ip || row.port != entry.second.port ||
@@ -229,12 +223,10 @@ void CClientHistoryListCtrl::ReconcileLive(const std::unordered_map<CMD4Hash, Li
 			changed = true;
 		}
 
-		// A record we loaded before this peer had any metadata -- everything
-		// written before #902 existed, which on a real store is nearly all of
-		// it. The core stamped first-seen at this peer's hello, the same as for
-		// a peer we had never met; only a record that already carries one is
-		// left alone, since for that the stored value is the truth and ours
-		// would just be the current session.
+		// A record loaded before this peer had any metadata -- everything written before
+		// #902, which on a real store is nearly all of it. The core stamped first-seen at
+		// this peer's hello, as for one we had never met; a record that already carries one
+		// is left alone.
 		if (row.firstSeen == 0) {
 			row.firstSeen = static_cast<uint32>(wxDateTime::GetTimeNow());
 			if (row.sessions == 0) {
@@ -248,16 +240,14 @@ void CClientHistoryListCtrl::ReconcileLive(const std::unordered_map<CMD4Hash, Li
 		}
 	}
 
-	// Whoever was online last tick and is not in this one has gone. Found
-	// through the online set, so this costs the number of departures rather
-	// than a walk of the store.
+	// Whoever was online last tick and is not in this one has gone. Found through the online
+	// set, so this costs the number of departures rather than a walk of the store.
 	for (const size_t index : m_onlineRows) {
 		if (stillOnline.count(index) == 0) {
 			m_rows[index].online = false;
-			// Seen until this moment, which is what the core will write to
-			// the record at its own disconnect handling. Leaving the stored
-			// value would show the previous disconnect as the last contact,
-			// months ago for a peer that was here a second before.
+			// Seen until this moment, which is what the core will write to the record
+			// at its own disconnect handling. Leaving the stored value would show the
+			// previous disconnect as the last contact.
 			m_rows[index].lastSeen = static_cast<uint32>(wxDateTime::GetTimeNow());
 			// Nothing is moving for a peer that is gone.
 			m_rows[index].upSpeed = 0;
@@ -311,28 +301,24 @@ wxString DisplayNameFor(const ClientHistoryRow &row)
 
 bool CClientHistoryListCtrl::PeerForItem(wxUIntPtr data, PeerIdentity &out) const
 {
-	// Start clean: this is an out parameter and the fields below are only
-	// assigned when they are known, so anything left from a previous call
-	// would be read as belonging to this row.
+	// Start clean: this is an out parameter and the fields below are only assigned when they
+	// are known, so anything left from a previous call would be read as belonging to this row.
 	out = PeerIdentity();
-	// Identity comes from the row, so a peer we are not connected to is still
-	// named: the hash, name, address and port the store kept are enough to
-	// friend it, and enough to open a connection if the user asks for one.
+	// Identity comes from the row, so a peer we are not connected to is still named: the hash,
+	// name, address and port the store kept are enough to friend it, and enough to open a
+	// connection if asked.
 	//
-	// The live client is attached when there is one, matched by user hash
-	// rather than ECID: a history row outlives the daemon process whose ECIDs
-	// would have named the peer, and the hash is what the credit store is
-	// keyed on.
+	// The live client is attached when there is one, matched by user hash rather than ECID: a
+	// history row outlives the daemon process whose ECIDs would have named the peer.
 	const ClientHistoryRow *row = RowFor(data);
 	if (row == nullptr || row->hash.IsEmpty()) {
 		return false;
 	}
 	out.hash = row->hash;
-	// The record's own name, not the Name column's fallback. This one is
-	// written to disk by AddFriend() and set on the live client by
-	// CreateForAddress(), so a placeholder here would persist a hex hash as
-	// somebody's name. Empty is meaningful: CFriend renders it as "?" until
-	// the peer tells us what it is called.
+	// The record's own name, not the Name column's fallback. This one is written to disk by
+	// AddFriend() and set on the live client by CreateForAddress(), so a placeholder here would
+	// persist a hex hash as somebody's name. Empty is meaningful: CFriend renders it as "?"
+	// until the peer says otherwise.
 	out.name = row->name;
 	out.ip = row->ip;
 	out.port = row->port;
@@ -406,9 +392,8 @@ wxString CClientHistoryListCtrl::GetItemColumnText(wxUIntPtr item, unsigned colu
 			       : FormatLocalDateTime(wxDateTime(static_cast<time_t>(row->firstSeen)));
 
 	case COLUMN_HISTORY_LAST_SEEN:
-		// A date is the wrong answer for a peer that is here now -- and the
-		// stored last-seen for a connected peer is whenever it previously
-		// disconnected, which reads as though it were long gone.
+		// A date is the wrong answer for a peer that is here now, and the stored
+		// last-seen for a connected peer is whenever it previously disconnected.
 		if (row->online) {
 			return _("Online now");
 		}
@@ -463,9 +448,9 @@ int CClientHistoryListCtrl::CompareItemData(
 	case COLUMN_HISTORY_FIRST_SEEN:
 		return modifier * CmpAny(r1->firstSeen, r2->firstSeen);
 	case COLUMN_HISTORY_LAST_SEEN:
-		// Peers that are here now sort as the most recent thing there is, so
-		// the column reads as "when was this peer last around" throughout
-		// instead of stranding the live ones at their stale timestamps.
+		// Peers that are here now sort as the most recent thing there is, so the column
+		// reads as "when was this peer last around" throughout instead of stranding the
+		// live ones at their stale timestamps.
 		if (r1->online != r2->online) {
 			return modifier * (r1->online ? 1 : -1);
 		}

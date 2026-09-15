@@ -36,8 +36,8 @@ Any mod that changes anything within the Kademlia side will not be allowed to ad
 there client on the eMule forum..
 */
 
-#ifndef __KAD_UDP_LISTENER_H__
-#define __KAD_UDP_LISTENER_H__
+#ifndef KADEMLIAUDPLISTENER_H
+#define KADEMLIAUDPLISTENER_H
 
 #include "../utils/UInt128.h"
 #include "../../Tag.h"
@@ -120,9 +120,8 @@ private:
 	// Kad1.0
 	void SendLegacyChallenge(uint32_t ip, uint16_t port, const CUInt128 &contactID);
 
-	// The sender's address travels with every search response so that
-	// CSearch can look the answering contact up and gate
-	// version-dependent result tags on its advertised Kad version.
+	// The sender's address travels with every search response so CSearch can look the answering
+	// contact up and gate version-dependent result tags on its advertised Kad version.
 	void ProcessSearchResponse(CMemFile &bio, uint32_t fromIP, uint16_t fromPort);
 	void ProcessSearchResponse(
 		const uint8_t *packetData, uint32_t lenPacket, uint32_t fromIP, uint16_t fromPort);
@@ -247,8 +246,8 @@ private:
 		const CKadUDPKey &senderKey);
 
 	// Debug
-	//	void DebugClientOutput(const wxString& place, uint32_t kad_ip, uint32_t port, const uint8_t*
-	// data = NULL, int len = 0);
+	//	void DebugClientOutput(const wxString& place, uint32_t kad_ip, uint32_t port,
+	//	    const uint8_t* data = NULL, int len = 0);
 
 	typedef std::list<FetchNodeID_Struct> FetchNodeIDList;
 	FetchNodeIDList m_fetchNodeIDRequests;
@@ -256,5 +255,5 @@ private:
 
 } // namespace Kademlia
 
-#endif //__KAD_UDP_LISTENER_H__
+#endif // KADEMLIAUDPLISTENER_H
 // File_checked_for_headers

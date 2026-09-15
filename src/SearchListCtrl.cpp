@@ -68,9 +68,8 @@ wxEND_EVENT_TABLE()
 
 std::list<CSearchListCtrl *> CSearchListCtrl::s_lists;
 
-// MLOrder-compatible bit values, reused from CMuleListCtrl so the persisted
-// "TableOrderingSearch" config entries stay wire-compatible (see
-// ListColumnStore.cpp, which already hardcodes these same values).
+// MLOrder-compatible bit values, reused from CMuleListCtrl so the persisted "TableOrderingSearch"
+// config entries stay wire-compatible (see ListColumnStore.cpp, which hardcodes the same values).
 namespace
 {
 const unsigned SORT_DES = 0x1000;
@@ -88,12 +87,10 @@ CSearchListCtrl::CSearchListCtrl(
 , m_invert(false)
 , m_filterEnabled(false)
 {
-	// Without this, idle events aren't guaranteed to reach this specific
-	// window (wx's default idle-processing mode only visits windows opted
-	// in this way), so OnIdle's column-resize detection -- the only way
-	// this control learns about a user drag-resize, since there is no
-	// portable wxDataViewCtrl "column resized" event -- would silently
-	// never fire.
+	// Without this, idle events are not guaranteed to reach this window (wx's default idle-
+	// processing mode only visits windows opted in this way), so OnIdle's column-resize
+	// detection -- the only way this control learns about a drag-resize, there being no
+	// portable wxDataViewCtrl "column resized" event -- would silently never fire.
 	SetExtraStyle(GetExtraStyle() | wxWS_EX_PROCESS_IDLE);
 
 	m_model = new CSearchListModel(this);
@@ -143,9 +140,9 @@ CSearchListCtrl::CSearchListCtrl(
 		100,
 		wxALIGN_LEFT,
 		wxDATAVIEW_COL_RESIZABLE | wxDATAVIEW_COL_SORTABLE);
-	// Media tag columns: ed2k/Kad publishers (eMule, eMule AI, aMule) can
-	// advertise per-file media metadata in FT_MEDIA_LENGTH / _BITRATE /
-	// _CODEC. Cells stay empty for non-media results.
+	// Media tag columns: ed2k/Kad publishers (eMule, eMule AI, aMule) can advertise per-file
+	// media metadata in FT_MEDIA_LENGTH / _BITRATE / _CODEC. Cells stay empty for non-media
+	// results.
 	AddTextColumn(_("Length"),
 		CSearchListModel::COL_LENGTH,
 		"L",
@@ -164,9 +161,30 @@ CSearchListCtrl::CSearchListCtrl(
 		80,
 		wxALIGN_LEFT,
 		wxDATAVIEW_COL_RESIZABLE | wxDATAVIEW_COL_SORTABLE);
-	// Directories is almost always empty (only populated when the result
-	// came from a "view shared files" request, rare in practice), so put
-	// it at the end with the other usually-empty columns.
+	// Visible like the three media columns above rather than hidden like the shared-files
+	// list's: a search result is read once, and a user hunting a track by artist wants the
+	// answer without opening the column picker.
+	AddTextColumn(_("Artist"),
+		CSearchListModel::COL_ARTIST,
+		"a",
+		120,
+		wxALIGN_LEFT,
+		wxDATAVIEW_COL_RESIZABLE | wxDATAVIEW_COL_SORTABLE);
+	AddTextColumn(_("Album"),
+		CSearchListModel::COL_ALBUM,
+		"b",
+		120,
+		wxALIGN_LEFT,
+		wxDATAVIEW_COL_RESIZABLE | wxDATAVIEW_COL_SORTABLE);
+	AddTextColumn(_("Title"),
+		CSearchListModel::COL_TITLE,
+		"t",
+		140,
+		wxALIGN_LEFT,
+		wxDATAVIEW_COL_RESIZABLE | wxDATAVIEW_COL_SORTABLE);
+	// Directories is almost always empty (only populated when the result came from a "view
+	// shared files" request, rare in practice), so it goes at the end with the other usually-
+	// empty columns.
 	AddTextColumn(_("Directories"), // I would have preferred "Directory" but this is already translated
 		CSearchListModel::COL_DIRECTORY,
 		"D",
@@ -198,14 +216,10 @@ CSearchListCtrl::CSearchListCtrl(
 
 CSearchListCtrl::~CSearchListCtrl()
 {
-	// Push this list's current widths/sort state onward before it's gone,
-	// so whichever tab happens to be closed *last* -- the one that
-	// actually gets to SaveColumnSettings() below -- reflects the most
-	// recently touched state, regardless of which tab the user last
-	// resized/re-sorted. Doesn't depend on the idle-driven live sync
-	// (CSearchListCtrl::OnIdle) ever having fired: that only keeps
-	// multiple simultaneously-open tabs visually in sync as a UX nicety,
-	// it's not what persistence correctness relies on here.
+	// Push this list's widths/sort state onward before it is gone, so whichever tab is closed
+	// LAST -- the one that reaches SaveColumnSettings() below -- reflects the most recently
+	// touched state, whichever tab was resized. Does not depend on the idle-driven live sync
+	// having fired: that only keeps simultaneously-open tabs visually in step.
 	SyncOtherLists(this);
 
 	s_lists.remove(this);
@@ -224,19 +238,18 @@ bool CSearchListCtrl::PassesFilter(const CSearchFile *file) const
 
 bool CSearchListCtrl::IsFiltered(const CSearchFile *file) const
 {
-	// By default, everything is displayed. (Name kept from the original
-	// wxListCtrl-era code -- despite the name, true means "passes the
-	// filter, should be shown".)
+	// By default everything is displayed. Despite the name (kept from the
+	// wxListCtrl-era code) true means "passes the filter, should be shown".
 	bool result = true;
 
 	if (m_filterEnabled && m_filter.IsValid()) {
 		result = m_filter.Matches(file->GetFileName().GetPrintable());
 		result = ((result && !m_invert) || (!result && m_invert));
 		if (result && m_filterKnown) {
-			// Still a live status test, so results that were already known
-			// stay hidden -- but never for the ones the user just queued
-			// from this list, which would otherwise disappear under the
-			// click that queued them (see m_userQueued).
+			// Still a live status test, so results that were already known stay hidden
+			// -- but never for the ones the user just queued from this list, which
+			// would otherwise disappear under the click that queued them (see
+			// m_userQueued).
 			const bool queuedHere = m_userQueued.count(file->GetFileHash()) != 0;
 			result = queuedHere || file->GetDownloadStatus() == CSearchFile::NEW;
 		}
@@ -250,13 +263,10 @@ bool CSearchListCtrl::ShouldShow(const CSearchFile *file) const
 	if (IsFiltered(file)) {
 		return true;
 	}
-	// A parent that doesn't itself pass the filter is still shown as a
-	// container if at least one child does -- regardless of whether it's
-	// currently expanded. (This is a deliberate, flagged behaviour change
-	// from the old hand-drawn-tree version, which only kept such a parent
-	// visible while its children were already expanded-shown; with a real
-	// tree control there's no reason to couple filtering to transient
-	// expand state, and always surfacing the container is more discoverable.)
+	// A parent that does not itself pass the filter is still shown as a container if at least
+	// one child does, whether or not it is expanded. The old hand-drawn-tree version only kept
+	// such a parent visible while its children were already expanded-shown; with a real tree
+	// control there is no reason to couple filtering to transient expand state.
 	const CSearchResultList &children = file->GetChildren();
 	for (const CSearchFile *child : children) {
 		if (IsFiltered(child)) {
@@ -291,9 +301,9 @@ void CSearchListCtrl::SetFilter(const wxString &regExp, bool invert, bool filter
 	m_filter.Compile(m_filterText, wxRE_DEFAULT | wxRE_ICASE);
 	m_filterKnown = filterKnown;
 	m_invert = invert;
-	// Re-applying the filter is the point at which the user asked to see the
-	// list filtered afresh, so the rows held over from earlier downloads
-	// collapse away here rather than lingering for the rest of the session.
+	// Re-applying the filter is the point at which the user asked to see the list filtered
+	// afresh, so the rows held over from earlier downloads collapse away here rather than
+	// lingering for the rest of the session.
 	m_userQueued.clear();
 
 	if (m_filterEnabled) {
@@ -316,10 +326,9 @@ size_t CSearchListCtrl::GetHiddenItemCount() const
 	}
 	size_t hidden = 0;
 	const CSearchResultList &results = theApp->searchlist->GetSearchResults(m_nResultsID);
-	// Only top-level results are indexed (see CSearchResultIndex), so this
-	// counts exactly the results the list would show but for the filter. A
-	// grouped child is never "hidden" in its own right: it is reached through
-	// its parent, which surfaces as a container for it.
+	// Only top-level results are indexed (see CSearchResultIndex), so this counts exactly the
+	// results the list would show but for the filter. A grouped child is never hidden in its
+	// own right: it is reached through its parent.
 	for (CSearchFile *file : results) {
 		if (!ShouldShow(file)) {
 			++hidden;
@@ -337,18 +346,14 @@ size_t CSearchListCtrl::GetItemCount() const
 	const CSearchResultList &results = theApp->searchlist->GetSearchResults(m_nResultsID);
 	// Results, not rows: one per top-level hit, whatever is expanded.
 	//
-	// This used to add the children of expanded groups, which was right when
-	// the tab was a wxListCtrl and an expanded child really was another row --
-	// the count and the row count were the same number. Under the data view
-	// they are not: children are model nodes, nothing recomputes the label on
-	// expand or collapse (there is no handler), and the tab therefore reported
-	// whichever expansion state happened to be current when some unrelated
-	// event last refreshed it. Two clients showing identical lists disagreed
-	// by exactly the children someone had opened.
+	// Adding the children of expanded groups was right when the tab was a wxListCtrl and an
+	// expanded child really was another row. Under the data view children are model nodes,
+	// nothing recomputes the label on expand or collapse, and the tab reported whichever
+	// expansion state happened to be current when some unrelated event last refreshed it -- so
+	// two clients showing identical lists disagreed by exactly the children someone had opened.
 	//
-	// It also makes the label's own arithmetic add up: GetHiddenItemCount()
-	// has always counted top-level results only, so "shown/(shown + hidden)"
-	// was mixing rows with results.
+	// It also makes the label's arithmetic add up: GetHiddenItemCount() has always counted top-
+	// level results only.
 	for (CSearchFile *file : results) {
 		if (!file->GetParent() && ShouldShow(file)) {
 			++shown;
@@ -361,10 +366,9 @@ CSearchFile *CSearchListCtrl::GetFocusedFile() const
 {
 	wxDataViewItemArray selections;
 	GetSelections(selections);
-	// The first selected result, not the first selected item: a folder
-	// picked up alongside one would otherwise make this give up, while
-	// GetSelectedItemCount() -- which counts results -- still enables the
-	// menu entry that calls it.
+	// The first selected RESULT, not the first selected item: a folder picked up alongside one
+	// would otherwise make this give up, while GetSelectedItemCount() still enables the menu
+	// entry that calls it.
 	for (const wxDataViewItem &item : selections) {
 		if (!m_model->IsFolder(item)) {
 			return CSearchListModel::ToFile(item);
@@ -396,9 +400,9 @@ void CSearchListCtrl::SetBrowseEcid(uint32 ecid)
 	const bool wasBrowse = IsBrowse();
 	m_browseEcid = ecid;
 
-	// Only on the transition into browsing. A re-browse of the same peer
-	// comes back through here with the same ECID, and swapping the model
-	// again would throw away the folders the user has open.
+	// Only on the transition into browsing. A re-browse of the same peer comes back through
+	// here with the same ECID, and swapping the model again would throw away the folders the
+	// user has open.
 	if (!ecid || wasBrowse) {
 		return;
 	}
@@ -410,12 +414,30 @@ void CSearchListCtrl::SetBrowseEcid(uint32 ecid)
 
 int CSearchListCtrl::GetSelectedItemCount() const
 {
-	// Results, not rows. A browse tab has folders in the tree, and every
-	// caller of this is asking how many things it can act on -- a menu it is
-	// about to enable, a download it is about to queue. Counting a selected
-	// folder would enable an action with nothing behind it.
+	// Results, not rows. A browse tab has folders in the tree, and every caller is asking how
+	// many things it can act on, so counting a selected folder would enable an action with
+	// nothing behind it.
 	return static_cast<int>(GetSelectedFiles().size());
 }
+
+namespace
+{
+// Media tag columns sort empty last whichever way the column is sorted, so the results that carry
+// the tag stay together rather than being buried under the ones that do not. Shared by all four.
+int CompareMediaStr(const wxString &a, const wxString &b, int modifier)
+{
+	if (a.IsEmpty() && b.IsEmpty()) {
+		return 0;
+	}
+	if (a.IsEmpty()) {
+		return 1;
+	}
+	if (b.IsEmpty()) {
+		return -1;
+	}
+	return modifier * CmpAny(a, b);
+}
+} // namespace
 
 int CSearchListCtrl::CompareFilesByColumn(
 	const CSearchFile *f1, const CSearchFile *f2, unsigned column, bool alt, int modifier) const
@@ -510,17 +532,20 @@ int CSearchListCtrl::CompareFilesByColumn(
 	case CSearchListModel::COL_CODEC: {
 		const wxString c1 = FormatMediaCodec(f1->GetStrTagValue(FT_MEDIA_CODEC));
 		const wxString c2 = FormatMediaCodec(f2->GetStrTagValue(FT_MEDIA_CODEC));
-		if (c1.IsEmpty() && c2.IsEmpty()) {
-			return 0;
-		}
-		if (c1.IsEmpty()) {
-			return 1;
-		}
-		if (c2.IsEmpty()) {
-			return -1;
-		}
-		return modifier * CmpAny(c1, c2);
+		return CompareMediaStr(c1, c2, modifier);
 	}
+
+	case CSearchListModel::COL_ARTIST:
+		return CompareMediaStr(
+			f1->GetStrTagValue(FT_MEDIA_ARTIST), f2->GetStrTagValue(FT_MEDIA_ARTIST), modifier);
+
+	case CSearchListModel::COL_ALBUM:
+		return CompareMediaStr(
+			f1->GetStrTagValue(FT_MEDIA_ALBUM), f2->GetStrTagValue(FT_MEDIA_ALBUM), modifier);
+
+	case CSearchListModel::COL_TITLE:
+		return CompareMediaStr(
+			f1->GetStrTagValue(FT_MEDIA_TITLE), f2->GetStrTagValue(FT_MEDIA_TITLE), modifier);
 	}
 
 	return 0;
@@ -554,18 +579,15 @@ void CSearchListCtrl::SyncLists(CSearchListCtrl *src, CSearchListCtrl *dst)
 	}
 	dst->UpdateExpanderColumn();
 
-	// Re-baseline what dst's idle poll compares against, so the widths just
-	// written read as the status quo rather than as a drag the user made
-	// there. Without this the mirror echoes: dst notices "its" widths moved,
-	// runs its own OnColumnWidthsChanged(), and mirrors them straight back.
+	// Re-baseline what dst's idle poll compares against, so the widths just written read as the
+	// status quo rather than as a drag the user made there. Without this the mirror echoes: dst
+	// notices "its" widths moved and mirrors them straight back.
 	//
-	// That echo does not die out on its own. GTK clamps a column to a minimum
-	// taken from its header and contents, so a width that fits one tab comes
-	// back wider in another holding different results -- the two tabs never
-	// converge on a value and hand it back and forth indefinitely, repainting
-	// each time, long after the mouse was released. It showed up on the
-	// columns that were empty in one of the tabs, since those are the ones
-	// whose clamped minimum differs (issue #1022).
+	// The echo does not die out on its own. GTK clamps a column to a minimum taken from its
+	// header and contents, so a width that fits one tab comes back wider in another holding
+	// different results, and the two hand it back and forth indefinitely. It showed up on
+	// columns empty in one of the tabs, since those are the ones whose clamped minimum differs
+	// (issue #1022).
 	dst->ResetKnownWidths();
 
 	if (dst->m_sort_orders.empty() || src->m_sort_orders.empty() ||
@@ -622,12 +644,10 @@ wxString CSearchListCtrl::GetOldColumnOrder() const
 
 void CSearchListCtrl::SetBrowseStatus(uint32 status)
 {
-	// A re-browse reuses this tab (see CSearchDlg::EnsureBrowseTab), so the
-	// rebuild threshold has to start over with it. Left standing, the previous
-	// browse's final row count becomes the bar the new one has to clear, which
-	// it never does: every burst would be skipped and the list would stay
-	// empty until the browse finished, which is the wait the throttle exists
-	// to avoid (issue #898).
+	// A re-browse reuses this tab (see CSearchDlg::EnsureBrowseTab), so the rebuild threshold
+	// has to start over with it. Left standing, the previous browse's final row count becomes
+	// the bar the new one never clears: every burst is skipped and the list stays empty until
+	// the browse finishes, which is the wait the throttle exists to avoid (issue #898).
 	if (status == BROWSE_IN_PROGRESS) {
 		m_lastRebuildRows = 0;
 	}
@@ -636,46 +656,35 @@ void CSearchListCtrl::SetBrowseStatus(uint32 status)
 
 void CSearchListCtrl::OnIdleHook()
 {
-	// One coalesced rebuild per idle for everything that arrived since the
-	// last one (got3nks, PR #796 review): mixing incremental Item*
-	// notifications with the full model reset a group formation needs left
-	// wxGTK's tree inconsistent, and neither ItemChanged() nor a
-	// delete-and-re-add worked around it -- only wxDataViewModel::Cleared()
-	// reliably makes the control re-derive container-ness.
+	// One coalesced rebuild per idle for everything that arrived since the last one: mixing
+	// incremental Item* notifications with the full model reset a group formation needs left
+	// wxGTK's tree inconsistent, and only wxDataViewModel::Cleared() reliably makes the control
+	// re-derive container-ness.
 	//
-	// That is now the fallback rather than the rule: arrivals are reported
-	// incrementally where the backends tolerate it, and only what still
-	// needs a rebuild takes the branch below. Cleared() throws away the
-	// control's own view state, so selection and expansion are captured and
-	// re-applied around it -- otherwise a result landing mid-search would
-	// deselect whatever the user had picked. Items are CSearchFile*, still
-	// valid across the rebuild; ones that went away are dropped by
-	// re-checking membership against the live tree afterwards.
+	// That is the fallback rather than the rule: arrivals are reported incrementally where the
+	// backends tolerate it. Cleared() throws away the control's own view state, so selection
+	// and expansion are captured and re-applied around it, or a result landing mid-search would
+	// deselect whatever the user had picked. Items are CSearchFile*, still valid across the
+	// rebuild; ones that went away are dropped by re-checking membership afterwards.
 	if (m_model->HasPending() && !m_model->HasPendingReset()) {
-		// Incremental batch: the control keeps its scroll position, its
-		// selection and its expanded rows, so there is nothing to preserve
-		// around it. This is the path a search takes while results stream
-		// in, which is why the list no longer jumps back to the top on
+		// Incremental batch: the control keeps its scroll position, selection and expanded
+		// rows, so there is nothing to preserve around it. This is the path a search takes
+		// while results stream in, which is why the list no longer jumps back to the top on
 		// every burst.
 		m_model->FlushPending();
 	} else if (m_model->HasPending()) {
-		// A browse still streaming in is rebuilt on a growth schedule rather
-		// than on every burst.
+		// A browse still streaming in is rebuilt on a growth schedule rather than on every
+		// burst. The rebuild below is O(rows) and a browse arrives one directory at a time,
+		// so per-burst rebuilding is O(bursts x rows): browsing a 39,450-file share took
+		// 384 rebuilds totalling 232 seconds of blocked main loop (issue #898).
 		//
-		// The rebuild below is O(rows), and a browse arrives one directory at
-		// a time, so rebuilding per burst is O(bursts x rows): browsing a
-		// 39,450-file share took 384 rebuilds totalling 232 seconds of
-		// blocked main loop, the last of them 5.2 s on its own (issue #898).
-		//
-		// Waiting for the row count to grow by half means the rebuilds form a
-		// geometric series, so their total is a small multiple of the final
-		// one -- about 25 rebuilds instead of 384 here -- while results still
-		// appear as the browse runs rather than only at the end. A finished
-		// or failed browse always falls through, so the last state is exact.
+		// Waiting for the row count to grow by half makes the rebuilds a geometric series,
+		// so their total is a small multiple of the final one -- about 25 instead of 384 --
+		// while results still appear as the browse runs. A finished or failed browse always
+		// falls through, so the last state is exact.
 		if (m_browseStatus == BROWSE_IN_PROGRESS) {
-			// Counted from the indexed result list, not the model: the
-			// model would have to walk its rows to answer, which is the
-			// O(rows) cost being avoided here.
+			// Counted from the indexed result list, not the model: the model would have
+			// to walk its rows to answer, which is the O(rows) cost being avoided here.
 			const unsigned rows =
 				m_nResultsID
 					? (unsigned)theApp->searchlist->GetSearchResults(m_nResultsID).size()
@@ -688,13 +697,11 @@ void CSearchListCtrl::OnIdleHook()
 			m_lastRebuildRows = 0;
 		}
 
-		// The row the user is looking at, so the rebuild below can be put
-		// back where they left it. Cleared() drops the view to the top, and
-		// on a running search that is every idle -- measured on GTK with wx
-		// 3.3.3, EnsureVisible() afterwards lands it back on the same row
-		// exactly, because the items here are CSearchFile pointers and stay
-		// nameable across the rebuild (the virtual lists cannot do this:
-		// their items are row numbers, which mean nothing afterwards).
+		// The row the user is looking at, so the rebuild can be put back where they left
+		// it: Cleared() drops the view to the top, which on a running search is every idle.
+		// EnsureVisible() afterwards lands on the same row exactly, because the items here
+		// are CSearchFile pointers and stay nameable across the rebuild (the virtual lists
+		// cannot do this: their items are row numbers).
 		const wxDataViewItem topBefore = GetTopItem();
 
 		wxDataViewItemArray selected;
@@ -729,9 +736,9 @@ void CSearchListCtrl::OnIdleHook()
 			SetSelections(restore);
 		}
 
-		// After the selection, which does not move the view on any backend,
-		// so this has the last word on where the list sits. Checked against
-		// the live tree first, like everything else restored here.
+		// After the selection, which does not move the view on any backend, so this has the
+		// last word on where the list sits. Checked against the live tree first, like
+		// everything else restored here.
 		if (topBefore.IsOk() && live.Index(topBefore) != wxNOT_FOUND) {
 			EnsureVisible(topBefore);
 		}
@@ -756,10 +763,10 @@ void CSearchListCtrl::OnSortingChanged()
 
 void CSearchListCtrl::OnRightClick(wxDataViewEvent &event)
 {
-	// A folder row is not a result: none of the actions below apply to it,
-	// and GetSelectedItemCount() counts results, so it would otherwise get
-	// no menu at all. Remembered rather than re-derived when the handler
-	// runs, because a right-click does not select the row on every platform.
+	// A folder row is not a result: none of the actions below apply to it, and
+	// GetSelectedItemCount() counts results, so it would otherwise get no menu at all.
+	// Remembered rather than re-derived when the handler runs, because a right-click does not
+	// select the row on every platform.
 	m_contextFolder = m_model->IsFolder(event.GetItem()) ? event.GetItem() : wxDataViewItem();
 	if (m_contextFolder.IsOk()) {
 		wxMenu menu;
@@ -770,9 +777,8 @@ void CSearchListCtrl::OnRightClick(wxDataViewEvent &event)
 	}
 
 	if (GetSelectedItemCount()) {
-		// No title -- see the identical rationale in the pre-port version
-		// (wxMenu's title parameter renders inconsistently or not at all
-		// as a context-popup header across platforms, issue #767).
+		// No title: wxMenu's title parameter renders inconsistently or not at all
+		// as a context-popup header across platforms (issue #767).
 		wxMenu menu;
 		menu.Append(MP_RESUME, _("Download"));
 
@@ -795,10 +801,9 @@ void CSearchListCtrl::OnRightClick(wxDataViewEvent &event)
 		menu.Append(MP_SEARCHRELATED, _("Search related files (eD2k, local server)"));
 		menu.Append(MP_GETCOMMENTS, _("Show all comments"));
 		menu.AppendSeparator();
-		// Singular or plural to match what it will copy, the same way the
-		// server list labels it. OnPopupGetUrl has always walked the whole
-		// selection and joined the links with newlines -- it was only ever
-		// the menu that stopped it being handed more than one.
+		// Singular or plural to match what it will copy, as the server list does.
+		// OnPopupGetUrl has always walked the whole selection and joined the links with
+		// newlines -- only the menu stopped it being handed more than one.
 		const bool single = (GetSelectedItemCount() == 1);
 		menu.Append(MP_GETED2KLINK,
 			single ? _("Copy eD2k link to clipboard") : _("Copy eD2k links to clipboard"));
@@ -876,11 +881,10 @@ std::vector<wxDataViewItem> CSearchListCtrl::ContextFolders()
 	wxDataViewItemArray selection;
 	GetSelections(selection);
 
-	// The whole selection, but only when the row clicked is part of it: the
-	// rule a file manager follows, since right-clicking outside a selection
-	// addresses the row under the pointer rather than whatever happens to be
-	// selected elsewhere. A right-click does not select on every platform,
-	// which is why m_contextFolder is remembered separately (see OnRightClick).
+	// The whole selection, but only when the row clicked is part of it: the rule a file manager
+	// follows, since right-clicking outside a selection addresses the row under the pointer. A
+	// right-click does not select on every platform, which is why m_contextFolder is remembered
+	// separately (see OnRightClick).
 	bool clicked_is_selected = false;
 	for (const wxDataViewItem &item : selection) {
 		if (item == m_contextFolder) {
@@ -908,9 +912,8 @@ std::vector<wxDataViewItem> CSearchListCtrl::ContextFolders()
 
 void CSearchListCtrl::OnExpandAll(wxCommandEvent &WXUNUSED(event))
 {
-	// Every selected folder, not just the clicked one (issue #910 follow-up).
-	// Nesting needs no special case: a parent's subtree walk already covers a
-	// descendant that is also selected.
+	// Every selected folder, not just the clicked one (issue #910 follow-up). Nesting needs no
+	// special case: a parent's subtree walk already covers a descendant that is also selected.
 	for (const wxDataViewItem &folder : ContextFolders()) {
 		SetSubtreeExpanded(folder, true);
 	}
@@ -975,12 +978,10 @@ void CSearchListCtrl::OnRelatedSearch(wxCommandEvent &WXUNUSED(event))
 
 void CSearchListCtrl::BuildDisplayOrder(std::vector<CSearchFile *> &ordered) const
 {
-	// The model yields top-level rows in arrival order, so they are put
-	// through this list's own comparator -- the one CSearchListModel::
-	// Compare() uses -- to match what is actually on screen under the
-	// current sort. GetItemByRow()/GetRowByItem() would be the direct
-	// route but exist only in wx's generic implementation, not on GTK or
-	// macOS.
+	// The model yields top-level rows in arrival order, so they go through this list's own
+	// comparator -- the one CSearchListModel::Compare() uses -- to match what is on screen
+	// under the current sort. GetItemByRow()/GetRowByItem() would be the direct route but exist
+	// only in wx's generic implementation.
 	const auto byDisplayOrder = [this](const CSearchFile *f1, const CSearchFile *f2) {
 		return CompareFiles(f1, f2) < 0;
 	};
@@ -995,11 +996,9 @@ void CSearchListCtrl::BuildDisplayOrder(std::vector<CSearchFile *> &ordered) con
 	}
 	std::sort(parents.begin(), parents.end(), byDisplayOrder);
 
-	// An expanded group's children occupy rows of their own, so they belong
-	// here too: callers count rows against what is on screen (a page is
-	// GetCountPerPage() rows, children included) and select ranges of them.
-	// Leaving them out made a page overshoot and skipped every child inside
-	// the range.
+	// An expanded group's children occupy rows of their own, so they belong here too: callers
+	// count rows against what is on screen and select ranges of them. Leaving them out made a
+	// page overshoot and skipped every child in the range.
 	ordered.clear();
 	ordered.reserve(parents.size());
 	for (CSearchFile *parent : parents) {
@@ -1034,32 +1033,27 @@ void CSearchListCtrl::DownloadSelected(int category)
 {
 	FindWindowById(IDC_SDOWNLOAD)->Enable(false);
 
-	// -1 means "no explicit category", i.e. anything but the right-click
-	// "Download in category" action, which passes one and must keep winning.
-	// The panel's selector used to be read only while the Extended Parameters
-	// checkbox was ticked, because it lived inside that row -- so unticking the
-	// row to reclaim the screen space silently sent the download to Main
-	// instead (issue #979). The selector now sits beside the Download button
-	// and is always visible, so what the user can see is what gets used.
+	// -1 means "no explicit category", i.e. anything but the right-click "Download in category"
+	// action, which passes one and must keep winning. The panel's selector used to be read only
+	// while the Extended Parameters checkbox was ticked, because it lived inside that row, so
+	// unticking the row silently sent the download to Main instead (issue #979).
 	if (category == -1) {
 		category = CastByID(ID_AUTOCATASSIGN, NULL, wxChoice)->GetSelection();
 	}
 
 #ifndef CLIENT_GUI
-	// Monolithic: Search_Add_Download runs synchronously on this thread, so
-	// each selected file's Notify_DownloadCtrlAddFile -> AddFile fires a
-	// per-item resort inline. Batch the whole selection into a single sort
-	// + repaint (issue #615). The remote GUI's adds arrive later via the
-	// download-queue poll, which already batches, so this is monolithic-only.
+	// Monolithic: Search_Add_Download runs synchronously on this thread, so each file's
+	// Notify_DownloadCtrlAddFile -> AddFile fires a per-item resort inline. Batch the selection
+	// into a single sort + repaint (issue #615). The remote GUI's adds arrive via the download-
+	// queue poll, which already batches.
 	CDownloadListCtrl *downloadlist = theApp->amuledlg->m_transferwnd->downloadlistctrl;
 	downloadlist->BeginBatchUpdate();
 #endif
 
 	for (CSearchFile *file : GetSelectedFiles()) {
-		// Exempt from "Hide Known Files" before queueing, so the row
-		// survives the status change this is about to cause. Results are
-		// only grouped when their hashes match (CSearchList::AddResult), so
-		// the one insert covers a group's variants along with its parent.
+		// Exempt from "Hide Known Files" before queueing, so the row survives the status
+		// change this is about to cause. Results are grouped only when their hashes match,
+		// so the one insert covers a group's variants too.
 		m_userQueued.insert(file->GetFileHash());
 		CoreNotify_Search_Add_Download(file, category);
 	}

@@ -43,6 +43,12 @@ uint16_t CKadAICHHashList::AddReference(const CKadAICHHash &hash)
 		}
 	}
 
+	if (m_hashes.size() >= MAX_SLOTS) {
+		// Refusing is the only safe answer: handing back a truncated index would alias an
+		// existing slot and credit this publisher's hash to a different one.
+		return INVALID_INDEX;
+	}
+
 	m_hashes.push_back(hash);
 	m_popularity.push_back(1);
 	return (uint16_t)(m_hashes.size() - 1);
@@ -76,19 +82,33 @@ uint8_t CKadAICHHashList::GetPopularityAt(uint16_t index) const
 
 const CKadAICHHash &CKadAICHHashList::GetHashAt(uint16_t index) const
 {
-	// A zeroed hash for an out-of-range index keeps this a total function:
-	// the callers are packet and file parsers, where an index that failed
-	// validation must not turn into undefined behaviour.
+	// A zeroed hash for an out-of-range index keeps this a total function: the callers are
+	// packet and file parsers, where an index that failed validation must not turn into
+	// undefined behaviour.
 	static const CKadAICHHash s_empty = CKadAICHHash();
 	return (index < m_hashes.size()) ? m_hashes[index] : s_empty;
 }
 
+std::vector<uint16_t> CKadAICHHashList::Compact()
+{
+	std::vector<uint16_t> map = BuildCompactionMap();
+
+	std::vector<CKadAICHHash> hashes;
+	std::vector<uint8_t> popularity;
+	for (size_t i = 0; i < m_hashes.size(); ++i) {
+		if (map[i] != INVALID_INDEX) {
+			hashes.push_back(m_hashes[i]);
+			popularity.push_back(m_popularity[i]);
+		}
+	}
+	m_hashes.swap(hashes);
+	m_popularity.swap(popularity);
+	return map;
+}
+
 std::vector<uint16_t> CKadAICHHashList::BuildCompactionMap() const
 {
-	// uint16_t(...) rather than INVALID_INDEX: the fill constructor takes a
-	// const reference, which would ODR-use the member and need an
-	// out-of-line definition -- ill-formed for a constexpr member in C++17.
-	std::vector<uint16_t> map(m_hashes.size(), uint16_t(INVALID_INDEX));
+	std::vector<uint16_t> map(m_hashes.size(), INVALID_INDEX);
 	uint16_t next = 0;
 	for (size_t i = 0; i < m_hashes.size(); ++i) {
 		if (m_popularity[i] > 0) {
@@ -164,31 +184,28 @@ bool CKadAICHHashList::PeerSupportsAICHKeywordStorage(uint8_t peerKadVersion)
 const CKadAICHHashList::SResultHash *CKadAICHHashList::SelectTrusted(
 	const std::vector<SResultHash> &hashes, uint32_t publishersKnown)
 {
-	// Two rules, both eMule 0.70b's at SearchList.cpp:795-805, and both
-	// refusals rather than choices.
+	// Two rules, both eMule 0.70b's at SearchList.cpp:795-805, and both refusals rather than
+	// choices.
 	//
-	// Competing hashes for one file id mean at least one publisher is lying.
-	// Taking the most popular of them looks like the obvious answer and is
-	// the wrong one: popularity here is a count a peer reports about itself,
-	// so whoever is lying also controls the number that would decide the
-	// vote. Upstream ignores AICH for such a result entirely, and the
-	// destination being SetMasterHash(hash, AICH_VERIFIED) is why -- there is
-	// no "probably right" state to put a contested hash into.
+	// Competing hashes for one file id mean at least one publisher is lying. Taking the most
+	// popular looks like the obvious answer and is the wrong one: popularity here is a count a
+	// peer reports about itself, so whoever is lying also controls the number that would decide
+	// the vote. Upstream ignores AICH for such a result entirely, and the destination being
+	// SetMasterHash(hash, AICH_VERIFIED) is why -- there is no "probably right" state to put a
+	// contested hash into.
 	if (hashes.size() != 1) {
 		return nullptr;
 	}
 
-	// One hash still is not enough on its own. A single publisher out of many
-	// is not agreement, it is one peer we happen to have asked, so the hash
-	// must come from at least a third of the publishers known for this file.
-	// Written as a ratio to match upstream's own arithmetic rather than
-	// restating it as a multiplication.
+	// One hash still is not enough on its own. A single publisher out of many is not agreement,
+	// it is one peer we happen to have asked, so the hash must come from at least a third of
+	// the publishers known for this file. Written as a ratio to match upstream's own arithmetic
+	// rather than restating it as a multiplication.
 	//
-	// publishersKnown == 0 is refused, which upstream guards explicitly too:
-	// its condition is byPublishers > 0 && popularity > 0 && the ratio. Worth
-	// stating because the ratio alone would pass it, 0 / anything being 0. A
-	// zero count means TAG_PUBLISHINFO was absent or zero, so there is no
-	// publisher count to be a third of, and accepting there would make a
+	// publishersKnown == 0 is refused, which upstream guards explicitly too: its condition is
+	// byPublishers > 0 && popularity > 0 && the ratio. Worth stating because the ratio alone
+	// would pass it, 0 / anything being 0. A zero count means TAG_PUBLISHINFO was absent or
+	// zero, so there is no publisher count to be a third of, and accepting there would make a
 	// result with no corroboration at all the easiest one to get accepted.
 	const uint8_t popularity = hashes[0].m_popularity;
 	if (popularity == 0 || publishersKnown == 0) {

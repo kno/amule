@@ -48,10 +48,10 @@
 #if wxUSE_UNICODE
     #define __WDR_EURO__ "\u20ac"
 #else
-    // Legacy ANSI branch: bytes >=0x80 fail wxConvLibc in POSIX UTF-8 locales.
-    // Keep wxT() so the literal becomes a wide-char at compile time and matches
-    // the pre-sweep behaviour — the branch is effectively dead today
-    // (wxUSE_UNICODE has been on by default since wx 3.0) but toggle-able.
+    // Legacy ANSI branch: bytes >=0x80 fail wxConvLibc in POSIX UTF-8 locales. Keep wxT() so the
+    // literal becomes a wide char at compile time and matches the pre-sweep behaviour -- the branch
+    // is effectively dead today (wxUSE_UNICODE has been on by default since wx 3.0) but toggle-
+    // able.
     #if defined(__WXMAC__)
         #define __WDR_EURO__ wxT("\xdb")
     #elif defined(__WXMSW__)
@@ -82,7 +82,6 @@
 #ifndef wxGA_PROGRESSBAR
 #define wxGA_PROGRESSBAR 0
 #endif
-
 
 // Implement window functions
 
@@ -125,14 +124,11 @@ wxSizer *muleDlg( wxWindow *parent, bool call_fit, bool set_sizer )
     item6->Add( item9, wxSizerFlags().Center().Border(wxLEFT, 5) );
 
 #ifdef CLIENT_GUI
-    // Connected core's version, left of the counters it heads. amulegui only:
-    // this file is compiled per-executable, so CLIENT_GUI is the consuming
-    // target's and monolithic aMule never builds it. Hidden until the EC
-    // handshake reports a version. Clickable, so it gets the hand cursor.
-    //
-    // 16x16 explicitly: with no size the bundle defaults to the icon's PNG
-    // twin, 256x256 for the logo. The size is logical, so it still renders
-    // from the SVG at the display's scale.
+    // Connected core's version, left of the counters it heads. amulegui only: this file is compiled
+    // per-executable, so CLIENT_GUI is the consuming target's and monolithic aMule never builds it.
+    // Hidden until the EC handshake reports a version. Clickable, so it gets the hand cursor. 16x16
+    // explicitly: with no size the bundle defaults to the icon's PNG twin, 256x256 for the logo.
+    // The size is logical, so it still renders from SVG.
     wxStaticBitmap *coreVerIcon = new wxStaticBitmap( parent, -1, wxArtProvider::GetBitmapBundle( "amule:amule", wxART_OTHER, wxSize(16, 16) ), wxDefaultPosition, wxDefaultSize );
     coreVerIcon->SetName( "coreVersionImage" );
     coreVerIcon->SetCursor( wxCursor( wxCURSOR_HAND ) );
@@ -180,9 +176,9 @@ wxSizer *muleDlg( wxWindow *parent, bool call_fit, bool set_sizer )
     item17->SetName( "connLabel" );
     item6->Add( item17, wxSizerFlags().Center().Border(wxRIGHT, 5) );
 #if defined(__WXMAC__)
-    // macOS rounds the frame's bottom corners, clipping content that sits flush
-    // against the edge. Inset the status row -- a wider left margin for the
-    // leading icon, a slimmer bottom margin -- so nothing is cut off.
+    // macOS rounds the frame's bottom corners, clipping content flush against the edge. Inset the
+    // status row -- a wider left margin for the leading icon, a slimmer bottom margin -- so nothing
+    // is cut off.
     item6->PrependSpacer(16);
     item0->Add( item6, wxSizerFlags().Expand().CenterVertical().Border(wxRIGHT|wxBOTTOM, 6) );
 #else
@@ -233,13 +229,13 @@ wxSizer *searchDlg( wxWindow *parent, bool call_fit, bool set_sizer )
 
     wxBoxSizer *item3 = new wxBoxSizer( wxHORIZONTAL );
 
-    wxStaticText *item4 = new wxStaticText( parent, -1, LabelWithColon( _("Name") ), wxDefaultPosition, wxDefaultSize, 0 );
+    wxStaticText *item4 = new wxStaticText( item2, -1, LabelWithColon( _("Name") ), wxDefaultPosition, wxDefaultSize, 0 );
     item3->Add( item4, wxSizerFlags().Center().Border(wxALL, 5) );
-    wxComboBox *item5 = new wxComboBox( parent, IDC_SEARCHNAME, "", wxDefaultPosition, wxSize(80,-1), 0, nullptr, wxTE_PROCESS_ENTER );
+    wxComboBox *item5 = new wxComboBox( item2, IDC_SEARCHNAME, "", wxDefaultPosition, wxSize(80,-1), 0, nullptr, wxTE_PROCESS_ENTER );
     item3->Add( item5, wxSizerFlags(1).Center().Border(wxALL, 5) );
     wxFlexGridSizer *item6 = new wxFlexGridSizer( 1, 0, 0, 0 );
 
-    wxStaticText *item7 = new wxStaticText( parent, -1, _("Type"), wxDefaultPosition, wxDefaultSize, 0 );
+    wxStaticText *item7 = new wxStaticText( item2, -1, _("Type"), wxDefaultPosition, wxDefaultSize, 0 );
     item6->Add( item7, wxSizerFlags().Center().Border(wxALL, 5) );
     wxString strs8[] = 
     {
@@ -247,27 +243,26 @@ wxSizer *searchDlg( wxWindow *parent, bool call_fit, bool set_sizer )
         _("Global"), 
         _("Kad")
     };
-    wxChoice *item8 = new wxChoice( parent, ID_SEARCHTYPE, wxDefaultPosition, wxDefaultSize, 3, strs8, 0 );
+    wxChoice *item8 = new wxChoice( item2, ID_SEARCHTYPE, wxDefaultPosition, wxDefaultSize, 3, strs8, 0 );
     item6->Add( item8, wxSizerFlags().Center().Border(wxALL, 5) );
-    wxStaticLine *item9 = new wxStaticLine( parent, -1, wxDefaultPosition, wxSize(-1,20), wxLI_VERTICAL );
+    wxStaticLine *item9 = new wxStaticLine( item2, -1, wxDefaultPosition, wxSize(-1,20), wxLI_VERTICAL );
     item6->Add( item9, wxSizerFlags().Expand().CenterVertical().Border(wxALL, 5) );
-    wxCheckBox *item10 = new wxCheckBox( parent, IDC_EXTENDEDSEARCHCHECK, _("Extended Parameters"), wxDefaultPosition, wxDefaultSize, 0 );
+    wxCheckBox *item10 = new wxCheckBox( item2, IDC_EXTENDEDSEARCHCHECK, _("Extended Parameters"), wxDefaultPosition, wxDefaultSize, 0 );
     item6->Add( item10, wxSizerFlags().Center().Border(wxALL, 5) );
-    wxStaticLine *item11 = new wxStaticLine( parent, -1, wxDefaultPosition, wxSize(-1,20), wxLI_VERTICAL );
+    wxStaticLine *item11 = new wxStaticLine( item2, -1, wxDefaultPosition, wxSize(-1,20), wxLI_VERTICAL );
     item6->Add( item11, wxSizerFlags().Expand().CenterVertical().Border(wxALL, 5) );
-    wxCheckBox *item12 = new wxCheckBox( parent, IDC_FILTERCHECK, _("Filtering"), wxDefaultPosition, wxDefaultSize, 0 );
+    wxCheckBox *item12 = new wxCheckBox( item2, IDC_FILTERCHECK, _("Filtering"), wxDefaultPosition, wxDefaultSize, 0 );
     item6->Add( item12, wxSizerFlags().Center().Border(wxALL, 5) );
     item3->Add( item6, 0, wxALIGN_CENTER, 0 );
 
     item1->Add( item3, wxSizerFlags().Expand().CenterVertical() );
-    // One row: the five filters sit side by side, each preceded by a separator
-    // from the second onwards -- 14 cells. They were split across two rows of
-    // eight while Category lived here; #979 took Category out and left Min Size
-    // stranded at the end of the first row, away from Max Size (issue #1035).
+    // One row: the five filters sit side by side, each preceded by a separator from the second
+    // onwards -- 14 cells. They were split across two rows of eight while Category lived here,
+    // which left Min Size stranded at the end of the first row, away from Max Size.
     wxFlexGridSizer *item13 = new wxFlexGridSizer( 14, 0, 0 );
     s_extended_sizer = item13;
 
-    wxStaticText *item14 = new wxStaticText( parent, -1, _("File Type"), wxDefaultPosition, wxDefaultSize, 0 );
+    wxStaticText *item14 = new wxStaticText( item2, -1, _("File Type"), wxDefaultPosition, wxDefaultSize, 0 );
     item13->Add( item14, wxSizerFlags().CenterVertical().Border(wxALL, 5) );
     wxString strs15[] = 
     {
@@ -280,25 +275,24 @@ wxSizer *searchDlg( wxWindow *parent, bool call_fit, bool set_sizer )
         _("Texts"), 
         _("Videos")
     };
-    wxChoice *item15 = new wxChoice( parent, IDC_TypeSearch, wxDefaultPosition, wxDefaultSize, 8, strs15, 0 );
+    wxChoice *item15 = new wxChoice( item2, IDC_TypeSearch, wxDefaultPosition, wxDefaultSize, 8, strs15, 0 );
     item13->Add( item15, wxSizerFlags().Expand().CenterVertical().Border(wxALL, 5) );
-    // The category selector used to sit here, between File Type and Extension.
-    // It is not a search filter -- nothing about it travels with the query --
-    // so it moved to the button row next to Download, whose destination it is
-    // (issue #979). Five filters remain: three on this row, two on the next.
-    wxStaticLine *item16 = new wxStaticLine( parent, -1, wxDefaultPosition, wxSize(-1,20), wxLI_VERTICAL );
+    // The category selector used to sit here, between File Type and Extension. It is not a search
+    // filter -- nothing about it travels with the query -- so it moved to the button row next to
+    // Download, whose destination it is. Five filters remain: three on this row, two on the next.
+    wxStaticLine *item16 = new wxStaticLine( item2, -1, wxDefaultPosition, wxSize(-1,20), wxLI_VERTICAL );
     item13->Add( item16, wxSizerFlags().Center().Border(wxALL, 5) );
-    wxStaticText *item20 = new wxStaticText( parent, -1, _("Extension"), wxDefaultPosition, wxDefaultSize, 0 );
+    wxStaticText *item20 = new wxStaticText( item2, -1, _("Extension"), wxDefaultPosition, wxDefaultSize, 0 );
     item13->Add( item20, wxSizerFlags().CenterVertical().Border(wxALL, 5) );
-    CMuleTextCtrl *item21 = new CMuleTextCtrl( parent, IDC_EDITSEARCHEXTENSION, "", wxDefaultPosition, wxSize(60,-1), wxTE_PROCESS_ENTER );
+    CMuleTextCtrl *item21 = new CMuleTextCtrl( item2, IDC_EDITSEARCHEXTENSION, "", wxDefaultPosition, wxSize(60,-1), wxTE_PROCESS_ENTER );
     item13->Add( item21, wxSizerFlags().Expand().CenterVertical().Border(wxALL, 5) );
-    wxStaticLine *item19 = new wxStaticLine( parent, -1, wxDefaultPosition, wxSize(-1,20), wxLI_VERTICAL );
+    wxStaticLine *item19 = new wxStaticLine( item2, -1, wxDefaultPosition, wxSize(-1,20), wxLI_VERTICAL );
     item13->Add( item19, wxSizerFlags().Center().Border(wxALL, 5) );
-    wxStaticText *item22 = new wxStaticText( parent, -1, _("Min Size"), wxDefaultPosition, wxDefaultSize, 0 );
+    wxStaticText *item22 = new wxStaticText( item2, -1, _("Min Size"), wxDefaultPosition, wxDefaultSize, 0 );
     item13->Add( item22, wxSizerFlags().CenterVertical().Border(wxALL, 5) );
     wxBoxSizer *item23 = new wxBoxSizer( wxHORIZONTAL );
 
-    wxSpinCtrl *item24 = new wxSpinCtrl( parent, IDC_SPINSEARCHMIN, "0", wxDefaultPosition, wxDefaultSize, 0, 0, 4096, 0 );
+    wxSpinCtrl *item24 = new wxSpinCtrl( item2, IDC_SPINSEARCHMIN, "0", wxDefaultPosition, wxDefaultSize, 0, 0, 4096, 0 );
     item23->Add( item24, wxSizerFlags().Expand().CenterVertical().Border(wxALL, 5) );
     wxString strs25[] = 
     {
@@ -307,17 +301,17 @@ wxSizer *searchDlg( wxWindow *parent, bool call_fit, bool set_sizer )
         _("MiB"), 
         _("GiB")
     };
-    wxChoice *item25 = new wxChoice( parent, IDC_SEARCHMINSIZE, wxDefaultPosition, wxDefaultSize, 4, strs25, 0 );
+    wxChoice *item25 = new wxChoice( item2, IDC_SEARCHMINSIZE, wxDefaultPosition, wxDefaultSize, 4, strs25, 0 );
     item23->Add( item25, wxSizerFlags().Center().Border(wxALL, 5) );
     item13->Add( item23, wxSizerFlags().Center().Border(wxALL, 5) );
 
-    wxStaticLine *item26 = new wxStaticLine( parent, -1, wxDefaultPosition, wxSize(-1,20), wxLI_VERTICAL );
+    wxStaticLine *item26 = new wxStaticLine( item2, -1, wxDefaultPosition, wxSize(-1,20), wxLI_VERTICAL );
     item13->Add( item26, wxSizerFlags().Center().Border(wxALL, 5) );
-    wxStaticText *item27 = new wxStaticText( parent, -1, _("Max Size"), wxDefaultPosition, wxDefaultSize, 0 );
+    wxStaticText *item27 = new wxStaticText( item2, -1, _("Max Size"), wxDefaultPosition, wxDefaultSize, 0 );
     item13->Add( item27, wxSizerFlags().CenterVertical().Border(wxALL, 5) );
     wxBoxSizer *item28 = new wxBoxSizer( wxHORIZONTAL );
 
-    wxSpinCtrl *item29 = new wxSpinCtrl( parent, IDC_SPINSEARCHMAX, "0", wxDefaultPosition, wxDefaultSize, 0, 0, 4096, 0 );
+    wxSpinCtrl *item29 = new wxSpinCtrl( item2, IDC_SPINSEARCHMAX, "0", wxDefaultPosition, wxDefaultSize, 0, 0, 4096, 0 );
     item28->Add( item29, wxSizerFlags().Expand().CenterVertical().Border(wxALL, 5) );
     wxString strs30[] = 
     {
@@ -326,15 +320,15 @@ wxSizer *searchDlg( wxWindow *parent, bool call_fit, bool set_sizer )
         _("MiB"), 
         _("GiB")
     };
-    wxChoice *item30 = new wxChoice( parent, IDC_SEARCHMAXSIZE, wxDefaultPosition, wxDefaultSize, 4, strs30, 0 );
+    wxChoice *item30 = new wxChoice( item2, IDC_SEARCHMAXSIZE, wxDefaultPosition, wxDefaultSize, 4, strs30, 0 );
     item28->Add( item30, wxSizerFlags().Center().Border(wxALL, 5) );
     item13->Add( item28, wxSizerFlags().Center().Border(wxALL, 5) );
 
-    wxStaticLine *item31 = new wxStaticLine( parent, -1, wxDefaultPosition, wxSize(-1,20), wxLI_VERTICAL );
+    wxStaticLine *item31 = new wxStaticLine( item2, -1, wxDefaultPosition, wxSize(-1,20), wxLI_VERTICAL );
     item13->Add( item31, wxSizerFlags().Center().Border(wxALL, 5) );
-    wxStaticText *item32 = new wxStaticText( parent, -1, _("Availability"), wxDefaultPosition, wxDefaultSize, 0 );
+    wxStaticText *item32 = new wxStaticText( item2, -1, _("Availability"), wxDefaultPosition, wxDefaultSize, 0 );
     item13->Add( item32, wxSizerFlags().CenterVertical().Border(wxALL, 5) );
-    wxSpinCtrl *item33 = new wxSpinCtrl( parent, IDC_SPINSEARCHAVAILABILITY, "0", wxDefaultPosition, wxDefaultSize, 0, 0, 1000, 0 );
+    wxSpinCtrl *item33 = new wxSpinCtrl( item2, IDC_SPINSEARCHAVAILABILITY, "0", wxDefaultPosition, wxDefaultSize, 0, 0, 1000, 0 );
     item13->Add( item33, wxSizerFlags().Expand().CenterVertical().Border(wxALL, 5) );
     item1->Add( item13, wxSizerFlags().Center() );
 
@@ -342,104 +336,95 @@ wxSizer *searchDlg( wxWindow *parent, bool call_fit, bool set_sizer )
     s_filter_sizer = item34;
 
     item34->Add( 10, 10, wxSizerFlags(1).Center().Border(wxALL, 5) );
-    wxStaticText *item35 = new wxStaticText( parent, -1, LabelWithColon( _("Filter") ), wxDefaultPosition, wxDefaultSize, 0 );
+    wxStaticText *item35 = new wxStaticText( item2, -1, LabelWithColon( _("Filter") ), wxDefaultPosition, wxDefaultSize, 0 );
     item34->Add( item35, wxSizerFlags().Center().Border(wxALL, 5) );
-    wxTextCtrl *item36 = new wxTextCtrl( parent, ID_FILTER_TEXT, "", wxDefaultPosition, wxSize(220,-1), wxTE_PROCESS_ENTER );
+    wxTextCtrl *item36 = new wxTextCtrl( item2, ID_FILTER_TEXT, "", wxDefaultPosition, wxSize(220,-1), wxTE_PROCESS_ENTER );
     item34->Add( item36, wxSizerFlags().Center().Border(wxALL, 5) );
-    wxStaticLine *item39 = new wxStaticLine( parent, -1, wxDefaultPosition, wxSize(-1,20), wxLI_VERTICAL );
+    wxStaticLine *item39 = new wxStaticLine( item2, -1, wxDefaultPosition, wxSize(-1,20), wxLI_VERTICAL );
     item34->Add( item39, wxSizerFlags().Center().Border(wxALL, 5) );
-    wxCheckBox *item40 = new wxCheckBox( parent, ID_FILTER_INVERT, _("Invert Result"), wxDefaultPosition, wxDefaultSize, 0 );
+    wxCheckBox *item40 = new wxCheckBox( item2, ID_FILTER_INVERT, _("Invert Result"), wxDefaultPosition, wxDefaultSize, 0 );
     item34->Add( item40, wxSizerFlags().Center().Border(wxALL, 5) );
-    wxStaticLine *item41 = new wxStaticLine( parent, -1, wxDefaultPosition, wxSize(-1,20), wxLI_VERTICAL );
+    wxStaticLine *item41 = new wxStaticLine( item2, -1, wxDefaultPosition, wxSize(-1,20), wxLI_VERTICAL );
     item34->Add( item41, wxSizerFlags().Center().Border(wxALL, 5) );
-    wxCheckBox *item42 = new wxCheckBox( parent, ID_FILTER_KNOWN, _("Hide Known Files"), wxDefaultPosition, wxDefaultSize, 0 );
+    wxCheckBox *item42 = new wxCheckBox( item2, ID_FILTER_KNOWN, _("Hide Known Files"), wxDefaultPosition, wxDefaultSize, 0 );
     item34->Add( item42, wxSizerFlags().Center().Border(wxALL, 5) );
-    // Clears the filter text and returns both checkboxes to their defaults
-    // (issue #698). Named in full rather than a bare "Reset" so it cannot be
-    // read as a second "Reset Fields": that button covers the search
-    // parameters, this one covers only the filter row it sits in.
-    wxStaticLine *item59 = new wxStaticLine( parent, -1, wxDefaultPosition, wxSize(-1,20), wxLI_VERTICAL );
+    // Clears the filter text and returns both checkboxes to their defaults. Named in full rather
+    // than a bare "Reset" so it cannot be read as a second "Reset Fields": that button covers the
+    // search parameters, this one covers only the filter row it sits in.
+    wxStaticLine *item59 = new wxStaticLine( item2, -1, wxDefaultPosition, wxSize(-1,20), wxLI_VERTICAL );
     item34->Add( item59, wxSizerFlags().Center().Border(wxALL, 5) );
-    wxButton *item60 = new wxButton( parent, ID_FILTER_RESET, _("Reset Filters"), wxDefaultPosition, wxDefaultSize, 0 );
+    wxButton *item60 = new wxButton( item2, ID_FILTER_RESET, _("Reset Filters"), wxDefaultPosition, wxDefaultSize, 0 );
     item34->Add( item60, wxSizerFlags().Center().Border(wxALL, 5) );
     item34->Add( 10, 10, wxSizerFlags(1).Center().Border(wxALL, 5) );
     wxBoxSizer *item43 = new wxBoxSizer( wxHORIZONTAL );
 
-    wxButton *item44 = new wxButton( parent, IDC_STARTS, _("Start"), wxDefaultPosition, wxDefaultSize, 0 );
+    wxButton *item44 = new wxButton( item2, IDC_STARTS, _("Start"), wxDefaultPosition, wxDefaultSize, 0 );
     item44->Enable( false );
     item43->Add( item44, wxSizerFlags().Center().Border(wxALL, 5) );
-    wxStaticLine *item45 = new wxStaticLine( parent, -1, wxDefaultPosition, wxSize(-1,20), wxLI_VERTICAL );
+    wxStaticLine *item45 = new wxStaticLine( item2, -1, wxDefaultPosition, wxSize(-1,20), wxLI_VERTICAL );
     item43->Add( item45, wxSizerFlags().Center().Border(wxALL, 5) );
-    wxButton *item46 = new wxButton( parent, IDC_SEARCHMORE, _("Extend"), wxDefaultPosition, wxDefaultSize, 0 );
+    wxButton *item46 = new wxButton( item2, IDC_SEARCHMORE, _("Extend"), wxDefaultPosition, wxDefaultSize, 0 );
     item46->SetToolTip( _("Ask already-responded Kad peers to widen the search. Each click queries the next-closest peer for more contacts (KADEMLIA_FIND_VALUE_MORE), surfacing additional file matches that the search's initial alpha frontier missed.") );
     item46->Enable( false );
     item43->Add( item46, wxSizerFlags().Center().Border(wxALL, 5) );
-    wxStaticLine *item47 = new wxStaticLine( parent, -1, wxDefaultPosition, wxSize(-1,20), wxLI_VERTICAL );
+    wxStaticLine *item47 = new wxStaticLine( item2, -1, wxDefaultPosition, wxSize(-1,20), wxLI_VERTICAL );
     item43->Add( item47, wxSizerFlags().Center().Border(wxALL, 5) );
-    wxButton *item48 = new wxButton( parent, IDC_CANCELS, _("Stop"), wxDefaultPosition, wxDefaultSize, 0 );
+    wxButton *item48 = new wxButton( item2, IDC_CANCELS, _("Stop"), wxDefaultPosition, wxDefaultSize, 0 );
     item48->Enable( false );
     item43->Add( item48, wxSizerFlags().Center().Border(wxALL, 5) );
-    wxStaticLine *item49 = new wxStaticLine( parent, -1, wxDefaultPosition, wxSize(-1,20), wxLI_VERTICAL );
+    wxStaticLine *item49 = new wxStaticLine( item2, -1, wxDefaultPosition, wxSize(-1,20), wxLI_VERTICAL );
     item43->Add( item49, wxSizerFlags().Center().Border(wxALL, 5) );
-    wxButton *item50 = new wxButton( parent, IDC_SDOWNLOAD, _("Download"), wxDefaultPosition, wxDefaultSize, 0 );
+    wxButton *item50 = new wxButton( item2, IDC_SDOWNLOAD, _("Download"), wxDefaultPosition, wxDefaultSize, 0 );
     item50->Enable( false );
     item43->Add( item50, wxSizerFlags().Center().Border(wxALL, 5) );
-    // Where the button beside it sends the file. It sat in the extended-
-    // parameters row until issue #979, which made it read as a search filter --
-    // something neither ed2k nor Kad can do -- and let a chosen category be
-    // hidden and then silently ignored. Here it is always visible and its
-    // meaning is positional. Same wording as the right-click action that does
-    // the same thing (SearchListCtrl.cpp), so the two cannot drift.
-    wxStaticText *item17 = new wxStaticText( parent, ID_AUTOCATASSIGN_LABEL, _("Download in category"), wxDefaultPosition, wxDefaultSize, 0 );
+    // Where the button beside it sends the file. It sat in the extended-parameters row until that
+    // made it read as a search filter -- something neither ed2k nor Kad can do -- and let a chosen
+    // category be hidden and then silently ignored. Here it is always visible and its meaning is
+    // positional. Same wording as the right-click action that does the same thing.
+    wxStaticText *item17 = new wxStaticText( item2, ID_AUTOCATASSIGN_LABEL, _("Download in category"), wxDefaultPosition, wxDefaultSize, 0 );
     item43->Add( item17, wxSizerFlags().Center().Border(wxALL, 5) );
-    // Empty item list: UpdateCatChoice() fills it and keeps it in step with the
-    // configured categories. nullptr, not the file's usual (wxString*) NULL --
-    // this line is new, so the Tier-2 modernize-use-nullptr check applies to it.
+    // Empty item list: UpdateCatChoice() fills it and keeps it in step with the configured
+    // categories. nullptr, not the file's usual (wxString*) NULL -- this line is new, so the Tier-2
+    // modernize-use-nullptr check applies to it.
     wxString *strs18 = nullptr;
-    wxChoice *item18 = new wxChoice( parent, ID_AUTOCATASSIGN, wxDefaultPosition, wxDefaultSize, 0, strs18, 0 );
+    wxChoice *item18 = new wxChoice( item2, ID_AUTOCATASSIGN, wxDefaultPosition, wxDefaultSize, 0, strs18, 0 );
     item43->Add( item18, wxSizerFlags().Center().Border(wxALL, 5) );
-    wxStaticLine *item51 = new wxStaticLine( parent, -1, wxDefaultPosition, wxSize(-1,20), wxLI_VERTICAL );
+    wxStaticLine *item51 = new wxStaticLine( item2, -1, wxDefaultPosition, wxSize(-1,20), wxLI_VERTICAL );
     item43->Add( item51, wxSizerFlags().Center().Border(wxALL, 5) );
-    // Ordered most to least destructive rightwards, so the mildest sits at the
-    // edge where it is easiest to hit and the one that discards saved terms is
-    // furthest from it (issue #911). CSearchDlg inserts "Clear Search History"
-    // ahead of Clear Search Results at runtime, giving:
-    //   Clear Search History | Clear Search Results | Reset Fields
-    // Reset Fields last also puts it directly above "Reset Filters" in the row
-    // below, which is the control it parallels.
-    wxButton *item54 = new wxButton( parent, IDC_CLEAR_RESULTS, _("Clear Search Results"), wxDefaultPosition, wxDefaultSize, 0 );
+    // Ordered most to least destructive rightwards, so the mildest sits at the edge where it is
+    // easiest to hit and the one that discards saved terms is furthest from it. CSearchDlg inserts
+    // "Clear Search History" ahead of Clear Search Results at runtime. Reset Fields last also puts
+    // it directly above "Reset Filters" in the row below, which is the control it parallels.
+    wxButton *item54 = new wxButton( item2, IDC_CLEAR_RESULTS, _("Clear Search Results"), wxDefaultPosition, wxDefaultSize, 0 );
     item54->Enable( false );
     item43->Add( item54, wxSizerFlags().Center().Border(wxALL, 5) );
-    wxStaticLine *item53 = new wxStaticLine( parent, -1, wxDefaultPosition, wxSize(-1,20), wxLI_VERTICAL );
+    wxStaticLine *item53 = new wxStaticLine( item2, -1, wxDefaultPosition, wxSize(-1,20), wxLI_VERTICAL );
     item43->Add( item53, wxSizerFlags().Center().Border(wxALL, 5) );
-    wxButton *item52 = new wxButton( parent, IDC_SEARCH_RESET, _("Reset Fields"), wxDefaultPosition, wxDefaultSize, 0 );
+    wxButton *item52 = new wxButton( item2, IDC_SEARCH_RESET, _("Reset Fields"), wxDefaultPosition, wxDefaultSize, 0 );
     item52->Enable( false );
     item43->Add( item52, wxSizerFlags().Center().Border(wxALL, 5) );
     item1->Add( item43, wxSizerFlags().Center().Border(wxALL, 5) );
-    // Rule between the buttons and the filter row (issue #911): with extended
-    // parameters and filtering both on, five rows of fields run together, and
-    // this marks where the search parameters stop and what filters the results
-    // already on screen begins. Full width rather than the button row's extent
-    // -- that row is centred and sized to its contents, so tracking it would
-    // mean measuring it. Shown and hidden with the row it introduces; see
-    // CSearchDlg::ApplyFilterSeparator().
-    wxStaticLine *item61 = new wxStaticLine( parent, ID_FILTER_SEPARATOR, wxDefaultPosition, wxDefaultSize, wxLI_HORIZONTAL );
+    // Rule between the buttons and the filter row: with extended parameters and filtering both on,
+    // five rows of fields run together, and this marks where the search parameters stop and what
+    // filters the results already on screen begins. Full width rather than the button row's extent
+    // -- that row is centred and sized to its contents. Shown and hidden with the row it
+    // introduces; see CSearchDlg::ApplyFilterSeparator().
+    wxStaticLine *item61 = new wxStaticLine( item2, ID_FILTER_SEPARATOR, wxDefaultPosition, wxDefaultSize, wxLI_HORIZONTAL );
     item1->Add( item61, wxSizerFlags().Expand().Border(wxLEFT|wxRIGHT, 5) );
-    // Filter row goes BELOW the action buttons (issue #698): filtering is not a
-    // search parameter -- it applies to results already on screen and is not
-    // touched by "Reset Fields" -- so grouping it with the search parameters
-    // above the buttons misrepresented it, and it sits closer to the results
-    // list here. Added after item43 purely for sizer order; the row itself is
-    // still built above so s_filter_sizer keeps its show/hide wiring.
+    // Filter row goes BELOW the action buttons: filtering is not a search parameter -- it applies
+    // to results already on screen and is not touched by "Reset Fields" -- so grouping it with the
+    // search parameters above the buttons misrepresented it, and it sits closer to the results list
+    // here. Added after item43 purely for sizer order; the row is still built above so
+    // s_filter_sizer keeps its show/hide wiring.
     item1->Add( item34, wxSizerFlags().Center().Border(wxLEFT|wxRIGHT, 5) );
     item0->Add( item1, wxSizerFlags().Expand().CenterVertical().Border(wxALL, 5) );
     wxStaticBox *item56 = new wxStaticBox( parent, -1, _("Results") );
     wxStaticBoxSizer *item55 = new wxStaticBoxSizer( item56, wxVERTICAL );
 
-    wxWindow *item57 = new CMuleNotebook(parent, ID_NOTEBOOK, wxDefaultPosition,wxDefaultSize,0);
+    wxWindow *item57 = new CMuleNotebook(item56, ID_NOTEBOOK, wxDefaultPosition,wxDefaultSize,0);
     wxASSERT( item57 );
     item55->Add( item57, wxSizerFlags(1).Expand().CenterVertical().Border(wxALL, 5) );
-    wxGauge *item58 = new wxGauge( parent, ID_SEARCHPROGRESS, 100, wxDefaultPosition, wxSize(-1,10), 0 );
+    wxGauge *item58 = new wxGauge( item56, ID_SEARCHPROGRESS, 100, wxDefaultPosition, wxSize(-1,10), 0 );
     item55->Add( item58, wxSizerFlags().Expand().CenterVertical().Border(wxALL, 5) );
     item0->Add( item55, wxSizerFlags(1).Expand().CenterVertical().Border(wxALL, 5) );
     if (set_sizer)
@@ -510,29 +495,23 @@ wxSizer *transferBottomPane( wxWindow *parent, bool call_fit, bool set_sizer )
     item3->Add( item5, wxSizerFlags().CenterVertical().Border(wxLEFT|wxRIGHT, 5) );
     item1->Add( item3, wxSizerFlags().Center().Border(wxLEFT|wxRIGHT, 5) );
 
-    // Combined size of the downloads currently visible (category + text
-    // filter), followed by the free space on the filesystem holding the part
-    // files. Both right-aligned in the growable header's third column, and
-    // both in one box sizer so the header keeps its three columns. Set by
-    // CDownloadListCtrl::SetTotalSize() and ::UpdateFreeSpace(). No
-    // wxST_NO_AUTORESIZE: the labels must grow to fit their text (they start
-    // empty, so the flag would pin them 0-wide).
+    // Combined size of the downloads currently visible (category + text filter), followed by the
+    // free space on the filesystem holding the part files. Both right-aligned in the growable
+    // header's third column, and both in one box sizer so the header keeps its three columns. No
+    // wxST_NO_AUTORESIZE: the labels must grow to fit their text, and they start empty.
     wxBoxSizer *item5a = new wxBoxSizer( wxHORIZONTAL );
 
     wxStaticText *item5b = new wxStaticText( parent, -1, wxEmptyString, wxDefaultPosition, wxDefaultSize, wxALIGN_RIGHT );
     item5b->SetName( "downloadsTotalSize" );
     item5a->Add( item5b, wxSizerFlags().CenterVertical() );
 
-    // The "|" joining the two figures, in a label of its own for the same
-    // reason the figure has one: a wxStaticText colours all or nothing, so a
-    // separator sharing the label below would turn red along with the figure
-    // whenever the warning fires. Shown and hidden by SetFreeSpaceLabel()
-    // together with that figure, never recoloured.
+    // The "|" joining the two figures, in a label of its own for the same reason the figure has
+    // one: a wxStaticText colours all or nothing, so a separator sharing the label below would turn
+    // red along with the figure whenever the warning fires.
     //
-    // The gaps around it are sizer border, not spaces in the text: a static
-    // text is sized to its text extent, which ignores trailing whitespace, so
-    // a " | " label loses the space on one side and -- right-aligned inside a
-    // box sized for three glyphs -- doubles it on the other.
+    // The gaps around it are sizer border, not spaces in the text: a static text is sized to its
+    // text extent, which ignores trailing whitespace, so a " | " label loses the space on one side
+    // and doubles it on the other.
     wxStaticText *item5c = new wxStaticText( parent, -1, wxEmptyString );
     item5c->SetName( "downloadsFreeSpaceSep" );
     // Starts hidden: the labels either side start empty, and a shown separator
@@ -540,9 +519,8 @@ wxSizer *transferBottomPane( wxWindow *parent, bool call_fit, bool set_sizer )
     item5c->Show( false );
     item5a->Add( item5c, wxSizerFlags().CenterVertical().Border(wxLEFT|wxRIGHT, 4) );
 
-    // Separate label rather than more text in the one above: it turns red on
-    // its own when the free space no longer covers what is left to download,
-    // and a wxStaticText colours all or nothing.
+    // Separate label rather than more text in the one above: it turns red on its own when the free
+    // space no longer covers what is left to download, and a wxStaticText colours all or nothing.
     wxStaticText *item5d = new wxStaticText( parent, -1, wxEmptyString, wxDefaultPosition, wxDefaultSize, wxALIGN_RIGHT );
     item5d->SetName( "downloadsFreeSpace" );
     item5a->Add( item5d, wxSizerFlags().CenterVertical() );
@@ -568,7 +546,7 @@ wxSizer *messagePage( wxWindow *parent, bool call_fit, bool set_sizer )
     wxStaticBox *item1 = new wxStaticBox( parent, -1, "" );
     wxStaticBoxSizer *item0 = new wxStaticBoxSizer( item1, wxVERTICAL );
 
-    wxSplitterWindow *item2 = new wxSplitterWindow( parent, ID_MESSAGESPLATTER, wxDefaultPosition, wxDefaultSize, wxSP_LIVE_UPDATE );
+    wxSplitterWindow *item2 = new wxSplitterWindow( item1, ID_MESSAGESPLATTER, wxDefaultPosition, wxDefaultSize, wxSP_LIVE_UPDATE );
     item2->SetMinimumPaneSize( 20 );
     wxPanel *item3 = new wxPanel( item2, -1 );
     messagePageFriends( item3, FALSE, TRUE );
@@ -588,22 +566,18 @@ wxSizer *messagePage( wxWindow *parent, bool call_fit, bool set_sizer )
 
 namespace
 {
-// File-details helper: append a "label" + HOTLIGHT-coloured value pair (the
-// value control carrying `valueId`, initialised to "N/A") to `grid` as one
-// horizontal row. Mirrors the label/value styling used throughout
-// fileDetails(), so the relocated download rows and the Sharing box stay
-// visually consistent with the hand-written rows.
+// File-details helper: append a "label" + HOTLIGHT-coloured value pair (the value control carrying
+// `valueId`, initialised to "N/A") to `grid` as one horizontal row. Mirrors the label/value styling
+// used throughout fileDetails(), so the relocated download rows and the Sharing box stay visually
+// consistent with the hand-written rows.
 //
-// `appendColon` renders the label as "label:" at display time. The Sharing
-// rows use it so they can reuse existing bare translations (e.g. "Requests")
-// instead of minting a second, colon-suffixed catalog string for each.
+// `appendColon` renders the label as "label:" at display time. The Sharing rows use it so they can
+// reuse existing bare translations instead of minting a second, colon-suffixed catalog string for
+// each.
 //
-// The punctuation goes through the catalog rather than being concatenated in
-// C++, because where the colon sits is a property of the language, not of the
-// layout: Russian typography forbids the space this used to hard-code, while
-// French requires it (amule-org/amule#1294). One format string lets a
-// translator settle the convention for every row at once, and keeps the reuse
-// that motivated the flag.
+// The punctuation goes through the catalog rather than being concatenated in C++, because where the
+// colon sits is a property of the language, not of the layout: Russian typography forbids the space
+// this used to hard-code, while French requires it.
 void AddFileDetailRow(
     wxWindow *rowParent, wxSizer *grid, const wxString &label, int valueId, bool appendColon = false )
 {
@@ -630,26 +604,26 @@ wxSizer *fileDetails( wxWindow *parent, bool call_fit, bool set_sizer )
 
     wxBoxSizer *item3 = new wxBoxSizer( wxHORIZONTAL );
 
-    wxStaticText *item4 = new wxStaticText( parent, -1, LabelWithColon( _("Full Name") ), wxDefaultPosition, wxDefaultSize, 0 );
+    wxStaticText *item4 = new wxStaticText( item2, -1, LabelWithColon( _("Full Name") ), wxDefaultPosition, wxDefaultSize, 0 );
     item3->Add( item4, wxSizerFlags().Expand().CenterVertical() );
 
-    wxStaticText *item5 = new wxStaticText( parent, IDC_FNAME, _("N/A"), wxDefaultPosition, wxDefaultSize, 0 );
+    wxStaticText *item5 = new wxStaticText( item2, IDC_FNAME, _("N/A"), wxDefaultPosition, wxDefaultSize, 0 );
     item5->SetForegroundColour( wxSystemSettings::GetColour(wxSYS_COLOUR_HOTLIGHT) );
     item3->Add( item5, wxSizerFlags().CenterVertical().Border(wxLEFT, 5) );
     item1->Add( item3, wxSizerFlags().Expand().CenterVertical() );
     wxBoxSizer *item6 = new wxBoxSizer( wxHORIZONTAL );
 
-    wxStaticText *item7 = new wxStaticText( parent, -1, LabelWithColon( _("met-File") ), wxDefaultPosition, wxDefaultSize, 0 );
+    wxStaticText *item7 = new wxStaticText( item2, -1, LabelWithColon( _("met-File") ), wxDefaultPosition, wxDefaultSize, 0 );
     item6->Add( item7, wxSizerFlags().Expand().CenterVertical() );
-    wxStaticText *item8 = new wxStaticText( parent, IDC_METFILE, _("N/A"), wxDefaultPosition, wxDefaultSize, 0 );
+    wxStaticText *item8 = new wxStaticText( item2, IDC_METFILE, _("N/A"), wxDefaultPosition, wxDefaultSize, 0 );
     item8->SetForegroundColour( wxSystemSettings::GetColour(wxSYS_COLOUR_HOTLIGHT) );
     item6->Add( item8, wxSizerFlags().Center().Border(wxLEFT, 5) );
     item1->Add( item6, wxSizerFlags().Expand().CenterVertical().Border(wxALL, 0) );
     wxBoxSizer *item9 = new wxBoxSizer( wxHORIZONTAL );
 
-    wxStaticText *item10 = new wxStaticText( parent, -1, LabelWithColon( _("Hash") ), wxDefaultPosition, wxDefaultSize, 0 );
+    wxStaticText *item10 = new wxStaticText( item2, -1, LabelWithColon( _("Hash") ), wxDefaultPosition, wxDefaultSize, 0 );
     item9->Add( item10, wxSizerFlags().Expand().CenterVertical() );
-    wxStaticText *item11 = new wxStaticText( parent, IDC_FHASH, _("N/A"), wxDefaultPosition, wxDefaultSize, 0 );
+    wxStaticText *item11 = new wxStaticText( item2, IDC_FHASH, _("N/A"), wxDefaultPosition, wxDefaultSize, 0 );
     item11->SetForegroundColour( wxSystemSettings::GetColour(wxSYS_COLOUR_HOTLIGHT) );
     item9->Add( item11, wxSizerFlags().Center().Border(wxLEFT, 5) );
     item1->Add( item9, wxSizerFlags().Expand().CenterVertical() );
@@ -659,20 +633,19 @@ wxSizer *fileDetails( wxWindow *parent, bool call_fit, bool set_sizer )
 
     wxBoxSizer *item13 = new wxBoxSizer( wxHORIZONTAL );
 
-    wxStaticText *item14 = new wxStaticText( parent, -1, LabelWithColon( _("Filesize") ), wxDefaultPosition, wxDefaultSize, 0 );
+    wxStaticText *item14 = new wxStaticText( item2, -1, LabelWithColon( _("Filesize") ), wxDefaultPosition, wxDefaultSize, 0 );
     item13->Add( item14, wxSizerFlags().Expand().CenterVertical() );
-    wxStaticText *item15 = new wxStaticText( parent, IDC_FSIZE, _("N/A"), wxDefaultPosition, wxDefaultSize, 0 );
+    wxStaticText *item15 = new wxStaticText( item2, IDC_FSIZE, _("N/A"), wxDefaultPosition, wxDefaultSize, 0 );
     item15->SetForegroundColour( wxSystemSettings::GetColour(wxSYS_COLOUR_HOTLIGHT) );
     item13->Add( item15, wxSizerFlags().Center().Border(wxLEFT, 5) );
     item12->Add( item13, wxSizerFlags().Expand().CenterVertical() );
-    // Partfilestatus + Last seen complete are download-only; they now live in
-    // the Download panel below so the whole panel can be hidden for a shared,
-    // non-downloading file.
+    // Partfilestatus + Last seen complete are download-only; they now live in the Download panel
+    // below so the whole panel can be hidden for a shared, non-downloading file.
     item1->Add( item12, wxSizerFlags().Expand().CenterVertical() );
     item0->Add( item1, wxSizerFlags(1).Expand().Border(wxALL, 5) );
-    // ---- Download-only sections, wrapped in a panel the dialog hides for a
-    //      shared file that is not (or no longer) downloading. Controls are
-    //      parented to the panel so Show(false) collapses the whole group. ----
+    // Download-only sections, wrapped in a panel the dialog hides for a shared file that is not, or
+    // no longer, downloading. Controls are parented to the panel so Show(false) collapses the whole
+    // group.
     wxPanel *dlPanel = new wxPanel( parent, IDC_FD_DOWNLOAD_PANEL );
     wxBoxSizer *dlPanelSizer = new wxBoxSizer( wxVERTICAL );
 
@@ -697,16 +670,16 @@ wxSizer *fileDetails( wxWindow *parent, bool call_fit, bool set_sizer )
 
     // Completed Size keeps its composite "value / (percent)" display.
     wxBoxSizer *item46 = new wxBoxSizer( wxHORIZONTAL );
-    item46->Add( new wxStaticText( dlPanel, -1, LabelWithColon( _("Completed Size") ), wxDefaultPosition, wxDefaultSize, 0 ), wxSizerFlags().Expand().CenterVertical() );
+    item46->Add( new wxStaticText( item23, -1, LabelWithColon( _("Completed Size") ), wxDefaultPosition, wxDefaultSize, 0 ), wxSizerFlags().Expand().CenterVertical() );
     wxBoxSizer *item48 = new wxBoxSizer( wxHORIZONTAL );
-    wxStaticText *item49 = new wxStaticText( dlPanel, IDC_COMPLSIZE, _("N/A"), wxDefaultPosition, wxDefaultSize, 0 );
+    wxStaticText *item49 = new wxStaticText( item23, IDC_COMPLSIZE, _("N/A"), wxDefaultPosition, wxDefaultSize, 0 );
     item49->SetForegroundColour( wxSystemSettings::GetColour(wxSYS_COLOUR_HOTLIGHT) );
     item48->Add( item49, wxSizerFlags().CenterVertical() );
-    item48->Add( new wxStaticText( dlPanel, -1, " / (", wxDefaultPosition, wxDefaultSize, 0 ), wxSizerFlags().CenterVertical() );
-    wxStaticText *item51 = new wxStaticText( dlPanel, IDC_PROCCOMPL, _("N/A"), wxDefaultPosition, wxDefaultSize, 0 );
+    item48->Add( new wxStaticText( item23, -1, " / (", wxDefaultPosition, wxDefaultSize, 0 ), wxSizerFlags().CenterVertical() );
+    wxStaticText *item51 = new wxStaticText( item23, IDC_PROCCOMPL, _("N/A"), wxDefaultPosition, wxDefaultSize, 0 );
     item51->SetForegroundColour( wxSystemSettings::GetColour(wxSYS_COLOUR_HOTLIGHT) );
     item48->Add( item51, wxSizerFlags().CenterVertical() );
-    item48->Add( new wxStaticText( dlPanel, -1, ")", wxDefaultPosition, wxDefaultSize, 0 ), 0, wxALIGN_CENTER_VERTICAL, 0 );
+    item48->Add( new wxStaticText( item23, -1, ")", wxDefaultPosition, wxDefaultSize, 0 ), 0, wxALIGN_CENTER_VERTICAL, 0 );
     item46->Add( item48, wxSizerFlags().Center().Border(wxLEFT, 5) );
     item24->Add( item46, wxSizerFlags().Expand().CenterVertical() );
 
@@ -727,9 +700,9 @@ wxSizer *fileDetails( wxWindow *parent, bool call_fit, bool set_sizer )
     dlPanel->SetSizer( dlPanelSizer );
     item0->Add( dlPanel, wxSizerFlags().Expand().CenterVertical() );
 
-    // ---- Sharing box, wrapped in a panel the dialog hides for a file with no
-    //      sharing role. Upload counters, live upload activity and the share
-    //      timestamps; populated in both the monolithic and remote builds. ----
+    // Sharing box, wrapped in a panel the dialog hides for a file with no sharing role. Upload
+    // counters, live upload activity and the share timestamps; populated in both the monolithic and
+    // remote builds.
     wxPanel *shPanel = new wxPanel( parent, IDC_FD_SHARING_PANEL );
     wxBoxSizer *shPanelSizer = new wxBoxSizer( wxVERTICAL );
     wxStaticBox *shBox = new wxStaticBox( shPanel, -1, _("Sharing") );
@@ -737,9 +710,9 @@ wxSizer *fileDetails( wxWindow *parent, bool call_fit, bool set_sizer )
     wxFlexGridSizer *shGrid = new wxFlexGridSizer( 2, 0, 0 );
     shGrid->AddGrowableCol( 0 );
     shGrid->AddGrowableCol( 1 );
-    // Labels reuse existing bare translations; the colon is applied at display
-    // time through the localizable "%s :" format (appendColon), so no new
-    // catalog string is needed per row and the punctuation stays translatable.
+    // Labels reuse existing bare translations; the colon is applied at display time through the
+    // localizable "%s :" format (appendColon), so no new catalog string is needed per row and the
+    // punctuation stays translatable.
     AddFileDetailRow( shPanel, shGrid, _("Requests"), IDC_FD_SHARE_REQ, true );
     AddFileDetailRow( shPanel, shGrid, _("Accepted Requests"), IDC_FD_SHARE_ACC, true );
     AddFileDetailRow( shPanel, shGrid, _("Transferred Data"), IDC_FD_SHARE_XFER, true );
@@ -756,11 +729,10 @@ wxSizer *fileDetails( wxWindow *parent, bool call_fit, bool set_sizer )
     shPanel->SetSizer( shPanelSizer );
     item0->Add( shPanel, wxSizerFlags().Expand().CenterVertical() );
 
-    // Media Info (issue #418) — populated from FT_MEDIA_* when the file
-    // has probed metadata; the six labels show "N/A" otherwise. Layout +
-    // styling mirror the "Intelligent Corruption Handling" box above:
-    // "label :" static text plus a HOTLIGHT-coloured value, two fields
-    // per row in a 2-column growable grid.
+    // Media Info (issue #418) -- populated from FT_MEDIA_* when the file has probed metadata; the
+    // six labels show "N/A" otherwise. Layout and styling mirror the "Intelligent Corruption
+    // Handling" box above: "label :" static text plus a HOTLIGHT-coloured value, two fields per row
+    // in a 2-column growable grid.
     wxStaticBox *mediaBox = new wxStaticBox( parent, -1, _("Media Info") );
     wxStaticBoxSizer *mediaBoxSizer = new wxStaticBoxSizer( mediaBox, wxVERTICAL );
     wxFlexGridSizer *mediaGrid = new wxFlexGridSizer( 2, 0, 0 );
@@ -768,43 +740,43 @@ wxSizer *fileDetails( wxWindow *parent, bool call_fit, bool set_sizer )
     mediaGrid->AddGrowableCol( 1 );
 
     wxBoxSizer *mLenRow = new wxBoxSizer( wxHORIZONTAL );
-    mLenRow->Add( new wxStaticText( parent, -1, LabelWithColon( _("Length") ), wxDefaultPosition, wxDefaultSize, 0 ), wxSizerFlags().Expand().CenterVertical() );
-    wxStaticText *mLenVal = new wxStaticText( parent, IDC_FD_MEDIA_LENGTH, _("N/A"), wxDefaultPosition, wxDefaultSize, 0 );
+    mLenRow->Add( new wxStaticText( mediaBox, -1, LabelWithColon( _("Length") ), wxDefaultPosition, wxDefaultSize, 0 ), wxSizerFlags().Expand().CenterVertical() );
+    wxStaticText *mLenVal = new wxStaticText( mediaBox, IDC_FD_MEDIA_LENGTH, _("N/A"), wxDefaultPosition, wxDefaultSize, 0 );
     mLenVal->SetForegroundColour( wxSystemSettings::GetColour(wxSYS_COLOUR_HOTLIGHT) );
     mLenRow->Add( mLenVal, wxSizerFlags().Center().Border(wxLEFT, 5) );
     mediaGrid->Add( mLenRow, wxSizerFlags().Expand().CenterVertical() );
 
     wxBoxSizer *mBrRow = new wxBoxSizer( wxHORIZONTAL );
-    mBrRow->Add( new wxStaticText( parent, -1, LabelWithColon( _("Bitrate") ), wxDefaultPosition, wxDefaultSize, 0 ), wxSizerFlags().Expand().CenterVertical().Border(wxLEFT, 5) );
-    wxStaticText *mBrVal = new wxStaticText( parent, IDC_FD_MEDIA_BITRATE, _("N/A"), wxDefaultPosition, wxDefaultSize, 0 );
+    mBrRow->Add( new wxStaticText( mediaBox, -1, LabelWithColon( _("Bitrate") ), wxDefaultPosition, wxDefaultSize, 0 ), wxSizerFlags().Expand().CenterVertical().Border(wxLEFT, 5) );
+    wxStaticText *mBrVal = new wxStaticText( mediaBox, IDC_FD_MEDIA_BITRATE, _("N/A"), wxDefaultPosition, wxDefaultSize, 0 );
     mBrVal->SetForegroundColour( wxSystemSettings::GetColour(wxSYS_COLOUR_HOTLIGHT) );
     mBrRow->Add( mBrVal, wxSizerFlags().Center().Border(wxLEFT, 5) );
     mediaGrid->Add( mBrRow, wxSizerFlags().Expand().CenterVertical() );
 
     wxBoxSizer *mCodecRow = new wxBoxSizer( wxHORIZONTAL );
-    mCodecRow->Add( new wxStaticText( parent, -1, LabelWithColon( _("Codec") ), wxDefaultPosition, wxDefaultSize, 0 ), wxSizerFlags().Expand().CenterVertical() );
-    wxStaticText *mCodecVal = new wxStaticText( parent, IDC_FD_MEDIA_CODEC, _("N/A"), wxDefaultPosition, wxDefaultSize, 0 );
+    mCodecRow->Add( new wxStaticText( mediaBox, -1, LabelWithColon( _("Codec") ), wxDefaultPosition, wxDefaultSize, 0 ), wxSizerFlags().Expand().CenterVertical() );
+    wxStaticText *mCodecVal = new wxStaticText( mediaBox, IDC_FD_MEDIA_CODEC, _("N/A"), wxDefaultPosition, wxDefaultSize, 0 );
     mCodecVal->SetForegroundColour( wxSystemSettings::GetColour(wxSYS_COLOUR_HOTLIGHT) );
     mCodecRow->Add( mCodecVal, wxSizerFlags().Center().Border(wxLEFT, 5) );
     mediaGrid->Add( mCodecRow, wxSizerFlags().Expand().CenterVertical() );
 
     wxBoxSizer *mArtistRow = new wxBoxSizer( wxHORIZONTAL );
-    mArtistRow->Add( new wxStaticText( parent, -1, LabelWithColon( _("Artist") ), wxDefaultPosition, wxDefaultSize, 0 ), wxSizerFlags().Expand().CenterVertical().Border(wxLEFT, 5) );
-    wxStaticText *mArtistVal = new wxStaticText( parent, IDC_FD_MEDIA_ARTIST, _("N/A"), wxDefaultPosition, wxDefaultSize, 0 );
+    mArtistRow->Add( new wxStaticText( mediaBox, -1, LabelWithColon( _("Artist") ), wxDefaultPosition, wxDefaultSize, 0 ), wxSizerFlags().Expand().CenterVertical().Border(wxLEFT, 5) );
+    wxStaticText *mArtistVal = new wxStaticText( mediaBox, IDC_FD_MEDIA_ARTIST, _("N/A"), wxDefaultPosition, wxDefaultSize, 0 );
     mArtistVal->SetForegroundColour( wxSystemSettings::GetColour(wxSYS_COLOUR_HOTLIGHT) );
     mArtistRow->Add( mArtistVal, wxSizerFlags().Center().Border(wxLEFT, 5) );
     mediaGrid->Add( mArtistRow, wxSizerFlags().Expand().CenterVertical() );
 
     wxBoxSizer *mAlbumRow = new wxBoxSizer( wxHORIZONTAL );
-    mAlbumRow->Add( new wxStaticText( parent, -1, LabelWithColon( _("Album") ), wxDefaultPosition, wxDefaultSize, 0 ), wxSizerFlags().Expand().CenterVertical() );
-    wxStaticText *mAlbumVal = new wxStaticText( parent, IDC_FD_MEDIA_ALBUM, _("N/A"), wxDefaultPosition, wxDefaultSize, 0 );
+    mAlbumRow->Add( new wxStaticText( mediaBox, -1, LabelWithColon( _("Album") ), wxDefaultPosition, wxDefaultSize, 0 ), wxSizerFlags().Expand().CenterVertical() );
+    wxStaticText *mAlbumVal = new wxStaticText( mediaBox, IDC_FD_MEDIA_ALBUM, _("N/A"), wxDefaultPosition, wxDefaultSize, 0 );
     mAlbumVal->SetForegroundColour( wxSystemSettings::GetColour(wxSYS_COLOUR_HOTLIGHT) );
     mAlbumRow->Add( mAlbumVal, wxSizerFlags().Center().Border(wxLEFT, 5) );
     mediaGrid->Add( mAlbumRow, wxSizerFlags().Expand().CenterVertical() );
 
     wxBoxSizer *mTitleRow = new wxBoxSizer( wxHORIZONTAL );
-    mTitleRow->Add( new wxStaticText( parent, -1, LabelWithColon( _("Title") ), wxDefaultPosition, wxDefaultSize, 0 ), wxSizerFlags().Expand().CenterVertical().Border(wxLEFT, 5) );
-    wxStaticText *mTitleVal = new wxStaticText( parent, IDC_FD_MEDIA_TITLE, _("N/A"), wxDefaultPosition, wxDefaultSize, 0 );
+    mTitleRow->Add( new wxStaticText( mediaBox, -1, LabelWithColon( _("Title") ), wxDefaultPosition, wxDefaultSize, 0 ), wxSizerFlags().Expand().CenterVertical().Border(wxLEFT, 5) );
+    wxStaticText *mTitleVal = new wxStaticText( mediaBox, IDC_FD_MEDIA_TITLE, _("N/A"), wxDefaultPosition, wxDefaultSize, 0 );
     mTitleVal->SetForegroundColour( wxSystemSettings::GetColour(wxSYS_COLOUR_HOTLIGHT) );
     mTitleRow->Add( mTitleVal, wxSizerFlags().Center().Border(wxLEFT, 5) );
     mediaGrid->Add( mTitleRow, wxSizerFlags().Expand().CenterVertical() );
@@ -815,23 +787,23 @@ wxSizer *fileDetails( wxWindow *parent, bool call_fit, bool set_sizer )
     wxStaticBox *item66 = new wxStaticBox( parent, -1, _("File Names") );
     wxStaticBoxSizer *item65 = new wxStaticBoxSizer( item66, wxVERTICAL );
 
-    CFileDetailListCtrl *item67 = new CFileDetailListCtrl( parent, IDC_LISTCTRLFILENAMES, wxDefaultPosition, wxSize(-1,130), 0 );
+    CFileDetailListCtrl *item67 = new CFileDetailListCtrl( item66, IDC_LISTCTRLFILENAMES, wxDefaultPosition, wxSize(-1,130), 0 );
     wxASSERT( item67 );
     item65->Add( item67, wxSizerFlags(1).Expand().FixedMinSize() );
     wxBoxSizer *item68 = new wxBoxSizer( wxHORIZONTAL );
 
-    wxButton *item69 = new wxButton( parent, IDC_TAKEOVER, _("Takeover"), wxDefaultPosition, wxDefaultSize, 0 );
+    wxButton *item69 = new wxButton( item66, IDC_TAKEOVER, _("Takeover"), wxDefaultPosition, wxDefaultSize, 0 );
     item68->Add( item69, wxSizerFlags().Center().Border(wxALL, 5) );
 
     item68->Add( 20, 20, wxSizerFlags(1).Center().Border(wxALL, 5) );
-    wxButton *item70 = new wxButton( parent, IDC_CMTBT, _("Show all comments"), wxDefaultPosition, wxDefaultSize, 0 );
+    wxButton *item70 = new wxButton( item66, IDC_CMTBT, _("Show all comments"), wxDefaultPosition, wxDefaultSize, 0 );
     item68->Add( item70, wxSizerFlags().CenterVertical().Border(wxALL, 5) );
     item68->Add( 20, 20, wxSizerFlags(1).Center().Border(wxALL, 5) );
-    wxButton *item71 = new wxButton( parent, IDC_BUTTONSTRIP, _("Cleanup"), wxDefaultPosition, wxDefaultSize, 0 );
+    wxButton *item71 = new wxButton( item66, IDC_BUTTONSTRIP, _("Cleanup"), wxDefaultPosition, wxDefaultSize, 0 );
     item68->Add( item71, wxSizerFlags().Center().Border(wxALL, 5) );
 
     item65->Add( item68, wxSizerFlags().Expand().CenterVertical() );
-    CMuleTextCtrl *item72 = new CMuleTextCtrl( parent, IDC_FILENAME, "", wxDefaultPosition, wxDefaultSize, 0 );
+    CMuleTextCtrl *item72 = new CMuleTextCtrl( item66, IDC_FILENAME, "", wxDefaultPosition, wxDefaultSize, 0 );
     item65->Add( item72, wxSizerFlags().Expand().CenterVertical() );
     item0->Add( item65, wxSizerFlags().Expand().Border(wxLEFT|wxRIGHT|wxBOTTOM, 5) );
     wxBoxSizer *item73 = new wxBoxSizer( wxHORIZONTAL );
@@ -872,10 +844,10 @@ wxSizer *commentDlg( wxWindow *parent, bool call_fit, bool set_sizer )
 
     wxBoxSizer *item3 = new wxBoxSizer( wxHORIZONTAL );
 
-    CMuleTextCtrl *item4 = new CMuleTextCtrl( parent, IDC_CMT_TEXT, "", wxDefaultPosition, wxDefaultSize, wxTE_PROCESS_ENTER );
+    CMuleTextCtrl *item4 = new CMuleTextCtrl( item2, IDC_CMT_TEXT, "", wxDefaultPosition, wxDefaultSize, wxTE_PROCESS_ENTER );
     item4->SetToolTip( _("For a film you can say its length, its story, language ...\nand if it's a fake, you can tell that to other users of aMule.") );
     item3->Add( item4, wxSizerFlags(1).CenterVertical().Border(wxALL, 5) );
-    wxButton *item5 = new wxButton( parent, IDC_FC_CLEAR, _("Clear"), wxDefaultPosition, wxDefaultSize, 0 );
+    wxButton *item5 = new wxButton( item2, IDC_FC_CLEAR, _("Clear"), wxDefaultPosition, wxDefaultSize, 0 );
     item3->Add( item5, wxSizerFlags().Center().Border(wxALL, 5) );
     item1->Add( item3, wxSizerFlags().Expand().CenterVertical() );
     item0->Add( item1, wxSizerFlags(1).Expand().CenterVertical().Border(wxLEFT|wxRIGHT|wxTOP, 5) );
@@ -893,7 +865,7 @@ wxSizer *commentDlg( wxWindow *parent, bool call_fit, bool set_sizer )
         _("Good"), 
         _("Excellent")
     };
-    wxChoice *item9 = new wxChoice( parent, IDC_RATELIST, wxDefaultPosition, wxDefaultSize, 6, strs9, 0 );
+    wxChoice *item9 = new wxChoice( item8, IDC_RATELIST, wxDefaultPosition, wxDefaultSize, 6, strs9, 0 );
     item9->SetToolTip( _("Choose the file rating or advice users if the file is invalid ...") );
     item7->Add( item9, wxSizerFlags().CenterVertical().Border(wxALL, 5) );
     item6->Add( item7, wxSizerFlags(1).Expand().CenterHorizontal().Border(wxALL, 0) );
@@ -986,13 +958,13 @@ wxSizer *addFriendDlg( wxWindow *parent, bool call_fit, bool set_sizer )
 
     wxFlexGridSizer *item3 = new wxFlexGridSizer( 2, 0, 0 );
 
-    wxStaticText *item4 = new wxStaticText( parent, -1, LabelWithColon( _("IP Address") ), wxDefaultPosition, wxDefaultSize, 0 );
+    wxStaticText *item4 = new wxStaticText( item2, -1, LabelWithColon( _("IP Address") ), wxDefaultPosition, wxDefaultSize, 0 );
     item3->Add( item4, wxSizerFlags().CenterVertical().Border(wxRIGHT|wxBOTTOM, 5) );
-    CMuleTextCtrl *item5 = new CMuleTextCtrl( parent, ID_IPADDRESS, "", wxDefaultPosition, wxSize(150,-1), 0 );
+    CMuleTextCtrl *item5 = new CMuleTextCtrl( item2, ID_IPADDRESS, "", wxDefaultPosition, wxSize(150,-1), 0 );
     item3->Add( item5, wxSizerFlags().CenterVertical().Border(wxLEFT|wxRIGHT|wxBOTTOM, 5) );
-    wxStaticText *item6 = new wxStaticText( parent, -1, LabelWithColon( _("Port") ), wxDefaultPosition, wxDefaultSize, 0 );
+    wxStaticText *item6 = new wxStaticText( item2, -1, LabelWithColon( _("Port") ), wxDefaultPosition, wxDefaultSize, 0 );
     item3->Add( item6, wxSizerFlags().CenterVertical().Border(wxRIGHT|wxTOP, 5) );
-    CMuleTextCtrl *item7 = new CMuleTextCtrl( parent, ID_IPORT, "", wxDefaultPosition, wxSize(80,-1), 0 );
+    CMuleTextCtrl *item7 = new CMuleTextCtrl( item2, ID_IPORT, "", wxDefaultPosition, wxSize(80,-1), 0 );
     item3->Add( item7, wxSizerFlags().CenterVertical().Border(wxLEFT|wxRIGHT|wxTOP, 5) );
     item1->Add( item3, wxSizerFlags().Expand().CenterVertical().Border(wxALL, 5) );
     item0->Add( item1, wxSizerFlags().Expand().CenterVertical().Border(wxALL, 5) );
@@ -1001,13 +973,13 @@ wxSizer *addFriendDlg( wxWindow *parent, bool call_fit, bool set_sizer )
 
     wxFlexGridSizer *item10 = new wxFlexGridSizer( 2, 0, 0 );
 
-    wxStaticText *item11 = new wxStaticText( parent, -1, LabelWithColon( _("Username") ), wxDefaultPosition, wxDefaultSize, 0 );
+    wxStaticText *item11 = new wxStaticText( item9, -1, LabelWithColon( _("Username") ), wxDefaultPosition, wxDefaultSize, 0 );
     item10->Add( item11, wxSizerFlags().CenterVertical().Border(wxRIGHT|wxBOTTOM, 5) );
-    CMuleTextCtrl *item12 = new CMuleTextCtrl( parent, ID_USERNAME, "", wxDefaultPosition, wxSize(250,-1), 0 );
+    CMuleTextCtrl *item12 = new CMuleTextCtrl( item9, ID_USERNAME, "", wxDefaultPosition, wxSize(250,-1), 0 );
     item10->Add( item12, wxSizerFlags().CenterVertical().Border(wxLEFT|wxBOTTOM, 5) );
-    wxStaticText *item13 = new wxStaticText( parent, -1, LabelWithColon( _("Userhash") ), wxDefaultPosition, wxDefaultSize, 0 );
+    wxStaticText *item13 = new wxStaticText( item9, -1, LabelWithColon( _("Userhash") ), wxDefaultPosition, wxDefaultSize, 0 );
     item10->Add( item13, wxSizerFlags().CenterVertical().Border(wxRIGHT|wxBOTTOM, 5) );
-    CMuleTextCtrl *item14 = new CMuleTextCtrl( parent, ID_USERHASH, "", wxDefaultPosition, wxSize(250,-1), 0 );
+    CMuleTextCtrl *item14 = new CMuleTextCtrl( item9, ID_USERHASH, "", wxDefaultPosition, wxSize(250,-1), 0 );
     item10->Add( item14, wxSizerFlags().CenterVertical().Border(wxLEFT|wxBOTTOM, 5) );
     item8->Add( item10, wxSizerFlags().Expand().CenterVertical().Border(wxALL, 5) );
     item0->Add( item8, wxSizerFlags().Expand().CenterVertical().Border(wxALL, 5) );
@@ -1059,7 +1031,7 @@ wxSizer *statsDlg( wxWindow *parent, bool call_fit, bool set_sizer )
     wxStaticBox *item2 = new wxStaticBox( parent, -1, _("Download-Speed") );
     wxStaticBoxSizer *item1 = new wxStaticBoxSizer( item2, wxVERTICAL );
 
-    wxWindow *item3 = new COScopeCtrl(3,1,GRAPH_DOWN,parent);
+    wxWindow *item3 = new COScopeCtrl(3,1,GRAPH_DOWN,item2);
 item3->SetName("dloadScope");
     wxASSERT( item3 );
     item1->Add( item3, wxSizerFlags(1).Expand().Border(wxALL, 5) );
@@ -1069,26 +1041,26 @@ item3->SetName("dloadScope");
 
     wxBoxSizer *item5 = new wxBoxSizer( wxHORIZONTAL );
 
-    wxWindow *item6 = new CColorFrameCtrl(parent,IDC_C0,20,14);
+    wxWindow *item6 = new CColorFrameCtrl(item2,IDC_C0,20,14);
     wxASSERT( item6 );
     item5->Add( item6, wxSizerFlags().FixedMinSize().Center() );
-    wxStaticText *item7 = new wxStaticText( parent, -1, _("Current"), wxDefaultPosition, wxDefaultSize, 0 );
+    wxStaticText *item7 = new wxStaticText( item2, -1, _("Current"), wxDefaultPosition, wxDefaultSize, 0 );
     item5->Add( item7, wxSizerFlags().Center().Border(wxLEFT, 5) );
     item4->Add( item5, wxSizerFlags().CenterVertical().Border(wxLEFT, 5) );
     wxBoxSizer *item8 = new wxBoxSizer( wxHORIZONTAL );
 
-    wxWindow *item9 = new CColorFrameCtrl(parent,IDC_C0_3,20,14);
+    wxWindow *item9 = new CColorFrameCtrl(item2,IDC_C0_3,20,14);
     wxASSERT( item9 );
     item8->Add( item9, wxSizerFlags().FixedMinSize().Center() );
-    wxStaticText *item10 = new wxStaticText( parent, -1, _("Running average"), wxDefaultPosition, wxDefaultSize, 0 );
+    wxStaticText *item10 = new wxStaticText( item2, -1, _("Running average"), wxDefaultPosition, wxDefaultSize, 0 );
     item8->Add( item10, wxSizerFlags().Center().Border(wxLEFT, 5) );
     item4->Add( item8, wxSizerFlags().CenterVertical().Border(wxLEFT, 5) );
     wxBoxSizer *item11 = new wxBoxSizer( wxHORIZONTAL );
 
-    wxWindow *item12 = new CColorFrameCtrl(parent,IDC_C0_2,20,14);
+    wxWindow *item12 = new CColorFrameCtrl(item2,IDC_C0_2,20,14);
     wxASSERT( item12 );
     item11->Add( item12, wxSizerFlags().FixedMinSize().Center() );
-    wxStaticText *item13 = new wxStaticText( parent, -1, _("Session average"), wxDefaultPosition, wxDefaultSize, 0 );
+    wxStaticText *item13 = new wxStaticText( item2, -1, _("Session average"), wxDefaultPosition, wxDefaultSize, 0 );
     item11->Add( item13, wxSizerFlags().Center().Border(wxLEFT, 5) );
     item4->Add( item11, wxSizerFlags().CenterVertical().Border(wxLEFT, 5) );
     item1->Add( item4, wxSizerFlags().Expand().Border(wxLEFT|wxRIGHT|wxTOP, 5) );
@@ -1096,7 +1068,7 @@ item3->SetName("dloadScope");
     wxStaticBox *item15 = new wxStaticBox( parent, -1, _("Upload-Speed") );
     wxStaticBoxSizer *item14 = new wxStaticBoxSizer( item15, wxVERTICAL );
 
-    wxWindow *item16 = new COScopeCtrl(3,1,GRAPH_UP,parent);
+    wxWindow *item16 = new COScopeCtrl(3,1,GRAPH_UP,item15);
 item16->SetName("uloadScope");
     wxASSERT( item16 );
     item14->Add( item16, wxSizerFlags(1).Expand().Border(wxALL, 5) );
@@ -1104,26 +1076,26 @@ item16->SetName("uloadScope");
 
     wxBoxSizer *item18 = new wxBoxSizer( wxHORIZONTAL );
 
-    wxWindow *item19 = new CColorFrameCtrl(parent,IDC_C1,20,14);
+    wxWindow *item19 = new CColorFrameCtrl(item15,IDC_C1,20,14);
     wxASSERT( item19 );
     item18->Add( item19, wxSizerFlags().FixedMinSize().Center() );
-    wxStaticText *item20 = new wxStaticText( parent, -1, _("Current"), wxDefaultPosition, wxDefaultSize, 0 );
+    wxStaticText *item20 = new wxStaticText( item15, -1, _("Current"), wxDefaultPosition, wxDefaultSize, 0 );
     item18->Add( item20, wxSizerFlags().Center().Border(wxLEFT, 5) );
     item17->Add( item18, wxSizerFlags().CenterVertical().Border(wxLEFT, 5) );
     wxBoxSizer *item21 = new wxBoxSizer( wxHORIZONTAL );
 
-    wxWindow *item22 = new CColorFrameCtrl(parent,IDC_C1_3,20,14);
+    wxWindow *item22 = new CColorFrameCtrl(item15,IDC_C1_3,20,14);
     wxASSERT( item22 );
     item21->Add( item22, wxSizerFlags().FixedMinSize().Center() );
-    wxStaticText *item23 = new wxStaticText( parent, -1, _("Running average"), wxDefaultPosition, wxDefaultSize, 0 );
+    wxStaticText *item23 = new wxStaticText( item15, -1, _("Running average"), wxDefaultPosition, wxDefaultSize, 0 );
     item21->Add( item23, wxSizerFlags().Center().Border(wxLEFT, 5) );
     item17->Add( item21, wxSizerFlags().CenterVertical().Border(wxLEFT, 5) );
     wxBoxSizer *item24 = new wxBoxSizer( wxHORIZONTAL );
 
-    wxWindow *item25 = new CColorFrameCtrl(parent,IDC_C1_2,20,14);
+    wxWindow *item25 = new CColorFrameCtrl(item15,IDC_C1_2,20,14);
     wxASSERT( item25 );
     item24->Add( item25, wxSizerFlags().FixedMinSize().Center() );
-    wxStaticText *item26 = new wxStaticText( parent, -1, _("Session average"), wxDefaultPosition, wxDefaultSize, 0 );
+    wxStaticText *item26 = new wxStaticText( item15, -1, _("Session average"), wxDefaultPosition, wxDefaultSize, 0 );
     item24->Add( item26, wxSizerFlags().Center().Border(wxLEFT, 5) );
     item17->Add( item24, wxSizerFlags().CenterVertical().Border(wxLEFT, 5) );
     item14->Add( item17, wxSizerFlags().Expand().Border(wxLEFT|wxRIGHT|wxTOP, 5) );
@@ -1131,7 +1103,7 @@ item16->SetName("uloadScope");
     wxStaticBox *item28 = new wxStaticBox( parent, -1, _("Connections") );
     wxStaticBoxSizer *item27 = new wxStaticBoxSizer( item28, wxVERTICAL );
 
-    wxWindow *item29 = new COScopeCtrl(3,0,GRAPH_CONN,parent);
+    wxWindow *item29 = new COScopeCtrl(3,0,GRAPH_CONN,item28);
 item29->SetName("otherScope");
     wxASSERT( item29 );
     item27->Add( item29, wxSizerFlags(1).Expand().Border(wxALL, 5) );
@@ -1139,26 +1111,26 @@ item29->SetName("otherScope");
 
     wxBoxSizer *item31 = new wxBoxSizer( wxHORIZONTAL );
 
-    wxWindow *item32 = new CColorFrameCtrl(parent,IDC_S3,20,14);
+    wxWindow *item32 = new CColorFrameCtrl(item28,IDC_S3,20,14);
     wxASSERT( item32 );
     item31->Add( item32, wxSizerFlags().FixedMinSize().Center() );
-    wxStaticText *item33 = new wxStaticText( parent, -1, _("Active downloads"), wxDefaultPosition, wxDefaultSize, 0 );
+    wxStaticText *item33 = new wxStaticText( item28, -1, _("Active downloads"), wxDefaultPosition, wxDefaultSize, 0 );
     item31->Add( item33, wxSizerFlags().Center().Border(wxLEFT, 5) );
     item30->Add( item31, wxSizerFlags().CenterVertical().Border(wxLEFT, 5) );
     wxBoxSizer *item34 = new wxBoxSizer( wxHORIZONTAL );
 
-    wxWindow *item35 = new CColorFrameCtrl(parent,IDC_S0,20,14);
+    wxWindow *item35 = new CColorFrameCtrl(item28,IDC_S0,20,14);
     wxASSERT( item35 );
     item34->Add( item35, wxSizerFlags().FixedMinSize().Center() );
-    wxStaticText *item36 = new wxStaticText( parent, ID_ACTIVEC, _("Active connections (1:1)"), wxDefaultPosition, wxDefaultSize, 0 );
+    wxStaticText *item36 = new wxStaticText( item28, ID_ACTIVEC, _("Active connections (1:1)"), wxDefaultPosition, wxDefaultSize, 0 );
     item34->Add( item36, wxSizerFlags().Center().Border(wxLEFT, 5) );
     item30->Add( item34, wxSizerFlags().CenterVertical().Border(wxLEFT, 5) );
     wxBoxSizer *item37 = new wxBoxSizer( wxHORIZONTAL );
 
-    wxWindow *item38 = new CColorFrameCtrl(parent,IDC_S1,20,14);
+    wxWindow *item38 = new CColorFrameCtrl(item28,IDC_S1,20,14);
     wxASSERT( item38 );
     item37->Add( item38, wxSizerFlags().FixedMinSize().Center() );
-    wxStaticText *item39 = new wxStaticText( parent, -1, _("Active uploads"), wxDefaultPosition, wxDefaultSize, 0 );
+    wxStaticText *item39 = new wxStaticText( item28, -1, _("Active uploads"), wxDefaultPosition, wxDefaultSize, 0 );
     item37->Add( item39, wxSizerFlags().Center().Border(wxLEFT, 5) );
     item30->Add( item37, wxSizerFlags().CenterVertical().Border(wxLEFT, 5) );
     item27->Add( item30, wxSizerFlags().Expand().Border(wxLEFT|wxRIGHT|wxTOP, 5) );
@@ -1166,7 +1138,7 @@ item29->SetName("otherScope");
     wxStaticBox *item41 = new wxStaticBox( parent, -1, _("Statistics Tree") );
     wxStaticBoxSizer *item40 = new wxStaticBoxSizer( item41, wxVERTICAL );
 
-    wxTreeCtrl *item42 = new wxTreeCtrl( parent, -1, wxDefaultPosition, wxDefaultSize, wxTR_HAS_BUTTONS|wxSUNKEN_BORDER );
+    wxTreeCtrl *item42 = new wxTreeCtrl( item41, -1, wxDefaultPosition, wxDefaultSize, wxTR_HAS_BUTTONS|wxSUNKEN_BORDER );
     item42->SetName( "statTree" );
     item40->Add( item42, wxSizerFlags(1).Expand().Border(wxALL, 5) );    item0->Add( item40, wxSizerFlags(1).Expand().Border(wxALL, 5) );
     if (set_sizer)
@@ -1190,18 +1162,18 @@ wxSizer *clientDetails( wxWindow *parent, bool call_fit, bool set_sizer )
 
     wxBoxSizer *item4 = new wxBoxSizer( wxVERTICAL );
 
-    wxStaticText *item5 = new wxStaticText( parent, -1, LabelWithColon( _("Username") ), wxDefaultPosition, wxDefaultSize, 0 );
+    wxStaticText *item5 = new wxStaticText( item2, -1, LabelWithColon( _("Username") ), wxDefaultPosition, wxDefaultSize, 0 );
     item4->Add( item5, wxSizerFlags().Expand().Border(wxALL, 5) );
-    wxStaticText *item6 = new wxStaticText( parent, -1, LabelWithColon( _("Userhash") ), wxDefaultPosition, wxDefaultSize, 0 );
+    wxStaticText *item6 = new wxStaticText( item2, -1, LabelWithColon( _("Userhash") ), wxDefaultPosition, wxDefaultSize, 0 );
     item4->Add( item6, wxSizerFlags().Expand().CenterVertical().Border(wxLEFT|wxRIGHT|wxBOTTOM, 5) );
     item3->Add( item4, wxSizerFlags().Center() );
 
     wxBoxSizer *item7 = new wxBoxSizer( wxVERTICAL );
 
-    wxStaticText *item8 = new wxStaticText( parent, ID_DNAME, _("N/A"), wxDefaultPosition, wxDefaultSize, 0 );
+    wxStaticText *item8 = new wxStaticText( item2, ID_DNAME, _("N/A"), wxDefaultPosition, wxDefaultSize, 0 );
     item8->SetForegroundColour( wxSystemSettings::GetColour(wxSYS_COLOUR_HOTLIGHT) );
     item7->Add( item8, wxSizerFlags().Expand().CenterVertical().Border(wxALL, 5) );
-    wxStaticText *item9 = new wxStaticText( parent, ID_DHASH, _("N/A"), wxDefaultPosition, wxDefaultSize, 0 );
+    wxStaticText *item9 = new wxStaticText( item2, ID_DHASH, _("N/A"), wxDefaultPosition, wxDefaultSize, 0 );
     item9->SetForegroundColour( wxSystemSettings::GetColour(wxSYS_COLOUR_HOTLIGHT) );
     item7->Add( item9, wxSizerFlags().Expand().Border(wxLEFT|wxRIGHT|wxBOTTOM, 5) );
     item3->Add( item7, wxSizerFlags().Center() );
@@ -1211,57 +1183,57 @@ wxSizer *clientDetails( wxWindow *parent, bool call_fit, bool set_sizer )
     item10->AddGrowableCol( 1 );
     item10->AddGrowableCol( 4 );
 
-    wxStaticText *item11 = new wxStaticText( parent, -1, LabelWithColon( _("Client software") ), wxDefaultPosition, wxDefaultSize, 0 );
+    wxStaticText *item11 = new wxStaticText( item2, -1, LabelWithColon( _("Client software") ), wxDefaultPosition, wxDefaultSize, 0 );
     item10->Add( item11, wxSizerFlags().CenterVertical().Border(wxLEFT|wxRIGHT|wxBOTTOM, 5) );
-    wxStaticText *item12 = new wxStaticText( parent, ID_DSOFT, _("N/A"), wxDefaultPosition, wxDefaultSize, 0 );
+    wxStaticText *item12 = new wxStaticText( item2, ID_DSOFT, _("N/A"), wxDefaultPosition, wxDefaultSize, 0 );
     item12->SetForegroundColour( wxSystemSettings::GetColour(wxSYS_COLOUR_HOTLIGHT) );
     item10->Add( item12, wxSizerFlags().CenterVertical().Border(wxLEFT|wxRIGHT|wxBOTTOM, 5) );
     item10->Add( 20, 20, 0, wxALIGN_CENTER, 5 );
 
-    wxStaticText *item13 = new wxStaticText( parent, -1, LabelWithColon( _("Client version") ), wxDefaultPosition, wxDefaultSize, 0 );
+    wxStaticText *item13 = new wxStaticText( item2, -1, LabelWithColon( _("Client version") ), wxDefaultPosition, wxDefaultSize, 0 );
     item10->Add( item13, wxSizerFlags().CenterVertical().Border(wxLEFT|wxRIGHT|wxBOTTOM, 5) );
-    wxStaticText *item14 = new wxStaticText( parent, ID_DVERSION, _("N/A"), wxDefaultPosition, wxDefaultSize, 0 );
+    wxStaticText *item14 = new wxStaticText( item2, ID_DVERSION, _("N/A"), wxDefaultPosition, wxDefaultSize, 0 );
     item14->SetForegroundColour( wxSystemSettings::GetColour(wxSYS_COLOUR_HOTLIGHT) );
     item10->Add( item14, wxSizerFlags().CenterVertical().Border(wxLEFT|wxRIGHT|wxBOTTOM, 5) );
-    wxStaticText *item15 = new wxStaticText( parent, -1, LabelWithColon( _("IP Address") ), wxDefaultPosition, wxDefaultSize, 0 );
+    wxStaticText *item15 = new wxStaticText( item2, -1, LabelWithColon( _("IP Address") ), wxDefaultPosition, wxDefaultSize, 0 );
     item10->Add( item15, wxSizerFlags().CenterVertical().Border(wxLEFT|wxRIGHT|wxBOTTOM, 5) );
-    wxStaticText *item16 = new wxStaticText( parent, ID_DIP, _("N/A"), wxDefaultPosition, wxDefaultSize, 0 );
+    wxStaticText *item16 = new wxStaticText( item2, ID_DIP, _("N/A"), wxDefaultPosition, wxDefaultSize, 0 );
     item16->SetForegroundColour( wxSystemSettings::GetColour(wxSYS_COLOUR_HOTLIGHT) );
     item10->Add( item16, wxSizerFlags().CenterVertical().Border(wxLEFT|wxRIGHT|wxBOTTOM, 5) );
     item10->Add( 20, 20, 0, wxALIGN_CENTER, 5 );
 
-    wxStaticText *item17 = new wxStaticText( parent, -1, LabelWithColon( _("User ID") ), wxDefaultPosition, wxDefaultSize, 0 );
+    wxStaticText *item17 = new wxStaticText( item2, -1, LabelWithColon( _("User ID") ), wxDefaultPosition, wxDefaultSize, 0 );
     item10->Add( item17, wxSizerFlags().CenterVertical().Border(wxLEFT|wxRIGHT|wxBOTTOM, 5) );
-    wxStaticText *item18 = new wxStaticText( parent, ID_DID, _("N/A"), wxDefaultPosition, wxDefaultSize, 0 );
+    wxStaticText *item18 = new wxStaticText( item2, ID_DID, _("N/A"), wxDefaultPosition, wxDefaultSize, 0 );
     item18->SetForegroundColour( wxSystemSettings::GetColour(wxSYS_COLOUR_HOTLIGHT) );
     item10->Add( item18, wxSizerFlags().CenterVertical().Border(wxLEFT|wxRIGHT|wxBOTTOM, 5) );
-    wxStaticText *item19 = new wxStaticText( parent, -1, LabelWithColon( _("Server IP") ), wxDefaultPosition, wxDefaultSize, 0 );
+    wxStaticText *item19 = new wxStaticText( item2, -1, LabelWithColon( _("Server IP") ), wxDefaultPosition, wxDefaultSize, 0 );
     item10->Add( item19, wxSizerFlags().CenterVertical().Border(wxLEFT|wxRIGHT|wxBOTTOM, 5) );
-    wxStaticText *item20 = new wxStaticText( parent, ID_DSIP, _("N/A"), wxDefaultPosition, wxDefaultSize, 0 );
+    wxStaticText *item20 = new wxStaticText( item2, ID_DSIP, _("N/A"), wxDefaultPosition, wxDefaultSize, 0 );
     item20->SetForegroundColour( wxSystemSettings::GetColour(wxSYS_COLOUR_HOTLIGHT) );
     item10->Add( item20, wxSizerFlags().CenterVertical().Border(wxLEFT|wxRIGHT|wxBOTTOM, 5) );
     item10->Add( 20, 20, 0, wxALIGN_CENTER, 5 );
 
-    wxStaticText *item21 = new wxStaticText( parent, -1, LabelWithColon( _("Server name") ), wxDefaultPosition, wxDefaultSize, 0 );
+    wxStaticText *item21 = new wxStaticText( item2, -1, LabelWithColon( _("Server name") ), wxDefaultPosition, wxDefaultSize, 0 );
     item10->Add( item21, wxSizerFlags().CenterVertical().Border(wxLEFT|wxRIGHT|wxBOTTOM, 5) );
-    wxStaticText *item22 = new wxStaticText( parent, ID_DSNAME, _("N/A"), wxDefaultPosition, wxDefaultSize, 0 );
+    wxStaticText *item22 = new wxStaticText( item2, ID_DSNAME, _("N/A"), wxDefaultPosition, wxDefaultSize, 0 );
     item22->SetForegroundColour( wxSystemSettings::GetColour(wxSYS_COLOUR_HOTLIGHT) );
     item10->Add( item22, wxSizerFlags().CenterVertical().Border(wxLEFT|wxRIGHT|wxBOTTOM, 5) );
-    wxStaticText *item23 = new wxStaticText( parent, -1, LabelWithColon( _("Obfuscation") ), wxDefaultPosition, wxDefaultSize, 0 );
+    wxStaticText *item23 = new wxStaticText( item2, -1, LabelWithColon( _("Obfuscation") ), wxDefaultPosition, wxDefaultSize, 0 );
     item10->Add( item23, wxSizerFlags().CenterVertical().Border(wxLEFT|wxRIGHT|wxBOTTOM, 5) );
-    wxStaticText *item24 = new wxStaticText( parent, IDT_OBFUSCATION, _("N/A"), wxDefaultPosition, wxDefaultSize, 0 );
+    wxStaticText *item24 = new wxStaticText( item2, IDT_OBFUSCATION, _("N/A"), wxDefaultPosition, wxDefaultSize, 0 );
     item24->SetForegroundColour( wxSystemSettings::GetColour(wxSYS_COLOUR_HOTLIGHT) );
     item10->Add( item24, wxSizerFlags().CenterVertical().Border(wxLEFT|wxRIGHT|wxBOTTOM, 5) );
     item10->Add( 20, 20, 0, wxALIGN_CENTER, 5 );
 
-    wxStaticText *item25 = new wxStaticText( parent, -1, LabelWithColon( _("Kad") ), wxDefaultPosition, wxDefaultSize, 0 );
+    wxStaticText *item25 = new wxStaticText( item2, -1, LabelWithColon( _("Kad") ), wxDefaultPosition, wxDefaultSize, 0 );
     item10->Add( item25, wxSizerFlags().CenterVertical().Border(wxLEFT|wxRIGHT|wxBOTTOM, 5) );
-    wxStaticText *item26 = new wxStaticText( parent, IDT_KAD, _("N/A"), wxDefaultPosition, wxDefaultSize, 0 );
+    wxStaticText *item26 = new wxStaticText( item2, IDT_KAD, _("N/A"), wxDefaultPosition, wxDefaultSize, 0 );
     item26->SetForegroundColour( wxSystemSettings::GetColour(wxSYS_COLOUR_HOTLIGHT) );
     item10->Add( item26, wxSizerFlags().CenterVertical().Border(wxLEFT|wxRIGHT|wxBOTTOM, 5) );
-    wxStaticText *item26a = new wxStaticText( parent, IDT_MOD_CAPABILITIES_LABEL, LabelWithColon( _("Protocol extensions") ), wxDefaultPosition, wxDefaultSize, 0 );
+    wxStaticText *item26a = new wxStaticText( item2, IDT_MOD_CAPABILITIES_LABEL, LabelWithColon( _("Protocol extensions") ), wxDefaultPosition, wxDefaultSize, 0 );
     item10->Add( item26a, wxSizerFlags().CenterVertical().Border(wxLEFT|wxRIGHT|wxBOTTOM, 5) );
-    wxStaticText *item26b = new wxStaticText( parent, IDT_MOD_CAPABILITIES, _("N/A"), wxDefaultPosition, wxDefaultSize, 0 );
+    wxStaticText *item26b = new wxStaticText( item2, IDT_MOD_CAPABILITIES, _("N/A"), wxDefaultPosition, wxDefaultSize, 0 );
     item26b->SetForegroundColour( wxSystemSettings::GetColour(wxSYS_COLOUR_HOTLIGHT) );
     item10->Add( item26b, wxSizerFlags().CenterVertical().Border(wxLEFT|wxRIGHT|wxBOTTOM, 5) );
     item1->Add( item10, wxSizerFlags().Expand().CenterVertical() );
@@ -1271,9 +1243,9 @@ wxSizer *clientDetails( wxWindow *parent, bool call_fit, bool set_sizer )
 
     wxBoxSizer *item29 = new wxBoxSizer( wxHORIZONTAL );
 
-    wxStaticText *item30 = new wxStaticText( parent, -1, LabelWithColon( _("Current request") ), wxDefaultPosition, wxDefaultSize, 0 );
+    wxStaticText *item30 = new wxStaticText( item28, -1, LabelWithColon( _("Current request") ), wxDefaultPosition, wxDefaultSize, 0 );
     item29->Add( item30, wxSizerFlags().CenterVertical().Border(wxALL, 5) );
-    wxStaticText *item31 = new wxStaticText( parent, ID_DDOWNLOADING, _("N/A"), wxDefaultPosition, wxDefaultSize, 0 );
+    wxStaticText *item31 = new wxStaticText( item28, ID_DDOWNLOADING, _("N/A"), wxDefaultPosition, wxDefaultSize, 0 );
     item31->SetForegroundColour( wxSystemSettings::GetColour(wxSYS_COLOUR_HOTLIGHT) );
     item29->Add( item31, wxSizerFlags().Expand().CenterVertical().Border(wxALL, 5) );
     item27->Add( item29, wxSizerFlags().Expand().CenterVertical() );
@@ -1281,40 +1253,40 @@ wxSizer *clientDetails( wxWindow *parent, bool call_fit, bool set_sizer )
     item32->AddGrowableCol( 1 );
     item32->AddGrowableCol( 4 );
 
-    wxStaticText *item33 = new wxStaticText( parent, -1, LabelWithColon( _("Average upload rate") ), wxDefaultPosition, wxDefaultSize, 0 );
+    wxStaticText *item33 = new wxStaticText( item28, -1, LabelWithColon( _("Average upload rate") ), wxDefaultPosition, wxDefaultSize, 0 );
     item32->Add( item33, wxSizerFlags().CenterVertical().Border(wxLEFT|wxRIGHT|wxBOTTOM, 5) );
-    wxStaticText *item34 = new wxStaticText( parent, ID_DAVDR, _("N/A"), wxDefaultPosition, wxDefaultSize, 0 );
+    wxStaticText *item34 = new wxStaticText( item28, ID_DAVDR, _("N/A"), wxDefaultPosition, wxDefaultSize, 0 );
     item34->SetForegroundColour( wxSystemSettings::GetColour(wxSYS_COLOUR_HOTLIGHT) );
     item32->Add( item34, wxSizerFlags().Expand().CenterVertical().Border(wxLEFT|wxRIGHT|wxBOTTOM, 5) );
     item32->Add( 20, 20, 0, wxALIGN_CENTER, 5 );
 
-    wxStaticText *item35 = new wxStaticText( parent, -1, LabelWithColon( _("Average download rate") ), wxDefaultPosition, wxDefaultSize, 0 );
+    wxStaticText *item35 = new wxStaticText( item28, -1, LabelWithColon( _("Average download rate") ), wxDefaultPosition, wxDefaultSize, 0 );
     item32->Add( item35, wxSizerFlags().CenterVertical().Border(wxLEFT|wxRIGHT|wxBOTTOM, 5) );
-    wxStaticText *item36 = new wxStaticText( parent, ID_DAVUR, _("N/A"), wxDefaultPosition, wxDefaultSize, 0 );
+    wxStaticText *item36 = new wxStaticText( item28, ID_DAVUR, _("N/A"), wxDefaultPosition, wxDefaultSize, 0 );
     item36->SetForegroundColour( wxSystemSettings::GetColour(wxSYS_COLOUR_HOTLIGHT) );
     item32->Add( item36, wxSizerFlags().Expand().CenterVertical().Border(wxLEFT|wxRIGHT|wxBOTTOM, 5) );
-    wxStaticText *item37 = new wxStaticText( parent, -1, LabelWithColon( _("Uploaded (session)") ), wxDefaultPosition, wxDefaultSize, 0 );
+    wxStaticText *item37 = new wxStaticText( item28, -1, LabelWithColon( _("Uploaded (session)") ), wxDefaultPosition, wxDefaultSize, 0 );
     item32->Add( item37, wxSizerFlags().CenterVertical().Border(wxLEFT|wxRIGHT|wxBOTTOM, 5) );
-    wxStaticText *item38 = new wxStaticText( parent, ID_DDOWN, _("N/A"), wxDefaultPosition, wxDefaultSize, 0 );
+    wxStaticText *item38 = new wxStaticText( item28, ID_DDOWN, _("N/A"), wxDefaultPosition, wxDefaultSize, 0 );
     item38->SetForegroundColour( wxSystemSettings::GetColour(wxSYS_COLOUR_HOTLIGHT) );
     item32->Add( item38, wxSizerFlags().Expand().CenterVertical().Border(wxLEFT|wxRIGHT|wxBOTTOM, 5) );
     item32->Add( 20, 20, 0, wxALIGN_CENTER, 5 );
 
-    wxStaticText *item39 = new wxStaticText( parent, -1, LabelWithColon( _("Downloaded (session)") ), wxDefaultPosition, wxDefaultSize, 0 );
+    wxStaticText *item39 = new wxStaticText( item28, -1, LabelWithColon( _("Downloaded (session)") ), wxDefaultPosition, wxDefaultSize, 0 );
     item32->Add( item39, wxSizerFlags().CenterVertical().Border(wxLEFT|wxRIGHT|wxBOTTOM, 5) );
-    wxStaticText *item40 = new wxStaticText( parent, ID_DDUP, _("N/A"), wxDefaultPosition, wxDefaultSize, 0 );
+    wxStaticText *item40 = new wxStaticText( item28, ID_DDUP, _("N/A"), wxDefaultPosition, wxDefaultSize, 0 );
     item40->SetForegroundColour( wxSystemSettings::GetColour(wxSYS_COLOUR_HOTLIGHT) );
     item32->Add( item40, wxSizerFlags().Expand().CenterVertical().Border(wxLEFT|wxRIGHT|wxBOTTOM, 5) );
-    wxStaticText *item41 = new wxStaticText( parent, -1, LabelWithColon( _("Uploaded (total)") ), wxDefaultPosition, wxDefaultSize, 0 );
+    wxStaticText *item41 = new wxStaticText( item28, -1, LabelWithColon( _("Uploaded (total)") ), wxDefaultPosition, wxDefaultSize, 0 );
     item32->Add( item41, wxSizerFlags().CenterVertical().Border(wxLEFT|wxRIGHT|wxBOTTOM, 5) );
-    wxStaticText *item42 = new wxStaticText( parent, ID_DDOWNTOTAL, _("N/A"), wxDefaultPosition, wxDefaultSize, 0 );
+    wxStaticText *item42 = new wxStaticText( item28, ID_DDOWNTOTAL, _("N/A"), wxDefaultPosition, wxDefaultSize, 0 );
     item42->SetForegroundColour( wxSystemSettings::GetColour(wxSYS_COLOUR_HOTLIGHT) );
     item32->Add( item42, wxSizerFlags().Expand().CenterVertical().Border(wxLEFT|wxRIGHT|wxBOTTOM, 5) );
     item32->Add( 20, 20, 0, wxALIGN_CENTER, 5 );
 
-    wxStaticText *item43 = new wxStaticText( parent, -1, LabelWithColon( _("Downloaded (total)") ), wxDefaultPosition, wxDefaultSize, 0 );
+    wxStaticText *item43 = new wxStaticText( item28, -1, LabelWithColon( _("Downloaded (total)") ), wxDefaultPosition, wxDefaultSize, 0 );
     item32->Add( item43, wxSizerFlags().CenterVertical().Border(wxLEFT|wxRIGHT|wxBOTTOM, 5) );
-    wxStaticText *item44 = new wxStaticText( parent, ID_DUPTOTAL, _("N/A"), wxDefaultPosition, wxDefaultSize, 0 );
+    wxStaticText *item44 = new wxStaticText( item28, ID_DUPTOTAL, _("N/A"), wxDefaultPosition, wxDefaultSize, 0 );
     item44->SetForegroundColour( wxSystemSettings::GetColour(wxSYS_COLOUR_HOTLIGHT) );
     item32->Add( item44, wxSizerFlags().Expand().CenterVertical().Border(wxLEFT|wxRIGHT|wxBOTTOM, 5) );
     item27->Add( item32, wxSizerFlags().Expand().CenterVertical() );
@@ -1326,28 +1298,28 @@ wxSizer *clientDetails( wxWindow *parent, bool call_fit, bool set_sizer )
     item47->AddGrowableCol( 1 );
     item47->AddGrowableCol( 4 );
 
-    wxStaticText *item48 = new wxStaticText( parent, -1, LabelWithColon( _("DL/UP modifier") ), wxDefaultPosition, wxDefaultSize, 0 );
+    wxStaticText *item48 = new wxStaticText( item46, -1, LabelWithColon( _("DL/UP modifier") ), wxDefaultPosition, wxDefaultSize, 0 );
     item47->Add( item48, wxSizerFlags().CenterVertical().Border(wxALL, 5) );
-    wxStaticText *item49 = new wxStaticText( parent, ID_DRATIO, _("N/A"), wxDefaultPosition, wxDefaultSize, 0 );
+    wxStaticText *item49 = new wxStaticText( item46, ID_DRATIO, _("N/A"), wxDefaultPosition, wxDefaultSize, 0 );
     item49->SetForegroundColour( wxSystemSettings::GetColour(wxSYS_COLOUR_HOTLIGHT) );
     item47->Add( item49, wxSizerFlags().Expand().CenterVertical().Border(wxALL, 5) );
     item47->Add( 20, 20, 0, wxALIGN_CENTER, 5 );
 
-    wxStaticText *item50 = new wxStaticText( parent, -1, LabelWithColon( _("Secure ident") ), wxDefaultPosition, wxDefaultSize, 0 );
+    wxStaticText *item50 = new wxStaticText( item46, -1, LabelWithColon( _("Secure ident") ), wxDefaultPosition, wxDefaultSize, 0 );
     item47->Add( item50, wxSizerFlags().CenterVertical().Border(wxALL, 5) );
-    wxStaticText *item51 = new wxStaticText( parent, IDC_CDIDENT, _("N/A"), wxDefaultPosition, wxDefaultSize, 0 );
+    wxStaticText *item51 = new wxStaticText( item46, IDC_CDIDENT, _("N/A"), wxDefaultPosition, wxDefaultSize, 0 );
     item51->SetForegroundColour( wxSystemSettings::GetColour(wxSYS_COLOUR_HOTLIGHT) );
     item47->Add( item51, wxSizerFlags().Expand().CenterVertical().Border(wxALL, 5) );
-    wxStaticText *item52 = new wxStaticText( parent, -1, LabelWithColon( _("Queue rank") ), wxDefaultPosition, wxDefaultSize, 0 );
+    wxStaticText *item52 = new wxStaticText( item46, -1, LabelWithColon( _("Queue rank") ), wxDefaultPosition, wxDefaultSize, 0 );
     item47->Add( item52, wxSizerFlags().CenterVertical().Border(wxLEFT|wxRIGHT|wxBOTTOM, 5) );
-    wxStaticText *item53 = new wxStaticText( parent, ID_QUEUERANK, _("N/A"), wxDefaultPosition, wxDefaultSize, 0 );
+    wxStaticText *item53 = new wxStaticText( item46, ID_QUEUERANK, _("N/A"), wxDefaultPosition, wxDefaultSize, 0 );
     item53->SetForegroundColour( wxSystemSettings::GetColour(wxSYS_COLOUR_HOTLIGHT) );
     item47->Add( item53, wxSizerFlags().Expand().CenterVertical().Border(wxLEFT|wxRIGHT|wxBOTTOM, 5) );
     item47->Add( 20, 20, 0, wxALIGN_CENTER, 5 );
 
-    wxStaticText *item54 = new wxStaticText( parent, -1, LabelWithColon( _("Queue score") ), wxDefaultPosition, wxDefaultSize, 0 );
+    wxStaticText *item54 = new wxStaticText( item46, -1, LabelWithColon( _("Queue score") ), wxDefaultPosition, wxDefaultSize, 0 );
     item47->Add( item54, wxSizerFlags().CenterVertical().Border(wxLEFT|wxRIGHT|wxBOTTOM, 5) );
-    wxStaticText *item55 = new wxStaticText( parent, ID_DSCORE, _("N/A"), wxDefaultPosition, wxDefaultSize, 0 );
+    wxStaticText *item55 = new wxStaticText( item46, ID_DSCORE, _("N/A"), wxDefaultPosition, wxDefaultSize, 0 );
     item55->SetForegroundColour( wxSystemSettings::GetColour(wxSYS_COLOUR_HOTLIGHT) );
     item47->Add( item55, wxSizerFlags().Expand().CenterVertical().Border(wxLEFT|wxRIGHT|wxBOTTOM, 5) );
     item45->Add( item47, wxSizerFlags().Expand().CenterVertical() );
@@ -1372,7 +1344,7 @@ wxSizer *PreferencesGeneralTab( wxWindow *parent, bool call_fit, bool set_sizer 
     wxStaticBox *item2 = new wxStaticBox( parent, -1, _("Nick") );
     wxStaticBoxSizer *item1 = new wxStaticBoxSizer( item2, wxVERTICAL );
 
-    CMuleTextCtrl *item3 = new CMuleTextCtrl( parent, IDC_NICK, _("https://amule-org.github.io - the multi-platform Mule"), wxDefaultPosition, wxSize(90,-1), 0 );
+    CMuleTextCtrl *item3 = new CMuleTextCtrl( item2, IDC_NICK, _("https://amule-org.github.io - the multi-platform Mule"), wxDefaultPosition, wxSize(90,-1), 0 );
     item3->SetToolTip( _("This is the name that other users will see when connecting to you.") );
     item1->Add( item3, wxSizerFlags().Expand().CenterVertical() );
     item0->Add( item1, wxSizerFlags().Expand().CenterHorizontal() );
@@ -1392,17 +1364,15 @@ wxSizer *PreferencesGeneralTab( wxWindow *parent, bool call_fit, bool set_sizer 
     item7->SetToolTip( _("Enabling this will make aMule check for a new version at startup and once a day while running") );
     item0->Add( item7, 0, wxALIGN_CENTER_VERTICAL, 0 );
 
-    // Autostart-on-login toggle (per-OS backend: Windows registry,
-    // macOS LaunchAgent, Linux XDG .desktop). State is read live from
-    // the OS each time this page opens, never persisted in aMule.conf
-    // — the OS is the source of truth.
+    // Autostart-on-login toggle (per-OS backend: Windows registry, macOS LaunchAgent, Linux XDG
+    // .desktop). State is read live from the OS each time this page opens, never persisted in
+    // aMule.conf -- the OS is the source of truth.
     wxCheckBox *itemAutostart = new wxCheckBox( parent, IDC_AUTOSTART_LOGIN, _("Start aMule automatically when I log in"), wxDefaultPosition, wxDefaultSize, 0 );
     itemAutostart->SetToolTip( _("Registers a per-user autostart entry with the OS so aMule launches at login. If you move the aMule binary, launch aMule once manually afterwards to refresh the entry.") );
     item0->Add( itemAutostart, 0, wxALIGN_CENTER_VERTICAL, 0 );
 
-    // URL-scheme handler toggles. Same OS-is-source-of-truth model as
-    // autostart above: state lives in HKCU\Software\Classes\<scheme>
-    // (Windows), $XDG_CONFIG_HOME/mimeapps.list (Linux), or
+    // URL-scheme handler toggles. Same OS-is-source-of-truth model as autostart above: state lives
+    // in HKCU\Software\Classes\<scheme> (Windows), $XDG_CONFIG_HOME/mimeapps.list (Linux), or
     // LaunchServices (macOS), never in aMule.conf.
     wxCheckBox *itemProtoEd2k = new wxCheckBox( parent, IDC_PROTOCOL_ED2K, _("Register aMule for ed2k:// links"), wxDefaultPosition, wxDefaultSize, 0 );
     itemProtoEd2k->SetToolTip( _("Makes aMule the default handler for ed2k:// links so clicking one in your browser or file manager opens it here.") );
@@ -1412,9 +1382,8 @@ wxSizer *PreferencesGeneralTab( wxWindow *parent, bool call_fit, bool set_sizer 
     itemProtoMagnet->SetToolTip( _("aMule only handles eD2k-compatible magnets (containing xt=urn:ed2k:). BitTorrent magnets are NOT supported and clicking them will silently fail. If you use a BitTorrent client (Transmission, qBittorrent, etc.), leave this off.") );
     item0->Add( itemProtoMagnet, 0, wxALIGN_CENTER_VERTICAL, 0 );
 
-    // Same OS-is-source-of-truth model as the scheme toggles above; the
-    // store is the ProgID under HKCU\Software\Classes (Windows),
-    // mimeapps.list (Linux) or LaunchServices (macOS).
+    // Same OS-is-source-of-truth model as the scheme toggles above; the store is the ProgID under
+    // HKCU\Software\Classes (Windows), mimeapps.list (Linux) or LaunchServices (macOS).
     wxCheckBox *itemAssocCollection = new wxCheckBox( parent, IDC_ASSOC_COLLECTION, _("Open .emulecollection files with aMule"), wxDefaultPosition, wxDefaultSize, 0 );
     itemAssocCollection->SetToolTip( _("Opening a collection queues every eD2k link it contains. On Windows this adds aMule to the \"Open with\" list and takes the default only when no other program has claimed the file type.") );
     item0->Add( itemAssocCollection, 0, wxALIGN_CENTER_VERTICAL, 0 );
@@ -1443,9 +1412,9 @@ wxSizer *PreferencesGeneralTab( wxWindow *parent, bool call_fit, bool set_sizer 
     item13->SetToolTip( _("Enabling this will make aMule to show notifications when finished downloading.") );
     item0->Add( item13, 0, wxALIGN_CENTER_VERTICAL, 0 );
 
-    // Query history for the Search tab's Name field (amule-org/amule#641).
-    // A client-side-only setting (no EC/core involvement), so this one
-    // checkbox works unchanged in both amule and amuleGUI.
+    // Query history for the Search tab's Name field (amule-org/amule#641). A client-side-only
+    // setting (no EC or core involvement), so this one checkbox works unchanged in both amule and
+    // amuleGUI.
     wxCheckBox *itemSearchHistory = new wxCheckBox( parent, IDC_SEARCHHISTORYENABLED, _("Remember search history"), wxDefaultPosition, wxDefaultSize, 0 );
     itemSearchHistory->SetToolTip( _("Keeps a dropdown list of your past search terms in the Search tab's Name field. This remembers the queries you typed, not the results they returned.") );
     item0->Add( itemSearchHistory, 0, wxALIGN_CENTER_VERTICAL, 0 );
@@ -1468,15 +1437,15 @@ wxSizer *PreferencesGeneralTab( wxWindow *parent, bool call_fit, bool set_sizer 
 
     wxBoxSizer *item20 = new wxBoxSizer( wxHORIZONTAL );
 
-    CMuleTextCtrl *item21 = new CMuleTextCtrl( parent, IDC_BROWSERSELF, "", wxDefaultPosition, wxSize(80,-1), 0 );
+    CMuleTextCtrl *item21 = new CMuleTextCtrl( item19, IDC_BROWSERSELF, "", wxDefaultPosition, wxSize(80,-1), 0 );
     item21->SetToolTip( _("Enter your browser name here. Leave this field empty to use the system default browser.") );
     item20->Add( item21, wxSizerFlags(1).Expand() );
 
-    wxButton *item22 = new wxButton( parent, IDC_SELBROWSER, _("Browse"), wxDefaultPosition, wxDefaultSize, 0 );
+    wxButton *item22 = new wxButton( item19, IDC_SELBROWSER, _("Browse"), wxDefaultPosition, wxDefaultSize, 0 );
     item20->Add( item22, wxSizerFlags().Expand() );
 
     item18->Add( item20, wxSizerFlags().Expand().CenterVertical() );
-    wxCheckBox *item23 = new wxCheckBox( parent, IDC_BROWSERTABS, _("Open in new tab if possible"), wxDefaultPosition, wxDefaultSize, 0 );
+    wxCheckBox *item23 = new wxCheckBox( item19, IDC_BROWSERTABS, _("Open in new tab if possible"), wxDefaultPosition, wxDefaultSize, 0 );
     item23->SetValue( TRUE );
     item23->SetToolTip( _("Open the web page in a new tab instead of in a new window when possible") );
     item18->Add( item23, 0, wxALIGN_CENTER_VERTICAL, 0 );
@@ -1487,12 +1456,12 @@ wxSizer *PreferencesGeneralTab( wxWindow *parent, bool call_fit, bool set_sizer 
 
     wxBoxSizer *item26 = new wxBoxSizer( wxHORIZONTAL );
 
-    CMuleTextCtrl *item27 = new CMuleTextCtrl( parent, IDC_VIDEOPLAYER, "mplayer -idx", wxDefaultPosition, wxSize(80,-1), 0 );
+    CMuleTextCtrl *item27 = new CMuleTextCtrl( item25, IDC_VIDEOPLAYER, "mplayer -idx", wxDefaultPosition, wxSize(80,-1), 0 );
     item26->Add( item27, wxSizerFlags(1).Expand().CenterHorizontal() );
-    wxButton *item28 = new wxButton( parent, IDC_BROWSEV, _("Browse"), wxDefaultPosition, wxDefaultSize, 0 );
+    wxButton *item28 = new wxButton( item25, IDC_BROWSEV, _("Browse"), wxDefaultPosition, wxDefaultSize, 0 );
     item26->Add( item28, wxSizerFlags().Expand().CenterHorizontal() );
     item24->Add( item26, wxSizerFlags().Expand().CenterVertical() );
-    wxStaticText *item29 = new wxStaticText( parent, IDC_PREVIEW_NOTE, "", wxDefaultPosition, wxDefaultSize, 0 );
+    wxStaticText *item29 = new wxStaticText( item25, IDC_PREVIEW_NOTE, "", wxDefaultPosition, wxDefaultSize, 0 );
     item24->Add( item29, wxSizerFlags().CenterVertical().Border(wxALL, 5) );
     item0->Add( item24, wxSizerFlags().Expand().CenterVertical().Border(wxALL, 0) );
     if (set_sizer)
@@ -1515,28 +1484,28 @@ wxSizer *PreferencesConnectionTab( wxWindow *parent, bool call_fit, bool set_siz
     wxFlexGridSizer *item3 = new wxFlexGridSizer( 3, 0, 0 );
     item3->AddGrowableCol( 0 );
 
-    wxStaticText *item4 = new wxStaticText( parent, -1, _("Download"), wxDefaultPosition, wxDefaultSize, 0 );
+    wxStaticText *item4 = new wxStaticText( item2, -1, _("Download"), wxDefaultPosition, wxDefaultSize, 0 );
     item3->Add( item4, 0, wxALIGN_CENTER_VERTICAL, 0 );
 
-    wxSpinCtrl *item5 = new wxSpinCtrl( parent, IDC_MAXDOWN, "0", wxDefaultPosition, wxDefaultSize, 0, 0, 1000000, 0 );
+    wxSpinCtrl *item5 = new wxSpinCtrl( item2, IDC_MAXDOWN, "0", wxDefaultPosition, wxDefaultSize, 0, 0, 1000000, 0 );
     item3->Add( item5, 0, wxALIGN_CENTER_VERTICAL, 0 );
 
-    wxStaticText *item6 = new wxStaticText( parent, -1, _("KiB/s"), wxDefaultPosition, wxDefaultSize, 0 );
+    wxStaticText *item6 = new wxStaticText( item2, -1, _("KiB/s"), wxDefaultPosition, wxDefaultSize, 0 );
     item3->Add( item6, wxSizerFlags().CenterVertical().Border(wxLEFT, 5) );
-    wxStaticText *item7 = new wxStaticText( parent, -1, _("Upload"), wxDefaultPosition, wxDefaultSize, 0 );
+    wxStaticText *item7 = new wxStaticText( item2, -1, _("Upload"), wxDefaultPosition, wxDefaultSize, 0 );
     item3->Add( item7, 0, wxALIGN_CENTER_VERTICAL, 0 );
 
-    wxSpinCtrl *item8 = new wxSpinCtrl( parent, IDC_MAXUP, "10", wxDefaultPosition, wxDefaultSize, 0, 0, 1000000, 10 );
+    wxSpinCtrl *item8 = new wxSpinCtrl( item2, IDC_MAXUP, "10", wxDefaultPosition, wxDefaultSize, 0, 0, 1000000, 10 );
     item3->Add( item8, wxSizerFlags().CenterVertical() );
 
-    wxStaticText *item9 = new wxStaticText( parent, -1, _("KiB/s"), wxDefaultPosition, wxDefaultSize, 0 );
+    wxStaticText *item9 = new wxStaticText( item2, -1, _("KiB/s"), wxDefaultPosition, wxDefaultSize, 0 );
     item3->Add( item9, wxSizerFlags().CenterVertical().Border(wxLEFT, 5) );
-    wxStaticText *item10 = new wxStaticText( parent, -1, _("Slot Allocation"), wxDefaultPosition, wxDefaultSize, 0 );
+    wxStaticText *item10 = new wxStaticText( item2, -1, _("Slot Allocation"), wxDefaultPosition, wxDefaultSize, 0 );
     item3->Add( item10, wxSizerFlags().CenterVertical().Border(wxLEFT, 20) );
-    wxSpinCtrl *item11 = new wxSpinCtrl( parent, IDC_SLOTALLOC, "10", wxDefaultPosition, wxDefaultSize, 0, 1, 100000, 10 );
+    wxSpinCtrl *item11 = new wxSpinCtrl( item2, IDC_SLOTALLOC, "10", wxDefaultPosition, wxDefaultSize, 0, 1, 100000, 10 );
     item3->Add( item11, wxSizerFlags().CenterVertical() );
 
-    wxStaticText *item12 = new wxStaticText( parent, -1, _("KiB/s"), wxDefaultPosition, wxDefaultSize, 0 );
+    wxStaticText *item12 = new wxStaticText( item2, -1, _("KiB/s"), wxDefaultPosition, wxDefaultSize, 0 );
     item3->Add( item12, wxSizerFlags().CenterVertical().Border(wxLEFT, 5) );
     item1->Add( item3, wxSizerFlags().Expand().CenterVertical().Border(wxALL, 0) );
     item0->Add( item1, wxSizerFlags().Expand().CenterHorizontal() );
@@ -1546,32 +1515,32 @@ wxSizer *PreferencesConnectionTab( wxWindow *parent, bool call_fit, bool set_siz
     wxFlexGridSizer *item15 = new wxFlexGridSizer( 2, 0, 0 );
     item15->AddGrowableCol( 0 );
 
-    wxStaticText *item16 = new wxStaticText( parent, -1, _("Standard TCP Port "), wxDefaultPosition, wxDefaultSize, 0 );
+    wxStaticText *item16 = new wxStaticText( item14, -1, _("Standard TCP Port "), wxDefaultPosition, wxDefaultSize, 0 );
     item15->Add( item16, wxSizerFlags().CenterVertical() );
 
-    wxSpinCtrl *item17 = new wxSpinCtrl( parent, IDC_PORT, "4662", wxDefaultPosition, wxDefaultSize, 0, 0, 65531, 4662 );
+    wxSpinCtrl *item17 = new wxSpinCtrl( item14, IDC_PORT, "4662", wxDefaultPosition, wxDefaultSize, 0, 0, 65531, 4662 );
     item17->SetToolTip( _("This is the standard eD2k port and cannot be disabled.") );
     item15->Add( item17, wxSizerFlags().CenterVertical() );
 
-    wxStaticText *item18 = new wxStaticText( parent, -1, _("UDP port for server requests (TCP+3):"), wxDefaultPosition, wxDefaultSize, 0 );
+    wxStaticText *item18 = new wxStaticText( item14, -1, _("UDP port for server requests (TCP+3):"), wxDefaultPosition, wxDefaultSize, 0 );
     item15->Add( item18, wxSizerFlags().CenterVertical().Border(wxALL, 0) );
-    wxStaticText *item19 = new wxStaticText( parent, ID_TEXT_CLIENT_UDP_PORT, _("4665"), wxDefaultPosition, wxDefaultSize, 0 );
+    wxStaticText *item19 = new wxStaticText( item14, ID_TEXT_CLIENT_UDP_PORT, _("4665"), wxDefaultPosition, wxDefaultSize, 0 );
     item15->Add( item19, wxSizerFlags().CenterVertical() );
 
-    wxCheckBox *item20 = new wxCheckBox( parent, IDC_UDPENABLE, _("Extended UDP port (Kad / global search) "), wxDefaultPosition, wxDefaultSize, 0 );
+    wxCheckBox *item20 = new wxCheckBox( item14, IDC_UDPENABLE, _("Extended UDP port (Kad / global search) "), wxDefaultPosition, wxDefaultSize, 0 );
     item15->Add( item20, wxSizerFlags().CenterVertical() );
 
-    wxSpinCtrl *item21 = new wxSpinCtrl( parent, IDC_UDPPORT, "4672", wxDefaultPosition, wxDefaultSize, 0, 0, 65535, 4672 );
+    wxSpinCtrl *item21 = new wxSpinCtrl( item14, IDC_UDPPORT, "4672", wxDefaultPosition, wxDefaultSize, 0, 0, 65535, 4672 );
     item21->SetToolTip( _("This UDP port is used for extended eD2k requests and Kad network") );
     item15->Add( item21, wxSizerFlags().Center() );
 
-    wxCheckBox *item22 = new wxCheckBox( parent, IDC_UPNP_ENABLED, _("Enable UPnP for router port forwarding"), wxDefaultPosition, wxDefaultSize, 0 );
+    wxCheckBox *item22 = new wxCheckBox( item14, IDC_UPNP_ENABLED, _("Enable UPnP for router port forwarding"), wxDefaultPosition, wxDefaultSize, 0 );
     item15->Add( item22, wxSizerFlags().CenterVertical() );
 
     item15->Add( 20, 20, wxSizerFlags().Center().Border(wxALL, 5) );
-    wxStaticText *item23 = new wxStaticText( parent, IDC_UPNPTCPPORTTEXT, _("UPnP TCP Port (Optional):"), wxDefaultPosition, wxDefaultSize, 0 );
+    wxStaticText *item23 = new wxStaticText( item14, IDC_UPNPTCPPORTTEXT, _("UPnP TCP Port (Optional):"), wxDefaultPosition, wxDefaultSize, 0 );
     item15->Add( item23, wxSizerFlags().CenterVertical().Border(wxLEFT, 20) );
-    wxSpinCtrl *item24 = new wxSpinCtrl( parent, IDC_UPNPTCPPORT, "50000", wxDefaultPosition, wxDefaultSize, 0, 0, 65535, 50000 );
+    wxSpinCtrl *item24 = new wxSpinCtrl( item14, IDC_UPNPTCPPORT, "50000", wxDefaultPosition, wxDefaultSize, 0, 0, 65535, 50000 );
     item15->Add( item24, wxSizerFlags().Center() );
 
     item13->Add( item15, wxSizerFlags().Expand().CenterVertical().Border(wxALL, 0) );
@@ -1588,14 +1557,14 @@ wxSizer *PreferencesConnectionTab( wxWindow *parent, bool call_fit, bool set_siz
     wxStaticText *item26b = new wxStaticText( parent, IDC_INTERFACETEXT, _("Bind to network interface (empty for any):"), wxDefaultPosition, wxDefaultSize, 0 );
     item25->Add( item26b, wxSizerFlags().CenterVertical().Border(wxRIGHT, 5) );
 #ifdef CLIENT_GUI
-    // Remote GUI: a plain text field. amulegui runs on a different host than the
-    // daemon, so a drop-down of *this* machine's interfaces would be misleading;
-    // the operator types the daemon-side interface name (synced over EC).
+    // Remote GUI: a plain text field. amulegui runs on a different host than the daemon, so a drop-
+    // down of *this* machine's interfaces would be misleading; the operator types the daemon-side
+    // interface name, synced over EC.
     wxTextCtrl *item27b = new wxTextCtrl( parent, IDC_INTERFACE, "", wxDefaultPosition, wxSize(120,-1), 0 );
 #else
-    // Editable combo: the drop-down is filled at runtime with the machine's
-    // interfaces (PrefsUnifiedDlg), but it stays editable so an interface that
-    // is down when the dialog opens (e.g. a VPN tunnel) can still be typed in.
+    // Editable combo: the drop-down is filled at runtime with the machine's interfaces
+    // (PrefsUnifiedDlg), but it stays editable so an interface that is down when the dialog opens,
+    // such as a VPN tunnel, can still be typed in.
     wxComboBox *item27b = new wxComboBox( parent, IDC_INTERFACE, "", wxDefaultPosition, wxSize(120,-1), 0, NULL, wxCB_DROPDOWN );
 #endif
     item27b->SetToolTip( _("Advanced users only: pin all of aMule's traffic to one network interface, chosen from the list or typed in by name (e.g. tun0, eth0, en0) or index. Unlike binding to an IP, this stops traffic leaking out via the default route - useful with a VPN. Requires no elevated privileges.") );
@@ -1618,20 +1587,20 @@ wxSizer *PreferencesConnectionTab( wxWindow *parent, bool call_fit, bool set_siz
     wxStaticBox *item35 = new wxStaticBox( parent, -1, _("Networks") );
     wxStaticBoxSizer *item34 = new wxStaticBoxSizer( item35, wxHORIZONTAL );
 
-    wxCheckBox *item36 = new wxCheckBox( parent, IDC_NETWORKKAD, _("Kademlia"), wxDefaultPosition, wxDefaultSize, 0 );
+    wxCheckBox *item36 = new wxCheckBox( item35, IDC_NETWORKKAD, _("Kademlia"), wxDefaultPosition, wxDefaultSize, 0 );
     item36->SetValue( TRUE );
     item34->Add( item36, wxSizerFlags().Expand().CenterVertical().Border(wxLEFT|wxRIGHT|wxBOTTOM, 5) );
-    wxCheckBox *item37 = new wxCheckBox( parent, IDC_NETWORKED2K, _("ED2K"), wxDefaultPosition, wxDefaultSize, 0 );
+    wxCheckBox *item37 = new wxCheckBox( item35, IDC_NETWORKED2K, _("ED2K"), wxDefaultPosition, wxDefaultSize, 0 );
     item37->SetValue( TRUE );
     item34->Add( item37, wxSizerFlags().Expand().CenterVertical().Border(wxLEFT|wxRIGHT|wxBOTTOM, 5) );
     item33->Add( item34, wxSizerFlags(1).Expand().Border(wxLEFT|wxRIGHT, 0) );
     wxStaticBox *item39 = new wxStaticBox( parent, -1, "" );
     wxStaticBoxSizer *item38 = new wxStaticBoxSizer( item39, wxVERTICAL );
 
-    wxCheckBox *item40 = new wxCheckBox( parent, IDC_AUTOCONNECT, _("Autoconnect on startup"), wxDefaultPosition, wxDefaultSize, 0 );
+    wxCheckBox *item40 = new wxCheckBox( item39, IDC_AUTOCONNECT, _("Autoconnect on startup"), wxDefaultPosition, wxDefaultSize, 0 );
     item38->Add( item40, wxSizerFlags().CenterVertical().Border(wxLEFT|wxRIGHT|wxBOTTOM, 5) );
 
-    wxCheckBox *item41 = new wxCheckBox( parent, IDC_RECONN, _("Reconnect on loss"), wxDefaultPosition, wxDefaultSize, 0 );
+    wxCheckBox *item41 = new wxCheckBox( item39, IDC_RECONN, _("Reconnect on loss"), wxDefaultPosition, wxDefaultSize, 0 );
     item41->SetValue( TRUE );
     item38->Add( item41, wxSizerFlags().CenterVertical().Border(wxLEFT|wxRIGHT|wxBOTTOM, 5) );
 
@@ -1711,92 +1680,84 @@ wxSizer *PreferencesFilesTab( wxWindow *parent, bool call_fit, bool set_sizer )
     wxStaticBox *item6 = new wxStaticBox( parent, -1, _("Downloads") );
     wxStaticBoxSizer *item5 = new wxStaticBoxSizer( item6, wxVERTICAL );
 
-    wxCheckBox *item7 = new wxCheckBox( parent, IDC_ADDNEWFILESPAUSED, _("Add files to download in pause mode"), wxDefaultPosition, wxDefaultSize, 0 );
+    wxCheckBox *item7 = new wxCheckBox( item6, IDC_ADDNEWFILESPAUSED, _("Add files to download in pause mode"), wxDefaultPosition, wxDefaultSize, 0 );
     item5->Add( item7, wxSizerFlags().CenterVertical().Border(wxRIGHT, 0) );
-    wxCheckBox *item8 = new wxCheckBox( parent, IDC_DAP, _("Add files to download with auto priority"), wxDefaultPosition, wxDefaultSize, 0 );
+    wxCheckBox *item8 = new wxCheckBox( item6, IDC_DAP, _("Add files to download with auto priority"), wxDefaultPosition, wxDefaultSize, 0 );
     item5->Add( item8, 0, wxALIGN_CENTER_VERTICAL, 0 );
 
-    wxCheckBox *item9 = new wxCheckBox( parent, IDC_PREVIEWPRIO, _("Try to download first and last chunks first"), wxDefaultPosition, wxDefaultSize, 0 );
+    wxCheckBox *item9 = new wxCheckBox( item6, IDC_PREVIEWPRIO, _("Try to download first and last chunks first"), wxDefaultPosition, wxDefaultSize, 0 );
     item9->SetValue( TRUE );
     item5->Add( item9, wxSizerFlags().CenterVertical().Border(wxRIGHT, 0) );
 
-    wxCheckBox *itemEndgame = new wxCheckBox( parent, IDC_ENDGAME, _("Endgame mode: rotate to faster sources for the final blocks"), wxDefaultPosition, wxDefaultSize, 0 );
+    wxCheckBox *itemEndgame = new wxCheckBox( item6, IDC_ENDGAME, _("Endgame mode: rotate to faster sources for the final blocks"), wxDefaultPosition, wxDefaultSize, 0 );
     itemEndgame->SetValue( FALSE );
     item5->Add( itemEndgame, wxSizerFlags().CenterVertical().Border(wxRIGHT, 0) );
-    wxCheckBox *item10 = new wxCheckBox( parent, IDC_STARTNEXTFILE, _("Start next paused file when a file completes"), wxDefaultPosition, wxDefaultSize, 0 );
+    wxCheckBox *item10 = new wxCheckBox( item6, IDC_STARTNEXTFILE, _("Start next paused file when a file completes"), wxDefaultPosition, wxDefaultSize, 0 );
     item10->SetValue( TRUE );
     item5->Add( item10, wxSizerFlags().CenterVertical().Border(wxRIGHT, 0) );
-    wxCheckBox *item11 = new wxCheckBox( parent, IDC_STARTNEXTFILE_SAME, _("From the same category"), wxDefaultPosition, wxDefaultSize, 0 );
+    wxCheckBox *item11 = new wxCheckBox( item6, IDC_STARTNEXTFILE_SAME, _("From the same category"), wxDefaultPosition, wxDefaultSize, 0 );
     item5->Add( item11, wxSizerFlags().CenterVertical().Border(wxLEFT, 20) );
-    wxCheckBox *item12 = new wxCheckBox( parent, IDC_STARTNEXTFILE_ALPHA, _("In alphabetic order"), wxDefaultPosition, wxDefaultSize, 0 );
+    wxCheckBox *item12 = new wxCheckBox( item6, IDC_STARTNEXTFILE_ALPHA, _("In alphabetic order"), wxDefaultPosition, wxDefaultSize, 0 );
     item5->Add( item12, wxSizerFlags().CenterVertical().Border(wxLEFT, 20) );
-    wxCheckBox *item13 = new wxCheckBox( parent, IDC_ALLOCFULLFILE, _("Preallocate disk space for new files"), wxDefaultPosition, wxDefaultSize, 0 );
+    wxCheckBox *item13 = new wxCheckBox( item6, IDC_ALLOCFULLFILE, _("Preallocate disk space for new files"), wxDefaultPosition, wxDefaultSize, 0 );
     item13->SetToolTip( _("For new files preallocates disk space for the whole file, thus reduces fragmentation") );
     item5->Add( item13, wxSizerFlags().CenterVertical().Border(wxTOP, 0) );
-    // /eMule/CreateSparseFiles was EC-wired and settable via the Web UI
-    // (files.create_normal) but had no control here or in amuleGUI --
-    // hand-editing amule.conf was the only way (amule-org/amule#653).
-    // Only does real work when the *core* runs on Windows (PlatformSpecific.cpp
-    // vs. PartFile.cpp both call CFile::Create(name, true) identically on
-    // POSIX). Always created and bound here -- amuleGUI has no EC capability
-    // tag to know the core's platform, so it always shows the control; the
-    // monolithic non-Windows build (where the answer is a compile-time
-    // certainty) hides it post-creation in PrefsUnifiedDlg's ctor instead of
-    // skipping creation, so the Cfg_Tmpl binding still has a widget to
-    // connect to.
-    wxCheckBox *itemCreateSparse = new wxCheckBox( parent, IDC_CREATEFILESSPARSE, _("Create new files as sparse files"), wxDefaultPosition, wxDefaultSize, 0 );
+    // /eMule/CreateSparseFiles was EC-wired and settable via the Web UI but had no control here or
+    // in amuleGUI -- hand-editing amule.conf was the only way. Only does real work when the *core*
+    // runs on Windows. Always created and bound here: amuleGUI has no EC capability tag to know the
+    // core's platform, so it always shows the control, and the monolithic non-Windows build hides
+    // it post-creation in PrefsUnifiedDlg's ctor rather than skipping creation, so the Cfg_Tmpl
+    // binding still has a widget.
+    wxCheckBox *itemCreateSparse = new wxCheckBox( item6, IDC_CREATEFILESSPARSE, _("Create new files as sparse files"), wxDefaultPosition, wxDefaultSize, 0 );
     itemCreateSparse->SetToolTip( _("Sparse part files only occupy disk space for the parts already downloaded, so free space is used up gradually as the file fills in. Turn this off to use an ordinary file instead - useful where sparse files are unsupported or slow, or where backup/de-duplication tools handle them badly. Applies only when the core runs on Windows; on Linux and macOS part files are sparse anyway and this setting has no effect.") );
     item5->Add( itemCreateSparse, wxSizerFlags().CenterVertical().Border(wxTOP, 0) );
     wxFlexGridSizer *item14 = new wxFlexGridSizer( 3, 0, 0 );
     item14->AddGrowableCol( 0 );
 
-    wxCheckBox *item15 = new wxCheckBox( parent, IDC_CHECKDISKSPACE, _("Stop downloads when free disk space reaches "), wxDefaultPosition, wxDefaultSize, 0 );
+    wxCheckBox *item15 = new wxCheckBox( item6, IDC_CHECKDISKSPACE, _("Stop downloads when free disk space reaches "), wxDefaultPosition, wxDefaultSize, 0 );
     item15->SetToolTip( _("Select this if you want aMule to check your disk space") );
     item14->Add( item15, 0, wxALIGN_CENTER_VERTICAL, 0 );
 
-    wxSpinCtrl *item16 = new wxSpinCtrl( parent, IDC_MINDISKSPACE, "1", wxDefaultPosition, wxDefaultSize, 0, 1, 1000000, 1 );
+    wxSpinCtrl *item16 = new wxSpinCtrl( item6, IDC_MINDISKSPACE, "1", wxDefaultPosition, wxDefaultSize, 0, 1, 1000000, 1 );
     item16->SetToolTip( _("Enter here the min disk space desired.") );
     item14->Add( item16, 0, wxALIGN_CENTER_VERTICAL, 0 );
 
-    wxStaticText *item17 = new wxStaticText( parent, -1, _("MiB"), wxDefaultPosition, wxDefaultSize, 0 );
+    wxStaticText *item17 = new wxStaticText( item6, -1, _("MiB"), wxDefaultPosition, wxDefaultSize, 0 );
     item14->Add( item17, wxSizerFlags().Center().Border(wxLEFT, 5) );
     item5->Add( item14, wxSizerFlags().Expand().CenterVertical() );
-    wxCheckBox *item18 = new wxCheckBox( parent, IDC_SRCSEEDS, _("Save 10 sources on rare files (< 20 sources)"), wxDefaultPosition, wxDefaultSize, 0 );
+    wxCheckBox *item18 = new wxCheckBox( item6, IDC_SRCSEEDS, _("Save 10 sources on rare files (< 20 sources)"), wxDefaultPosition, wxDefaultSize, 0 );
     item18->SetValue( TRUE );
     item5->Add( item18, wxSizerFlags().Expand().CenterVertical().Border(wxALL, 0) );
     item0->Add( item5, wxSizerFlags().Expand().CenterVertical().Border(wxALL, 0) );
     wxStaticBox *item20 = new wxStaticBox( parent, -1, _("Uploads") );
     wxStaticBoxSizer *item19 = new wxStaticBoxSizer( item20, wxVERTICAL );
 
-    wxCheckBox *item21 = new wxCheckBox( parent, IDC_UAP, _("Add new shared files with auto priority"), wxDefaultPosition, wxDefaultSize, 0 );
+    wxCheckBox *item21 = new wxCheckBox( item20, IDC_UAP, _("Add new shared files with auto priority"), wxDefaultPosition, wxDefaultSize, 0 );
     item19->Add( item21, wxSizerFlags().CenterVertical().Border(wxRIGHT, 0) );
     item0->Add( item19, wxSizerFlags().Expand().CenterVertical().Border(wxLEFT|wxRIGHT|wxBOTTOM, 0) );
 
-    // Intelligent Corruption Handling — an advanced option, placed after the
+    // Intelligent Corruption Handling -- an advanced option, placed after the
     // Downloads / Uploads groups (issue #594).
     wxStaticBox *item2 = new wxStaticBox( parent, -1, _("Intelligent Corruption Handling (I.C.H.)") );
     wxStaticBoxSizer *item1 = new wxStaticBoxSizer( item2, wxVERTICAL );
 
-    wxCheckBox *item3 = new wxCheckBox( parent, IDC_ICH, _("Enable"), wxDefaultPosition, wxDefaultSize, 0 );
+    wxCheckBox *item3 = new wxCheckBox( item2, IDC_ICH, _("Enable"), wxDefaultPosition, wxDefaultSize, 0 );
     item3->SetValue( TRUE );
     item1->Add( item3, wxSizerFlags().CenterVertical().Border(wxRIGHT, 0) );
-    wxCheckBox *item4 = new wxCheckBox( parent, IDC_AICHTRUST, _("Advanced I.C.H. trusts every hash (not recommended)"), wxDefaultPosition, wxDefaultSize, 0 );
+    wxCheckBox *item4 = new wxCheckBox( item2, IDC_AICHTRUST, _("Advanced I.C.H. trusts every hash (not recommended)"), wxDefaultPosition, wxDefaultSize, 0 );
     item1->Add( item4, 0, wxALIGN_CENTER_VERTICAL, 0 );
 
     item0->Add( item1, wxSizerFlags().Expand().CenterVertical().Border(wxALL, 0) );
 
-    // Media metadata extraction (issue #140). Optional feature that
-    // runs ffprobe against each shared file at share-add / known.met
-    // load time to populate FT_MEDIA_LENGTH / _BITRATE / _CODEC on
-    // the CKnownFile; the ed2k + Kad publishers then advertise those
-    // tags automatically. The enable toggle and the path field are
-    // EC-wired and stay visible in amulegui; only "Browse" and "Detect"
-    // hide there (see PrefsUnifiedDlg's amuledOnlyPrefs[]), since both
-    // would search the GUI's filesystem rather than the daemon's.
+    // Media metadata extraction: an optional feature that runs ffprobe against each shared file at
+    // share-add / known.met load time to populate FT_MEDIA_LENGTH / _BITRATE / _CODEC on the
+    // CKnownFile; the ed2k and Kad publishers then advertise those tags automatically. The enable
+    // toggle and the path field are EC-wired and stay visible in amulegui; only "Browse" and
+    // "Detect" hide there, since both would search the GUI's filesystem.
     wxStaticBox *item22 = new wxStaticBox( parent, -1, _("Media metadata extraction") );
     wxStaticBoxSizer *item22sz = new wxStaticBoxSizer( item22, wxVERTICAL );
 
-    wxCheckBox *item23 = new wxCheckBox( parent, IDC_MEDIAMETA_ENABLED,
+    wxCheckBox *item23 = new wxCheckBox( item22, IDC_MEDIAMETA_ENABLED,
         _("Extract length / bitrate / codec from shared audio and video files"),
         wxDefaultPosition, wxDefaultSize, 0 );
     item23->SetToolTip( _("When enabled, aMule runs ffprobe on each shared media file to fill in the Length / Bitrate / Codec columns other clients see when they find the file in a search. Requires ffmpeg (the ffprobe binary) to be installed.") );
@@ -1805,20 +1766,20 @@ wxSizer *PreferencesFilesTab( wxWindow *parent, bool call_fit, bool set_sizer )
     wxFlexGridSizer *item24 = new wxFlexGridSizer( 4, 0, 0 );
     item24->AddGrowableCol( 1 );
 
-    wxStaticText *item25 = new wxStaticText( parent, IDC_MEDIAMETA_FFPROBEPATHTEXT,
+    wxStaticText *item25 = new wxStaticText( item22, IDC_MEDIAMETA_FFPROBEPATHTEXT,
         _("Path to ffprobe:"), wxDefaultPosition, wxDefaultSize, 0 );
     item24->Add( item25, wxSizerFlags().CenterVertical().Border(wxRIGHT, 5) );
 
-    CMuleTextCtrl *item26 = new CMuleTextCtrl( parent, IDC_MEDIAMETA_FFPROBEPATH,
+    CMuleTextCtrl *item26 = new CMuleTextCtrl( item22, IDC_MEDIAMETA_FFPROBEPATH,
         "", wxDefaultPosition, wxSize(80,-1), 0 );
     item26->SetToolTip( _("Full path to the ffprobe binary. Leave empty to have aMule auto-detect it on startup.") );
     item24->Add( item26, wxSizerFlags(1).Expand().CenterVertical() );
 
-    wxButton *item27 = new wxButton( parent, IDC_MEDIAMETA_FFPROBEBROWSE,
+    wxButton *item27 = new wxButton( item22, IDC_MEDIAMETA_FFPROBEBROWSE,
         _("Browse"), wxDefaultPosition, wxDefaultSize, 0 );
     item24->Add( item27, wxSizerFlags().CenterVertical().Border(wxLEFT, 5) );
 
-    wxButton *item28 = new wxButton( parent, IDC_MEDIAMETA_FFPROBEDETECT,
+    wxButton *item28 = new wxButton( item22, IDC_MEDIAMETA_FFPROBEDETECT,
         _("Detect"), wxDefaultPosition, wxDefaultSize, 0 );
     item28->SetToolTip( _("Search the standard install locations for an ffprobe binary and fill the path field.") );
     item24->Add( item28, wxSizerFlags().CenterVertical().Border(wxLEFT, 5) );
@@ -1843,10 +1804,10 @@ wxSizer *PreferencesDirectoriesTab( wxWindow *parent, bool call_fit, bool set_si
     wxStaticBox *item2 = new wxStaticBox( parent, -1, _("Destination folder for downloads") );
     wxStaticBoxSizer *item1 = new wxStaticBoxSizer( item2, wxHORIZONTAL );
 
-    CMuleTextCtrl *item3 = new CMuleTextCtrl( parent, IDC_INCFILES, "", wxDefaultPosition, wxSize(80,-1), 0 );
+    CMuleTextCtrl *item3 = new CMuleTextCtrl( item2, IDC_INCFILES, "", wxDefaultPosition, wxSize(80,-1), 0 );
     item3->SetToolTip(_("Completed downloads are stored here. All files in this folder are automatically shared with other peers.\nIf this folder also holds files you don't want to share, point it at an aMule-only sub-folder."));
     item1->Add( item3, wxSizerFlags(1).Expand().CenterHorizontal() );
-    wxButton *item4 = new wxButton( parent, IDC_SELINCDIR, _("Browse"), wxDefaultPosition, wxDefaultSize, 0 );
+    wxButton *item4 = new wxButton( item2, IDC_SELINCDIR, _("Browse"), wxDefaultPosition, wxDefaultSize, 0 );
     item4->SetToolTip(_("Pick the folder where completed downloads will be stored. All files in that folder will be shared with other peers."));
     item1->Add( item4, wxSizerFlags().Expand().CenterHorizontal() );
     item0->Add( item1, wxSizerFlags().Expand().CenterVertical().Border(wxALL, 0) );
@@ -1856,9 +1817,9 @@ wxSizer *PreferencesDirectoriesTab( wxWindow *parent, bool call_fit, bool set_si
     wxStaticBox *item6 = new wxStaticBox( parent, -1, _("Folder for temporary download files") );
     wxStaticBoxSizer *item5 = new wxStaticBoxSizer( item6, wxHORIZONTAL );
 
-    CMuleTextCtrl *item7 = new CMuleTextCtrl( parent, IDC_TEMPFILES, "", wxDefaultPosition, wxSize(80,-1), 0 );
+    CMuleTextCtrl *item7 = new CMuleTextCtrl( item6, IDC_TEMPFILES, "", wxDefaultPosition, wxSize(80,-1), 0 );
     item5->Add( item7, wxSizerFlags(1).Expand().CenterHorizontal() );
-    wxButton *item8 = new wxButton( parent, IDC_SELTEMPDIR, _("Browse"), wxDefaultPosition, wxDefaultSize, 0 );
+    wxButton *item8 = new wxButton( item6, IDC_SELTEMPDIR, _("Browse"), wxDefaultPosition, wxDefaultSize, 0 );
     item5->Add( item8, wxSizerFlags().Expand().CenterHorizontal() );
     item0->Add( item5, wxSizerFlags().Expand().CenterVertical().Border(wxALL, 0) );
     wxStaticBox *item10 = new wxStaticBox( parent, -1, _("Shared folders") );
@@ -1867,71 +1828,69 @@ wxSizer *PreferencesDirectoriesTab( wxWindow *parent, bool call_fit, bool set_si
 #ifdef CLIENT_GUI
     // Remote GUI: the daemon's filesystem isn't ours to browse, so the roots
     // are edited as an explicit path list synced over EC instead of a tree.
-    wxStaticText *itemSDHint = new wxStaticText( parent, -1, _("(Folders shared by the core. Enter a path to add one.)"), wxDefaultPosition, wxDefaultSize, wxALIGN_CENTRE );
+    wxStaticText *itemSDHint = new wxStaticText( item10, -1, _("(Folders shared by the core. Enter a path to add one.)"), wxDefaultPosition, wxDefaultSize, wxALIGN_CENTRE );
     item9->Add( itemSDHint, 0, wxALIGN_CENTER, 0 );
 
-    wxListCtrl *itemSDList = new wxListCtrl( parent, IDC_SHAREDDIRS_LIST, wxDefaultPosition, wxSize(100,100), wxLC_REPORT|wxLC_SINGLE_SEL|wxSUNKEN_BORDER );
+    wxListCtrl *itemSDList = new wxListCtrl( item10, IDC_SHAREDDIRS_LIST, wxDefaultPosition, wxSize(100,100), wxLC_REPORT|wxLC_SINGLE_SEL|wxSUNKEN_BORDER );
     item9->Add( itemSDList, wxSizerFlags(1).Expand().CenterVertical() );
 
     wxBoxSizer *itemSDAddRow = new wxBoxSizer( wxHORIZONTAL );
-    CMuleTextCtrl *itemSDPath = new CMuleTextCtrl( parent, IDC_SHAREDDIR_PATH, "", wxDefaultPosition, wxSize(80,-1), 0 );
+    CMuleTextCtrl *itemSDPath = new CMuleTextCtrl( item10, IDC_SHAREDDIR_PATH, "", wxDefaultPosition, wxSize(80,-1), 0 );
     itemSDPath->SetToolTip(_("Absolute path of a folder on the core's machine, e.g. /home/user/shared"));
     itemSDAddRow->Add( itemSDPath, wxSizerFlags(1).Expand().CenterVertical() );
-    wxCheckBox *itemSDRecursive = new wxCheckBox( parent, IDC_SHAREDDIR_RECURSIVE, _("Recursive"), wxDefaultPosition, wxDefaultSize, 0 );
+    wxCheckBox *itemSDRecursive = new wxCheckBox( item10, IDC_SHAREDDIR_RECURSIVE, _("Recursive"), wxDefaultPosition, wxDefaultSize, 0 );
     itemSDRecursive->SetToolTip(_("Share every sub-folder underneath this one, including ones created later."));
     itemSDAddRow->Add( itemSDRecursive, wxSizerFlags().CenterVertical().Border(wxLEFT, 4) );
-    wxButton *itemSDAdd = new wxButton( parent, IDC_SHAREDDIR_ADD, _("Add"), wxDefaultPosition, wxDefaultSize, 0 );
+    wxButton *itemSDAdd = new wxButton( item10, IDC_SHAREDDIR_ADD, _("Add"), wxDefaultPosition, wxDefaultSize, 0 );
     itemSDAddRow->Add( itemSDAdd, wxSizerFlags().CenterVertical().Border(wxLEFT, 4) );
-    wxButton *itemSDRemove = new wxButton( parent, IDC_SHAREDDIR_REMOVE, _("Remove"), wxDefaultPosition, wxDefaultSize, 0 );
+    wxButton *itemSDRemove = new wxButton( item10, IDC_SHAREDDIR_REMOVE, _("Remove"), wxDefaultPosition, wxDefaultSize, 0 );
     itemSDAddRow->Add( itemSDRemove, wxSizerFlags().CenterVertical().Border(wxLEFT, 4) );
     item9->Add( itemSDAddRow, wxSizerFlags().Expand().Border(wxTOP, 4) );
 #else
-    wxStaticText *item11 = new wxStaticText( parent, -1, _("(Right click on folder icon for recursive share)"), wxDefaultPosition, wxDefaultSize, wxALIGN_CENTRE );
+    wxStaticText *item11 = new wxStaticText( item10, -1, _("(Right click on folder icon for recursive share)"), wxDefaultPosition, wxDefaultSize, wxALIGN_CENTRE );
     item9->Add( item11, 0, wxALIGN_CENTER, 0 );
 
-    CDirectoryTreeCtrl *item12 = new CDirectoryTreeCtrl(parent, IDC_SHARESELECTOR, wxPoint(0,0), wxSize(100,100), wxSUNKEN_BORDER|wxTR_DEFAULT_STYLE|wxTR_HIDE_ROOT );
+    CDirectoryTreeCtrl *item12 = new CDirectoryTreeCtrl(item10, IDC_SHARESELECTOR, wxPoint(0,0), wxSize(100,100), wxSUNKEN_BORDER|wxTR_DEFAULT_STYLE|wxTR_HIDE_ROOT );
     wxASSERT( item12 );
     item9->Add( item12, wxSizerFlags(1).Expand().CenterVertical() );
 #endif
-    wxCheckBox *item13 = new wxCheckBox( parent, IDC_SHAREHIDDENFILES, _("Share hidden files"), wxDefaultPosition, wxDefaultSize, 0 );
+    wxCheckBox *item13 = new wxCheckBox( item10, IDC_SHAREHIDDENFILES, _("Share hidden files"), wxDefaultPosition, wxDefaultSize, 0 );
     item13->SetValue( TRUE );
     item9->Add( item13, 0, wxALIGN_CENTER_VERTICAL, 0 );
-    // Auto-rescan toggle. When on, the fs-watcher reflects changes in
-    // the shared dirs without a manual reload; new subdirs created under
-    // any path in the tree above are auto-shared.
-    wxCheckBox *itemAutoRescan = new wxCheckBox( parent, IDC_AUTO_RESCAN_SHARED, _("Automatically rescan shared folders for changes"), wxDefaultPosition, wxDefaultSize, 0 );
+    // Auto-rescan toggle. When on, the fs-watcher reflects changes in the shared dirs without a
+    // manual reload; new subdirs created under any path in the tree above are auto-shared.
+    wxCheckBox *itemAutoRescan = new wxCheckBox( item10, IDC_AUTO_RESCAN_SHARED, _("Automatically rescan shared folders for changes"), wxDefaultPosition, wxDefaultSize, 0 );
     itemAutoRescan->SetValue( TRUE );
     item9->Add( itemAutoRescan, 0, wxALIGN_CENTER_VERTICAL, 0 );
-    // Follow-symlinks toggle. Default on to preserve historical
-    // behaviour; off makes the iterator pass wxDIR_NO_FOLLOW so symlinks
-    // (file or directory) are not traversed by the shared-folder walk.
-    wxCheckBox *itemFollowSymlinks = new wxCheckBox( parent, IDC_FOLLOW_SYMLINKS_SHARED, _("Follow symbolic links in shared folders"), wxDefaultPosition, wxDefaultSize, 0 );
+    // Follow-symlinks toggle. Default on to preserve historical behaviour; off makes the iterator
+    // pass wxDIR_NO_FOLLOW so symlinks, file or directory, are not traversed by the shared-folder
+    // walk.
+    wxCheckBox *itemFollowSymlinks = new wxCheckBox( item10, IDC_FOLLOW_SYMLINKS_SHARED, _("Follow symbolic links in shared folders"), wxDefaultPosition, wxDefaultSize, 0 );
     itemFollowSymlinks->SetValue( TRUE );
     item9->Add( itemFollowSymlinks, 0, wxALIGN_CENTER_VERTICAL, 0 );
 
     // Shared-file exclusion filter: files whose name matches are not shared.
     wxBoxSizer *itemExcludeRow = new wxBoxSizer( wxHORIZONTAL );
-    wxStaticText *itemExcludeLabel = new wxStaticText( parent, -1, _("Exclude files matching:"), wxDefaultPosition, wxDefaultSize, 0 );
+    wxStaticText *itemExcludeLabel = new wxStaticText( item10, -1, _("Exclude files matching:"), wxDefaultPosition, wxDefaultSize, 0 );
     itemExcludeRow->Add( itemExcludeLabel, wxSizerFlags().CenterVertical().Border(wxRIGHT, 4) );
-    CMuleTextCtrl *itemExcludePatterns = new CMuleTextCtrl( parent, IDC_EXCLUDE_SHARE_PATTERNS, "", wxDefaultPosition, wxSize(80,-1), 0 );
+    CMuleTextCtrl *itemExcludePatterns = new CMuleTextCtrl( item10, IDC_EXCLUDE_SHARE_PATTERNS, "", wxDefaultPosition, wxSize(80,-1), 0 );
     itemExcludePatterns->SetToolTip(_("Wildcard patterns separated by '|', e.g. .DS_Store|Thumbs.db|*.tmp. Files whose name matches are not shared. Matching is case-insensitive."));
     itemExcludeRow->Add( itemExcludePatterns, wxSizerFlags(1).Expand().CenterVertical() );
     item9->Add( itemExcludeRow, wxSizerFlags().Expand().Border(wxTOP, 4) );
 
-    wxCheckBox *itemExcludeRegex = new wxCheckBox( parent, IDC_EXCLUDE_SHARE_REGEX, _("Patterns are regular expressions"), wxDefaultPosition, wxDefaultSize, 0 );
+    wxCheckBox *itemExcludeRegex = new wxCheckBox( item10, IDC_EXCLUDE_SHARE_REGEX, _("Patterns are regular expressions"), wxDefaultPosition, wxDefaultSize, 0 );
     itemExcludeRegex->SetToolTip(_("When set, the whole field is one regular expression ('|' is alternation). When unset, it is a list of '|'-separated wildcards."));
     item9->Add( itemExcludeRegex, 0, wxALIGN_CENTER_VERTICAL, 0 );
 
-    // Live preview: how many currently-shared files the typed pattern would
-    // exclude. Needs the core's in-memory shared list, which the remote GUI
-    // (amulegui) does not have; this file is built once into muleappgui with
-    // CLIENT_GUI undefined, so PrefsUnifiedDlg removes the button + info at
-    // runtime there (the pattern/regex fields still work and sync over EC).
+    // Live preview: how many currently-shared files the typed pattern would exclude. Needs the
+    // core's in-memory shared list, which the remote GUI does not have; this file is built once
+    // into muleappgui with CLIENT_GUI undefined, so PrefsUnifiedDlg removes the button and info at
+    // runtime there. The pattern/regex fields still work and sync over EC.
     wxBoxSizer *itemPreviewRow = new wxBoxSizer( wxHORIZONTAL );
-    wxButton *itemPreviewBtn = new wxButton( parent, IDC_EXCLUDE_SHARE_PREVIEW, _("Preview"), wxDefaultPosition, wxDefaultSize, 0 );
+    wxButton *itemPreviewBtn = new wxButton( item10, IDC_EXCLUDE_SHARE_PREVIEW, _("Preview"), wxDefaultPosition, wxDefaultSize, 0 );
     itemPreviewBtn->SetToolTip(_("Show how many shared files the current pattern would exclude."));
     itemPreviewRow->Add( itemPreviewBtn, wxSizerFlags().CenterVertical().Border(wxRIGHT, 6) );
-    wxStaticText *itemPreviewInfo = new wxStaticText( parent, IDC_EXCLUDE_SHARE_PREVIEW_INFO, wxEmptyString, wxDefaultPosition, wxDefaultSize, 0 );
+    wxStaticText *itemPreviewInfo = new wxStaticText( item10, IDC_EXCLUDE_SHARE_PREVIEW_INFO, wxEmptyString, wxDefaultPosition, wxDefaultSize, 0 );
     itemPreviewRow->Add( itemPreviewInfo, wxSizerFlags(1).CenterVertical() );
     item9->Add( itemPreviewRow, wxSizerFlags().Expand().Border(wxTOP, 4) );
 
@@ -1952,45 +1911,43 @@ wxSizer *PreferencesPathMappingTab( wxWindow *parent, bool call_fit, bool set_si
     wxBoxSizer *item0 = new wxBoxSizer( wxVERTICAL );
 
     wxStaticText *itemHint = new wxStaticText( parent, IDC_PATHMAP_HINT, _("When the connected core's files live on a different machine, map a path prefix it reports to where that filesystem is reachable from here (a network share, say) so \"Open\" and \"Show in folder\" work."), wxDefaultPosition, wxDefaultSize, 0 );
-    // An unwrapped wxStaticText reports its whole single line as its best
-    // width, and the sizer turns that into the page's minimum width -- the
-    // dialog comes up as wide as this sentence. So it is wrapped here to
-    // bound that minimum, DPI-scaled rather than a raw pixel count.
-    // PrefsUnifiedDlg then re-flows it to the control's real width and keeps
-    // it current across resizes; it restores this text before each wrap,
-    // since Wrap() can only add line breaks, never remove them.
+    // An unwrapped wxStaticText reports its whole single line as its best width, and the sizer
+    // turns that into the page's minimum width -- the dialog comes up as wide as this sentence. So
+    // it is wrapped here to bound that minimum, DPI-scaled rather than a raw pixel count.
+    // PrefsUnifiedDlg then re-flows it to the control's real width and keeps it current across
+    // resizes; it restores this text before each wrap, since Wrap() can only add breaks.
     itemHint->Wrap( parent->FromDIP(380) );
     item0->Add( itemHint, wxSizerFlags().Expand().Border(wxBOTTOM, 6) );
 
     wxStaticBox *itemBox = new wxStaticBox( parent, -1, _("Path Mappings") );
     wxStaticBoxSizer *itemBoxSizer = new wxStaticBoxSizer( itemBox, wxVERTICAL );
 
-    wxListCtrl *itemList = new wxListCtrl( parent, IDC_PATHMAP_LIST, wxDefaultPosition, wxSize(100,100), wxLC_REPORT|wxLC_SINGLE_SEL|wxSUNKEN_BORDER );
+    wxListCtrl *itemList = new wxListCtrl( itemBox, IDC_PATHMAP_LIST, wxDefaultPosition, wxSize(100,100), wxLC_REPORT|wxLC_SINGLE_SEL|wxSUNKEN_BORDER );
     itemBoxSizer->Add( itemList, wxSizerFlags(1).Expand().CenterVertical() );
 
     wxBoxSizer *itemRemoteRow = new wxBoxSizer( wxHORIZONTAL );
-    wxStaticText *itemRemoteLabel = new wxStaticText( parent, -1, LabelWithColon( _("Remote prefix") ), wxDefaultPosition, wxDefaultSize, 0 );
+    wxStaticText *itemRemoteLabel = new wxStaticText( itemBox, -1, LabelWithColon( _("Remote prefix") ), wxDefaultPosition, wxDefaultSize, 0 );
     itemRemoteRow->Add( itemRemoteLabel, wxSizerFlags().CenterVertical().Border(wxRIGHT, 4) );
-    CMuleTextCtrl *itemRemote = new CMuleTextCtrl( parent, IDC_PATHMAP_REMOTE, "", wxDefaultPosition, wxSize(80,-1), 0 );
+    CMuleTextCtrl *itemRemote = new CMuleTextCtrl( itemBox, IDC_PATHMAP_REMOTE, "", wxDefaultPosition, wxSize(80,-1), 0 );
     itemRemote->SetToolTip(_("A path prefix as the core reports it, e.g. /home/user/downloads/incoming"));
     itemRemoteRow->Add( itemRemote, wxSizerFlags(1).Expand().CenterVertical() );
     itemBoxSizer->Add( itemRemoteRow, wxSizerFlags().Expand().Border(wxTOP, 4) );
 
     wxBoxSizer *itemLocalRow = new wxBoxSizer( wxHORIZONTAL );
-    wxStaticText *itemLocalLabel = new wxStaticText( parent, -1, LabelWithColon( _("Local prefix") ), wxDefaultPosition, wxDefaultSize, 0 );
+    wxStaticText *itemLocalLabel = new wxStaticText( itemBox, -1, LabelWithColon( _("Local prefix") ), wxDefaultPosition, wxDefaultSize, 0 );
     itemLocalRow->Add( itemLocalLabel, wxSizerFlags().CenterVertical().Border(wxRIGHT, 4) );
-    CMuleTextCtrl *itemLocal = new CMuleTextCtrl( parent, IDC_PATHMAP_LOCAL, "", wxDefaultPosition, wxSize(80,-1), 0 );
+    CMuleTextCtrl *itemLocal = new CMuleTextCtrl( itemBox, IDC_PATHMAP_LOCAL, "", wxDefaultPosition, wxSize(80,-1), 0 );
     itemLocal->SetToolTip(_("Where that same folder is reachable from this computer, e.g. a mounted network share"));
     itemLocalRow->Add( itemLocal, wxSizerFlags(1).Expand().CenterVertical() );
-    wxButton *itemBrowse = new wxButton( parent, IDC_PATHMAP_BROWSE, _("Browse"), wxDefaultPosition, wxDefaultSize, 0 );
+    wxButton *itemBrowse = new wxButton( itemBox, IDC_PATHMAP_BROWSE, _("Browse"), wxDefaultPosition, wxDefaultSize, 0 );
     itemLocalRow->Add( itemBrowse, wxSizerFlags().CenterVertical().Border(wxLEFT, 4) );
     itemBoxSizer->Add( itemLocalRow, wxSizerFlags().Expand().Border(wxTOP, 4) );
 
     wxBoxSizer *itemButtonRow = new wxBoxSizer( wxHORIZONTAL );
     itemButtonRow->AddStretchSpacer( 1 );
-    wxButton *itemAdd = new wxButton( parent, IDC_PATHMAP_ADD, _("Add"), wxDefaultPosition, wxDefaultSize, 0 );
+    wxButton *itemAdd = new wxButton( itemBox, IDC_PATHMAP_ADD, _("Add"), wxDefaultPosition, wxDefaultSize, 0 );
     itemButtonRow->Add( itemAdd, wxSizerFlags().CenterVertical().Border(wxLEFT, 4) );
-    wxButton *itemRemove = new wxButton( parent, IDC_PATHMAP_REMOVE, _("Remove"), wxDefaultPosition, wxDefaultSize, 0 );
+    wxButton *itemRemove = new wxButton( itemBox, IDC_PATHMAP_REMOVE, _("Remove"), wxDefaultPosition, wxDefaultSize, 0 );
     itemButtonRow->Add( itemRemove, wxSizerFlags().CenterVertical().Border(wxLEFT, 4) );
     itemBoxSizer->Add( itemButtonRow, wxSizerFlags().Expand().Border(wxTOP, 4) );
 
@@ -2014,40 +1971,40 @@ wxSizer *PreferencesStatisticsTab( wxWindow *parent, bool call_fit, bool set_siz
     wxStaticBox *item2 = new wxStaticBox( parent, -1, _("Graphs") );
     wxStaticBoxSizer *item1 = new wxStaticBoxSizer( item2, wxVERTICAL );
 
-    wxStaticText *item3 = new wxStaticText( parent, IDC_SLIDERINFO, _("Update delay : 5 secs"), wxDefaultPosition, wxDefaultSize, 0 );
+    wxStaticText *item3 = new wxStaticText( item2, IDC_SLIDERINFO, _("Update delay : 5 secs"), wxDefaultPosition, wxDefaultSize, 0 );
     item1->Add( item3, wxSizerFlags().Expand().CenterVertical().Border(wxTOP, 5) );
-    wxSlider *item4 = new wxSlider( parent, IDC_SLIDER, 5, 0, 120, wxDefaultPosition, wxSize(100,-1), wxSL_HORIZONTAL );
+    wxSlider *item4 = new wxSlider( item2, IDC_SLIDER, 5, 0, 120, wxDefaultPosition, wxSize(100,-1), wxSL_HORIZONTAL );
     item1->Add( item4, wxSizerFlags().Expand().CenterVertical() );
-    wxStaticText *item5 = new wxStaticText( parent, IDC_SLIDERINFO3, _("Time for average graph: 100 mins"), wxDefaultPosition, wxDefaultSize, 0 );
+    wxStaticText *item5 = new wxStaticText( item2, IDC_SLIDERINFO3, _("Time for average graph: 100 mins"), wxDefaultPosition, wxDefaultSize, 0 );
     item1->Add( item5, wxSizerFlags().Expand().CenterVertical().Border(wxTOP, 5) );
-    wxSlider *item6 = new wxSlider( parent, IDC_SLIDER3, 100, 5, 100, wxDefaultPosition, wxSize(100,-1), wxSL_HORIZONTAL );
+    wxSlider *item6 = new wxSlider( item2, IDC_SLIDER3, 100, 5, 100, wxDefaultPosition, wxSize(100,-1), wxSL_HORIZONTAL );
     item1->Add( item6, wxSizerFlags().Expand().CenterVertical() );
-    wxStaticText *item7 = new wxStaticText( parent, IDC_SLIDERINFO4, _("Connections Graph Scale: 100 "), wxDefaultPosition, wxDefaultSize, 0 );
+    wxStaticText *item7 = new wxStaticText( item2, IDC_SLIDERINFO4, _("Connections Graph Scale: 100 "), wxDefaultPosition, wxDefaultSize, 0 );
     item1->Add( item7, wxSizerFlags().Expand().CenterVertical().Border(wxTOP, 5) );
-    wxSlider *item8 = new wxSlider( parent, IDC_SLIDER4, 100, 2, 200, wxDefaultPosition, wxSize(100,-1), wxSL_HORIZONTAL );
+    wxSlider *item8 = new wxSlider( item2, IDC_SLIDER4, 100, 2, 200, wxDefaultPosition, wxSize(100,-1), wxSL_HORIZONTAL );
     item1->Add( item8, wxSizerFlags().Expand().CenterVertical() );
     wxFlexGridSizer *item9 = new wxFlexGridSizer( 3, 0, 0 );
     item9->AddGrowableCol( 0 );
 
-    wxStaticText *item10 = new wxStaticText( parent, -1, _("Download graph scale:"), wxDefaultPosition, wxDefaultSize, 0 );
+    wxStaticText *item10 = new wxStaticText( item2, -1, _("Download graph scale:"), wxDefaultPosition, wxDefaultSize, 0 );
     item9->Add( item10, 0, wxALIGN_CENTER_VERTICAL, 0 );
 
-    wxSpinCtrl *item11 = new wxSpinCtrl( parent, IDC_DOWNLOAD_CAP, "3", wxDefaultPosition, wxDefaultSize, 0, 3, 1000000, 3 );
+    wxSpinCtrl *item11 = new wxSpinCtrl( item2, IDC_DOWNLOAD_CAP, "3", wxDefaultPosition, wxDefaultSize, 0, 3, 1000000, 3 );
     item9->Add( item11, wxSizerFlags().CenterVertical() );
 
-    wxStaticText *item12 = new wxStaticText( parent, -1, _("KiB/s"), wxDefaultPosition, wxDefaultSize, 0 );
+    wxStaticText *item12 = new wxStaticText( item2, -1, _("KiB/s"), wxDefaultPosition, wxDefaultSize, 0 );
     item9->Add( item12, wxSizerFlags().CenterVertical().Border(wxLEFT, 5) );
-    wxStaticText *item13 = new wxStaticText( parent, -1, _("Upload graph scale:"), wxDefaultPosition, wxDefaultSize, 0 );
+    wxStaticText *item13 = new wxStaticText( item2, -1, _("Upload graph scale:"), wxDefaultPosition, wxDefaultSize, 0 );
     item9->Add( item13, wxSizerFlags().CenterVertical().Border(wxTOP, 5) );
-    wxSpinCtrl *item14 = new wxSpinCtrl( parent, IDC_UPLOAD_CAP, "3", wxDefaultPosition, wxDefaultSize, 0, 3, 1000000, 3 );
+    wxSpinCtrl *item14 = new wxSpinCtrl( item2, IDC_UPLOAD_CAP, "3", wxDefaultPosition, wxDefaultSize, 0, 3, 1000000, 3 );
     item9->Add( item14, wxSizerFlags().CenterVertical().Border(wxTOP, 5) );
-    wxStaticText *item15 = new wxStaticText( parent, -1, _("KiB/s"), wxDefaultPosition, wxDefaultSize, 0 );
+    wxStaticText *item15 = new wxStaticText( item2, -1, _("KiB/s"), wxDefaultPosition, wxDefaultSize, 0 );
     item9->Add( item15, wxSizerFlags().CenterVertical().Border(wxLEFT|wxTOP, 5) );
     item1->Add( item9, wxSizerFlags().Expand().CenterVertical().Border(wxTOP, 5) );
     wxFlexGridSizer *item16 = new wxFlexGridSizer( 3, 0, 0 );
     item16->AddGrowableCol( 0 );
 
-    wxStaticText *item17 = new wxStaticText( parent, -1, _("Colors: "), wxDefaultPosition, wxDefaultSize, 0 );
+    wxStaticText *item17 = new wxStaticText( item2, -1, _("Colors: "), wxDefaultPosition, wxDefaultSize, 0 );
     item16->Add( item17, wxSizerFlags().CenterVertical().Border(wxTOP, 5) );
     wxString strs18[] = 
     {
@@ -2067,25 +2024,25 @@ wxSizer *PreferencesStatisticsTab( wxWindow *parent, bool call_fit, bool set_siz
         _("Kad-nodes running"), 
         _("Kad-nodes session")
     };
-    wxChoice *item18 = new wxChoice( parent, IDC_COLORSELECTOR, wxDefaultPosition, wxDefaultSize, 15, strs18, 0 );
+    wxChoice *item18 = new wxChoice( item2, IDC_COLORSELECTOR, wxDefaultPosition, wxDefaultSize, 15, strs18, 0 );
     item16->Add( item18, wxSizerFlags().Expand().CenterHorizontal().Border(wxRIGHT, 5) );
-    wxButton *item19 = new wxButton( parent, IDC_COLOR_BUTTON, _("Select"), wxDefaultPosition, wxDefaultSize, 0 );
+    wxButton *item19 = new wxButton( item2, IDC_COLOR_BUTTON, _("Select"), wxDefaultPosition, wxDefaultSize, 0 );
     item16->Add( item19, wxSizerFlags().Expand().Border(wxLEFT, 5) );
     item1->Add( item16, wxSizerFlags().Expand().CenterVertical() );
     item0->Add( item1, wxSizerFlags().Expand().CenterVertical().Border(wxALL, 0) );
     wxStaticBox *item21 = new wxStaticBox( parent, -1, _("Tree") );
     wxStaticBoxSizer *item20 = new wxStaticBoxSizer( item21, wxVERTICAL );
 
-    wxStaticText *item22 = new wxStaticText( parent, IDC_SLIDERINFO2, _("Update delay : 5 secs"), wxDefaultPosition, wxDefaultSize, 0 );
+    wxStaticText *item22 = new wxStaticText( item21, IDC_SLIDERINFO2, _("Update delay : 5 secs"), wxDefaultPosition, wxDefaultSize, 0 );
     item20->Add( item22, wxSizerFlags().CenterVertical().Border(wxTOP, 5) );
 
-    wxSlider *item23 = new wxSlider( parent, IDC_SLIDER2, 5, 5, 100, wxDefaultPosition, wxSize(100,-1), wxSL_HORIZONTAL );
+    wxSlider *item23 = new wxSlider( item21, IDC_SLIDER2, 5, 5, 100, wxDefaultPosition, wxSize(100,-1), wxSL_HORIZONTAL );
     item20->Add( item23, wxSizerFlags().Expand().CenterVertical() );
     wxBoxSizer *item24 = new wxBoxSizer( wxHORIZONTAL );
 
-    wxStaticText *item25 = new wxStaticText( parent, -1, _("Number of Client Versions shown (0=unlimited)"), wxDefaultPosition, wxDefaultSize, 0 );
+    wxStaticText *item25 = new wxStaticText( item21, -1, _("Number of Client Versions shown (0=unlimited)"), wxDefaultPosition, wxDefaultSize, 0 );
     item24->Add( item25, wxSizerFlags().Center().Border(wxALL, 5) );
-    wxSpinCtrl *item26 = new wxSpinCtrl( parent, IDC_CLIENTVERSIONS, "0", wxDefaultPosition, wxDefaultSize, 0, 0, 255, 0 );
+    wxSpinCtrl *item26 = new wxSpinCtrl( item21, IDC_CLIENTVERSIONS, "0", wxDefaultPosition, wxDefaultSize, 0, 0, 255, 0 );
     item24->Add( item26, wxSizerFlags().Center().Border(wxALL, 5) );
     item20->Add( item24, wxSizerFlags().CenterVertical() );
 
@@ -2123,32 +2080,32 @@ wxSizer *PreferencesaMuleTweaksTab( wxWindow *parent, bool call_fit, bool set_si
     // Numeric tuning knobs in a compact two-column grid (label | spin) so the
     // panel stays short enough that the controls below it are not clipped.
     wxFlexGridSizer *item6 = new wxFlexGridSizer( 0, 2, 4, 8 );
-    item6->Add( new wxStaticText( parent, -1, _("Max new connections / 5 secs"), wxDefaultPosition, wxDefaultSize, 0 ), wxSizerFlags().CenterVertical() );
-    item6->Add( new wxSpinCtrl( parent, IDC_MAXCON5SEC, "50", wxDefaultPosition, wxDefaultSize, 0, 20, 500, 50 ), wxSizerFlags().CenterVertical() );
-    item6->Add( new wxStaticText( parent, -1, _("Concurrent Kad source lookups"), wxDefaultPosition, wxDefaultSize, 0 ), wxSizerFlags().CenterVertical() );
-    item6->Add( new wxSpinCtrl( parent, IDC_KADMAXSEARCHES, "30", wxDefaultPosition, wxDefaultSize, 0, 5, 50, 30 ), wxSizerFlags().CenterVertical() );
-    item6->Add( new wxStaticText( parent, -1, _("Kad source re-search interval (minutes)"), wxDefaultPosition, wxDefaultSize, 0 ), wxSizerFlags().CenterVertical() );
-    item6->Add( new wxSpinCtrl( parent, IDC_KADREASKTIME, "30", wxDefaultPosition, wxDefaultSize, 0, 30, 60, 30 ), wxSizerFlags().CenterVertical() );
-    item6->Add( new wxStaticText( parent, -1, _("Source re-ask interval (minutes)"), wxDefaultPosition, wxDefaultSize, 0 ), wxSizerFlags().CenterVertical() );
-    item6->Add( new wxSpinCtrl( parent, IDC_SOURCEREASKTIME, "15", wxDefaultPosition, wxDefaultSize, 0, 15, 60, 15 ), wxSizerFlags().CenterVertical() );
+    item6->Add( new wxStaticText( item5, -1, _("Max new connections / 5 secs"), wxDefaultPosition, wxDefaultSize, 0 ), wxSizerFlags().CenterVertical() );
+    item6->Add( new wxSpinCtrl( item5, IDC_MAXCON5SEC, "50", wxDefaultPosition, wxDefaultSize, 0, 20, 500, 50 ), wxSizerFlags().CenterVertical() );
+    item6->Add( new wxStaticText( item5, -1, _("Concurrent Kad source lookups"), wxDefaultPosition, wxDefaultSize, 0 ), wxSizerFlags().CenterVertical() );
+    item6->Add( new wxSpinCtrl( item5, IDC_KADMAXSEARCHES, "30", wxDefaultPosition, wxDefaultSize, 0, 5, 50, 30 ), wxSizerFlags().CenterVertical() );
+    item6->Add( new wxStaticText( item5, -1, _("Kad source re-search interval (minutes)"), wxDefaultPosition, wxDefaultSize, 0 ), wxSizerFlags().CenterVertical() );
+    item6->Add( new wxSpinCtrl( item5, IDC_KADREASKTIME, "30", wxDefaultPosition, wxDefaultSize, 0, 30, 60, 30 ), wxSizerFlags().CenterVertical() );
+    item6->Add( new wxStaticText( item5, -1, _("Source re-ask interval (minutes)"), wxDefaultPosition, wxDefaultSize, 0 ), wxSizerFlags().CenterVertical() );
+    item6->Add( new wxSpinCtrl( item5, IDC_SOURCEREASKTIME, "15", wxDefaultPosition, wxDefaultSize, 0, 15, 60, 15 ), wxSizerFlags().CenterVertical() );
     item4->Add( item6, wxSizerFlags().Border(wxTOP, 5) );
 
-    wxStaticText *item8 = new wxStaticText( parent, IDC_FILEBUFFERSIZE_STATIC, _("File Buffer Size: 240000 bytes"), wxDefaultPosition, wxDefaultSize, 0 );
+    wxStaticText *item8 = new wxStaticText( item5, IDC_FILEBUFFERSIZE_STATIC, _("File Buffer Size: 240000 bytes"), wxDefaultPosition, wxDefaultSize, 0 );
     item4->Add( item8, wxSizerFlags().CenterVertical().Border(wxTOP, 5) );
-    wxSlider *item9 = new wxSlider( parent, IDC_FILEBUFFERSIZE, 16, 1, 100, wxDefaultPosition, wxSize(100,-1), wxSL_HORIZONTAL );
+    wxSlider *item9 = new wxSlider( item5, IDC_FILEBUFFERSIZE, 16, 1, 100, wxDefaultPosition, wxSize(100,-1), wxSL_HORIZONTAL );
     item4->Add( item9, wxSizerFlags().Expand().CenterVertical() );
-    wxCheckBox *itemMMap = new wxCheckBox( parent, IDC_MMAP_ENABLE, _("Use MMAP: memory-mapped file access (lower memory use)"), wxDefaultPosition, wxDefaultSize, 0 );
+    wxCheckBox *itemMMap = new wxCheckBox( item5, IDC_MMAP_ENABLE, _("Use MMAP: memory-mapped file access (lower memory use)"), wxDefaultPosition, wxDefaultSize, 0 );
     itemMMap->SetToolTip( _("Maps part files into memory instead of buffering them on the heap, lowering the process memory footprint. May reduce download speed on some disks; best for memory-constrained or upload-heavy hosts.") );
     item4->Add( itemMMap, wxSizerFlags().CenterVertical().Border(wxTOP, 5) );
-    wxStaticText *item10 = new wxStaticText( parent, IDC_QUEUESIZE_STATIC, _("Upload Queue Size: 5000 clients"), wxDefaultPosition, wxDefaultSize, 0 );
+    wxStaticText *item10 = new wxStaticText( item5, IDC_QUEUESIZE_STATIC, _("Upload Queue Size: 5000 clients"), wxDefaultPosition, wxDefaultSize, 0 );
     item4->Add( item10, wxSizerFlags().CenterVertical().Border(wxTOP, 5) );
-    wxSlider *item11 = new wxSlider( parent, IDC_QUEUESIZE, 15, 5, 100, wxDefaultPosition, wxSize(100,-1), wxSL_HORIZONTAL );
+    wxSlider *item11 = new wxSlider( item5, IDC_QUEUESIZE, 15, 5, 100, wxDefaultPosition, wxSize(100,-1), wxSL_HORIZONTAL );
     item4->Add( item11, wxSizerFlags().Expand().CenterVertical() );
-    wxStaticText *item12 = new wxStaticText( parent, IDC_SERVERKEEPALIVE_LABEL, _("Server connection refresh interval: Disable"), wxDefaultPosition, wxDefaultSize, 0 );
+    wxStaticText *item12 = new wxStaticText( item5, IDC_SERVERKEEPALIVE_LABEL, _("Server connection refresh interval: Disable"), wxDefaultPosition, wxDefaultSize, 0 );
     item4->Add( item12, wxSizerFlags().CenterVertical().Border(wxTOP, 5) );
-    wxSlider *item13 = new wxSlider( parent, IDC_SERVERKEEPALIVE, 0, 0, 30, wxDefaultPosition, wxSize(100,-1), wxSL_HORIZONTAL );
+    wxSlider *item13 = new wxSlider( item5, IDC_SERVERKEEPALIVE, 0, 0, 30, wxDefaultPosition, wxSize(100,-1), wxSL_HORIZONTAL );
     item4->Add( item13, wxSizerFlags().Expand().CenterVertical() );
-    wxCheckBox *item14 = new wxCheckBox( parent, IDC_PREVENT_SLEEP, _("Disable computer's timed standby mode"), wxDefaultPosition, wxDefaultSize, 0 );
+    wxCheckBox *item14 = new wxCheckBox( item5, IDC_PREVENT_SLEEP, _("Disable computer's timed standby mode"), wxDefaultPosition, wxDefaultSize, 0 );
     item4->Add( item14, wxSizerFlags().CenterVertical().Border(wxTOP|wxBOTTOM, 5) );
     item0->Add( item4, wxSizerFlags().Expand().Border(wxALL, 5) );
     if (set_sizer)
@@ -2200,27 +2157,26 @@ wxSizer *PreferencesGuiTweaksTab( wxWindow *parent, bool call_fit, bool set_size
     wxCheckBox *itemLiveSort = new wxCheckBox( parent, IDC_LIVELISTSORT, _("Live column sorting (auto-reorder rows as their values change)"), wxDefaultPosition, wxDefaultSize, 0 );
     itemLiveSort->SetValue( TRUE );
     item0->Add( itemLiveSort, wxSizerFlags().Expand().CenterVertical() );
-    // The "Show country flags for clients" checkbox lives in the dedicated
-    // IP2Country preferences tab (PreferencesIP2CountryTab). The Cfg_Bool
-    // binding stays at IDC_SHOW_COUNTRY_FLAGS so amule.conf
-    // /eMule/GeoIPEnabled stays compatible across versions.
+    // The "Show country flags for clients" checkbox lives in the dedicated IP2Country preferences
+    // tab. The Cfg_Bool binding stays at IDC_SHOW_COUNTRY_FLAGS so amule.conf /eMule/GeoIPEnabled
+    // stays compatible.
     wxStaticBox *item14 = new wxStaticBox( parent, -1, _("Download Queue Files") );
     wxStaticBoxSizer *item13 = new wxStaticBoxSizer( item14, wxVERTICAL );
 
-    wxCheckBox *item15 = new wxCheckBox( parent, IDC_PERCENT, _("Show progress percentage"), wxDefaultPosition, wxDefaultSize, 0 );
+    wxCheckBox *item15 = new wxCheckBox( item14, IDC_PERCENT, _("Show progress percentage"), wxDefaultPosition, wxDefaultSize, 0 );
     item15->SetValue( TRUE );
     item13->Add( item15, wxSizerFlags().Expand().CenterVertical() );
     wxFlexGridSizer *item16 = new wxFlexGridSizer( 4, 0, 0 );
     item16->AddGrowableCol( 0 );
 
-    wxCheckBox *item17 = new wxCheckBox( parent, IDC_PROGBAR, _("Show progress bar"), wxDefaultPosition, wxDefaultSize, 0 );
+    wxCheckBox *item17 = new wxCheckBox( item14, IDC_PROGBAR, _("Show progress bar"), wxDefaultPosition, wxDefaultSize, 0 );
     item17->SetValue( TRUE );
     item16->Add( item17, wxSizerFlags().Expand().CenterVertical() );
-    wxStaticText *item18 = new wxStaticText( parent, -1, _("Flat"), wxDefaultPosition, wxDefaultSize, 0 );
+    wxStaticText *item18 = new wxStaticText( item14, -1, _("Flat"), wxDefaultPosition, wxDefaultSize, 0 );
     item16->Add( item18, wxSizerFlags().CenterVertical().Border(wxLEFT, 5) );
-    wxSlider *item19 = new wxSlider( parent, IDC_3DDEPTH, 5, 0, 5, wxDefaultPosition, wxSize(200,-1), wxSL_HORIZONTAL );
+    wxSlider *item19 = new wxSlider( item14, IDC_3DDEPTH, 5, 0, 5, wxDefaultPosition, wxSize(200,-1), wxSL_HORIZONTAL );
     item16->Add( item19, wxSizerFlags().Expand().CenterVertical() );
-    wxStaticText *item20 = new wxStaticText( parent, -1, _("Round"), wxDefaultPosition, wxDefaultSize, 0 );
+    wxStaticText *item20 = new wxStaticText( item14, -1, _("Round"), wxDefaultPosition, wxDefaultSize, 0 );
     item16->Add( item20, wxSizerFlags().CenterVertical().Right().Border(wxRIGHT, 5) );
     item13->Add( item16, wxSizerFlags(1).Expand().CenterVertical() );
     item0->Add( item13, wxSizerFlags().Expand().CenterVertical().Border(wxALL, 0) );
@@ -2241,77 +2197,77 @@ wxSizer *PreferencesRemoteControlsTab( wxWindow *parent, bool call_fit, bool set
     wxStaticBox *item2 = new wxStaticBox( parent, IDC_EXT_CONN_PARAMS_BOX, _("External Connection Parameters") );
     wxStaticBoxSizer *item1 = new wxStaticBoxSizer( item2, wxVERTICAL );
 
-    wxCheckBox *item3 = new wxCheckBox( parent, IDC_EXT_CONN_ACCEPT, _("Accept external connections"), wxDefaultPosition, wxDefaultSize, 0 );
+    wxCheckBox *item3 = new wxCheckBox( item2, IDC_EXT_CONN_ACCEPT, _("Accept external connections"), wxDefaultPosition, wxDefaultSize, 0 );
     item1->Add( item3, wxSizerFlags().CenterVertical().Border(wxLEFT, 5) );
 
     wxFlexGridSizer *item4 = new wxFlexGridSizer( 2, 0, 0 );
     item4->AddGrowableCol( 0 );
     item4->AddGrowableCol( 1 );
 
-    wxStaticText *item5 = new wxStaticText( parent, IDC_EXT_CONN_IPTEXT, _("IP of the listening interface:"), wxDefaultPosition, wxDefaultSize, wxST_NO_AUTORESIZE );
+    wxStaticText *item5 = new wxStaticText( item2, IDC_EXT_CONN_IPTEXT, _("IP of the listening interface:"), wxDefaultPosition, wxDefaultSize, wxST_NO_AUTORESIZE );
     item4->Add( item5, wxSizerFlags().Expand().CenterVertical().Border(wxLEFT, 5) );
 #ifdef CLIENT_GUI
-    // Hidden in the remote GUI (the whole EC-listener config group is), so a
-    // plain text field is enough — no point offering a drop-down of the wrong
-    // host's addresses. See PrefsUnifiedDlg amuledOnlyPrefs[].
+    // Hidden in the remote GUI, as the whole EC-listener config group is, so a plain text field is
+    // enough -- no point offering a drop-down of the wrong host's addresses. See PrefsUnifiedDlg
+    // amuledOnlyPrefs[].
     CMuleTextCtrl *item6 = new CMuleTextCtrl( parent, IDC_EXT_CONN_IP, "", wxDefaultPosition, wxDefaultSize, 0 );
 #else
-    // Editable combo filled at runtime with 127.0.0.1, 0.0.0.0 and this
-    // machine's own addresses (PrefsUnifiedDlg); stays editable so an address
-    // belonging to an interface that is down right now can still be typed in.
-    wxComboBox *item6 = new wxComboBox( parent, IDC_EXT_CONN_IP, "", wxDefaultPosition, wxDefaultSize, 0, nullptr, wxCB_DROPDOWN );
+    // Editable combo filled at runtime with 127.0.0.1, 0.0.0.0 and this machine's own addresses
+    // (PrefsUnifiedDlg); stays editable so an address belonging to an interface that is down right
+    // now can still be typed in.
+    wxComboBox *item6 = new wxComboBox( item2, IDC_EXT_CONN_IP, "", wxDefaultPosition, wxDefaultSize, 0, nullptr, wxCB_DROPDOWN );
 #endif
     item6->SetToolTip( _("Enter here a valid ip in the a.b.c.d format for the listening EC interface. An empty field or 0.0.0.0 will mean any interface.") );
     item4->Add( item6, wxSizerFlags(1).Expand().CenterVertical().Border(wxLEFT, 5) );
 
-    wxStaticText *item6b = new wxStaticText( parent, IDC_EC_INTERFACETEXT, _("Bind to network interface (empty for any):"), wxDefaultPosition, wxDefaultSize, wxST_NO_AUTORESIZE );
+    wxStaticText *item6b = new wxStaticText( item2, IDC_EC_INTERFACETEXT, _("Bind to network interface (empty for any):"), wxDefaultPosition, wxDefaultSize, wxST_NO_AUTORESIZE );
     item4->Add( item6b, wxSizerFlags().Expand().CenterVertical().Border(wxLEFT, 5) );
 #ifdef CLIENT_GUI
-    // Hidden in the remote GUI (the whole EC-listener config group is), so a
-    // plain text field is enough — no point populating a drop-down of the
-    // wrong host's interfaces. See PrefsUnifiedDlg amuledOnlyPrefs[].
+    // Hidden in the remote GUI, as the whole EC-listener config group is, so a plain text field is
+    // enough -- no point populating a drop-down of the wrong host's interfaces. See PrefsUnifiedDlg
+    // amuledOnlyPrefs[].
     wxTextCtrl *item6c = new wxTextCtrl( parent, IDC_EC_INTERFACE, "", wxDefaultPosition, wxDefaultSize, 0 );
 #else
-    // Editable combo filled at runtime with the machine's interfaces
-    // (PrefsUnifiedDlg); stays editable so a currently-down interface can be
-    // typed in. Binds only aMule's external-connection (EC) socket.
-    wxComboBox *item6c = new wxComboBox( parent, IDC_EC_INTERFACE, "", wxDefaultPosition, wxDefaultSize, 0, nullptr, wxCB_DROPDOWN );
+    // Editable combo filled at runtime with the machine's interfaces (PrefsUnifiedDlg); stays
+    // editable so a currently-down interface can be typed in. Binds only aMule's external-
+    // connection (EC) socket.
+    wxComboBox *item6c = new wxComboBox( item2, IDC_EC_INTERFACE, "", wxDefaultPosition, wxDefaultSize, 0, nullptr, wxCB_DROPDOWN );
 #endif
     item4->Add( item6c, wxSizerFlags(1).Expand().CenterVertical().Border(wxLEFT, 5) );
     item1->Add( item4, wxSizerFlags().Expand().CenterVertical() );
     wxFlexGridSizer *item7 = new wxFlexGridSizer( 2, 0, 0 );
     item7->AddGrowableCol( 0 );
 
-    wxStaticText *item8 = new wxStaticText( parent, IDC_EXT_CONN_TCPPORTTEXT, _("TCP port:"), wxDefaultPosition, wxDefaultSize, 0 );
+    wxStaticText *item8 = new wxStaticText( item2, IDC_EXT_CONN_TCPPORTTEXT, _("TCP port:"), wxDefaultPosition, wxDefaultSize, 0 );
     item7->Add( item8, wxSizerFlags(1).CenterVertical().Border(wxRIGHT, 0) );
-    wxSpinCtrl *item9 = new wxSpinCtrl( parent, IDC_EXT_CONN_TCP_PORT, "10000", wxDefaultPosition, wxDefaultSize, 0, 1025, 65535, 10000 );
+    wxSpinCtrl *item9 = new wxSpinCtrl( item2, IDC_EXT_CONN_TCP_PORT, "10000", wxDefaultPosition, wxDefaultSize, 0, 1025, 65535, 10000 );
     item7->Add( item9, wxSizerFlags().Center() );
 
     item1->Add( item7, wxSizerFlags().Expand().CenterVertical().Border(wxLEFT, 5) );
-    wxCheckBox *item10 = new wxCheckBox( parent, IDC_UPNP_EC_ENABLED, _("Enable UPnP port forwarding on the EC port"), wxDefaultPosition, wxDefaultSize, 0 );
+    wxCheckBox *item10 = new wxCheckBox( item2, IDC_UPNP_EC_ENABLED, _("Enable UPnP port forwarding on the EC port"), wxDefaultPosition, wxDefaultSize, 0 );
     item1->Add( item10, wxSizerFlags().CenterVertical().Border(wxLEFT, 5) );
     wxBoxSizer *item11 = new wxBoxSizer( wxHORIZONTAL );
 
-    wxStaticText *item12 = new wxStaticText( parent, IDC_EXT_CONN_PASSWDTEXT, _("Password"), wxDefaultPosition, wxDefaultSize, 0 );
+    wxStaticText *item12 = new wxStaticText( item2, IDC_EXT_CONN_PASSWDTEXT, _("Password"), wxDefaultPosition, wxDefaultSize, 0 );
     item11->Add( item12, wxSizerFlags().Center().Border(wxLEFT|wxRIGHT, 5) );
-    CMuleTextCtrl *item13 = new CMuleTextCtrl( parent, IDC_EXT_CONN_PASSWD, "", wxDefaultPosition, wxDefaultSize, wxTE_PASSWORD );
+    CMuleTextCtrl *item13 = new CMuleTextCtrl( item2, IDC_EXT_CONN_PASSWD, "", wxDefaultPosition, wxDefaultSize, wxTE_PASSWORD );
     item11->Add( item13, wxSizerFlags(1).Center().Border(wxLEFT, 5) );
     item1->Add( item11, wxSizerFlags().Expand().CenterVertical() );
-    wxCheckBox *item13b = new wxCheckBox( parent, IDC_EXT_CONN_REQUIRE_ENCRYPTION, _("Require encrypted connections (rejects clients that cannot encrypt)"), wxDefaultPosition, wxDefaultSize, 0 );
+    wxCheckBox *item13b = new wxCheckBox( item2, IDC_EXT_CONN_REQUIRE_ENCRYPTION, _("Require encrypted connections (rejects clients that cannot encrypt)"), wxDefaultPosition, wxDefaultSize, 0 );
     item1->Add( item13b, wxSizerFlags().CenterVertical().Border(wxALL, 5) );
     item0->Add( item1, wxSizerFlags().Expand().Border(wxALL, 0) );
     wxStaticBox *item37 = new wxStaticBox( parent, -1, _("aMule API server parameters") );
     wxStaticBoxSizer *item36 = new wxStaticBoxSizer( item37, wxVERTICAL );
 
-    wxCheckBox *item38 = new wxCheckBox( parent, IDC_ENABLE_AMULEAPI, _("Run amuleapi (REST API) on startup"), wxDefaultPosition, wxDefaultSize, 0 );
+    wxCheckBox *item38 = new wxCheckBox( item37, IDC_ENABLE_AMULEAPI, _("Run amuleapi (REST API) on startup"), wxDefaultPosition, wxDefaultSize, 0 );
     item36->Add( item38, wxSizerFlags().CenterVertical().Border(wxLEFT, 5) );
 
     wxBoxSizer *item39 = new wxBoxSizer( wxHORIZONTAL );
 
-    wxStaticText *item40 = new wxStaticText( parent, -1, _("HTTP port:"), wxDefaultPosition, wxDefaultSize, 0 );
+    wxStaticText *item40 = new wxStaticText( item37, -1, _("HTTP port:"), wxDefaultPosition, wxDefaultSize, 0 );
     item39->Add( item40, wxSizerFlags(1).CenterVertical() );
 
-    wxSpinCtrl *item41 = new wxSpinCtrl( parent, IDC_AMULEAPI_PORT, "4713", wxDefaultPosition, wxDefaultSize, 0, 1025, 65535, 4713 );
+    wxSpinCtrl *item41 = new wxSpinCtrl( item37, IDC_AMULEAPI_PORT, "4713", wxDefaultPosition, wxDefaultSize, 0, 1025, 65535, 4713 );
     item39->Add( item41, wxSizerFlags().Center() );
 
     item36->Add( item39, wxSizerFlags().Expand().CenterVertical() );
@@ -2319,9 +2275,9 @@ wxSizer *PreferencesRemoteControlsTab( wxWindow *parent, bool call_fit, bool set
     wxFlexGridSizer *item42 = new wxFlexGridSizer( 2, 0, 0 );
     item42->AddGrowableCol( 1 );
 
-    wxStaticText *item43 = new wxStaticText( parent, -1, _("IP of the listening interface:"), wxDefaultPosition, wxDefaultSize, wxST_NO_AUTORESIZE );
+    wxStaticText *item43 = new wxStaticText( item37, -1, _("IP of the listening interface:"), wxDefaultPosition, wxDefaultSize, wxST_NO_AUTORESIZE );
     item42->Add( item43, wxSizerFlags().CenterVertical().Border(wxRIGHT, 5) );
-    CMuleTextCtrl *item44 = new CMuleTextCtrl( parent, IDC_AMULEAPI_BIND, "", wxDefaultPosition, wxDefaultSize, 0 );
+    CMuleTextCtrl *item44 = new CMuleTextCtrl( item37, IDC_AMULEAPI_BIND, "", wxDefaultPosition, wxDefaultSize, 0 );
     item44->SetToolTip( _("The interface amuleapi's HTTP server listens on. 127.0.0.1 (default) accepts only local connections; use 0.0.0.0 or a specific IP to expose it to other hosts (set an admin password below).") );
     item42->Add( item44, wxSizerFlags(1).Expand().CenterVertical() );
 
@@ -2329,36 +2285,34 @@ wxSizer *PreferencesRemoteControlsTab( wxWindow *parent, bool call_fit, bool set
     // not a view of what is stored.
     const wxString amuleapiPasswordHint = _("Type a password to set or change it. Stored passwords cannot be shown, so leaving this empty keeps the current one.");
 
-    wxStaticText *item45 = new wxStaticText( parent, -1, _("Admin password"), wxDefaultPosition, wxDefaultSize, 0 );
+    wxStaticText *item45 = new wxStaticText( item37, -1, _("Admin password"), wxDefaultPosition, wxDefaultSize, 0 );
     item42->Add( item45, wxSizerFlags().CenterVertical().Border(wxRIGHT, 5) );
     wxBoxSizer *item46s = new wxBoxSizer( wxHORIZONTAL );
-    CMuleTextCtrl *item46 = new CMuleTextCtrl( parent, IDC_AMULEAPI_PASSWD, "", wxDefaultPosition, wxDefaultSize, wxTE_PASSWORD );
+    CMuleTextCtrl *item46 = new CMuleTextCtrl( item37, IDC_AMULEAPI_PASSWD, "", wxDefaultPosition, wxDefaultSize, wxTE_PASSWORD );
     item46->SetToolTip( amuleapiPasswordHint );
     item46s->Add( item46, wxSizerFlags(1).Expand().CenterVertical() );
-    // Filled in at runtime by PrefsUnifiedDlg: the stored password is
-    // hashed and can never be shown, so this says whether one exists.
-    // Constructed with the wider of the two strings it can hold, not with
-    // "": the sizer takes its minimum width from the label present at
-    // construction, so an empty one reserves nothing and GTK then clips
-    // whatever SetLabel writes.
-    wxStaticText *item46t = new wxStaticText( parent, IDC_AMULEAPI_PASSWD_STATE, _("A password is set."), wxDefaultPosition, wxDefaultSize, 0 );
+    // Filled in at runtime by PrefsUnifiedDlg: the stored password is hashed and can never be
+    // shown, so this says whether one exists. Constructed with the wider of the two strings it can
+    // hold, not with "": the sizer takes its minimum width from the label present at construction,
+    // so an empty one reserves nothing and GTK then clips whatever SetLabel writes.
+    wxStaticText *item46t = new wxStaticText( item37, IDC_AMULEAPI_PASSWD_STATE, _("A password is set."), wxDefaultPosition, wxDefaultSize, 0 );
     item46s->Add( item46t, wxSizerFlags().CenterVertical().Border(wxLEFT, 5) );
     item42->Add( item46s, wxSizerFlags(1).Expand().CenterVertical() );
 
-    wxCheckBox *item49 = new wxCheckBox( parent, IDC_AMULEAPI_GUEST_ENABLED, _("Enable guest access"), wxDefaultPosition, wxDefaultSize, 0 );
+    wxCheckBox *item49 = new wxCheckBox( item37, IDC_AMULEAPI_GUEST_ENABLED, _("Enable guest access"), wxDefaultPosition, wxDefaultSize, 0 );
     item49->SetToolTip( _("Guest sessions may read status and listings but cannot change anything. Turning this off clears the stored guest password.") );
     item42->Add( item49, wxSizerFlags().CenterVertical().Border(wxRIGHT, 5) );
     item42->Add( 20, 20, wxSizerFlags().Center().Border(wxALL, 5) );
 
-    wxStaticText *item47 = new wxStaticText( parent, -1, _("Guest password"), wxDefaultPosition, wxDefaultSize, 0 );
+    wxStaticText *item47 = new wxStaticText( item37, -1, _("Guest password"), wxDefaultPosition, wxDefaultSize, 0 );
     item42->Add( item47, wxSizerFlags().CenterVertical().Border(wxRIGHT, 5) );
     wxBoxSizer *item48s = new wxBoxSizer( wxHORIZONTAL );
-    CMuleTextCtrl *item48 = new CMuleTextCtrl( parent, IDC_AMULEAPI_GUEST_PASSWD, "", wxDefaultPosition, wxDefaultSize, wxTE_PASSWORD );
+    CMuleTextCtrl *item48 = new CMuleTextCtrl( item37, IDC_AMULEAPI_GUEST_PASSWD, "", wxDefaultPosition, wxDefaultSize, wxTE_PASSWORD );
     item48->SetToolTip( amuleapiPasswordHint );
     item48s->Add( item48, wxSizerFlags(1).Expand().CenterVertical() );
     // Same as the admin one: constructed with the wider of the two strings
     // so the sizer reserves real width instead of clipping SetLabel.
-    wxStaticText *item48t = new wxStaticText( parent, IDC_AMULEAPI_GUEST_PASSWD_STATE, _("A password is set."), wxDefaultPosition, wxDefaultSize, 0 );
+    wxStaticText *item48t = new wxStaticText( item37, IDC_AMULEAPI_GUEST_PASSWD_STATE, _("A password is set."), wxDefaultPosition, wxDefaultSize, 0 );
     item48s->Add( item48t, wxSizerFlags().CenterVertical().Border(wxLEFT, 5) );
     item42->Add( item48s, wxSizerFlags(1).Expand().CenterVertical() );
 
@@ -2368,61 +2322,61 @@ wxSizer *PreferencesRemoteControlsTab( wxWindow *parent, bool call_fit, bool set
     wxStaticBox *item15 = new wxStaticBox( parent, -1, _("Web server parameters") );
     wxStaticBoxSizer *item14 = new wxStaticBoxSizer( item15, wxVERTICAL );
 
-    wxCheckBox *item16 = new wxCheckBox( parent, IDC_ENABLE_WEB, _("Run webserver on startup (deprecated)"), wxDefaultPosition, wxDefaultSize, 0 );
+    wxCheckBox *item16 = new wxCheckBox( item15, IDC_ENABLE_WEB, _("Run webserver on startup (deprecated)"), wxDefaultPosition, wxDefaultSize, 0 );
     item14->Add( item16, wxSizerFlags().CenterVertical().Border(wxLEFT, 5) );
 
     wxFlexGridSizer *item17 = new wxFlexGridSizer( 2, 0, 0 );
     item17->AddGrowableCol( 1 );
 
-    wxStaticText *item18 = new wxStaticText( parent, -1, _("Web template"), wxDefaultPosition, wxDefaultSize, 0 );
+    wxStaticText *item18 = new wxStaticText( item15, -1, _("Web template"), wxDefaultPosition, wxDefaultSize, 0 );
     item17->Add( item18, wxSizerFlags().CenterVertical().Border(wxRIGHT, 5) );
     wxString *strs19 = (wxString*) NULL;
-    wxChoice *item19 = new wxChoice( parent, IDC_WEBTEMPLATE, wxDefaultPosition, wxSize(200,-1), 0, strs19, 0 );
+    wxChoice *item19 = new wxChoice( item15, IDC_WEBTEMPLATE, wxDefaultPosition, wxSize(200,-1), 0, strs19, 0 );
     item17->Add( item19, wxSizerFlags().CenterVertical().Right() );
-    wxStaticText *item20 = new wxStaticText( parent, -1, _("Full rights password"), wxDefaultPosition, wxDefaultSize, 0 );
+    wxStaticText *item20 = new wxStaticText( item15, -1, _("Full rights password"), wxDefaultPosition, wxDefaultSize, 0 );
     item17->Add( item20, wxSizerFlags().CenterVertical().Border(wxRIGHT, 5) );
-    CMuleTextCtrl *item21 = new CMuleTextCtrl( parent, IDC_WEB_PASSWD, "", wxDefaultPosition, wxSize(80,-1), wxTE_PASSWORD );
+    CMuleTextCtrl *item21 = new CMuleTextCtrl( item15, IDC_WEB_PASSWD, "", wxDefaultPosition, wxSize(80,-1), wxTE_PASSWORD );
     item17->Add( item21, wxSizerFlags(1).Expand() );
-    wxCheckBox *item22 = new wxCheckBox( parent, IDC_ENABLE_WEB_LOW, _("Enable Low rights User"), wxDefaultPosition, wxDefaultSize, 0 );
+    wxCheckBox *item22 = new wxCheckBox( item15, IDC_ENABLE_WEB_LOW, _("Enable Low rights User"), wxDefaultPosition, wxDefaultSize, 0 );
     item22->SetValue( TRUE );
     item17->Add( item22, wxSizerFlags().CenterVertical().Border(wxRIGHT, 5) );
 
     item17->Add( 20, 20, wxSizerFlags().Center().Border(wxALL, 5) );
-    wxStaticText *item23 = new wxStaticText( parent, -1, _("Low rights password"), wxDefaultPosition, wxDefaultSize, 0 );
+    wxStaticText *item23 = new wxStaticText( item15, -1, _("Low rights password"), wxDefaultPosition, wxDefaultSize, 0 );
     item17->Add( item23, wxSizerFlags().CenterVertical().Border(wxRIGHT, 5) );
-    CMuleTextCtrl *item24 = new CMuleTextCtrl( parent, IDC_WEB_PASSWD_LOW, "", wxDefaultPosition, wxSize(80,-1), wxTE_PASSWORD );
+    CMuleTextCtrl *item24 = new CMuleTextCtrl( item15, IDC_WEB_PASSWD_LOW, "", wxDefaultPosition, wxSize(80,-1), wxTE_PASSWORD );
     item17->Add( item24, wxSizerFlags(1).Expand().CenterVertical() );
     item14->Add( item17, wxSizerFlags().Expand().CenterVertical() );
     wxBoxSizer *item25 = new wxBoxSizer( wxHORIZONTAL );
 
-    wxStaticText *item26 = new wxStaticText( parent, -1, _("TCP port:"), wxDefaultPosition, wxDefaultSize, 0 );
+    wxStaticText *item26 = new wxStaticText( item15, -1, _("TCP port:"), wxDefaultPosition, wxDefaultSize, 0 );
     item25->Add( item26, wxSizerFlags(1).CenterVertical() );
 
-    wxSpinCtrl *item27 = new wxSpinCtrl( parent, IDC_WEB_PORT, "10000", wxDefaultPosition, wxDefaultSize, 0, 1025, 65535, 10000 );
+    wxSpinCtrl *item27 = new wxSpinCtrl( item15, IDC_WEB_PORT, "10000", wxDefaultPosition, wxDefaultSize, 0, 1025, 65535, 10000 );
     item25->Add( item27, wxSizerFlags().Center() );
 
     item14->Add( item25, wxSizerFlags().Expand().CenterVertical() );
-    wxCheckBox *item28 = new wxCheckBox( parent, IDC_UPNP_WEBSERVER_ENABLED, _("Enable UPnP port forwarding of the web server port"), wxDefaultPosition, wxDefaultSize, 0 );
+    wxCheckBox *item28 = new wxCheckBox( item15, IDC_UPNP_WEBSERVER_ENABLED, _("Enable UPnP port forwarding of the web server port"), wxDefaultPosition, wxDefaultSize, 0 );
     item14->Add( item28, wxSizerFlags().CenterVertical().Border(wxLEFT, 5) );
 
     wxBoxSizer *item29 = new wxBoxSizer( wxHORIZONTAL );
 
-    wxStaticText *item30 = new wxStaticText( parent, IDC_WEBUPNPTCPPORTTEXT, _("Web server UPnP TCP port (Optional)"), wxDefaultPosition, wxDefaultSize, 0 );
+    wxStaticText *item30 = new wxStaticText( item15, IDC_WEBUPNPTCPPORTTEXT, _("Web server UPnP TCP port (Optional)"), wxDefaultPosition, wxDefaultSize, 0 );
     item29->Add( item30, wxSizerFlags(1).Center().Border(wxRIGHT, 5) );
-    wxSpinCtrl *item31 = new wxSpinCtrl( parent, IDC_WEBUPNPTCPPORT, "10000", wxDefaultPosition, wxDefaultSize, 0, 1025, 65535, 10000 );
+    wxSpinCtrl *item31 = new wxSpinCtrl( item15, IDC_WEBUPNPTCPPORT, "10000", wxDefaultPosition, wxDefaultSize, 0, 1025, 65535, 10000 );
     item29->Add( item31, wxSizerFlags().Center() );
 
     item14->Add( item29, wxSizerFlags().Expand().CenterVertical().Border(wxLEFT, 20) );
     wxBoxSizer *item32 = new wxBoxSizer( wxHORIZONTAL );
 
-    wxStaticText *item33 = new wxStaticText( parent, -1, _("Page Refresh Time (in secs)"), wxDefaultPosition, wxDefaultSize, 0 );
+    wxStaticText *item33 = new wxStaticText( item15, -1, _("Page Refresh Time (in secs)"), wxDefaultPosition, wxDefaultSize, 0 );
     item32->Add( item33, wxSizerFlags(1).Center() );
 
-    wxSpinCtrl *item34 = new wxSpinCtrl( parent, IDC_WEB_REFRESH_TIMEOUT, "120", wxDefaultPosition, wxDefaultSize, 0, 120, 600, 120 );
+    wxSpinCtrl *item34 = new wxSpinCtrl( item15, IDC_WEB_REFRESH_TIMEOUT, "120", wxDefaultPosition, wxDefaultSize, 0, 120, 600, 120 );
     item32->Add( item34, wxSizerFlags().Center() );
 
     item14->Add( item32, wxSizerFlags().Expand().CenterVertical() );
-    wxCheckBox *item35 = new wxCheckBox( parent, IDC_WEB_GZIP, _("Enable Gzip compression"), wxDefaultPosition, wxDefaultSize, 0 );
+    wxCheckBox *item35 = new wxCheckBox( item15, IDC_WEB_GZIP, _("Enable Gzip compression"), wxDefaultPosition, wxDefaultSize, 0 );
     item35->SetValue( TRUE );
     item14->Add( item35, wxSizerFlags().CenterVertical().Border(wxALL, 5) );
 
@@ -2452,9 +2406,9 @@ wxSizer *preferencesDlgTop( wxWindow *parent, bool call_fit, bool set_sizer )
     // its border reads as slack on every row rather than as breathing room.
     item1->Add( item2, wxSizerFlags().Expand().Border(wxALL, 2) );
     item0->Add( item1, wxSizerFlags(1).Expand().Border(wxALL, 0) );
-    // Plain button row (no static-box container). A leading stretch spacer
-    // right-aligns the whole group; the page-scoped "Reset" button (hidden
-    // except on the Advanced page, see PrefsUnifiedDlg) sits left of OK/Cancel.
+    // Plain button row (no static-box container). A leading stretch spacer right-aligns the whole
+    // group; the page-scoped "Reset" button, hidden except on the Advanced page (see
+    // PrefsUnifiedDlg), sits left of OK/Cancel.
     wxBoxSizer *item3 = new wxBoxSizer( wxHORIZONTAL );
 
     item3->AddStretchSpacer( 1 );
@@ -2488,30 +2442,30 @@ wxSizer *CategoriesEditWindow( wxWindow *parent, bool call_fit, bool set_sizer )
 
     wxBoxSizer *item3 = new wxBoxSizer( wxHORIZONTAL );
 
-    wxStaticText *item4 = new wxStaticText( parent, -1, LabelWithColon( _("Title") ), wxDefaultPosition, wxDefaultSize, 0 );
+    wxStaticText *item4 = new wxStaticText( item2, -1, LabelWithColon( _("Title") ), wxDefaultPosition, wxDefaultSize, 0 );
     item3->Add( item4, wxSizerFlags().Center().Border(wxLEFT|wxRIGHT, 5) );
-    CMuleTextCtrl *item5 = new CMuleTextCtrl( parent, IDC_TITLE, "", wxDefaultPosition, wxDefaultSize, 0 );
+    CMuleTextCtrl *item5 = new CMuleTextCtrl( item2, IDC_TITLE, "", wxDefaultPosition, wxDefaultSize, 0 );
     item3->Add( item5, wxSizerFlags(1).Expand().CenterHorizontal().Border(wxRIGHT, 5) );
     item1->Add( item3, wxSizerFlags().Expand().CenterVertical().Border(wxTOP|wxBOTTOM, 5) );
     wxBoxSizer *item6 = new wxBoxSizer( wxHORIZONTAL );
 
-    wxStaticText *item7 = new wxStaticText( parent, -1, LabelWithColon( _("Comment") ), wxDefaultPosition, wxDefaultSize, 0 );
+    wxStaticText *item7 = new wxStaticText( item2, -1, LabelWithColon( _("Comment") ), wxDefaultPosition, wxDefaultSize, 0 );
     item6->Add( item7, wxSizerFlags().Center().Border(wxLEFT|wxRIGHT, 5) );
-    CMuleTextCtrl *item8 = new CMuleTextCtrl( parent, IDC_COMMENT, "", wxDefaultPosition, wxDefaultSize, 0 );
+    CMuleTextCtrl *item8 = new CMuleTextCtrl( item2, IDC_COMMENT, "", wxDefaultPosition, wxDefaultSize, 0 );
     item6->Add( item8, wxSizerFlags(1).Expand().CenterHorizontal().Border(wxRIGHT, 5) );
     item1->Add( item6, wxSizerFlags().Expand().CenterVertical().Border(wxBOTTOM, 5) );
     wxBoxSizer *item9 = new wxBoxSizer( wxHORIZONTAL );
 
-    wxStaticText *item10 = new wxStaticText( parent, -1, LabelWithColon( _("Incoming Dir") ), wxDefaultPosition, wxDefaultSize, 0 );
+    wxStaticText *item10 = new wxStaticText( item2, -1, LabelWithColon( _("Incoming Dir") ), wxDefaultPosition, wxDefaultSize, 0 );
     item9->Add( item10, wxSizerFlags().Center().Border(wxLEFT|wxRIGHT, 5) );
-    CMuleTextCtrl *item11 = new CMuleTextCtrl( parent, IDC_INCOMING, "", wxDefaultPosition, wxDefaultSize, 0 );
+    CMuleTextCtrl *item11 = new CMuleTextCtrl( item2, IDC_INCOMING, "", wxDefaultPosition, wxDefaultSize, 0 );
     item9->Add( item11, wxSizerFlags(1).Expand().CenterHorizontal() );
-    wxButton *item12 = new wxButton( parent, IDC_BROWSE, "...", wxDefaultPosition, wxDefaultSize, 0 );
+    wxButton *item12 = new wxButton( item2, IDC_BROWSE, "...", wxDefaultPosition, wxDefaultSize, 0 );
     item9->Add( item12, wxSizerFlags().Center().Border(wxLEFT|wxRIGHT, 5) );
     item1->Add( item9, wxSizerFlags().Expand().CenterVertical().Border(wxBOTTOM, 5) );
     wxFlexGridSizer *item13 = new wxFlexGridSizer( 2, 0, 0 );
 
-    wxStaticText *item14 = new wxStaticText( parent, -1, LabelWithColon( _("Change priority for new assigned files") ), wxDefaultPosition, wxDefaultSize, 0 );
+    wxStaticText *item14 = new wxStaticText( item2, -1, LabelWithColon( _("Change priority for new assigned files") ), wxDefaultPosition, wxDefaultSize, 0 );
     item13->Add( item14, wxSizerFlags().CenterVertical().Border(wxLEFT|wxRIGHT, 5) );
     wxString strs15[] = 
     {
@@ -2521,29 +2475,29 @@ wxSizer *CategoriesEditWindow( wxWindow *parent, bool call_fit, bool set_sizer )
         _("High"), 
         _("Auto")
     };
-    wxChoice *item15 = new wxChoice( parent, IDC_PRIOCOMBO, wxDefaultPosition, wxDefaultSize, 5, strs15, 0 );
+    wxChoice *item15 = new wxChoice( item2, IDC_PRIOCOMBO, wxDefaultPosition, wxDefaultSize, 5, strs15, 0 );
     item13->Add( item15, wxSizerFlags().Expand().Border(wxRIGHT, 5) );
     item1->Add( item13, wxSizerFlags().Expand().CenterVertical().Border(wxBOTTOM, 5) );
     wxFlexGridSizer *item16 = new wxFlexGridSizer( 3, 0, 0 );
     item16->AddGrowableCol( 2 );
 
-    wxStaticText *item17 = new wxStaticText( parent, -1, LabelWithColon( _("Select color for this Category (currently selected)") ), wxDefaultPosition, wxDefaultSize, 0 );
+    wxStaticText *item17 = new wxStaticText( item2, -1, LabelWithColon( _("Select color for this Category (currently selected)") ), wxDefaultPosition, wxDefaultSize, 0 );
     item16->Add( item17, wxSizerFlags().CenterVertical().Border(wxLEFT|wxRIGHT, 5) );
-    wxStaticBox *item19 = new wxStaticBox( parent, -1, "" );
+    wxStaticBox *item19 = new wxStaticBox( item2, -1, "" );
     wxStaticBoxSizer *item18 = new wxStaticBoxSizer( item19, wxVERTICAL );
 
-    wxStaticBitmap *item20 = new wxStaticBitmap( parent, ID_BOX_CATCOLOR, amuleSpecial( 0 ), wxDefaultPosition, wxDefaultSize );
+    wxStaticBitmap *item20 = new wxStaticBitmap( item19, ID_BOX_CATCOLOR, amuleSpecial( 0 ), wxDefaultPosition, wxDefaultSize );
     item18->Add( item20, wxSizerFlags().Center() );
 
     item16->Add( item18, wxSizerFlags().Center().Border(wxLEFT|wxRIGHT, 5) );
 
-    wxButton *item21 = new wxButton( parent, IDC_CATCOLOR, _("Select"), wxDefaultPosition, wxDefaultSize, 0 );
+    wxButton *item21 = new wxButton( item2, IDC_CATCOLOR, _("Select"), wxDefaultPosition, wxDefaultSize, 0 );
     item16->Add( item21, wxSizerFlags().CenterVertical().Right().Border(wxLEFT|wxRIGHT, 5) );
     item1->Add( item16, wxSizerFlags().Expand().CenterVertical() );
     item0->Add( item1, wxSizerFlags().Expand().CenterVertical().Border(wxALL, 5) );
-    // Plain button row (no static-box container) so no border is drawn
-    // around OK/Cancel, matching the Settings dialog. A leading stretch
-    // spacer right-aligns the buttons, like the Preferences/About dialogs.
+    // Plain button row (no static-box container) so no border is drawn around OK/Cancel, matching
+    // the Settings dialog. A leading stretch spacer right-aligns the buttons, like the Preferences
+    // and About dialogs.
     wxBoxSizer *item22 = new wxBoxSizer( wxHORIZONTAL );
 
     item22->AddStretchSpacer( 1 );
@@ -2568,7 +2522,7 @@ wxSizer *transferDlg( wxWindow *parent, bool call_fit, bool set_sizer )
     wxStaticBox *item1 = new wxStaticBox( parent, -1, "" );
     wxStaticBoxSizer *item0 = new wxStaticBoxSizer( item1, wxVERTICAL );
 
-    wxSplitterWindow *item2 = new wxSplitterWindow( parent, ID_DOWNLOADSSPLATTER, wxDefaultPosition, wxDefaultSize, wxSP_LIVE_UPDATE );
+    wxSplitterWindow *item2 = new wxSplitterWindow( item1, ID_DOWNLOADSSPLATTER, wxDefaultPosition, wxDefaultSize, wxSP_LIVE_UPDATE );
     item2->SetMinimumPaneSize( 20 );
     wxPanel *item3 = new wxPanel( item2, -1 );
     transferTopPane( item3, FALSE, TRUE );
@@ -2625,9 +2579,8 @@ wxSizer *aMuleLog( wxWindow *parent, bool call_fit, bool set_sizer )
     return item0;
 }
 
-// amulegui only: the GUI client's own log (mirrors aMuleLog but its own
-// text control + Clear button). Added as a separate tab so "aMule Log" carries
-// only the daemon/core log received over EC.
+// amulegui only: the GUI client's own log (mirrors aMuleLog but with its own text control and Clear
+// button). A separate tab, so "aMule Log" carries only the daemon/core log received over EC.
 wxSizer *aMuleGuiLog( wxWindow *parent, bool call_fit, bool set_sizer )
 {
     wxBoxSizer *item0 = new wxBoxSizer( wxVERTICAL );
@@ -2663,17 +2616,16 @@ wxSizer *serverListDlgUp( wxWindow *parent, bool call_fit, bool set_sizer )
     item1->Add( item3, wxSizerFlags().Center().Border(wxLEFT|wxRIGHT, 5) );
     CMuleTextCtrl *item4 = new CMuleTextCtrl( parent, IDC_SERVERLISTURL, "", wxDefaultPosition, wxDefaultSize, wxTE_PROCESS_ENTER );
     item4->SetToolTip( _("Enter the url to a server.met file here and press the button to the left to update the list of known servers.") );
-    // CenterVertical, not Expand: the row's height now follows the icon-bearing
-    // connect button (taller than a one-line field on macOS), and Expand would
-    // stretch this single-line entry to that height -- rendering it two lines
-    // tall on macOS. Proportion 1 still fills the row horizontally.
+    // CenterVertical, not Expand: the row's height now follows the icon-bearing connect button,
+    // taller than a one-line field on macOS, and Expand would stretch this single-line entry to
+    // that height, rendering it two lines tall there. Proportion 1 still fills the row
+    // horizontally.
     item1->Add( item4, wxSizerFlags(1).CenterVertical().Border(wxLEFT, 5) );
     item1->AddStretchSpacer(1);
-    // Placeholder label -- CServerWnd's ctor calls UpdateED2KConnectButton()
-    // right after construction, which sets the real label/bitmap for the
-    // current state. Kept on this top row, right-aligned via the stretch
-    // spacer above, so the primary control sits directly above the table --
-    // mirrors the Kad tab's "primary control on top, manual form below" shape.
+    // Placeholder label -- CServerWnd's ctor calls UpdateED2KConnectButton() right after
+    // construction, which sets the real label and bitmap for the current state. Kept on this top
+    // row, right-aligned via the stretch spacer above, so the primary control sits directly above
+    // the table -- mirrors the Kad tab's "primary control on top, manual form below" shape.
     wxButton *item14 = new wxButton( parent, IDC_ED2KDISCONNECT, _("Connect"), wxDefaultPosition, wxDefaultSize, 0 );
     item1->Add( item14, wxSizerFlags().Center().Border(wxLEFT|wxRIGHT, 5) );
     // Top border: without it this row sits flush against the tab strip
@@ -2718,7 +2670,7 @@ wxSizer *serverListDlgDown( wxWindow *parent, bool call_fit, bool set_sizer )
     wxStaticBox *item1 = new wxStaticBox( parent, -1, "" );
     wxStaticBoxSizer *item0 = new wxStaticBoxSizer( item1, wxVERTICAL );
 
-    wxNotebook *item3 = new wxNotebook( parent, ID_SRVLOG_NOTEBOOK, wxDefaultPosition, wxDefaultSize, 0 );
+    wxNotebook *item3 = new wxNotebook( item1, ID_SRVLOG_NOTEBOOK, wxDefaultPosition, wxDefaultSize, 0 );
     wxWindow *item2 = item3;
 
     wxPanel *item4 = new wxPanel( item3, -1 );
@@ -2755,9 +2707,9 @@ wxSizer *KadDlg( wxWindow *parent, bool call_fit, bool set_sizer )
 {
     wxBoxSizer *item0 = new wxBoxSizer( wxVERTICAL );
 
-    // First row, full width: nodes-list URL refresher + the connect/disconnect
-    // toggle right-aligned -- identical shape to the ED2K pane's server-list
-    // row (see serverListDlgUp), so both network tabs lead the same way.
+    // First row, full width: nodes-list URL refresher plus the connect/disconnect toggle right-
+    // aligned -- identical shape to the ED2K pane's server-list row (see serverListDlgUp), so both
+    // network tabs lead the same way.
     wxBoxSizer *item3 = new wxBoxSizer( wxHORIZONTAL );
 
     wxBitmapButton *item4 = new wxBitmapButton( parent, ID_UPDATEKADLIST, wxArtProvider::GetBitmapBundle( "amule:reload" ), wxDefaultPosition, wxDefaultSize );
@@ -2782,62 +2734,56 @@ wxSizer *KadDlg( wxWindow *parent, bool call_fit, bool set_sizer )
     // "too close to the borders of the tab container").
     item0->Add( item3, wxSizerFlags().Expand().CenterVertical().Border(wxTOP, 5) );
 
-    // Graph, full width -- mirrors serverListDlgUp's shape (top row, then a
-    // full-width primary area, then a manual-entry row below) rather than
-    // splitting the tab into two side-by-side columns (issue #402 review:
-    // "use more horizontal space for the graph"). item2 keeps the same
-    // wrapping depth around the graph box as the original two-column
-    // layout had (just added straight to item0 now, instead of via the
-    // dropped wxFlexGridSizer's first column).
+    // Graph, full width -- mirrors serverListDlgUp's shape (top row, then a full-width primary
+    // area, then a manual-entry row below) rather than splitting the tab into two side-by-side
+    // columns. item2 keeps the same wrapping depth around the graph box as the original two-column
+    // layout had.
     wxBoxSizer *item2 = new wxBoxSizer( wxVERTICAL );
 
     wxStaticBox *item8 = new wxStaticBox( parent, -1, _("Nodes stats") );
     wxStaticBoxSizer *item7 = new wxStaticBoxSizer( item8, wxVERTICAL );
 
-    wxWindow *item9 = new COScopeCtrl(3,0,GRAPH_KAD,parent);
+    wxWindow *item9 = new COScopeCtrl(3,0,GRAPH_KAD,item8);
 item9->SetName("kadScope");
     wxASSERT( item9 );
     item7->Add( item9, wxSizerFlags(1).Expand() );
 
-    // Three legend entries packed tight at the left. No growable columns:
-    // the row is Expand()ed so Linux has room to draw every label (avoids
-    // clipping "Session average"), but without growable cols the entries
-    // stay next to each other instead of being spread across the width.
+    // Three legend entries packed tight at the left. No growable columns: the row is Expand()ed so
+    // Linux has room to draw every label, but without growable cols the entries stay next to each
+    // other instead of spread across.
     wxFlexGridSizer *item10 = new wxFlexGridSizer( 3, 0, 0 );
 
     wxBoxSizer *item11 = new wxBoxSizer( wxHORIZONTAL );
 
-    wxWindow *item12 = new CColorFrameCtrl(parent,IDC_C0,20,14);
+    wxWindow *item12 = new CColorFrameCtrl(item8,IDC_C0,20,14);
     wxASSERT( item12 );
     item11->Add( item12, wxSizerFlags().FixedMinSize().Center() );
-    wxStaticText *item13 = new wxStaticText( parent, -1, _("Current"), wxDefaultPosition, wxDefaultSize, 0 );
+    wxStaticText *item13 = new wxStaticText( item8, -1, _("Current"), wxDefaultPosition, wxDefaultSize, 0 );
     item11->Add( item13, wxSizerFlags().Center().Border(wxLEFT, 5) );
     item10->Add( item11, wxSizerFlags().CenterVertical().Border(wxLEFT, 5) );
     wxBoxSizer *item14 = new wxBoxSizer( wxHORIZONTAL );
 
-    wxWindow *item15 = new CColorFrameCtrl(parent,IDC_C0_3,20,14);
+    wxWindow *item15 = new CColorFrameCtrl(item8,IDC_C0_3,20,14);
     wxASSERT( item15 );
     item14->Add( item15, wxSizerFlags().FixedMinSize().Center() );
-    wxStaticText *item16 = new wxStaticText( parent, -1, _("Running average"), wxDefaultPosition, wxDefaultSize, 0 );
+    wxStaticText *item16 = new wxStaticText( item8, -1, _("Running average"), wxDefaultPosition, wxDefaultSize, 0 );
     item14->Add( item16, wxSizerFlags().Center().Border(wxLEFT, 5) );
     item10->Add( item14, wxSizerFlags().CenterVertical().Border(wxLEFT, 5) );
     wxBoxSizer *item17 = new wxBoxSizer( wxHORIZONTAL );
 
-    wxWindow *item18 = new CColorFrameCtrl(parent,IDC_C0_2,20,14);
+    wxWindow *item18 = new CColorFrameCtrl(item8,IDC_C0_2,20,14);
     wxASSERT( item18 );
     item17->Add( item18, wxSizerFlags().FixedMinSize().Center() );
-    wxStaticText *item19 = new wxStaticText( parent, -1, _("Session average"), wxDefaultPosition, wxDefaultSize, 0 );
+    wxStaticText *item19 = new wxStaticText( item8, -1, _("Session average"), wxDefaultPosition, wxDefaultSize, 0 );
     item17->Add( item19, wxSizerFlags().Center().Border(wxLEFT, 5) );
     item10->Add( item17, wxSizerFlags().CenterVertical().Border(wxLEFT, 5) );
     item7->Add( item10, wxSizerFlags().Expand().Border(wxLEFT|wxRIGHT|wxTOP, 5) );
     item2->Add( item7, wxSizerFlags(1).Expand() );
     item0->Add( item2, wxSizerFlags(1).Expand() );
 
-    // Bootstrap-from-node row, full width below the graph -- mirrors
-    // serverListDlgUp's "Add server manually" row: a single IP field (not
-    // eD2k's ID_NODE_IP1..4 four-octet split -- issue #402 review: "have
-    // the IP address in just one field, it's easier to copy") plus a port
-    // field and the Connect button.
+    // Bootstrap-from-node row, full width below the graph -- mirrors serverListDlgUp's "Add server
+    // manually" row: a single IP field, not eD2k's four-octet split, plus a port field and the
+    // Connect button.
     wxBoxSizer *item24 = new wxBoxSizer( wxHORIZONTAL );
 
     wxStaticText *item25 = new wxStaticText( parent, -1, _("Bootstrap from node: IP"), wxDefaultPosition, wxDefaultSize, wxST_NO_AUTORESIZE );
@@ -2890,15 +2836,15 @@ wxSizer *PreferencesSecurityTab( wxWindow *parent, bool call_fit, bool set_sizer
     wxStaticBox *item3 = new wxStaticBox( parent, -1, _("Protocol Obfuscation") );
     wxStaticBoxSizer *item2 = new wxStaticBoxSizer( item3, wxVERTICAL );
 
-    wxCheckBox *item4 = new wxCheckBox( parent, IDC_SUPPORT_PO, _("Support Protocol Obfuscation"), wxDefaultPosition, wxDefaultSize, 0 );
+    wxCheckBox *item4 = new wxCheckBox( item3, IDC_SUPPORT_PO, _("Support Protocol Obfuscation"), wxDefaultPosition, wxDefaultSize, 0 );
     item4->SetValue( TRUE );
     item4->SetToolTip( _("This option enabled Protocol Obfuscation, and makes aMule accept obfuscated connections from other clients.") );
     item2->Add( item4, wxSizerFlags().Expand().CenterVertical().Border(wxLEFT, 5) );
-    wxCheckBox *item5 = new wxCheckBox( parent, IDC_ENABLE_PO_OUTGOING, _("Use obfuscation for outgoing connections"), wxDefaultPosition, wxDefaultSize, 0 );
+    wxCheckBox *item5 = new wxCheckBox( item3, IDC_ENABLE_PO_OUTGOING, _("Use obfuscation for outgoing connections"), wxDefaultPosition, wxDefaultSize, 0 );
     item5->SetValue( TRUE );
     item5->SetToolTip( _("This option makes aMule use Protocol Obfuscation when connecting other clients/servers.") );
     item2->Add( item5, wxSizerFlags().Expand().CenterVertical().Border(wxLEFT, 25) );
-    wxCheckBox *item6 = new wxCheckBox( parent, IDC_ENFORCE_PO_INCOMING, _("Accept only obfuscated connections"), wxDefaultPosition, wxDefaultSize, 0 );
+    wxCheckBox *item6 = new wxCheckBox( item3, IDC_ENFORCE_PO_INCOMING, _("Accept only obfuscated connections"), wxDefaultPosition, wxDefaultSize, 0 );
     item6->SetToolTip( _("This option makes aMule only accept obfuscated connections. You will have less sources, but all your traffic will be obfuscated") );
     item2->Add( item6, wxSizerFlags().Expand().CenterVertical().Border(wxLEFT, 25) );
     item0->Add( item2, wxSizerFlags().Expand().CenterVertical().Border(wxLEFT|wxRIGHT|wxTOP, 0) );
@@ -2918,48 +2864,48 @@ wxSizer *PreferencesSecurityTab( wxWindow *parent, bool call_fit, bool set_sizer
 
     wxBoxSizer *item11 = new wxBoxSizer( wxVERTICAL );
 
-    wxCheckBox *item12 = new wxCheckBox( parent, IDC_IPFCLIENTS, _("Filter clients"), wxDefaultPosition, wxDefaultSize, 0 );
+    wxCheckBox *item12 = new wxCheckBox( item9, IDC_IPFCLIENTS, _("Filter clients"), wxDefaultPosition, wxDefaultSize, 0 );
     item12->SetValue( TRUE );
     item12->SetToolTip( _("Enable filtering of the client IPs defined in the file ~/.aMule/ipfilter.dat.") );
     item11->Add( item12, wxSizerFlags().Expand().Border(wxALL, 0) );
-    wxCheckBox *item13 = new wxCheckBox( parent, IDC_IPFSERVERS, _("Filter servers"), wxDefaultPosition, wxDefaultSize, 0 );
+    wxCheckBox *item13 = new wxCheckBox( item9, IDC_IPFSERVERS, _("Filter servers"), wxDefaultPosition, wxDefaultSize, 0 );
     item13->SetValue( TRUE );
     item13->SetToolTip( _("Enable filtering of the server IPs defined in the file ~/.aMule/ipfilter.dat.") );
     item11->Add( item13, wxSizerFlags().Expand().CenterVertical().Border(wxALL, 0) );
     item10->Add( item11, wxSizerFlags().Center().Border(wxALL, 0) );
     item10->Add( 10, 10, wxSizerFlags(1).Expand().CenterHorizontal() );
-    wxButton *item14 = new wxButton( parent, IDC_IPFRELOAD, _("Reload List"), wxDefaultPosition, wxDefaultSize, 0 );
+    wxButton *item14 = new wxButton( item9, IDC_IPFRELOAD, _("Reload List"), wxDefaultPosition, wxDefaultSize, 0 );
     item14->SetToolTip( _("Reload the list of IPs to filter from the file ~/.aMule/ipfilter.dat") );
     item10->Add( item14, wxSizerFlags().Center().Border(wxRIGHT|wxTOP|wxBOTTOM, 5) );
     item8->Add( item10, wxSizerFlags().Expand().CenterVertical().Border(wxLEFT, 5) );
     wxFlexGridSizer *item15 = new wxFlexGridSizer( 3, 0, 0 );
     item15->AddGrowableCol( 1 );
 
-    wxStaticText *item16 = new wxStaticText( parent, -1, _("URL:"), wxDefaultPosition, wxDefaultSize, 0 );
+    wxStaticText *item16 = new wxStaticText( item9, -1, _("URL:"), wxDefaultPosition, wxDefaultSize, 0 );
     item15->Add( item16, wxSizerFlags().Center().Border(wxLEFT|wxRIGHT, 5) );
-    wxTextCtrl *item17 = new wxTextCtrl( parent, IDC_IPFILTERURL, "", wxDefaultPosition, wxSize(80,-1), 0 );
+    wxTextCtrl *item17 = new wxTextCtrl( item9, IDC_IPFILTERURL, "", wxDefaultPosition, wxSize(80,-1), 0 );
     item15->Add( item17, wxSizerFlags().Expand().CenterVertical().Border(wxLEFT|wxRIGHT, 5) );
-    wxButton *item18 = new wxButton( parent, IDC_IPFILTERUPDATE, _("Update now"), wxDefaultPosition, wxDefaultSize, 0 );
+    wxButton *item18 = new wxButton( item9, IDC_IPFILTERUPDATE, _("Update now"), wxDefaultPosition, wxDefaultSize, 0 );
     item15->Add( item18, wxSizerFlags().Center().Border(wxLEFT, 5) );
     item8->Add( item15, wxSizerFlags().Expand().CenterVertical().Border(wxALL, 0) );
-    wxCheckBox *item19 = new wxCheckBox( parent, IDC_AUTOIPFILTER, _("Auto-update ipfilter at startup"), wxDefaultPosition, wxDefaultSize, 0 );
+    wxCheckBox *item19 = new wxCheckBox( item9, IDC_AUTOIPFILTER, _("Auto-update ipfilter at startup"), wxDefaultPosition, wxDefaultSize, 0 );
     item8->Add( item19, wxSizerFlags().CenterVertical().Border(wxLEFT, 5) );
     wxBoxSizer *item20 = new wxBoxSizer( wxHORIZONTAL );
 
-    wxStaticText *item21 = new wxStaticText( parent, -1, _("Filtering Level:"), wxDefaultPosition, wxDefaultSize, 0 );
+    wxStaticText *item21 = new wxStaticText( item9, -1, _("Filtering Level:"), wxDefaultPosition, wxDefaultSize, 0 );
     item20->Add( item21, wxSizerFlags().CenterVertical().Border(wxLEFT, 5) );
     item20->Add( 10, 10, wxSizerFlags(1).Expand().CenterHorizontal().Border(wxALL, 5) );
-    wxSpinCtrl *item22 = new wxSpinCtrl( parent, ID_IPFILTERLEVEL, "0", wxDefaultPosition, wxDefaultSize, 0, 0, 255, 0 );
+    wxSpinCtrl *item22 = new wxSpinCtrl( item9, ID_IPFILTERLEVEL, "0", wxDefaultPosition, wxDefaultSize, 0, 0, 255, 0 );
     item20->Add( item22, wxSizerFlags().Center().Border(wxALL, 5) );
     item8->Add( item20, wxSizerFlags().Expand().CenterVertical().Border(wxLEFT|wxRIGHT|wxBOTTOM, 0) );
-    wxCheckBox *item23 = new wxCheckBox( parent, IDC_FILTERLAN, _("Always filter LAN IPs"), wxDefaultPosition, wxDefaultSize, 0 );
+    wxCheckBox *item23 = new wxCheckBox( item9, IDC_FILTERLAN, _("Always filter LAN IPs"), wxDefaultPosition, wxDefaultSize, 0 );
     item23->SetValue( TRUE );
     item8->Add( item23, wxSizerFlags().CenterVertical().Border(wxLEFT, 5) );
-    wxCheckBox *item24 = new wxCheckBox( parent, IDC_PARANOID, _("Paranoid handling of non-matching IPs"), wxDefaultPosition, wxDefaultSize, 0 );
+    wxCheckBox *item24 = new wxCheckBox( item9, IDC_PARANOID, _("Paranoid handling of non-matching IPs"), wxDefaultPosition, wxDefaultSize, 0 );
     item24->SetValue( TRUE );
     item24->SetToolTip( _("Rejects a packet when its source IP differs from the IP the client claims (an anti-spoofing check). Disable only if it causes connection problems.") );
     item8->Add( item24, wxSizerFlags().CenterVertical().Border(wxLEFT, 5) );
-    wxCheckBox *item25 = new wxCheckBox( parent, IDC_IPFILTERSYS, _("Use system-wide ipfilter.dat if available"), wxDefaultPosition, wxDefaultSize, 0 );
+    wxCheckBox *item25 = new wxCheckBox( item9, IDC_IPFILTERSYS, _("Use system-wide ipfilter.dat if available"), wxDefaultPosition, wxDefaultSize, 0 );
     item25->SetToolTip( _("If there's no local ipfilter.dat found, allow usage of a system-wide ipfilter file.") );
     item8->Add( item25, wxSizerFlags().CenterVertical().Border(wxLEFT, 5) );
     item0->Add( item8, wxSizerFlags().Expand().CenterVertical() );
@@ -3015,24 +2961,21 @@ wxSizer *PreferencesOnlineSigTab( wxWindow *parent, bool call_fit, bool set_size
 
 wxSizer *PreferencesIP2CountryTab( wxWindow *parent, bool call_fit, bool set_sizer )
 {
-    // IP2Country preferences panel — exposed only when amule is built with
-    // ENABLE_IP2COUNTRY. The panel covers the full lifecycle: master enable
-    // checkbox, source selection (DB-IP / MaxMind / Custom URL), per-source
-    // attribution + license text (the license terms require attribution to
-    // be displayed; rendering it inline here satisfies that obligation
-    // without a separate About-dialog entry), an Update Now button, and an
-    // auto-update toggle.
+    // IP2Country preferences panel -- exposed only when amule is built with ENABLE_IP2COUNTRY. The
+    // panel covers the full lifecycle: master enable checkbox, source selection (DB-IP / MaxMind /
+    // Custom URL), per-source attribution and license text (the license terms require attribution
+    // to be displayed; rendering it inline here satisfies that obligation without a separate About-
+    // dialog entry), an Update Now button, and an auto-update toggle.
     //
-    // Most of the source-specific controls live on three sibling sub-panels
-    // (DB-IP / MaxMind / Custom). The PrefsUnifiedDlg shows exactly one at
-    // a time based on the source dropdown's selection. We build all three
-    // up-front so the IDs exist for Cfg_* binding regardless of which is
-    // currently visible.
+    // Most of the source-specific controls live on three sibling sub-panels (DB-IP / MaxMind /
+    // Custom). PrefsUnifiedDlg shows exactly one at a time based on the source dropdown's
+    // selection. All three are built up front so the IDs exist for Cfg_* binding regardless of
+    // which is currently visible.
     wxBoxSizer *item0 = new wxBoxSizer( wxVERTICAL );
 
-    // Master enable checkbox — moved out of the Interface tab so the
-    // whole feature configures from one place. CfgChanged(IDC_SHOW_COUNTRY_FLAGS)
-    // in PrefsUnifiedDlg::TryClose still re-calls EnableIP2Country().
+    // Master enable checkbox -- moved out of the Interface tab so the whole feature configures from
+    // one place. CfgChanged(IDC_SHOW_COUNTRY_FLAGS) in PrefsUnifiedDlg::TryClose still re-calls
+    // EnableIP2Country().
     wxCheckBox *item1 = new wxCheckBox( parent, IDC_SHOW_COUNTRY_FLAGS, _("Show country flags for clients"), wxDefaultPosition, wxDefaultSize, 0 );
     item1->SetToolTip( _("Render the country flag column in the transfers, queue and search views. Requires a valid MMDB GeoIP database (see below).") );
     item0->Add( item1, wxSizerFlags().CenterVertical().Border(wxALL, 4) );
@@ -3042,42 +2985,39 @@ wxSizer *PreferencesIP2CountryTab( wxWindow *parent, bool call_fit, bool set_siz
     wxStaticBox *item3 = new wxStaticBox( parent, -1, _("Database") );
     wxStaticBoxSizer *item2 = new wxStaticBoxSizer( item3, wxVERTICAL );
 
-    // Status block — multi-line static text. PrefsUnifiedDlg updates the
-    // label content in TransferToWindow() based on the live mmdb state
-    // and the selected source's attribution string.
-    // Placeholder is overwritten by PrefsUnifiedDlg::UpdateGeoIPStatus()
-    // during TransferToWindow before this label ever paints; no
-    // user-visible string here, so nothing to translate.
-    wxStaticText *item4 = new wxStaticText( parent, IDC_GEOIP_STATUS,
+    // Status block -- multi-line static text. PrefsUnifiedDlg updates the label content in
+    // TransferToWindow() from the live mmdb state and the selected source's attribution string. The
+    // placeholder is overwritten by UpdateGeoIPStatus() before this label ever paints, so there is
+    // no user-visible string here to translate.
+    wxStaticText *item4 = new wxStaticText( item3, IDC_GEOIP_STATUS,
         wxEmptyString,
         wxDefaultPosition, wxDefaultSize, 0 );
     item2->Add( item4, wxSizerFlags().Expand().Border(wxALL, 4) );
 
     // Source selector row.
     wxBoxSizer *item5 = new wxBoxSizer( wxHORIZONTAL );
-    wxStaticText *item6 = new wxStaticText( parent, -1, _("Source:"), wxDefaultPosition, wxDefaultSize, 0 );
+    wxStaticText *item6 = new wxStaticText( item3, -1, _("Source:"), wxDefaultPosition, wxDefaultSize, 0 );
     item5->Add( item6, wxSizerFlags().Center().Border(wxRIGHT, 6) );
     wxString geoIPChoices[] = {
         _("DB-IP (free, no account)"),
         _("MaxMind GeoLite2 (free, account required)"),
         _("Custom URL")
     };
-    wxChoice *item7 = new wxChoice( parent, IDC_GEOIP_SOURCE, wxDefaultPosition, wxDefaultSize, 3, geoIPChoices, 0 );
+    wxChoice *item7 = new wxChoice( item3, IDC_GEOIP_SOURCE, wxDefaultPosition, wxDefaultSize, 3, geoIPChoices, 0 );
     item7->SetToolTip( _("Choose which provider supplies the GeoIP MMDB database. DB-IP is the default - no account required. MaxMind requires a free account + license key. Use Custom URL to point at any other MMDB host (e.g. a local mirror).") );
     item5->Add( item7, wxSizerFlags().Center().Expand() );
     item2->Add( item5, wxSizerFlags().Expand().Border(wxALL, 4) );
 
-    // Source-specific options panel. Hosts three child wxPanel siblings
-    // (DB-IP / MaxMind / Custom) — one shown at a time, the other two
-    // hidden. Real wxPanel children are required (instead of just
-    // hiding sibling widgets) because Show(false) on individual widgets
-    // doesn't propagate to their sizer slot or to nearby ID-less labels,
-    // which left those labels visible across source changes.
-    wxStaticBox *item9 = new wxStaticBox( parent, IDC_GEOIP_SOURCE_PANEL, wxEmptyString );
+    // Source-specific options panel, hosting three child wxPanel siblings (DB-IP / MaxMind /
+    // Custom) -- one shown at a time, the other two hidden. Real wxPanel children are required
+    // rather than just hiding sibling widgets, because Show(false) on individual widgets does not
+    // propagate to their sizer slot or to nearby ID-less labels, which left those labels visible
+    // across source changes.
+    wxStaticBox *item9 = new wxStaticBox( item3, IDC_GEOIP_SOURCE_PANEL, wxEmptyString );
     wxStaticBoxSizer *item8 = new wxStaticBoxSizer( item9, wxVERTICAL );
 
     // --- DB-IP sub-panel ---
-    wxPanel *dbipPanel = new wxPanel( parent, IDC_GEOIP_INFO_DBIP );
+    wxPanel *dbipPanel = new wxPanel( item9, IDC_GEOIP_INFO_DBIP );
     wxBoxSizer *dbipSizer = new wxBoxSizer( wxVERTICAL );
     wxStaticText *dbipText = new wxStaticText( dbipPanel, wxID_ANY,
         _("No configuration required.\n"
@@ -3090,7 +3030,7 @@ wxSizer *PreferencesIP2CountryTab( wxWindow *parent, bool call_fit, bool set_siz
     item8->Add( dbipPanel, wxSizerFlags().Expand() );
 
     // --- MaxMind sub-panel ---
-    wxPanel *maxmindPanel = new wxPanel( parent, IDC_GEOIP_INFO_MAXMIND );
+    wxPanel *maxmindPanel = new wxPanel( item9, IDC_GEOIP_INFO_MAXMIND );
     wxBoxSizer *maxmindSizer = new wxBoxSizer( wxVERTICAL );
     wxBoxSizer *maxmindRow = new wxBoxSizer( wxHORIZONTAL );
     wxStaticText *licLabel = new wxStaticText( maxmindPanel, wxID_ANY, _("License key:"), wxDefaultPosition, wxDefaultSize, 0 );
@@ -3111,7 +3051,7 @@ wxSizer *PreferencesIP2CountryTab( wxWindow *parent, bool call_fit, bool set_siz
     item8->Add( maxmindPanel, wxSizerFlags().Expand() );
 
     // --- Custom URL sub-panel ---
-    wxPanel *customPanel = new wxPanel( parent, IDC_GEOIP_INFO_CUSTOM );
+    wxPanel *customPanel = new wxPanel( item9, IDC_GEOIP_INFO_CUSTOM );
     wxBoxSizer *customSizer = new wxBoxSizer( wxVERTICAL );
     wxBoxSizer *customRow = new wxBoxSizer( wxHORIZONTAL );
     wxStaticText *urlLabel = new wxStaticText( customPanel, wxID_ANY, _("Download URL:"), wxDefaultPosition, wxDefaultSize, 0 );
@@ -3132,10 +3072,10 @@ wxSizer *PreferencesIP2CountryTab( wxWindow *parent, bool call_fit, bool set_siz
 
     // Update Now row + auto-update toggle.
     wxBoxSizer *item23 = new wxBoxSizer( wxHORIZONTAL );
-    wxButton *item24 = new wxButton( parent, IDC_GEOIP_UPDATE_NOW, _("Update now"), wxDefaultPosition, wxDefaultSize, 0 );
+    wxButton *item24 = new wxButton( item3, IDC_GEOIP_UPDATE_NOW, _("Update now"), wxDefaultPosition, wxDefaultSize, 0 );
     item24->SetToolTip( _("Download the GeoIP database from the selected source.") );
     item23->Add( item24, wxSizerFlags().Border(wxRIGHT, 12) );
-    wxCheckBox *item25 = new wxCheckBox( parent, IDC_GEOIP_AUTOUPDATE, _("Auto-update on startup"), wxDefaultPosition, wxDefaultSize, 0 );
+    wxCheckBox *item25 = new wxCheckBox( item3, IDC_GEOIP_AUTOUPDATE, _("Auto-update on startup"), wxDefaultPosition, wxDefaultSize, 0 );
     item25->SetToolTip( _("Re-download the GeoIP database from the selected source every time aMule starts.") );
     item23->Add( item25, wxSizerFlags().CenterVertical() );
     item2->Add( item23, wxSizerFlags().Border(wxALL, 4) );
@@ -3159,28 +3099,28 @@ wxSizer *PreferencesFilteringTab( wxWindow *parent, bool call_fit, bool set_size
     wxStaticBox *item2 = new wxStaticBox( parent, -1, _("Messages") );
     wxStaticBoxSizer *item1 = new wxStaticBoxSizer( item2, wxVERTICAL );
 
-    wxCheckBox *item3 = new wxCheckBox( parent, IDC_MSGFILTER, _("Filter incoming messages (except current chat):"), wxDefaultPosition, wxDefaultSize, 0 );
+    wxCheckBox *item3 = new wxCheckBox( item2, IDC_MSGFILTER, _("Filter incoming messages (except current chat):"), wxDefaultPosition, wxDefaultSize, 0 );
     item1->Add( item3, wxSizerFlags().CenterVertical().Border(wxALL, 0) );
-    wxCheckBox *item4 = new wxCheckBox( parent, IDC_MSGFILTER_ALL, _("Filter all messages"), wxDefaultPosition, wxDefaultSize, 0 );
+    wxCheckBox *item4 = new wxCheckBox( item2, IDC_MSGFILTER_ALL, _("Filter all messages"), wxDefaultPosition, wxDefaultSize, 0 );
     item1->Add( item4, wxSizerFlags().CenterVertical().Border(wxLEFT, 25) );
-    wxCheckBox *item5 = new wxCheckBox( parent, IDC_MSGFILTER_NONFRIENDS, _("Filter messages from people not on your friend list"), wxDefaultPosition, wxDefaultSize, 0 );
+    wxCheckBox *item5 = new wxCheckBox( item2, IDC_MSGFILTER_NONFRIENDS, _("Filter messages from people not on your friend list"), wxDefaultPosition, wxDefaultSize, 0 );
     item1->Add( item5, wxSizerFlags().CenterVertical().Border(wxLEFT, 25) );
-    wxCheckBox *item6 = new wxCheckBox( parent, IDC_MSGFILTER_NONSECURE, _("Filter messages from unknown clients"), wxDefaultPosition, wxDefaultSize, 0 );
+    wxCheckBox *item6 = new wxCheckBox( item2, IDC_MSGFILTER_NONSECURE, _("Filter messages from unknown clients"), wxDefaultPosition, wxDefaultSize, 0 );
     item1->Add( item6, wxSizerFlags().CenterVertical().Border(wxLEFT, 25) );
-    wxCheckBox *item7 = new wxCheckBox( parent, IDC_MSGFILTER_WORD, _("Filter messages containing (use ',' as separator):"), wxDefaultPosition, wxDefaultSize, 0 );
+    wxCheckBox *item7 = new wxCheckBox( item2, IDC_MSGFILTER_WORD, _("Filter messages containing (use ',' as separator):"), wxDefaultPosition, wxDefaultSize, 0 );
     item1->Add( item7, wxSizerFlags().CenterVertical().Border(wxLEFT, 25) );
-    wxTextCtrl *item8 = new wxTextCtrl( parent, IDC_MSGWORD, "", wxDefaultPosition, wxSize(80,-1), 0 );
+    wxTextCtrl *item8 = new wxTextCtrl( item2, IDC_MSGWORD, "", wxDefaultPosition, wxSize(80,-1), 0 );
     item8->SetToolTip( _("add here the words amule should filter and block messages including it") );
     item1->Add( item8, wxSizerFlags().Expand().CenterVertical().Border(wxLEFT, 50) );
-    wxCheckBox *item9 = new wxCheckBox( parent, IDC_MSGLOG, _("Show received messages in the log"), wxDefaultPosition, wxDefaultSize, 0 );
+    wxCheckBox *item9 = new wxCheckBox( item2, IDC_MSGLOG, _("Show received messages in the log"), wxDefaultPosition, wxDefaultSize, 0 );
     item1->Add( item9, wxSizerFlags().CenterVertical().Border(wxALL, 0) );
     item0->Add( item1, wxSizerFlags().Expand().CenterVertical().Border(wxALL, 0) );
     wxStaticBox *item11 = new wxStaticBox( parent, -1, _("Comments") );
     wxStaticBoxSizer *item10 = new wxStaticBoxSizer( item11, wxVERTICAL );
 
-    wxCheckBox *item12 = new wxCheckBox( parent, IDC_FILTERCOMMENTS, _("Filter comments containing (use ',' as separator):"), wxDefaultPosition, wxDefaultSize, 0 );
+    wxCheckBox *item12 = new wxCheckBox( item11, IDC_FILTERCOMMENTS, _("Filter comments containing (use ',' as separator):"), wxDefaultPosition, wxDefaultSize, 0 );
     item10->Add( item12, wxSizerFlags().CenterVertical().Border(wxALL, 0) );
-    wxTextCtrl *item13 = new wxTextCtrl( parent, IDC_COMMENTWORD, "", wxDefaultPosition, wxSize(80,-1), 0 );
+    wxTextCtrl *item13 = new wxTextCtrl( item11, IDC_COMMENTWORD, "", wxDefaultPosition, wxSize(80,-1), 0 );
     item13->SetToolTip( _("add here the words amule should filter and block messages including it") );
     item10->Add( item13, wxSizerFlags().Expand().CenterVertical().Border(wxLEFT, 50) );
     item0->Add( item10, wxSizerFlags().Expand().CenterVertical().Border(wxALL, 0) );
@@ -3273,9 +3213,9 @@ wxSizer *CoreConnect( wxWindow *parent, bool call_fit, bool set_sizer )
 
     wxFlexGridSizer *item8 = new wxFlexGridSizer( 2, 0, 0 );
 
-    wxStaticText *item11 = new wxStaticText( parent, -1, _("Password"), wxDefaultPosition, wxDefaultSize, 0 );
+    wxStaticText *item11 = new wxStaticText( item7, -1, _("Password"), wxDefaultPosition, wxDefaultSize, 0 );
     item8->Add( item11, wxSizerFlags().CenterVertical().Border(wxALL, 5) );
-    CMuleTextCtrl *item12 = new CMuleTextCtrl( parent, ID_EC_PASSWD, "", wxDefaultPosition, wxSize(200,-1), wxTE_PASSWORD );
+    CMuleTextCtrl *item12 = new CMuleTextCtrl( item7, ID_EC_PASSWD, "", wxDefaultPosition, wxSize(200,-1), wxTE_PASSWORD );
     item8->Add( item12, wxSizerFlags().Center().Border(wxALL, 5) );
     item6->Add( item8, wxSizerFlags().Expand().CenterVertical().Border(wxALL, 5) );
     item0->Add( item6, wxSizerFlags().Expand().CenterVertical().Border(wxALL, 5) );
@@ -3316,7 +3256,7 @@ wxSizer *PreferencesDebug( wxWindow *parent, bool call_fit, bool set_sizer )
     wxStaticBox *item4 = new wxStaticBox( parent, -1, _("Message Categories:") );
     wxStaticBoxSizer *item3 = new wxStaticBoxSizer( item4, wxVERTICAL );
 
-    wxWindow *item5 = new wxCheckListBox( parent, ID_DEBUGCATS );
+    wxWindow *item5 = new wxCheckListBox( item4, ID_DEBUGCATS );
     wxASSERT( item5 );
     item3->Add( item5, wxSizerFlags(1).Expand().CenterVertical().Border(wxALL, 5) );
     item0->Add( item3, wxSizerFlags(1).Expand().CenterVertical().Border(wxALL, 0) );
@@ -3343,13 +3283,13 @@ wxSizer *convertDlg( wxWindow *parent, bool call_fit, bool set_sizer )
 
     wxBoxSizer *item3 = new wxBoxSizer( wxHORIZONTAL );
 
-    wxStaticText *item4 = new wxStaticText( parent, IDC_CONV_PB_LABEL, "", wxDefaultPosition, wxDefaultSize, 0 );
+    wxStaticText *item4 = new wxStaticText( item2, IDC_CONV_PB_LABEL, "", wxDefaultPosition, wxDefaultSize, 0 );
     item3->Add( item4, wxSizerFlags().Expand().Border(wxALL, 5) );
     item3->Add( 20, 20, wxSizerFlags(1).Expand().CenterHorizontal().Border(wxALL, 5) );
-    wxStaticText *item5 = new wxStaticText( parent, IDC_CONV_PROZENT, "", wxDefaultPosition, wxDefaultSize, 0 );
+    wxStaticText *item5 = new wxStaticText( item2, IDC_CONV_PROZENT, "", wxDefaultPosition, wxDefaultSize, 0 );
     item3->Add( item5, wxSizerFlags().CenterVertical().Right().Border(wxLEFT|wxTOP|wxBOTTOM, 5) );
     item1->Add( item3, wxSizerFlags().Expand().CenterVertical().Border(wxALL, 5) );
-    wxGauge *item6 = new wxGauge( parent, IDC_CONV_PB_CURRENT, 100, wxDefaultPosition, wxDefaultSize, 0 );
+    wxGauge *item6 = new wxGauge( item2, IDC_CONV_PB_CURRENT, 100, wxDefaultPosition, wxDefaultSize, 0 );
     item1->Add( item6, wxSizerFlags().Expand().CenterVertical().Border(wxALL, 5) );
     item0->Add( item1, wxSizerFlags().Expand().CenterVertical().Border(wxALL, 5) );
     wxListCtrl *item7 = new wxListCtrl( parent, IDC_JOBLIST, wxDefaultPosition, wxDefaultSize, wxLC_REPORT|wxSUNKEN_BORDER );
@@ -3429,7 +3369,7 @@ wxSizer *PreferencesEventsTab( wxWindow *parent, bool call_fit, bool set_sizer )
     wxStaticBoxSizer *item0 = new wxStaticBoxSizer( item1, wxVERTICAL );
     IDC_PREFS_EVENTS_PAGE = item0;
 
-    wxListCtrl *item2 = new wxListCtrl( parent, IDC_EVENTLIST, wxDefaultPosition, wxSize(160,120), wxLC_REPORT|wxLC_NO_HEADER|wxLC_SINGLE_SEL|wxSUNKEN_BORDER );
+    wxListCtrl *item2 = new wxListCtrl( item1, IDC_EVENTLIST, wxDefaultPosition, wxSize(160,120), wxLC_REPORT|wxLC_NO_HEADER|wxLC_SINGLE_SEL|wxSUNKEN_BORDER );
     item0->Add( item2, wxSizerFlags(1).Expand().CenterVertical().Border(wxALL, 5) );
     if (set_sizer)
     {
@@ -3444,15 +3384,16 @@ wxSizer *PreferencesEventsTab( wxWindow *parent, bool call_fit, bool set_sizer )
 wxSizer *s_sharedfilespeerHeader;
 wxSizer *sharedfilesBottomDlg( wxWindow *parent, bool call_fit, bool set_sizer )
 {
+    // Contents stay on the panel: this sizer is the panel's own, so box-parented children get
+    // the box origin re-applied on every layout and walk off the top (#1356).
     wxStaticBox *item1 = new wxStaticBox( parent, -1, _("Statistics and queued clients for selected file(s) : Session / All time") );
     wxStaticBoxSizer *item0 = new wxStaticBoxSizer( item1, wxVERTICAL );
 
-    // Five columns and two rows: the collapse/expand button, the size
-    // figures, and the three statistics groups. Row one carries the counters,
-    // row two the gauges, and the size column takes one figure per row so
-    // each lines up with the statistics beside it. Only the statistics
-    // columns grow, so the button keeps a narrow column of its own and the
-    // size column is exactly as wide as its text.
+    // Five columns and two rows: the collapse/expand button, the size figures, and the three
+    // statistics groups. Row one carries the counters, row two the gauges, and the size column
+    // takes one figure per row so each lines up with the statistics beside it. Only the statistics
+    // columns grow, so the button keeps a narrow column of its own and the size column is exactly
+    // as wide as its text.
     wxFlexGridSizer *item2 = new wxFlexGridSizer( 5, 0, 0 );
     item2->AddGrowableCol( 2 );
     item2->AddGrowableCol( 3 );
@@ -3462,12 +3403,11 @@ wxSizer *sharedfilesBottomDlg( wxWindow *parent, bool call_fit, bool set_sizer )
     wxBitmapButton *item3 = new wxBitmapButton( parent, ID_SHAREDCLIENTTOGGLE, wxArtProvider::GetBitmapBundle( "amule:arrows_down" ), wxDefaultPosition, wxDefaultSize );
     item2->Add( item3, wxSizerFlags().CenterVertical() );
 
-    // Combined size of the shared files currently visible (text filter). Set
-    // by CSharedFilesCtrl::ShowFilesCount(). No wxST_NO_AUTORESIZE: the label
-    // must grow to fit its text. Its column's second row holds the free-space
-    // figure, so each size gets a full line of its own and both line up with
-    // the statistics beside them -- the counters share this row, the gauges
-    // share the next.
+    // Combined size of the shared files currently visible (text filter). Set by
+    // CSharedFilesCtrl::ShowFilesCount(). No wxST_NO_AUTORESIZE: the label must grow to fit its
+    // text. Its column's second row holds the free-space figure, so each size gets a full line of
+    // its own and both line up with the statistics beside them -- the counters share this row, the
+    // gauges the next.
     wxStaticText *item13 = new wxStaticText( parent, -1, wxEmptyString, wxDefaultPosition, wxDefaultSize, 0 );
     item13->SetName( "sharedFilesTotalSize" );
     item2->Add( item13, wxSizerFlags().CenterVertical().Border(wxLEFT|wxRIGHT, 5) );
@@ -3498,16 +3438,14 @@ wxSizer *sharedfilesBottomDlg( wxWindow *parent, bool call_fit, bool set_sizer )
     item12->SetForegroundColour( wxSystemSettings::GetColour(wxSYS_COLOUR_HOTLIGHT) );
     item10->Add( item12, wxSizerFlags().CenterVertical().Border(wxLEFT|wxRIGHT, 5) );
     item2->Add( item10, wxSizerFlags().Center().Border(wxALL, 5) );
-    // Second row: nothing under the button, the free-space figure under the
-    // total size, then the gauges under the statistics they belong to. A
-    // wxFlexGridSizer fills row by row, so the empty button cell has to be
-    // added explicitly rather than left out.
+    // Second row: nothing under the button, the free-space figure under the total size, then the
+    // gauges under the statistics they belong to. A wxFlexGridSizer fills row by row, so the empty
+    // button cell has to be added explicitly rather than left out.
     item2->AddSpacer( 0 );
 
-    // Free space where finished downloads land (the default category's
-    // incoming directory). Informational only -- no threshold here, unlike
-    // the Downloads panel, which is where running out actually stops work.
-    // Set by CSharedFilesCtrl::UpdateFreeSpace().
+    // Free space where finished downloads land (the default category's incoming directory).
+    // Informational only -- no threshold here, unlike the Downloads panel, which is where running
+    // out actually stops work. Set by CSharedFilesCtrl::UpdateFreeSpace().
     wxStaticText *item13b = new wxStaticText( parent, -1, wxEmptyString, wxDefaultPosition, wxDefaultSize, 0 );
     item13b->SetName( "sharedFilesFreeSpace" );
     item2->Add( item13b, wxSizerFlags().CenterVertical().Border(wxLEFT|wxRIGHT, 5) );
@@ -3541,12 +3479,11 @@ wxSizer *sharedfilesTopDlg( wxWindow *parent, bool call_fit, bool set_sizer )
 {
     wxBoxSizer *item0 = new wxBoxSizer( wxVERTICAL );
 
-    // Header row: [Shared files] [Filter: ___] ... [Show Clients ...] ... [Reload].
-    // The left and right regions each take proportion 1, so they are equal width
-    // and the radio group in the middle (proportion 0) stays centered in the
-    // window regardless of how wide the left/right content is (the filter box
-    // widened the left region, which knocked the radios off-centre under the
-    // old growable-column layout).
+    // Header row: [Shared files] [Filter: ___] ... [Show Clients ...] ... [Reload]. The left and
+    // right regions each take proportion 1, so they are equal width and the radio group in the
+    // middle (proportion 0) stays centered in the window regardless of how wide the left/right
+    // content is. The filter box widened the left region, which knocked the radios off-centre under
+    // the old growable-column layout.
     wxBoxSizer *item1 = new wxBoxSizer( wxHORIZONTAL );
 
     wxBoxSizer *itemShLeft = new wxBoxSizer( wxHORIZONTAL );
@@ -3629,10 +3566,9 @@ wxSizer *messagePageMessages( wxWindow *parent, bool call_fit, bool set_sizer )
 
     wxBoxSizer *item1 = new wxBoxSizer( wxHORIZONTAL );
 
-    // "amule:message" is a dedicated small chat-bubble glyph, not the main
-    // toolbar's "amule:toolbar_messages" mascot illustration (#735 review:
-    // that one is a detailed gradient bust that stops reading as
-    // "messages" once shrunk from its native 32x32 down to this header's
+    // "amule:message" is a dedicated small chat-bubble glyph, not the main toolbar's
+    // "amule:toolbar_messages" mascot illustration (#735 review: that one is a detailed gradient
+    // bust that stops reading as "messages" once shrunk from its native 32x32 down to this header's
     // 16x16).
     wxStaticBitmap *item2 = new wxStaticBitmap( parent, -1,
         wxArtProvider::GetBitmapBundle( "amule:message" ),
@@ -3677,15 +3613,13 @@ wxSizer *messagePageMessages( wxWindow *parent, bool call_fit, bool set_sizer )
 
 wxBitmap clientImages( size_t index )
 {
-    // 22 of these 27 client-status icons are simple pictograms, migrated
-    // to CamuleArtProvider. The remaining 5 -- eMule/aMule/lphant/
-    // Shareaza/xMule, indices 12/15/16/17/18 below -- are specific
-    // client-software mascots kept as the original raw artwork for now:
-    // redrawing someone else's brand mascot risks not matching the real
-    // logo, unlike a generic pictogram (see #675). The array index must
-    // stay in sync with ClientSkinEnum (amuleDlg.h) -- this is the same
-    // enum-order-is-load-bearing constraint the callers that do index
-    // arithmetic (Client_InvalidRating_Smiley + rating - 1) depend on.
+    // 22 of these 27 client-status icons are simple pictograms, migrated to CamuleArtProvider. The
+    // remaining 5 -- eMule/aMule/lphant/Shareaza/xMule, indices 12/15/16/17/18 below -- are
+    // specific client-software mascots kept as the original raw artwork for now: redrawing someone
+    // else's brand mascot risks not matching the real logo, unlike a generic pictogram (see #675).
+    // The array index must stay in sync with ClientSkinEnum (amuleDlg.h) -- the same enum-order-is-
+    // load-bearing constraint the callers doing index arithmetic (Client_InvalidRating_Smiley +
+    // rating - 1) depend on.
     static const char *const artIds[] = {
         "amule:client_green", "amule:client_red", "amule:client_yellow",
         "amule:client_grey", "amule:client_white",
@@ -3701,16 +3635,15 @@ wxBitmap clientImages( size_t index )
         "amule:client_goodrating", "amule:client_excellentrating",
         "amule:client_commentonly", "amule:client_encryption",
     };
-    // wxFAIL_MSG below compiles out in release builds, so it can't catch a
-    // future ClientSkinEnum member that isn't reflected here -- this can,
-    // and does so at compile time in every build.
+    // wxFAIL_MSG below compiles out in release builds, so it cannot catch a future ClientSkinEnum
+    // member that is not reflected here -- this can, and does so at compile time in every build.
     static_assert(WXSIZEOF(artIds) == CLIENT_SKIN_SIZE,
         "artIds must stay in sync with ClientSkinEnum");
     if (index < WXSIZEOF(artIds) && artIds[index] != nullptr) {
         const wxBitmap bitmap = wxArtProvider::GetBitmap(artIds[index], wxART_OTHER, wxSize(16, 16));
-        // The fallthrough wxFAIL_MSG below only guards an out-of-range index;
-        // it doesn't see this path returning early, so a resolution failure
-        // here needs its own guard, same reasoning as #739's assert.
+        // The fallthrough wxFAIL_MSG below only guards an out-of-range index; it does not see this
+        // path returning early, so a resolution failure here needs its own guard, same reasoning as
+        // #739's assert.
         wxASSERT_MSG(bitmap.IsOk(),
             wxString::Format("clientImages: art id %s did not resolve", artIds[index]));
         return bitmap;
@@ -3914,9 +3847,9 @@ wxBitmap clientImages( size_t index )
         wxBitmap bitmap( xpm_data );
         return bitmap;
     }
-    // Unexpected index: loud in debug builds (got3nks, PR #725 review --
-    // this bank previously failed silently into a blank icon, which is how
-    // an incorrectly-deleted amuleSpecial(25) almost shipped undetected).
+    // Unexpected index: loud in debug builds (got3nks, PR #725 review -- this bank previously
+    // failed silently into a blank icon, which is how an incorrectly-deleted amuleSpecial(25)
+    // almost shipped undetected).
     wxFAIL_MSG(wxString::Format("clientImages: no icon for index %zu", index));
     return wxNullBitmap;
 }
@@ -4525,14 +4458,12 @@ wxBitmap amuleSpecial( size_t index )
         wxBitmap bitmap( image );
         return bitmap;
     }
-    // Only reachable in __DEBUG__ builds: PrefsUnifiedDlg.cpp's pages[]
-    // table has one entry guarded by #ifdef __DEBUG__ ("Debugging",
-    // PreferencesDebug) whose m_imageidx is 25 -- easy to miss with a
-    // release build or a naming-convention-based grep, since every other
-    // entry there is Preferences<Something>Tab. A deleted-by-mistake
-    // index here wouldn't fail any build; it falls through to
-    // wxNullBitmap, so the only symptom is a blank icon on the
-    // Preferences > Debugging page in a debug build (see PR #725 review).
+    // Only reachable in __DEBUG__ builds: PrefsUnifiedDlg.cpp's pages[] table has one entry guarded
+    // by #ifdef __DEBUG__ ("Debugging", PreferencesDebug) whose m_imageidx is 25 -- easy to miss
+    // with a release build or a naming-convention-based grep, since every other entry there is
+    // Preferences<Something>Tab. A deleted-by-mistake index here would fail no build; it falls
+    // through to wxNullBitmap, so the only symptom is a blank icon on the Preferences > Debugging
+    // page in a debug build (see PR #725 review).
     if (index == 25)
     {
         static const unsigned char data[] = 
@@ -4574,9 +4505,9 @@ wxBitmap amuleSpecial( size_t index )
         wxBitmap bitmap( image );
         return bitmap;
     }
-    // Unexpected index: loud in debug builds (got3nks, PR #725 review --
-    // this bank previously failed silently into a blank icon, which is how
-    // an incorrectly-deleted amuleSpecial(25) almost shipped undetected).
+    // Unexpected index: loud in debug builds (got3nks, PR #725 review -- this bank previously
+    // failed silently into a blank icon, which is how an incorrectly-deleted amuleSpecial(25)
+    // almost shipped undetected).
     wxFAIL_MSG(wxString::Format("amuleSpecial: no icon for index %zu", index));
     return wxNullBitmap;
 }
@@ -4584,10 +4515,9 @@ wxBitmap amuleSpecial( size_t index )
 void SetConnectButtonState(
 	wxButton *button, EConnButtonState state, bool enabled, const wxString &networkName)
 {
-	// networkName ("ED2K" / "Kad") is folded into the label itself, not
-	// concatenated after translation: the button sits in the same spot on
-	// both tabs, so without it there is nothing on the button telling you
-	// which network "Disconnect" affects (issue #402 review).
+	// networkName ("ED2K" / "Kad") is folded into the label itself, not concatenated after
+	// translation: the button sits in the same spot on both tabs, so without it there is
+	// nothing on the button telling you which network "Disconnect" affects (issue #402 review).
 	wxString label;
 	wxString artId;
 	switch (state) {
@@ -4603,26 +4533,23 @@ void SetConnectButtonState(
 		label = wxString(CFormat(_("Connect %s")) % networkName);
 		artId = "amule:toolbar_connect";
 	}
-	// The button sits inline next to a one-line URL field, where the art's
-	// native 32x32 toolbar size is too big (issue #402 review: "the button
-	// and the icon are too big") -- request the SVG rasterized straight at
-	// a more modest logical size instead of the toolbar's native one.
+	// The button sits inline next to a one-line URL field, where the art's native 32x32 toolbar
+	// size is too big (issue #402 review: "the button and the icon are too big") -- request the
+	// SVG rasterized straight at a more modest logical size instead of the toolbar's native
+	// one.
 	button->SetBitmap(wxArtProvider::GetBitmapBundle(artId, wxART_BUTTON, wxSize(16, 16)));
 
-	// wxButton::SetBitmapMargins() means different things per port that
-	// implement it (msw/anybutton.h, osx/anybutton.h -- wxGTK inherits the
-	// base class's no-op): wxOSX stores it as the margin AROUND the bitmap
-	// (both sides, including button edge), so overriding it there is a real
-	// gap fix. wxMSW applies it BETWEEN bitmap and label only, layered on
-	// top of a font-derived default (src/msw/anybutton.cpp:
-	// m_margin.x = GetCharWidth(); m_margin.y = GetCharHeight() / 2) that
-	// already matches native Windows button metrics -- overriding it with a
-	// fixed (4, 0) narrows the gap AND drops the vertical margin to zero,
-	// moving the button away from the platform convention instead of toward
-	// it. So this is wxOSX-only; wxMSW keeps its own native default
-	// untouched, and wxGTK falls back to the old trick: a leading space
-	// outside the translatable string (so no new msgid), which depends on
-	// no translator trimming leading whitespace but is otherwise harmless.
+	// wxButton::SetBitmapMargins() means different things per port that implement it
+	// (msw/anybutton.h, osx/anybutton.h -- wxGTK inherits the base class's no-op): wxOSX stores
+	// it as the margin AROUND the bitmap, both sides including the button edge, so overriding
+	// it there is a real gap fix. wxMSW applies it BETWEEN bitmap and label only, layered on
+	// top of a font-derived default (src/msw/anybutton.cpp: m_margin.x = GetCharWidth();
+	// m_margin.y = GetCharHeight() / 2) that already matches native Windows button metrics --
+	// overriding it with a fixed (4, 0) narrows the gap AND drops the vertical margin to zero,
+	// moving away from the platform convention instead of toward it. So this is wxOSX-only;
+	// wxMSW keeps its native default, and wxGTK falls back to the old trick of a leading space
+	// outside the translatable string (so no new msgid), which depends on no translator
+	// trimming leading whitespace but is otherwise harmless.
 #ifdef __WXOSX__
 	button->SetBitmapMargins(button->FromDIP(4), 0);
 	button->SetLabel(label);
@@ -4634,23 +4561,21 @@ void SetConnectButtonState(
 
 	button->Enable(enabled);
 
-	// SetBitmap() grows the button's best size; without a re-layout here,
-	// a pane laid out before its first UpdateXConnectButton() call (the
-	// Servers pane is visible at startup, unlike Kad's notebook page,
-	// which is first laid out only once shown -- after its bitmap already
-	// landed) paints with the stale text-only measurement, so the icon
-	// overlaps the label until the next window resize (#663 review).
+	// SetBitmap() grows the button's best size; without a re-layout here, a pane laid out
+	// before its first UpdateXConnectButton() call -- the Servers pane is visible at startup,
+	// unlike Kad's notebook page, which is first laid out only once shown, after its bitmap
+	// already landed -- paints with the stale text-only measurement, so the icon overlaps the
+	// label until the next window resize (#663 review).
 	button->GetParent()->Layout();
 }
 
 wxBitmap amuleDlgImages( size_t index )
 {
-    // Unexpected index: loud in debug builds (got3nks, PR #725 review --
-    // this bank previously failed silently into a blank icon, which is how
-    // an incorrectly-deleted amuleSpecial(25) almost shipped undetected).
+    // Unexpected index: loud in debug builds (got3nks, PR #725 review -- this bank previously
+    // failed silently into a blank icon, which is how an incorrectly-deleted amuleSpecial(25)
+    // almost shipped undetected).
     wxFAIL_MSG(wxString::Format("amuleDlgImages: no icon for index %zu", index));
     return wxNullBitmap;
 }
-
 
 // End of generated file

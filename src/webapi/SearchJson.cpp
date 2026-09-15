@@ -55,21 +55,19 @@ void WriteSearchResultFields(CJsonWriter &w, const SearchResult &r)
 	w.ValueInt(static_cast<int64_t>(r.rating));
 	w.Key("status");
 	w.ValueString(wxString::FromUTF8(r.status.c_str()));
-	// `file_type`, matching POST /search's own filter field and the key
-	// /shared/{hash} derives from the same helper. Next to a `media` object a
-	// bare `type` also reads as a MIME type.
+	// `file_type`, matching POST /search's own filter field and the key /shared/{hash} derives
+	// from the same helper. Next to a `media` object a bare `type` would also read as a MIME
+	// type.
 	w.Key("file_type");
 	w.ValueString(wxString::FromUTF8(r.type.c_str()));
-	// Browse-only (the folder inside the peer's share). Always present so
-	// clients need no presence check; empty on every server/Kad hit, which
-	// never carries the tag.
+	// Browse-only: the folder inside the peer's share. Always present so clients need no
+	// presence check; empty on every server/Kad hit, which never carries the tag.
 	w.Key("directory");
 	w.ValueString(wxString::FromUTF8(r.directory.c_str()));
-	// Media metadata (issue #430) -- same shape as the file-detail `media`
-	// object, and null when the hit carries no media tags. null rather than
-	// omitted so the key is always present: this is the one place the
-	// unknown-value rule reaches an object instead of a scalar, so a client
-	// tests `media === null` before reaching into it.
+	// Media metadata, the same shape as the file-detail `media` object, and null when the hit
+	// carries no media tags. null rather than omitted so the key is always present -- the one
+	// place the unknown-value rule reaches an object instead of a scalar, so a client tests
+	// `media === null` before indexing it.
 	if (r.has_media) {
 		w.Key("media");
 		w.BeginObject();
@@ -90,14 +88,11 @@ void WriteSearchResultFields(CJsonWriter &w, const SearchResult &r)
 		w.Key("media");
 		w.ValueNull();
 	}
-	// Result grouping (issue #431): the same-hash/same-size hit's
-	// alternative filenames. Always emitted (empty array when the hit was
-	// seen under a single name) so clients can render the expandable tree
-	// without a presence check. Each child shares the parent's `hash`; the
-	// distinct `ecid` selects it for download-under-that-name (see
-	// POST /search/results/{hash}/download).
-	// Not `children`: there is no hierarchy, only one file advertised under
-	// several names. Each entry's hash is by construction this result's.
+	// Result grouping: the same-hash/same-size hit's alternative filenames. Always emitted, an
+	// empty array when the hit was seen under a single name, so clients can render the
+	// expandable tree without a presence check. Each child shares the parent's `hash`; the
+	// distinct `ecid` selects it for download-under-that-name. Not `children`: there is no
+	// hierarchy, only one file advertised under several names.
 	w.Key("alternate_names");
 	w.BeginArray();
 	for (const auto &c : r.children) {
@@ -118,10 +113,9 @@ void WriteSearchResultFields(CJsonWriter &w, const SearchResult &r)
 		w.EndObject();
 	}
 	w.EndArray();
-	// On-demand Kad community ratings/comments (issue #434). `kad_comment_lookup_running`
-	// is true while a lookup started via POST /search/results/{hash}/comments is
-	// in flight; `comments` carries the Kad notes retrieved so far (empty until
-	// then). Both are always present so clients need no presence check.
+	// On-demand Kad community ratings/comments. `kad_comment_lookup_running` is true while a
+	// lookup started via POST /search/results/{hash}/comments is in flight; `comments` carries
+	// the Kad notes retrieved so far. Always present.
 	w.Key("kad_comment_lookup_running");
 	w.ValueBool(r.kad_comment_searching);
 	w.Key("comments");

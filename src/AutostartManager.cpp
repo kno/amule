@@ -47,27 +47,24 @@
 // Defined in the platform-specific section near the bottom of this file.
 namespace
 {
-// Reads the autostart entry's target path from the OS store.
-// Returns wxEmptyString when the entry doesn't exist OR can't be
-// parsed. Doesn't validate the path against the filesystem.
+// Reads the autostart entry's target path from the OS store. Empty when the entry does not exist or
+// cannot be parsed. Does not validate the path against the filesystem.
 wxString BackendReadTargetPath();
 
 // Writes/overwrites the autostart entry to point at `executable`.
 // Returns true on success.
 bool BackendWrite(const wxString &executable);
 
-// Removes the autostart entry. Idempotent — returns true if the
+// Removes the autostart entry. Idempotent -- returns true if the
 // entry didn't exist either.
 bool BackendRemove();
 } // namespace
 
 wxString AutostartManager::GetCanonicalExecutablePath()
 {
-	// wxStandardPaths::GetExecutablePath() wraps the OS native call
-	// (GetModuleFileNameW on Windows, _NSGetExecutablePath on macOS,
-	// /proc/self/exe readlink on Linux), then on POSIX we resolve
-	// any intermediate symlinks via realpath() so AppImage / .app
-	// bundle moves are detected correctly.
+	// wxStandardPaths::GetExecutablePath() wraps the OS native call; on POSIX we then resolve
+	// intermediate symlinks via realpath(), so AppImage / .app bundle moves are detected
+	// correctly.
 	wxString raw = wxStandardPaths::Get().GetExecutablePath();
 
 #ifndef __WXMSW__
@@ -79,9 +76,8 @@ wxString AutostartManager::GetCanonicalExecutablePath()
 	if (realpath(raw.mb_str(wxConvUTF8), resolved) != NULL) {
 		return wxString::FromUTF8(resolved);
 	}
-	// realpath failed (binary unlinked? permission?) — fall through
-	// to the raw path; the autostart entry will still work as long
-	// as the OS can resolve it.
+	// realpath failed (binary unlinked? permission?) -- fall through to the raw
+	// path, which still works as long as the OS can resolve it.
 #endif
 
 	return raw;
@@ -112,7 +108,7 @@ void AutostartManager::SelfHealOnStartup()
 {
 	wxString registered = BackendReadTargetPath();
 	if (registered.empty()) {
-		// No entry — user chose not to autostart, or never enabled it.
+		// No entry -- user chose not to autostart, or never enabled it.
 		// Don't second-guess.
 		return;
 	}
@@ -129,10 +125,8 @@ void AutostartManager::SelfHealOnStartup()
 		return;
 	}
 
-	// Path drifted (user moved AppImage / .app / install dir, or
-	// upgraded via a tool that didn't rewrite the entry). Rewrite
-	// to match the current canonical path so the next login launches
-	// the right binary.
+	// Path drifted (moved AppImage / .app / install dir, or an upgrade tool that
+	// did not rewrite the entry), so rewrite it to the current canonical path.
 	wxLogDebug(wxT("AutostartManager::SelfHealOnStartup: rewriting autostart entry from '%s' to '%s'"),
 		registered.c_str(),
 		canonical.c_str());
@@ -148,10 +142,9 @@ namespace
 
 #if defined(__WXMSW__)
 
-// Windows: per-user "Run on login" registry key. HKCU (not HKLM)
-// so autostart is a per-user choice on shared machines and toggling
-// never needs elevation. The same key Task Manager → Startup tab
-// reads.
+// Windows: per-user "Run on login" registry key. HKCU rather than HKLM, so autostart is a per-user
+// choice on shared machines and toggling never needs elevation. The same key Task Manager's Startup
+// tab reads.
 static const wchar_t *RUN_KEY = L"Software\\Microsoft\\Windows\\CurrentVersion\\Run";
 static const wchar_t *RUN_VALUE_NAME = L"aMule";
 
@@ -183,10 +176,9 @@ wxString BackendReadTargetPath()
 
 	wxString raw(buf.data());
 
-	// Windows stores Run entries either bare ("C:\Foo\bar.exe")
-	// or quoted ('"C:\Foo\bar.exe" --some-flag'). Strip surrounding
-	// quotes and discard any argument tail so the path comparison
-	// in SelfHealOnStartup matches the unadorned canonical path.
+	// Windows stores Run entries either bare or quoted with an argument tail, so strip
+	// surrounding quotes and discard any arguments -- the path comparison in SelfHealOnStartup
+	// matches the unadorned canonical path.
 	if (!raw.empty() && raw[0] == wxT('"')) {
 		size_t closing = raw.find(wxT('"'), 1);
 		if (closing != wxString::npos) {
@@ -236,10 +228,9 @@ bool BackendRemove()
 
 #elif defined(__WXMAC__) || defined(__WXOSX__)
 
-// macOS: per-user LaunchAgent. Registered command is
-// `/usr/bin/open -a <aMule.app>` rather than launching the bare
-// Mach-O directly — sidesteps Gatekeeper / quarantine warnings
-// when launchd activates us at login.
+// macOS: per-user LaunchAgent. The registered command is `/usr/bin/open -a <aMule.app>` rather than
+// the bare Mach-O, which sidesteps Gatekeeper / quarantine warnings when launchd activates us at
+// login.
 static const wxString PLIST_LABEL = wxT("org.amule.amule");
 
 static wxString PlistPath()
@@ -262,13 +253,9 @@ wxString BackendReadTargetPath()
 	f.ReadAll(&content, wxConvUTF8);
 	f.Close();
 
-	// ProgramArguments array layout we write below:
-	//   <string>/usr/bin/open</string>
-	//   <string>-a</string>
-	//   <string>/path/to/aMule.app</string>
-	// Take the third <string> as the registered target. Plist
-	// XML is simple enough that regex extraction is safer than
-	// pulling in a full plist parser dependency.
+	// The ProgramArguments array written below is /usr/bin/open, -a, then the .app path, so the
+	// third <string> is the registered target. Plist XML is simple enough that regex extraction
+	// beats a full parser dependency.
 	wxRegEx re(wxT("<string>([^<]+)</string>"), wxRE_ADVANCED);
 	if (!re.IsValid()) {
 		return wxEmptyString;
@@ -290,10 +277,8 @@ wxString BackendReadTargetPath()
 
 bool BackendWrite(const wxString &canonicalExe)
 {
-	// Convert the canonical exe path to its containing .app
-	// bundle: `/Applications/aMule.app/Contents/MacOS/amule`
-	// → `/Applications/aMule.app`. Strip the last two path
-	// components plus the basename.
+	// Convert the canonical exe path to its containing .app bundle:
+	// `/Applications/aMule.app/Contents/MacOS/amule` -> `/Applications/aMule.app`.
 	wxString appBundle = canonicalExe;
 	int idx = appBundle.Find(wxT(".app/"));
 	if (idx != wxNOT_FOUND) {
@@ -323,9 +308,8 @@ bool BackendWrite(const wxString &canonicalExe)
 	xml << wxT("    </array>\n");
 	xml << wxT("    <key>RunAtLoad</key>\n");
 	xml << wxT("    <true/>\n");
-	// KeepAlive=false so user-quit means quit. launchd would
-	// otherwise treat us as a service to be respawned, which
-	// fights the user's deliberate close.
+	// KeepAlive=false so a user quit means quit: launchd would otherwise treat us
+	// as a service to be respawned, fighting the user's deliberate close.
 	xml << wxT("    <key>KeepAlive</key>\n");
 	xml << wxT("    <false/>\n");
 	xml << wxT("</dict>\n");
@@ -351,11 +335,10 @@ bool BackendRemove()
 
 #else // assumed Linux / *BSD with XDG-compliant desktop env
 
-// Linux: XDG Autostart spec. $XDG_CONFIG_HOME (falls back to
-// ~/.config) is where the DE's "Startup Applications" GUI looks,
-// so users can see and toggle the entry without touching a
-// terminal. systemd user units don't show up in those GUIs.
-// https://specifications.freedesktop.org/autostart-spec/latest/
+// Linux: XDG Autostart spec. $XDG_CONFIG_HOME (falling back to ~/.config) is where the DE's
+// "Startup Applications" GUI looks, so users can see and toggle the entry without a terminal --
+// systemd user units do not show up there. https://specifications.freedesktop.org/autostart-
+// spec/latest/
 
 static wxString XdgAutostartDir()
 {
@@ -386,10 +369,9 @@ wxString BackendReadTargetPath()
 	f.ReadAll(&content, wxConvUTF8);
 	f.Close();
 
-	// Parse the Exec= line. .desktop syntax allows the field-code
-	// expansion (%U, %f etc.) after the executable; the path is
-	// always the first whitespace-delimited token and may be
-	// quoted with double-quotes for paths containing spaces.
+	// Parse the Exec= line. .desktop syntax allows field-code expansion (%U, %f) after the
+	// executable; the path is always the first whitespace-delimited token, and may be double-
+	// quoted for paths containing spaces.
 	wxStringTokenizer lines(content, wxT("\n"));
 	while (lines.HasMoreTokens()) {
 		wxString line = lines.GetNextToken().Trim(false).Trim(true);
@@ -419,9 +401,8 @@ bool BackendWrite(const wxString &executable)
 {
 	wxString dir = XdgAutostartDir();
 	if (!wxFileName::DirExists(dir)) {
-		// Mkdir -p; the XDG dir may not exist yet on a fresh
-		// install or on minimal DEs that don't ship anything
-		// there by default.
+		// Mkdir -p: the XDG dir may not exist yet on a fresh install or on minimal
+		// DEs that ship nothing there.
 		if (!wxFileName::Mkdir(dir, 0755, wxPATH_MKDIR_FULL)) {
 			return false;
 		}
@@ -431,10 +412,9 @@ bool BackendWrite(const wxString &executable)
 	// survive the .desktop Exec= parser's tokenisation.
 	wxString quotedExec = wxT("\"") + executable + wxT("\"");
 
-	// Standard XDG Autostart fields. X-GNOME-Autostart-enabled
-	// is widely-recognised even outside GNOME and makes the
-	// entry trivially toggleable from the user's DE settings GUI
-	// without us having to rewrite the file.
+	// Standard XDG Autostart fields. X-GNOME-Autostart-enabled is widely recognised even
+	// outside GNOME and makes the entry toggleable from the DE settings GUI without us
+	// rewriting the file.
 	wxString content;
 	content << wxT("[Desktop Entry]\n");
 	content << wxT("Type=Application\n");
