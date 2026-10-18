@@ -14,6 +14,9 @@ phases:
   spec: done
   design: done
   tasks: done
-  apply: pending
-  verify: pending
-  archive: pending
+  apply: complete
+  verify: complete
+  archive: complete
+merged_upstream:
+  - amule-org/amule#1218 (821e34e8b)
+  - amule-org/amule#1282 (5c3df561c)

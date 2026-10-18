@@ -139,12 +139,14 @@ Downloads-list colour change, so that one is closed.
 
 ## Phase 6: Gates
 
-- [ ] 6.1 clang-format 18 on every changed file (`podman run --rm -i -v "$PWD:/w" -w /w
+> Verified by upstream CI on the merged PRs: #1218 (head 12746c561) and #1282 (head 19d7d7376), 14/14 checks SUCCESS each, including Check clang-format, clang-tidy Tier-1 and Tier-2, and the CMake builds with tests.
+
+- [x] 6.1 clang-format 18 on every changed file (`podman run --rm -i -v "$PWD:/w" -w /w
       ghcr.io/jidicula/clang-format:18 --dry-run --Werror <file>` — `-i` is required or
       zero files are checked).
-- [ ] 6.2 clang-tidy Tier-2 on changed lines. Exposed new code: `SpansFor`'s filler
+- [x] 6.2 clang-tidy Tier-2 on changed lines. Exposed new code: `SpansFor`'s filler
       (1.5), `PartBarLegendUI.cpp` row loops (3.1), the cross-surface pin's `<fstream>`
       parse (2.7).
-- [ ] 6.3 `packaging/linux/build.sh dev` — monolithic + daemon + remotegui. `ctest`
+- [x] 6.3 `packaging/linux/build.sh dev` — monolithic + daemon + remotegui. `ctest`
       fully green; `known_failing_tests: []`, so any red is attributable here. Identify
       failures by NAME, never by index.
