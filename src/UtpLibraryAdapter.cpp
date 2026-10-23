@@ -32,6 +32,7 @@
 #include <array>
 #include <cstring>
 #include <map>
+#include <set>
 #include <utility>
 #include <vector>
 
@@ -190,6 +191,11 @@ public:
 		m_remapInputs.clear();
 		m_remapOutputs.clear();
 		m_socketRemaps.clear();
+		// These caches are keyed by libutp-owned pointers and therefore cannot
+		// outlive the context: a later Create() may reuse their addresses.
+		m_sending = nullptr;
+		m_synAckOverhead.clear();
+		m_closingCrypt.clear();
 		m_context = nullptr;
 		m_acceptor = nullptr;
 		if (s_self == this) {
@@ -403,11 +409,16 @@ private:
 		return 0;
 	}
 	// libutp passes UTP_SENDTO no socket, but reports each socket's send here
-	// immediately before it.
+	// immediately before it. SYN-ACK is exceptional: its send was already made
+	// before acceptance, and its delayed accounting must not become a sender.
 	static uint64 OnOverheadStatistics(utp_callback_arguments *args)
 	{
 		if (s_self != nullptr && args->send) {
-			s_self->m_sending = args->socket;
+			if (s_self->m_synAckOverhead.erase(args->socket) != 0) {
+				s_self->m_sending = nullptr;
+			} else {
+				s_self->m_sending = args->socket;
+			}
 		}
 		return 0;
 	}
@@ -431,6 +442,9 @@ private:
 
 	static uint64 OnAccept(utp_callback_arguments *args)
 	{
+		if (s_self != nullptr && args->socket != nullptr) {
+			s_self->m_synAckOverhead.insert(args->socket);
+		}
 		if (s_self == nullptr || s_self->m_acceptor == nullptr || args->address == nullptr ||
 			args->address->sa_family != AF_INET) {
 			// No acceptor refuses every SYN, as this build did before one.
@@ -611,6 +625,7 @@ private:
 			m_sending = nullptr;
 		}
 		m_closingCrypt.erase(socket);
+		m_synAckOverhead.erase(socket);
 		RemoveRemapCandidate(socket);
 		RemovePortRemap(socket);
 		const auto found = m_endpoints.find(socket);
@@ -641,6 +656,9 @@ private:
 	// finished with the datagram.
 	std::vector<utp_socket *> m_refused;
 	utp_socket *m_sending = nullptr;
+	// Accepted SYNs report their SYN-ACK accounting after the send, with no
+	// matching UTP_SENDTO. Ignore that one delayed marker per socket.
+	std::set<utp_socket *> m_synAckOverhead;
 	static constexpr size_t kUserHashBytes = 16;
 	// Crypt parameters of closed sockets that libutp still sends on.
 	std::map<utp_socket *, std::array<uint8_t, kUserHashBytes>> m_closingCrypt;

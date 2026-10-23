@@ -422,6 +422,39 @@ TEST(UtpLibraryAdapter, OutboundDialSendsItsSynToTheRequestedEndpoint)
 	Teardown(loop);
 }
 
+TEST(UtpLibraryAdapter, AStatelessResetAfterSynAckStaysPlaintext)
+{
+	// libutp reports SYN-ACK overhead after sending it, so no UTP_SENDTO consumes
+	// that sender marker. An unknown packet from the same endpoint must still
+	// produce an unowned plaintext reset, not borrow that stream's crypt state.
+	SLoopback loop;
+	g_loop = &loop;
+	CServerSink sink;
+	CFakeAcceptor acceptor;
+	loop.server = CreateUtpLibrary();
+	ASSERT_TRUE(loop.server->Create(sink));
+	loop.server->SetAcceptor(&acceptor);
+	StartClient(loop);
+	ASSERT_EQUALS(1, (int)loop.toServer.size());
+	const std::vector<uint8_t> syn = loop.toServer.front();
+	loop.toServer.pop_front();
+	loop.server->ProcessDatagram(syn.data(), syn.size(), kPeerIp, kPeerPort, loop.nowMs);
+	ASSERT_TRUE(acceptor.accepted != nullptr);
+	const uint8_t userHash[16] = { 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15 };
+	static_cast<CUtpSocketTransport *>(acceptor.accepted.get())->SetCryptParameters(true, userHash);
+
+	std::vector<uint8_t> unknown(20, 0);
+	unknown[0] = 0x01; // uTP v1 ST_DATA
+	unknown[2] = 0x12;
+	unknown[3] = 0x34; // unknown connection id
+	const unsigned beforeReset = sink.datagrams;
+	loop.server->ProcessDatagram(unknown.data(), unknown.size(), kPeerIp, kPeerPort, loop.nowMs);
+	ASSERT_TRUE(sink.datagrams > beforeReset);
+	ASSERT_FALSE(sink.lastEncrypt);
+	ASSERT_TRUE(sink.lastUserHash.empty());
+	Teardown(loop);
+}
+
 TEST(UtpLibraryAdapter, OutboundEncryptedSynRetainsItsSocketCryptParameters)
 {
 	SLoopback loop;
@@ -738,6 +771,10 @@ TEST(UtpLibraryAdapter, DestroyingTheContextEndsTheStreamsItOwned)
 	// Live before the teardown, or what follows proves nothing.
 	ASSERT_TRUE(acceptor.accepted->IsOk());
 
+	// Seed pointer-keyed crypt state while the socket and context are live.
+	const uint8_t userHash[16] = { 9, 8, 7, 6, 5, 4, 3, 2, 1, 0, 9, 8, 7, 6, 5, 4 };
+	static_cast<CUtpSocketTransport *>(acceptor.accepted.get())->SetCryptParameters(true, userHash);
+	acceptor.accepted->Close();
 	loop.server->Destroy();
 
 	// The discriminating assertion: without DESTROYING the handle stays set,
@@ -746,9 +783,19 @@ TEST(UtpLibraryAdapter, DestroyingTheContextEndsTheStreamsItOwned)
 	ASSERT_TRUE(utp->SocketHandle() == nullptr);
 	ASSERT_FALSE(acceptor.accepted->IsOk());
 	ASSERT_FALSE(loop.server->HasRegisteredPeer(kPeerIp, kPeerPort));
-	// The order a real teardown produces; both must be harmless.
+	// A recreated context must not retain any pointer-keyed sender or crypt
+	// metadata: its first unowned reset remains plaintext before any new socket.
+	ASSERT_TRUE(loop.server->Create(sink));
+	std::vector<uint8_t> unknown(20, 0);
+	unknown[0] = 0x01; // uTP v1 ST_DATA
+	unknown[2] = 0x12;
+	unknown[3] = 0x34; // unknown connection id
+	const unsigned beforeReset = sink.datagrams;
+	loop.server->ProcessDatagram(unknown.data(), unknown.size(), kPeerIp, kPeerPort, loop.nowMs);
+	ASSERT_TRUE(sink.datagrams > beforeReset);
+	ASSERT_FALSE(sink.lastEncrypt);
+	ASSERT_TRUE(sink.lastUserHash.empty());
 	loop.server->Destroy();
-	acceptor.accepted->Close();
 	Teardown(loop);
 }
 
