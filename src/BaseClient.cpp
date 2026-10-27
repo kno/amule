@@ -1848,6 +1848,7 @@ void CUpDownClient::TrySendLugdunumNatCallbackRequest(uint32 targetId) const
 		targetId,
 		theApp->serverconnect->IsLocalServer(GetServerIP(), GetServerPort()),
 		server->IsLugdunumNatCallbackActive(),
+		server->SupportsLowIdHolePunch(),
 		thePrefs::IsServerCryptLayerUDPEnabled(),
 		serverListEntry->GetServerKeyUDP(),
 		serverListEntry->SupportsObfuscationUDP(),

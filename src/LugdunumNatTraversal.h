@@ -123,6 +123,8 @@ struct CallbackRequestFacts
 	std::uint32_t sourceId = 0;
 	bool sameServer = false;
 	bool serverCallbackCapable = false;
+	// ed2k-server's 0x60/0x61 punch supersedes its Lugdunum-compatible callback.
+	bool serverSupportsLowIdHolePunch = false;
 	// Mirrors CServerUDPSocket::SendPacket's own gate (ServerUDPSocket.cpp): without all three the
 	// server will not accept an obfuscated UDP datagram at all, so sending one would be wasted.
 	bool serverCryptLayerUdpEnabled = false;
@@ -138,7 +140,8 @@ struct CallbackRequestFacts
 // setting must be on.
 inline bool ShouldRequestLugdunumNatCallback(const CallbackRequestFacts &facts)
 {
-	if (!facts.settingEnabled || !facts.sameServer || !facts.serverCallbackCapable) {
+	if (!facts.settingEnabled || !facts.sameServer || !facts.serverCallbackCapable ||
+		facts.serverSupportsLowIdHolePunch) {
 		return false;
 	}
 	if (!IsLowID(facts.ourId) || !IsLowID(facts.sourceId)) {

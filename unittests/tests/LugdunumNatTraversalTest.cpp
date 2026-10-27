@@ -367,6 +367,10 @@ TEST(LugdunumNatTraversal, RequestsCallbackOnlyWhenEveryPreconditionHolds)
 	notCapable.serverCallbackCapable = false;
 	ASSERT_FALSE(ShouldRequestLugdunumNatCallback(notCapable));
 
+	CallbackRequestFacts serverSupportsHolePunch = facts;
+	serverSupportsHolePunch.serverSupportsLowIdHolePunch = true;
+	ASSERT_FALSE(ShouldRequestLugdunumNatCallback(serverSupportsHolePunch));
+
 	// Each server-way crypto precondition is independently required (S5).
 	CallbackRequestFacts noCryptLayer = facts;
 	noCryptLayer.serverCryptLayerUdpEnabled = false;
