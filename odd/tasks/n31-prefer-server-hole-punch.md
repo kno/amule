@@ -12,7 +12,7 @@ S3. Do not send `0xA6` on servers that announce `0x20000`, and never send both r
 
 T1 — S1-S3 — inline — done — Mapped the `0x60` and `0xA6` request policies.
 T2 — S2-S3 — inline — done — Prefer `0x60` for a server advertising both flags; suppress `0xA6`; regression tests added.
-T3 — S1-S3 — inline — pending — Verify supported builds and record the work-unit commit.
+T3 — S1-S3 — inline — pending — QUIC container passed 182/182; commit `63a2d05` pushed; CI pending.
 
 ## Log
 
